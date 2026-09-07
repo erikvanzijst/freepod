@@ -56,6 +56,8 @@ jobs:
   # workflow because `publish-cli.yml` runs the identical gate before it
   # uploads to PyPI — see the comment there.
   cli:
+    permissions:
+      contents: read
     uses: ./.github/workflows/cli-checks.yml
 
   # The dev-profile SSH sidecar, driven by docker and ssh with no cluster:
