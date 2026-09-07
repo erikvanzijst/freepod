@@ -18,6 +18,18 @@ resource "keycloak_realm" "freepod" {
   duplicate_emails_allowed = false
   login_with_email_allowed = true
 
+  # Registration collects no username; the account's username is its email
+  # address. Nothing in Freepod reads a Keycloak username.
+  #
+  # The two settings below are load-bearing for this, not independent choices.
+  # Keycloak rejects duplicate_emails_allowed alongside it — an email that is
+  # the username cannot also be shared — and it forbids edit_username_allowed
+  # alongside it, since a self-editable username would diverge from the email
+  # the moment it was edited. edit_username_allowed already defaults to false;
+  # it is written out so that flipping it is a visible decision here.
+  registration_email_as_username = true
+  edit_username_allowed          = false
+
   # Self-service password reset. This is how every migrated account seeded
   # without a credential obtains one, so it and SMTP below are on the critical
   # path of the cutover.
