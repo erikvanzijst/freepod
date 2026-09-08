@@ -313,6 +313,18 @@ def cli_runner(test_database, monkeypatch):
     _reset(test_database)
     monkeypatch.setenv("CAELUS_USER_EMAIL", "cli-test@example.com")
 
+    # Same reason as `_hostname_settings` above, for the other half of the
+    # reconcile: it derives the account's name from `CAELUS_DOMAIN`, which comes
+    # from the gitignored `.env.local` and so is set on a developer's machine and
+    # empty in CI. Pinned here rather than left ambient, so these tests fail or
+    # pass for the same reason in both places.
+    from app.config import CaelusSettings
+
+    monkeypatch.setattr(
+        "app.services.reconcile.get_settings",
+        lambda: CaelusSettings(wildcard_domains=[], domain="cli.example.test", _env_file=None),
+    )
+
     import app.cli as cli
 
     return CliRunner(), cli.app
