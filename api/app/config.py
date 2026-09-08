@@ -101,6 +101,18 @@ class CaelusSettings(BaseSettings):
     # under a live, healthy one. 600s leaves ~2x margin.
     reconcile_job_lease_seconds: int = 600
 
+    # ── Per-account TLS ───────────────────────────────────────────────────
+    # Account certificates and the platform wildcard share one namespace, and
+    # the store Traefik serves from lives there too: a store's certificate
+    # references carry no namespace and resolve in its own.
+    tls_namespace: str = "caelus-tls"
+    tls_store_name: str = "default"
+
+    # DNS-01, because an account's names are wildcards. Distinct from
+    # `tls_cluster_issuer`, which is HTTP-01 for custom domains the platform
+    # does not control the DNS of.
+    account_tls_cluster_issuer: str = "letsencrypt-dns"
+
     # ── DNS (per-account wildcard records) ────────────────────────────────
     # See app/services/dns.py. Empty by default so an environment with no DNS
     # provider still starts. The zone is identified by id rather than by name so

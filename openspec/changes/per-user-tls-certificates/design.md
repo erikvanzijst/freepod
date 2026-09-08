@@ -295,8 +295,9 @@ already makes two writers safe — it does not care that they are different envi
 
 ## Scaling
 
-Measured against the running cluster: a TLS secret is ~10.8 KB of JSON, the store object is
-832 bytes, and each membership entry is ~40 bytes.
+Measured against the running cluster: the platform's RSA wildcard secret is ~10.8 KB of JSON
+and an issued ECDSA account secret ~7.8 KB, the store object is 832 bytes, and each membership
+entry is ~40 bytes.
 
 - **The store object** reaches Kubernetes' ~1.5 MB ceiling somewhere near 30,000 entries.
   `certificates` is an atomic list, so server-side apply records one ownership entry for it
@@ -307,7 +308,7 @@ Measured against the running cluster: a TLS secret is ~10.8 KB of JSON, the stor
   inside a rebuild, since the certificate store is behind a read/write lock. ECDSA keys are
   specified partly to keep that parse cheap.
 - **The reconciler's LIST is the first cost that bites**, because secrets carry key material:
-  ~11 MB per reconcile at 1,000 accounts. The remedy, when it is needed and not before, is to
+  ~8 MB per reconcile at 1,000 accounts. The remedy, when it is needed and not before, is to
   skip the derivation when the account's entry is already in the store — at the price of no
   longer correcting another account's drift on an unrelated reconcile.
 

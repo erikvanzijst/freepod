@@ -448,6 +448,63 @@ class Provisioner:
     def ssh_access_selector(instance: str) -> str:
         return f"caelus.dev/component=ssh,app.kubernetes.io/instance={instance}"
 
+    ACCOUNT_CERT_LABEL = "caelus.dev/component"
+    ACCOUNT_CERT_LABEL_VALUE = "account-tls"
+
+    @staticmethod
+    def account_certificate_name(fqdn: str) -> str:
+        """The certificate and secret name for an account's own name.
+
+        Derived from the fully qualified name so dev's and production's cannot
+        collide -- they share one namespace in one cluster, and `alice` is a
+        different person in each (D10).
+        """
+        return "acct-" + fqdn.replace(".", "-")
+
+    def ensure_account_certificate(self, *, fqdn: str) -> str:
+        """Request the certificate covering everything the account deploys.
+
+        Returns the secret name. Idempotent: a stable name means a repeat call
+        rewrites the same object, and cert-manager does not reissue for an
+        unchanged spec.
+
+        The label goes on `secretTemplate` rather than on the Certificate,
+        because cert-manager does not copy a certificate's own labels onto the
+        secret it writes -- and the secret is what the store's membership is
+        derived from.
+        """
+        settings = get_settings()
+        name = self.account_certificate_name(fqdn)
+        self.kube.apply_manifest(
+            {
+                "apiVersion": "cert-manager.io/v1",
+                "kind": "Certificate",
+                "metadata": {
+                    "name": name,
+                    "namespace": settings.tls_namespace,
+                    "labels": {self.ACCOUNT_CERT_LABEL: self.ACCOUNT_CERT_LABEL_VALUE},
+                },
+                "spec": {
+                    "secretName": name,
+                    "secretTemplate": {
+                        "labels": {self.ACCOUNT_CERT_LABEL: self.ACCOUNT_CERT_LABEL_VALUE}
+                    },
+                    "issuerRef": {
+                        "name": settings.account_tls_cluster_issuer,
+                        "kind": "ClusterIssuer",
+                    },
+                    "commonName": f"*.{fqdn}",
+                    "dnsNames": [f"*.{fqdn}", fqdn],
+                    # Explicit, not the issuer client's RSA default: the ingress
+                    # controller re-parses every certificate in its store on each
+                    # rebuild, and the secret is a third the size.
+                    "privateKey": {"algorithm": "ECDSA", "size": 256},
+                },
+            },
+            error_message=f"Failed to request the account certificate for {fqdn}",
+        )
+        return name
+
     def upsert_secret(
         self, *, namespace: str, name: str, string_data: dict[str, str], labels: dict[str, str]
     ) -> None:

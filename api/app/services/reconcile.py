@@ -327,7 +327,11 @@ class DeploymentReconciler:
             deployment.desired_template_id,
         )
 
-        self._ensure_account_dns(deployment)
+        account = self._account_fqdn(deployment)
+        self._ensure_account_dns(deployment, account)
+        # Requested before the release so issuance and installation proceed in
+        # parallel; the wait for it is D7's, and lands with the store.
+        self._provisioner.ensure_account_certificate(fqdn=account)
 
         self._provisioner.ensure_namespace(name=deployment.namespace)
         self._provisioner.ensure_tenant_isolation(namespace=deployment.namespace)
@@ -376,7 +380,7 @@ class DeploymentReconciler:
             helm_revision=getattr(outcome, "revision", None),
         )
 
-    def _ensure_account_dns(self, deployment: DeploymentORM) -> None:
+    def _ensure_account_dns(self, deployment: DeploymentORM, account: str) -> None:
         """Ensure the wildcard record for the owner's subdomain.
 
         Kept even though the current provider makes it redundant. Issuing the
@@ -389,7 +393,6 @@ class DeploymentReconciler:
 
         First, and before any certificate work, for the same reason.
         """
-        account = self._account_fqdn(deployment)
         self._dns().ensure_wildcard_record(account)
 
     @staticmethod

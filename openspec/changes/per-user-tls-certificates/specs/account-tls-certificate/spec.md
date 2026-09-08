@@ -50,8 +50,11 @@ RSA default.
 Both of this design's costs that grow with the number of accounts are reduced by it. The
 ingress controller re-reads and re-parses every certificate in its store on every configuration
 rebuild, and parsing an RSA private key includes a consistency validation that an elliptic-curve
-key does not; and the stored secret is roughly a third the size, which is what the reconciler
-transfers when it derives the store's membership.
+key does not; and the stored secret is smaller, which is what the reconciler transfers when it
+derives the store's membership. Measured on the first issued account certificate: 7.8 KB of
+JSON against 10.8 KB for the platform's RSA wildcard, so about a quarter smaller rather than
+the two thirds an earlier draft of this claimed — the certificate chain dominates the secret,
+and only the key part shrinks by the order of magnitude the algorithm suggests.
 
 #### Scenario: Issued keys are elliptic-curve
 

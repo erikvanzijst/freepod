@@ -1057,6 +1057,9 @@ def test_cli_reconcile_command_reconciles_deployment(cli_runner, monkeypatch):
         def ensure_tenant_isolation(self, *, namespace: str):
             return None
 
+        def ensure_account_certificate(self, *, fqdn: str):
+            return "acct-" + fqdn.replace(".", "-")
+
         def helm_upgrade_install(self, **kwargs):
             return None
 
@@ -1096,6 +1099,9 @@ class _FakeProvisioner:
 
     def ensure_tenant_isolation(self, *, namespace: str):
         return None
+
+    def ensure_account_certificate(self, *, fqdn: str):
+        return "acct-" + fqdn.replace(".", "-")
 
     def helm_upgrade_install(self, **kwargs):
         return None

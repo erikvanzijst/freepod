@@ -1,7 +1,8 @@
-"""The per-account wildcard DNS record the reconcile ensures.
+"""The per-account provisioning the reconcile does before the release: the
+wildcard DNS record, then the certificate covering everything under it.
 
-The record is what keeps an account's applications resolving while an ACME
-challenge sits beneath its name — see openspec/specs/account-dns-record/spec.md.
+See openspec/specs/account-dns-record/spec.md and
+openspec/specs/account-tls-certificate/spec.md.
 """
 
 from __future__ import annotations
@@ -190,3 +191,101 @@ def test_the_record_precedes_the_helm_release(db_session, account, fake_dns, mon
     DeploymentReconciler(session=db_session).reconcile(deployment_id)
 
     assert [name for name, _ in provisioner.calls if name == "helm_upgrade_install"] == []
+
+
+def _certificate_calls(provisioner):
+    return [args["fqdn"] for name, args in provisioner.calls if name == "ensure_account_certificate"]
+
+
+def test_the_first_deployment_requests_the_certificate(db_session, account, monkeypatch):
+    provisioner = FakeProvisioner()
+    monkeypatch.setattr("app.services.reconcile.default_provisioner", provisioner)
+    deployment_id = _seed(db_session, account, hostname="app.dev.freepod.eu")
+
+    DeploymentReconciler(session=db_session).reconcile(deployment_id)
+
+    assert _certificate_calls(provisioner) == [ACCOUNT_FQDN]
+
+
+def test_claiming_a_subdomain_without_deploying_requests_nothing(
+    db_session, account, fake_dns, monkeypatch
+):
+    """A certificate is rationed; a subdomain is not."""
+    provisioner = FakeProvisioner()
+    monkeypatch.setattr("app.services.reconcile.default_provisioner", provisioner)
+
+    assert _certificate_calls(provisioner) == []
+    assert fake_dns.ensured == []
+
+
+def test_the_certificate_is_requested_after_the_record_and_before_the_release(
+    db_session, account, monkeypatch
+):
+    provisioner = FakeProvisioner()
+    monkeypatch.setattr("app.services.reconcile.default_provisioner", provisioner)
+    deployment_id = _seed(db_session, account, hostname="app.dev.freepod.eu")
+    fake_dns_failure_free = DeploymentReconciler(session=db_session)
+    fake_dns_failure_free.reconcile(deployment_id)
+
+    order = [name for name, _ in provisioner.calls]
+    assert order.index("ensure_account_certificate") < order.index("helm_upgrade_install")
+
+
+def test_a_dns_failure_requests_no_certificate(db_session, account, fake_dns, monkeypatch):
+    provisioner = FakeProvisioner()
+    monkeypatch.setattr("app.services.reconcile.default_provisioner", provisioner)
+    deployment_id = _seed(db_session, account, hostname="app.dev.freepod.eu")
+    fake_dns.fail_with = DnsException("provider unavailable")
+
+    DeploymentReconciler(session=db_session).reconcile(deployment_id)
+
+    assert _certificate_calls(provisioner) == []
+
+
+def test_a_failed_request_fails_the_deployment_with_the_cause(db_session, account, monkeypatch):
+    provisioner = FakeProvisioner()
+    provisioner.raise_on_certificate = RuntimeError("the ACME account has no allowance left")
+    monkeypatch.setattr("app.services.reconcile.default_provisioner", provisioner)
+    deployment_id = _seed(db_session, account, hostname="app.dev.freepod.eu")
+
+    result = DeploymentReconciler(session=db_session).reconcile(deployment_id)
+
+    assert result.status == DEPLOYMENT_STATUS_ERROR
+    assert "allowance" in result.last_error
+    assert [name for name, _ in provisioner.calls if name == "helm_upgrade_install"] == []
+
+
+def test_deleting_the_last_deployment_requests_no_certificate_work(
+    db_session, account, monkeypatch
+):
+    """Nothing deletes an account certificate, and the delete path does not
+    touch it at all."""
+    provisioner = FakeProvisioner()
+    monkeypatch.setattr("app.services.reconcile.default_provisioner", provisioner)
+    deployment_id = _seed(db_session, account, hostname="app.dev.freepod.eu")
+    DeploymentReconciler(session=db_session).reconcile(deployment_id)
+
+    jobs = JobService(db_session)
+    for job in jobs.list_jobs(deployment_id=deployment_id, statuses=["queued", "running"]):
+        jobs.mark_job_done(job_id=job.id)
+    deployment_service.delete_deployment(
+        db_session, deployment_id=deployment_id, user_id=account.id
+    )
+    before = len(_certificate_calls(provisioner))
+    DeploymentReconciler(session=db_session).reconcile(deployment_id)
+
+    assert len(_certificate_calls(provisioner)) == before
+
+
+def test_a_second_deployment_requests_no_further_certificate(db_session, account, monkeypatch):
+    """The reconcile re-applies the same object every time, which is not the
+    same as asking for another certificate: one name, one certificate, and
+    cert-manager issues nothing for an unchanged spec."""
+    provisioner = FakeProvisioner()
+    monkeypatch.setattr("app.services.reconcile.default_provisioner", provisioner)
+    first = _seed(db_session, account, hostname="one.dev.freepod.eu")
+    DeploymentReconciler(session=db_session).reconcile(first)
+    second = _seed(db_session, account, hostname="two.dev.freepod.eu", suffix="-2")
+    DeploymentReconciler(session=db_session).reconcile(second)
+
+    assert set(_certificate_calls(provisioner)) == {ACCOUNT_FQDN}

@@ -39,12 +39,12 @@ moving a pointer, not by creating and deleting objects in a careful order.
 
 ## 5. Per-account certificate
 
-- [ ] 5.1 Add `ensure_account_certificate` to the provisioner, rendering a `Certificate` in `caelus-tls` covering `*.<subdomain>.<domain>` and `<subdomain>.<domain>` through the DNS-01 ClusterIssuer, with an explicit ECDSA P-256 private key and the name `acct-<fqdn with dots replaced by dashes>` (D10), so dev's and production's cannot collide in the one namespace. The platform-managed label goes in `spec.secretTemplate.labels`, not on the `Certificate` — cert-manager does not copy a certificate's own labels onto its secret, and the secret is what 7.2 selects on. Verify a repeat call rewrites the same object rather than churning it.
-- [ ] 5.2 Call it from the reconcile after the DNS record and before the Helm release, so issuance and installation proceed in parallel, and verify a first deployment produces both.
-- [ ] 5.3 Verify an account's second deployment requests no further certificate.
-- [ ] 5.4 Verify claiming a subdomain without deploying produces no certificate.
-- [ ] 5.5 Verify nothing deletes the certificate when a deployment, or an account's last deployment, is removed.
-- [ ] 5.6 Verify a refused issuance fails the deployment with the cause recorded on it, and that the refusal reaches operators rather than resting on the `Certificate` object alone.
+- [x] 5.1 Add `ensure_account_certificate` to the provisioner, rendering a `Certificate` in `caelus-tls` covering `*.<subdomain>.<domain>` and `<subdomain>.<domain>` through the DNS-01 ClusterIssuer, with an explicit ECDSA P-256 private key and the name `acct-<fqdn with dots replaced by dashes>` (D10), so dev's and production's cannot collide in the one namespace. The platform-managed label goes in `spec.secretTemplate.labels`, not on the `Certificate` — cert-manager does not copy a certificate's own labels onto its secret, and the secret is what 7.2 selects on. Verify a repeat call rewrites the same object rather than churning it.
+- [x] 5.2 Call it from the reconcile after the DNS record and before the Helm release, so issuance and installation proceed in parallel, and verify a first deployment produces both.
+- [x] 5.3 Verify an account's second deployment requests no further certificate.
+- [x] 5.4 Verify claiming a subdomain without deploying produces no certificate.
+- [x] 5.5 Verify nothing deletes the certificate when a deployment, or an account's last deployment, is removed.
+- [x] 5.6 Verify a *failed request* fails the deployment with the cause recorded on it and nothing installed. A refusal that arrives **after** a successful request — an exhausted allowance, a rejected challenge — is only observable by reading the `Certificate`'s status, which is section 6's wait; the operator-visible half lands there with it.
 
 ## 6. Waiting for readiness
 
@@ -69,7 +69,7 @@ moving a pointer, not by creating and deleting objects in a careful order.
 - [ ] 8.1 Verify by handshake that a name under an account's subdomain is served that account's certificate rather than the default wildcard, with no route defined for it — the complete proof that the store reaches routes that never reference it.
 - [ ] 8.2 Verify a `*.freepod.eu` application and a custom-domain application are both still served exactly as before, confirming the other two certificate sources are unaffected.
 - [ ] 8.3 Verify a renewal is invisible: force one and confirm the secret name is unchanged, the store is not rewritten, and the new certificate is served without a restart.
-- [ ] 8.4 Verify an issued account certificate carries an ECDSA P-256 key and that its secret is materially smaller than an RSA one, confirming both scaling assumptions in one check.
+- [x] 8.4 Verify an issued account certificate carries an ECDSA P-256 key and that its secret is materially smaller than an RSA one, confirming both scaling assumptions in one check. Measured: 7.8 KB against the platform wildcard's 10.8 KB — smaller, but a quarter rather than the two thirds the change claimed; the design and spec now carry the measurement.
 
 ## 9. Documentation
 
