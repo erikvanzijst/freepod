@@ -45,8 +45,9 @@ store's own namespace. There is no cross-namespace form to reach for.
 
 The default certificate and the membership list MUST be owned by different actors and written
 by different mechanisms: the default certificate declaratively by infrastructure code, the
-membership list by the reconciler at runtime. Each MUST write only the fields it owns, and
-neither MUST override the other's ownership.
+membership list by the reconciler at runtime. Each MUST write only the fields it owns, MUST
+omit the fields it does not — declaring a field, even as an empty value, claims ownership of it —
+and neither MUST override the other's ownership.
 
 Splitting by field is what lets the object be created and shaped declaratively while its
 membership changes with the fleet. Overriding the other's ownership — which the tooling offers
@@ -56,7 +57,9 @@ its next write, leaving connections with no fallback.
 #### Scenario: Infrastructure code owns the default certificate
 
 - **WHEN** the store is applied by infrastructure code
-- **THEN** it sets the default certificate and does not set the membership list
+- **THEN** it sets the default certificate and omits the membership list entirely, rather than
+  setting it to an empty one — declaring the field claims ownership of it, and the list is
+  atomic, so an empty declaration makes every later write by the reconciler a conflict
 
 #### Scenario: The reconciler owns the membership list
 
@@ -68,11 +71,16 @@ its next write, leaving connections with no fallback.
 - **WHEN** the reconciler writes the store
 - **THEN** it does not override another actor's ownership of any field
 
-#### Scenario: The object exists before the reconciler writes it
+#### Scenario: The reconciler updates the store but never creates it
 
-- **WHEN** the platform is first deployed
-- **THEN** the store already exists with its default certificate and an empty membership list,
-  so that no reconciler write can create it without one
+- **WHEN** the reconciler is about to write membership and the store does not exist
+- **THEN** it refuses rather than creating one, because a store it created would carry no default
+  certificate and leave connections matching nothing with no fallback
+
+#### Scenario: An absent membership list is not an obstacle
+
+- **WHEN** the reconciler writes membership to a store that has never had a membership list
+- **THEN** the write succeeds and the list is created by it
 
 ### Requirement: Membership is derived from the certificates that exist
 

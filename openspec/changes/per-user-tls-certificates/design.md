@@ -38,6 +38,16 @@ the running dev cluster rather than the code:
   from the start (D7), but no deployment is *addressed* under an account subdomain here.
 - Migrating existing accounts or deployments.
 - Changing DNS provider, which is its own change.
+- Claiming a subdomain. This change needs the *column*, not the interaction: it takes section 1
+  of `account-subdomain-claim` — the nullable `subdomain` on `UserORM`, its partial unique index
+  and the migration — and leaves that change's claim endpoints, hostname reason code, deployment
+  precondition, dialog and CLI refusal untouched. Dev's two accounts are seeded by hand.
+
+An account holding no subdomain is not a case to be lenient about. There is no name to issue
+for, so the reconcile fails on it the way it fails on a deployment with no namespace — an
+integrity failure naming the subdomain, in `_validate_input_state`. `account-subdomain-claim`
+makes that state unreachable from the API by refusing the create; until it lands, the failure is
+the only honest outcome and it is not transitional logic anyone has to find and remove later.
 
 ## Decisions
 
@@ -90,16 +100,44 @@ Moving the store into `caelus-tls` and out of the release makes ownership explic
 to move for a plainer reason: `certificates` entries carry no namespace, so the store must live
 where the certificate secrets do — which means the platform wildcard's secret moves too.
 
-### D4: Field-level ownership, verified
+### D4: Field-level ownership, and the declaring side must omit what it does not own
 
-Terraform creates the store with its `defaultCertificate` and an empty `certificates` list; the
-reconciler writes only `certificates`, with `kubectl apply --server-side
---field-manager=caelus-tls`. Server-side apply removes only fields the applying manager
-previously owned, so the two never collide.
+Terraform creates the store with its `defaultCertificate` and **omits `spec.certificates`
+entirely**; the reconciler writes only `spec.certificates`, with `kubectl apply --server-side
+--field-manager=caelus-tls`.
 
-`--force-conflicts` must never be passed. It is offered by the tooling as the way past a
-conflict, and here it would let the reconciler take ownership of `defaultCertificate` and drop
-it on the following write, leaving connections without a fallback certificate.
+Omitting rather than initializing is the whole of it, and the distinction is easy to get wrong.
+An earlier draft had Terraform declare `certificates: []` so the list would exist. That does not
+create an empty list for someone else to fill — it makes Terraform the **owner** of the field.
+`certificates` is an atomic list, so ownership is all-or-nothing across the whole list, and
+every reconciler apply then fails:
+
+```
+error: Apply failed with 1 conflict: conflict with "terraform-sim": .spec.certificates
+```
+
+The only way past that conflict is `--force-conflicts`, which this design forbids for exactly
+the reason it would then be needed for — a manager that forces its way past ownership can take
+`defaultCertificate` too, and drop it on its next write.
+
+Verified on the dev cluster against a throwaway `TLSStore`: with `certificates` omitted from the
+declaring side, the reconciler's apply succeeds, a subsequent Terraform apply of its own manifest
+leaves the list untouched, and ownership settles as
+
+```
+caelus-tls    owns {"f:certificates":{}}
+terraform-sim owns {"f:defaultCertificate":{"f:secretName":{}}}
+```
+
+Server-side apply creates an absent field on first write, so nothing has to pre-create the list.
+It also creates an absent *object*, which is the one thing to guard: an apply of
+`spec.certificates` against a missing store would produce a store with no default certificate and
+no fallback for connections that match nothing. The reconciler therefore reads the store first —
+which it does anyway, for the version precondition in D6 — and refuses rather than creating one.
+
+On the Terraform side, `computed_fields = ["spec.certificates"]` keeps the provider from
+reporting the reconciler's list as drift and planning it away. Server-side apply will not prune a
+field Terraform never owned, so this is about the planner rather than the API.
 
 ### D5: Membership is derived from the cluster, not the database
 
@@ -162,7 +200,10 @@ burns the job lease, and the lease is what lets a genuinely dead worker's job be
 
 **The wait is bounded**, measured from the job's `created_at` so no new column is needed, and
 exhausting the budget fails the deployment through the reconciler's existing error path — the
-same path a failed Helm release takes, recording the cause on the deployment.
+same path a failed Helm release takes, recording the cause on the deployment. The budget is ten
+minutes and each deferral is twenty seconds: a DNS-01 challenge settles in one to three minutes,
+so ten tolerates a slow order several times over while still failing inside the window someone
+is plausibly still watching their first deployment.
 
 Failing rather than completing is a deliberate choice to build the terminal behaviour now.
 Nothing is addressed under an account's own names yet, so a lenient alternative was available:
@@ -194,6 +235,44 @@ not by steady state. Every throwaway account created while developing this featu
 set of names, so none of them gets the duplicate-certificate exemption, and twenty of them in an
 afternoon is a large share of the week — spent against production signups. Worth watching while
 this is being built, rather than a reason to change the decision.
+
+### D9: The account's record mirrors the platform's own
+
+`*.freepod.eu` and `*.dev.freepod.eu` are CNAMEs to `kube.freepod.eu`, not address records, and
+an account's wildcard is the same: `*.<subdomain>.<domain>` CNAME to the same target. Mirroring
+rather than resolving to an address keeps an ingress IP change one edit in one place, however
+many accounts exist by then.
+
+The record is created unproxied. A proxied record puts the provider's own edge in front of the
+handshake, which terminates TLS somewhere the platform does not control and defeats the store
+this change exists to fill.
+
+The provider is reached through its official Python SDK rather than hand-rolled HTTP. Cloudflare
+publishes one, its transitive dependencies are already in the API's tree, and it is consistent
+with how the payment and object-storage adapters reach their own providers. What it contributes
+beyond less code is a server-side name filter, so "does this record exist" is one query rather
+than a walk of a zone that grows with the account count. The SDK stays inside the implementation;
+the interface it sits behind knows nothing of it.
+
+The zone is identified by id rather than by name. Resolving a name to an id costs a `Zone → Read`
+permission on the credential for something that never changes, so the id is configuration and the
+token carries `Zone → DNS → Edit` on the one zone and nothing else.
+
+### D10: Names carry the environment, because the namespace does not
+
+`caelus-tls` is one namespace in one cluster, and dev and production both write into it. Their
+databases are separate, so `erik` can be a different person in each; the fully qualified names
+they resolve to cannot collide, but the object names would.
+
+So a certificate and its secret are named from the fully qualified name they cover, with the dots
+replaced: `acct-erik-dev-freepod-eu` beside `acct-erik-freepod-eu`. Every component of that is
+already at hand where it is built — the account's subdomain and `settings.domain`, which each
+environment's Terraform already sets.
+
+The consequence is that either environment's reconciler derives a membership list containing the
+other's certificates, and both write the same store. That is correct rather than tolerated: one
+store serves one Traefik, which serves both environments, and the compare-and-swap in D6 is what
+already makes two writers safe — it does not care that they are different environments.
 
 ## Scaling
 

@@ -1,5 +1,9 @@
 ## 1. Schema
 
+> Implemented ahead of this change by `per-user-tls-certificates`, which needs the column
+> to have a name to issue a certificate for. 1.1 and 1.2 are done there; confirm rather
+> than rebuild them.
+
 - [ ] 1.1 Add a nullable `subdomain` column to `UserORM` (`api/app/models/core.py`) with a partial unique index over `lower(subdomain)` where `deleted_at IS NULL`, mirroring `uq_user_active`, and verify a second non-deleted row with the same label — in any case — is refused by the database.
 - [ ] 1.2 Write the Alembic migration and verify `uv run alembic upgrade head` then `downgrade -1` runs clean against the test database.
 - [ ] 1.3 Verify a deleted user's row keeps its subdomain and that the label stays unclaimable, by attempting a claim for a soft-deleted account's label.

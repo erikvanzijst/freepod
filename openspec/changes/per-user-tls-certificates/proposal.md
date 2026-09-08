@@ -75,12 +75,25 @@ where the ingress controller will find it — verifiable on its own, before any 
 - `api/app/provisioner.py`: server-side apply with a field manager, and methods to ensure an
   account certificate, list certificate secrets, and reconcile the store.
 - `api/app/services/dns.py` (new): the provider adapter, alongside the object-storage and
-  payment adapters it is modeled on.
+  payment adapters it is modeled on. The Cloudflare implementation uses the official `cloudflare`
+  SDK, a new dependency in `api/pyproject.toml` whose transitive requirements are already there.
+- `api/app/models/core.py` and a migration: the nullable `subdomain` column on `UserORM`, taken
+  from `account-subdomain-claim` section 1 because nothing else here has a name to issue for.
+  That change's own sections 2 onward are untouched.
 - `api/app/services/reconcile.py`: the per-account provisioning step, before the Helm release.
 - `api/app/config.py`: the TLS namespace, the store name, the DNS provider credential and
   zone, and the record target.
 - Not affected: the product charts, the tenant namespaces, custom-domain certificates, and
   `app-tls-injection` — deployments continue to render a plain Ingress and be served by the
   default wildcard.
-- Depends on `account-subdomain-claim` being implemented: without a subdomain on the account
-  there is no name to issue for.
+- `tf/app/caelus`: a `caelus-dns` Secret for the provider token and the zone id in the API
+  ConfigMap, fed by `cloudflare_api_dns_token` and `cloudflare_zone_id` in
+  `tf/app/secrets.auto.tfvars`. They live in `tf/app` rather than `tf/deps` because the root
+  module that renders the reconciler's pod is the one that can reach them — the two roots share
+  no state.
+- Depends on the `subdomain` column from `account-subdomain-claim` section 1, which this change
+  implements; nothing else from that change is required, and an account holding no subdomain
+  fails its reconcile rather than being handled leniently.
+- The `caelus-tls` namespace, the store and the platform wildcard's move are singletons in a
+  cluster that serves both environments, so those steps are not environment-scoped even though
+  the rest of this change is rolled out on dev first.
