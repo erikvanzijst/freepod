@@ -32,6 +32,7 @@ dependencies = [
   "dnspython>=2.6",
   "boto3>=1.35",
   "boto3-stubs~=1.43.71",
+  "cloudflare>=5.7,<6",
 ]
 
 [tool.setuptools]

@@ -47,6 +47,12 @@ class UserORM(UserBase, table=True):
             unique=True,
             postgresql_where=Column("deleted_at").is_(None),
         ),
+        Index(
+            "uq_user_subdomain_active",
+            func.lower(Column("subdomain")),
+            unique=True,
+            postgresql_where=Column("deleted_at").is_(None),
+        ),
     )
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(nullable=False, unique=False)
@@ -59,6 +65,7 @@ class UserORM(UserBase, table=True):
     # instant of the click (a timestamp, the evidentiary value).
     tos_accepted_version: Optional[str] = Field(default=None, nullable=True)
     tos_accepted_at: Optional[datetime] = Field(default=None, nullable=True)
+    subdomain: Optional[str] = Field(default=None, nullable=True)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
     deployments: list["DeploymentORM"] = Relationship(back_populates="user")
     subscriptions: list["SubscriptionORM"] = Relationship(

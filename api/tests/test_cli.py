@@ -38,10 +38,13 @@ def _seed_deployment_via_services() -> tuple[int, int]:
 
     with session_scope() as session:
         user = user_service.create_user(session, UserCreate(email="getdep@example.com"))
-        # Deploying requires prior ToS acceptance (recorded on the user).
-        user_service.record_tos_acceptance(
-            session, user=session.get(UserORM, user.id), version=CURRENT_TOS_VERSION
-        )
+        # Deploying requires prior ToS acceptance and a claimed subdomain, both
+        # recorded on the user.
+        orm = session.get(UserORM, user.id)
+        user_service.record_tos_acceptance(session, user=orm, version=CURRENT_TOS_VERSION)
+        orm.subdomain = "getdep"
+        session.add(orm)
+        session.commit()
         product = product_service.create_product(
             session, payload=ProductCreate(name="dep-product", description="dep desc")
         )
@@ -1251,9 +1254,11 @@ def test_cli_worker_parallel_processes_multiple_jobs(cli_runner, monkeypatch):
     deployment_ids = []
     with session_scope() as session:
         user = user_service.create_user(session, UserCreate(email="parallel@example.com"))
-        user_service.record_tos_acceptance(
-            session, user=session.get(UserORM, user.id), version=CURRENT_TOS_VERSION
-        )
+        orm = session.get(UserORM, user.id)
+        user_service.record_tos_acceptance(session, user=orm, version=CURRENT_TOS_VERSION)
+        orm.subdomain = "parallel"
+        session.add(orm)
+        session.commit()
         for i in range(3):
             product = product_service.create_product(
                 session,

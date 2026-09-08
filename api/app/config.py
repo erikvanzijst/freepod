@@ -101,6 +101,17 @@ class CaelusSettings(BaseSettings):
     # under a live, healthy one. 600s leaves ~2x margin.
     reconcile_job_lease_seconds: int = 600
 
+    # ── DNS (per-account wildcard records) ────────────────────────────────
+    # See app/services/dns.py. Empty by default so an environment with no DNS
+    # provider still starts. The zone is identified by id rather than by name so
+    # the token needs only `Zone → DNS → Edit` on the one zone, not `Zone → Read`.
+    cloudflare_dns_api_token: str = ""
+    cloudflare_dns_zone_id: str = ""
+
+    # A name rather than an address, mirroring the platform's own `*.<domain>`
+    # CNAME, so moving the ingress stays one edit.
+    dns_record_target: str = ""
+
     # ── Object store (Garage, S3-compatible) ──────────────────────────────
     s3_endpoint_url: str = ""
     s3_region: str = "garage"

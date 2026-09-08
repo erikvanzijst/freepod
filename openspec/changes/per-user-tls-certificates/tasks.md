@@ -1,9 +1,9 @@
 ## 1. The account subdomain
 
-- [ ] 1.1 Add the nullable `subdomain` column to `UserORM` (`api/app/models/core.py`) with a partial unique index over `lower(subdomain)` where `deleted_at IS NULL`, mirroring `uq_user_active`, and verify a second non-deleted row with the same label — in any case — is refused by the database. This is `account-subdomain-claim` 1.1 verbatim; nothing else from that change is implemented here.
-- [ ] 1.2 Write the Alembic migration and verify `uv run alembic upgrade head` then `downgrade -1` runs clean against the test database.
-- [ ] 1.3 Reject a deployment whose owner holds no subdomain in `_validate_input_state`, beside the missing-name and missing-namespace checks, and verify the recorded cause names the subdomain rather than reading as a chart or DNS failure.
-- [ ] 1.4 Seed `erik` and `fred` on dev by hand and verify every dev account that owns a deployment holds a subdomain, because 1.3 fails the reconcile of any that does not.
+- [x] 1.1 Add the nullable `subdomain` column to `UserORM` (`api/app/models/core.py`) with a partial unique index over `lower(subdomain)` where `deleted_at IS NULL`, mirroring `uq_user_active`, and verify a second non-deleted row with the same label — in any case — is refused by the database. This is `account-subdomain-claim` 1.1 verbatim; nothing else from that change is implemented here.
+- [x] 1.2 Write the Alembic migration and verify `uv run alembic upgrade head` then `downgrade -1` runs clean against the test database.
+- [x] 1.3 Reject a deployment whose owner holds no subdomain in `_validate_input_state`, beside the missing-name and missing-namespace checks, and verify the recorded cause names the subdomain rather than reading as a chart or DNS failure.
+- [ ] 1.4 Seed `erik` and `fred` on dev by hand and verify every dev account that owns a deployment holds a subdomain, because 1.3 fails the reconcile of any that does not. **Blocked until this branch reaches dev**: the column arrives with the image's migration init container, so it cannot be seeded before then — and from the moment it does arrive, dev's nine live deployments fail to reconcile until the seed is in. Migration and seed are one step, not two.
 
 ## 2. The platform TLS namespace and store
 
@@ -24,18 +24,17 @@ moving a pointer, not by creating and deleting objects in a careful order.
 
 ## 3. DNS adapter
 
-- [ ] 3.1 Define the DNS interface in `api/app/services/dns.py` — ensure a wildcard record for a name, report whether one exists — and verify no provider type appears in its signature.
-- [ ] 3.2 Implement the Cloudflare backend behind it with the official `cloudflare` SDK, selected by configuration, using the server-side name filter (`name={"exact": ...}`) so existence is one query rather than a walk of the zone, and verify a unit test exercises the interface against a fake without touching the provider.
-- [ ] 3.3 Add the provider credential (`cloudflare_dns_api_token`), the zone id (`cloudflare_dns_zone_id`, an id rather than a name so the token needs no `Zone → Read`) and the record target to `api/app/config.py`, all defaulting to empty, and verify the settings tests cover their absence (an environment with no DNS provider configured must still start).
-- [ ] 3.4 Verify creating a record is idempotent: running it twice against a live zone produces one record and no error.
+- [x] 3.1 Define the DNS interface in `api/app/services/dns.py` — ensure a wildcard record for a name, report whether one exists — and verify no provider type appears in its signature.
+- [x] 3.2 Implement the Cloudflare backend behind it with the official `cloudflare` SDK, selected by configuration, using the server-side name filter (`name={"exact": ...}`) so existence is one query rather than a walk of the zone, and verify a unit test exercises the interface against a fake without touching the provider.
+- [x] 3.3 Add the provider credential (`cloudflare_dns_api_token`), the zone id (`cloudflare_dns_zone_id`, an id rather than a name so the token needs no `Zone → Read`) and the record target to `api/app/config.py`, all defaulting to empty, and verify the settings tests cover their absence (an environment with no DNS provider configured must still start).
+- [x] 3.4 Verify creating a record is idempotent: running it twice against a live zone produces one record and no error.
 
 ## 4. Per-account DNS record
 
 - [ ] 4.1 Ensure the account's wildcard record in the deployment reconcile, before any certificate work, as an **unproxied CNAME to the same target the platform's own wildcard names** (D9), and verify it is created on an account's first deployment and left alone on subsequent ones.
 - [ ] 4.2 Verify no record is created for the account's own bare name, and that the bare name resolves to nothing.
-- [ ] 4.3 Verify deleting a deployment — including an account's last — leaves the record in place.
-- [ ] 4.4 Record the empty-non-terminal rationale at the point of creation and in the zone's Terraform, and verify it explains why the record is not redundant beside `*.freepod.eu`.
-- [ ] 4.5 Verify a DNS provider failure is reported, requests no certificate, and leaves a later reconcile able to retry from the record.
+- [ ] 4.3 Record the empty-non-terminal rationale at the point of creation and in the zone's Terraform, and verify it explains why the record is not redundant beside `*.freepod.eu`.
+- [ ] 4.4 Verify a DNS provider failure is reported, requests no certificate, and leaves a later reconcile able to retry from the record.
 
 ## 5. Per-account certificate
 

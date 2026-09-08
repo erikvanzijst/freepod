@@ -280,6 +280,14 @@ class DeploymentReconciler:
             raise IntegrityException("Deployment is missing namespace")
         if deployment.user is None:
             raise IntegrityException("Deployment is missing loaded user relationship")
+        if not deployment.user.subdomain:
+            # No name to issue a certificate for, so no deployment. The API
+            # refuses to create one for such an account; reaching here means a
+            # row that predates that rule.
+            raise IntegrityException(
+                "Deployment's owner has not claimed a subdomain, so no certificate "
+                "can cover its applications"
+            )
         if deployment.desired_template is None:
             raise IntegrityException("Deployment is missing loaded desired_template relationship")
         template = deployment.desired_template

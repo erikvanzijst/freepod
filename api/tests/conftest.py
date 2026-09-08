@@ -10,6 +10,7 @@ DELETE rather than TRUNCATE, and why isolation is not rollback-per-test.
 """
 
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -470,6 +471,15 @@ def create_user(client, email: str, accept_tos: bool = True) -> dict:
     return resp.json()
 
 
+def subdomain_for(email: str) -> str:
+    """A label for a test user.
+
+    Every account that can deploy holds one, so a fixture that omits it builds a
+    user the reconciler refuses -- see `account-subdomain-claim`.
+    """
+    return re.sub(r"[^a-z0-9]", "", email.split("@")[0].lower())[:63] or "acct"
+
+
 def make_accepted_user(session, email: str):
     """Create a user via the service *and* record ToS acceptance; return UserRead.
 
@@ -480,9 +490,11 @@ def make_accepted_user(session, email: str):
     from app.services import users as _users
 
     user = _users.create_user(session, _users.UserCreate(email=email))
-    _users.record_tos_acceptance(
-        session, user=session.get(UserORM, user.id), version=CURRENT_TOS_VERSION
-    )
+    orm = session.get(UserORM, user.id)
+    _users.record_tos_acceptance(session, user=orm, version=CURRENT_TOS_VERSION)
+    orm.subdomain = subdomain_for(email)
+    session.add(orm)
+    session.commit()
     return user
 
 
@@ -496,7 +508,7 @@ def client(db_session):
     app.dependency_overrides[get_payment_provider] = lambda: None
 
     # Pre-create the default test user as admin so existing tests pass
-    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True,
+    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True, subdomain=subdomain_for(ADMIN_EMAIL),
                          tos_accepted_version=CURRENT_TOS_VERSION, tos_accepted_at=_utcnow())
     db_session.add(admin_user)
     db_session.commit()
@@ -528,7 +540,7 @@ def paid_client(db_session, fake_payment_provider, monkeypatch):
     app.dependency_overrides[get_session] = override_get_db
     app.dependency_overrides[get_payment_provider] = lambda: fake_payment_provider
 
-    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True,
+    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True, subdomain=subdomain_for(ADMIN_EMAIL),
                          tos_accepted_version=CURRENT_TOS_VERSION, tos_accepted_at=_utcnow())
     db_session.add(admin_user)
     db_session.commit()
@@ -549,12 +561,12 @@ def user_client(db_session):
     app.dependency_overrides[get_session] = override_get_db
 
     # Pre-create admin user (some tests need resources created by admin)
-    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True,
+    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True, subdomain=subdomain_for(ADMIN_EMAIL),
                          tos_accepted_version=CURRENT_TOS_VERSION, tos_accepted_at=_utcnow())
     db_session.add(admin_user)
     # Pre-create the acting regular user as already-accepted so deploy tests
     # under this client don't trip the acceptance precondition.
-    regular_user = UserORM(email=USER_EMAIL,
+    regular_user = UserORM(email=USER_EMAIL, subdomain=subdomain_for(USER_EMAIL),
                            tos_accepted_version=CURRENT_TOS_VERSION, tos_accepted_at=_utcnow())
     db_session.add(regular_user)
     db_session.commit()
