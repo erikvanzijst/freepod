@@ -77,6 +77,8 @@ that the finished system does not need at all.
 - `hostname-field-ui`: the wildcard dropdown is replaced by the holder's own address.
 - `cli-deploy`: a bare label completes under the account's subdomain rather than under a
   platform wildcard domain.
+- `wildcard-domains-endpoint`: removed. There is no list of domains to choose from once an
+  account is addressed under one name of its own.
 
 ## Impact
 
@@ -95,7 +97,8 @@ that the finished system does not need at all.
   `HostnameField` losing its dropdown.
 - `cli/`: the deploy preflight refusal, and hostname completion under the account's
   subdomain.
-- `tf/app/login/main.tf`: `GET /api/hostnames/{fqdn}` leaves `skip_auth_routes`.
+- `tf/app/login/main.tf`: `GET /api/hostnames/{fqdn}` leaves `skip_auth_routes` because it
+  becomes authenticated, and `GET /api/domains` leaves it because it is deleted.
 - Operator work at rollout, outside this change: assigning a subdomain to every existing
   account, and moving every existing deployment's hostname beneath its owner's.
 - Not affected: TLS certificate issuance and the reconciler, which

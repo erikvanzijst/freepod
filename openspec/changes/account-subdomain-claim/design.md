@@ -184,10 +184,32 @@ account's namespace — but the authoritative refusal is the one at create, beca
 the path a client cannot skip. This is the same shape as the ToS precondition: the client is
 told early as a courtesy and the server enforces it regardless.
 
+### D11: The wildcard domains endpoint is deleted, not just unused
+
+`GET /api/domains` existed so a client could offer a choice of wildcard domain to
+put an application under. Under D5 there is no such choice: an account is addressed
+beneath one name, its own, and `GET /api/me/subdomain` reports it.
+
+Leaving it in place as a harmless read was considered and rejected. Its answer is
+actively wrong to act on — a client that reads `["freepod.eu"]` and completes a bare
+label to `photos.freepod.eu` produces exactly the depth the validator now refuses.
+An endpoint that invites the one composition the platform rejects is worse than an
+absent one. Both consumers are in this change, and the platform has no third client.
+
+`settings.wildcard_domains` stays: it is what tells the two namespaces apart
+server-side. `GET /api/cname-target` stays too, because custom domains are unchanged
+and still need a target to point at.
+
 ## Risks / Trade-offs
 
 - **The change is large and lands as one unit.** Accepted per D5: the alternative is a seam
   whose only artifact is a rule the finished system deletes.
+- **Every released `freepod` client breaks against the new scheme.** A bare
+  `hostname: photos` completes to `photos.freepod.eu`, and a project already
+  pointing at one is the same shape; both are now refused as `invalid`, with an
+  error that does not explain why. Accepted deliberately: the client has no users
+  yet, so this is the cheapest moment it will ever be. No version floor or
+  targeted refusal is built.
 - **The prefill nudges people toward their own name, which reaches certificate transparency
   logs permanently** once they deploy. Accepted deliberately in favor of the shortest path
   for a general audience; mitigated only by the dialog stating that the address is public.

@@ -6,8 +6,10 @@ from sqlmodel import Session
 
 from app.config import get_settings
 from app.db import get_session
+from app.deps import get_current_user
+from app.models import UserORM
 from app.services.errors import HostnameException
-from app.services.hostnames import require_valid_hostname_for_deployment
+from app.services.hostnames import check_hostname_availability
 
 router = APIRouter(tags=["hostnames"])
 
@@ -22,9 +24,10 @@ class HostnameCheck(BaseModel):
       be used for a deployment; ``False`` otherwise.
     - ``reason``: ``None`` when ``usable`` is ``True``. When ``usable`` is
       ``False`` this is a short machine-readable code explaining the rejection,
-      one of: ``invalid`` (malformed name), ``nested_subdomain`` (more than one
-      label under a platform wildcard domain), ``reserved`` (reserved by the
-      platform), ``in_use`` (already in use by another deployment), or
+      one of: ``invalid`` (malformed name, or the wrong number of labels under
+      a platform wildcard domain), ``reserved`` (reserved by the platform),
+      ``claimed`` (a subdomain another account holds, or an application under
+      one), ``in_use`` (already in use by another deployment), or
       ``not_resolving`` (no CNAME record pointing at the platform CNAME target).
     """
 
@@ -59,82 +62,54 @@ def check_hostname(
             "before any checks run and echoed back normalized in the response."
         ),
     ),
-    # Intentionally unauthenticated: the response (usable/reason) carries nothing
-    # sensitive and the field validates hostnames as the user types, before any
-    # deployment exists. See `list_domains` below, which is public for the same
-    # reason.
-    #
-    # Note: validation performs outbound DNS lookups to caller-controlled
-    # authoritative nameservers (see _check_cname), each able to hold a worker
-    # for up to the resolver lifetime. Being unauthenticated, this is in
-    # principle a DoS / DNS-amplification handle. Accepted as low risk: the cost
-    # per request is small, and the same vector is reachable by any authenticated
-    # user anyway, so auth was never a real mitigation. Add a per-IP rate limit
-    # here if abuse ever materializes.
+    current_user: UserORM = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> HostnameCheck:
     """Validate a candidate hostname and report whether it can be used for a
     deployment, without creating or reserving anything.
 
     ## Authorization
-    Public — no authentication required.
+    Requires authentication. The answer depends on who is asking: whether
+    `photos.alice.freepod.eu` is usable is a different answer for the account
+    holding `alice` than for any other.
 
     ## Parameters
     - `fqdn` (path): the hostname to validate. Normalized to lowercase; the
       normalized form is echoed back in the response.
 
     ## Behavior
-    Runs the full set of hostname checks and stops at the first failure. On
-    success the response is `usable=true` with `reason=null`. On failure the
-    response is `usable=false` with a machine-readable `reason` code; a rejected
-    name is never returned as an error status:
-    - `invalid` — malformed name (too long, bad labels, or fewer than two
-      labels).
-    - `nested_subdomain` — more than one label placed under a platform wildcard
-      domain (only a single label is allowed there).
+    Which question is asked depends on the name's depth under a platform
+    wildcard domain. A **single label** (`alice.freepod.eu`) asks whether that
+    account subdomain can be claimed; **two labels**
+    (`photos.alice.freepod.eu`) ask whether that application name is usable
+    beneath the caller's own subdomain. A name outside every wildcard domain is
+    a custom deployment hostname and is answered as one.
+
+    Checks stop at the first failure. On success the response is `usable=true`
+    with `reason=null`. On failure it is `usable=false` with a machine-readable
+    `reason` code; a rejected name is never returned as an error status:
+    - `invalid` — malformed name, or the wrong number of labels under a platform
+      wildcard domain.
     - `reserved` — the name is reserved by the platform.
+    - `claimed` — a subdomain another account holds, or an application name
+      placed under somebody else's subdomain.
     - `in_use` — the hostname is already in use by another deployment.
     - `not_resolving` — the hostname has no CNAME record pointing at the
-      platform CNAME target (see `GET /cname-target`). Not applicable to
-      subdomains of a platform wildcard domain, or when no platform domain is
+      platform CNAME target (see `GET /cname-target`). Not applicable to a name
+      under a platform wildcard domain, or when no platform domain is
       configured.
 
     ## Errors
-    Always returns **200**. Rejected names are reported in the body via
-    `usable=false` and a `reason` code; no 4xx status is returned.
+    Always returns **200** for an authenticated caller. Rejected names are
+    reported in the body via `usable=false` and a `reason` code; no 4xx status
+    is returned for them.
     """
     fqdn = fqdn.lower()
     try:
-        require_valid_hostname_for_deployment(session, fqdn)
+        check_hostname_availability(session, fqdn, subdomain=current_user.subdomain)
         return HostnameCheck(fqdn=fqdn, usable=True)
     except HostnameException as exc:
         return HostnameCheck(fqdn=fqdn, usable=False, reason=exc.reason)
-
-
-@router.get(
-    "/domains",
-    response_model=list[str],
-    summary="List the platform-provided wildcard domains",
-    response_description="JSON array of configured wildcard domain suffixes (empty when none are configured).",
-    responses={200: {"description": "The configured wildcard domain suffixes, e.g. `[\"freepod.eu\"]`."}},
-)
-def list_domains() -> list[str]:
-    """List the platform-provided wildcard domain suffixes.
-
-    A deployment can use a single-label subdomain under any of these domains
-    (e.g. `myapp.freepod.eu`) without configuring any DNS of your own.
-
-    ## Authorization
-    Public — no authentication required.
-
-    ## Behavior
-    Returns the configured wildcard domain suffixes, or an empty array when
-    none are configured.
-
-    ## Errors
-    - Always **200**.
-    """
-    return get_settings().wildcard_domains
 
 
 @router.get(

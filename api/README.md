@@ -73,8 +73,8 @@ Rationale:
 ### Public endpoints and the production `skip-auth` footgun
 
 Several read-only endpoints are intentionally anonymous (no
-`get_current_user` dependency) so the public landing page — and the
-deploy UI's live validators — can work before/without per-request auth:
+`get_current_user` dependency) so the public landing page can work
+before/without per-request auth:
 
 - Products & templates: `GET /api/products`, `GET /api/products/{id}`,
   `GET /api/products/{id}/templates`,
@@ -82,8 +82,7 @@ deploy UI's live validators — can work before/without per-request auth:
   `GET /api/products/{id}/icon`
 - Plans: `GET /api/products/{id}/plans`, `GET /api/plans/{id}`,
   `GET /api/plans/{id}/templates`
-- Hostname/domain helpers: `GET /api/hostnames/{fqdn}`,
-  `GET /api/domains`, `GET /api/cname-target`
+- CNAME target: `GET /api/cname-target`
 - Docs & schema: `GET /api/docs`, `GET /api/redoc`,
   `GET /api/openapi.json`
 - Static files: `GET /api/static/*` (including product icons)

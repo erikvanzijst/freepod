@@ -119,6 +119,25 @@ class TosAcceptanceRead(SQLModel):
     current_version: str
 
 
+class SubdomainClaim(SQLModel):
+    """Request body for claiming the current user's subdomain."""
+    model_config = ConfigDict(extra="forbid")
+    subdomain: str
+
+
+class SubdomainRead(SQLModel):
+    """The subdomain an account holds. Both fields are null until it claims one;
+    this resource is always readable, so "not claimed yet" is a 200 rather than
+    a 404.
+
+    `fqdn` is `<subdomain>.<platform domain>` -- the name that receives the
+    account's DNS record and wildcard certificate -- and is null when no
+    platform domain is configured.
+    """
+    subdomain: Optional[str] = None
+    fqdn: Optional[str] = None
+
+
 class ProductVisibility(StrEnum):
     """Whether a product is offered to end users.
 

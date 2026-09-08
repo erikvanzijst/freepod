@@ -4,24 +4,25 @@
 > to have a name to issue a certificate for. 1.1 and 1.2 are done there; confirm rather
 > than rebuild them.
 
-- [ ] 1.1 Confirm the nullable `subdomain` column on `UserORM` (`api/app/models/core.py`) and its partial unique index over `lower(subdomain)` where `deleted_at IS NULL`, and verify a second non-deleted row with the same label — in any case — is refused by the database.
-- [ ] 1.2 Confirm the Alembic migration, and verify `uv run alembic upgrade head` then `downgrade -1` runs clean against the test database.
-- [ ] 1.3 Verify a deleted user's row keeps its subdomain and that the label stays unclaimable, by attempting a claim for a soft-deleted account's label.
+- [x] 1.1 Confirm the nullable `subdomain` column on `UserORM` (`api/app/models/core.py`) and its partial unique index over `lower(subdomain)` where `deleted_at IS NULL`, and verify a second non-deleted row with the same label — in any case — is refused by the database.
+- [x] 1.2 Confirm the Alembic migration, and verify `uv run alembic upgrade head` then `downgrade -1` runs clean against the test database.
+- [x] 1.3 Verify a deleted user's row keeps its subdomain and that the label stays unclaimable, by attempting a claim for a soft-deleted account's label.
 
 ## 2. Claim service and API
 
-- [ ] 2.1 Add the candidate format check (single lowercase DNS label, no dots, 2–63 characters) in `api/app/services/users.py`, and verify a dotted value, a leading/trailing hyphen, a single character and a 64-character label are each refused.
-- [ ] 2.2 Refuse a candidate whose `<label>.<wildcard domain>` appears in `reserved_hostnames`, and verify adding a hostname to that one list immediately makes its label unclaimable with no second list touched.
-- [ ] 2.3 Implement `POST /api/me/subdomain`, normalizing to lowercase, and verify a first claim stores it and a second claim — including one submitting the identical label — returns **409** with the held value unchanged.
-- [ ] 2.4 Implement `GET /api/me/subdomain` reporting the held label and `<label>.<settings.domain>`, and verify an account holding none gets a **200** naming that absence rather than a 404.
-- [ ] 2.5 Verify no endpoint, CLI command or admin panel action changes, clears or transfers a subdomain, by reviewing the route table and the admin users panel.
+- [x] 2.1 Add the candidate format check (single lowercase DNS label, no dots, 2–63 characters) in `api/app/services/users.py`, and verify a dotted value, a leading/trailing hyphen, a single character and a 64-character label are each refused.
+- [x] 2.2 Refuse a candidate whose `<label>.<wildcard domain>` appears in `reserved_hostnames`, and verify adding a hostname to that one list immediately makes its label unclaimable with no second list touched.
+- [x] 2.3 Implement `POST /api/me/subdomain`, normalizing to lowercase, and verify a first claim stores it and a second claim — including one submitting the identical label — returns **409** with the held value unchanged.
+- [x] 2.4 Implement `GET /api/me/subdomain` reporting the held label and `<label>.<settings.domain>`, and verify an account holding none gets a **200** naming that absence rather than a 404.
+- [x] 2.5 Verify no endpoint, CLI command or admin panel action changes, clears or transfers a subdomain, by reviewing the route table and the admin users panel.
 
 ## 3. The hostname namespace splits by depth
 
-- [ ] 3.1 Invert `_check_wildcard_depth` (`api/app/services/hostnames.py`) to require exactly two labels beneath a configured wildcard domain, retire the `nested_subdomain` reason, and verify a one-label, three-label and bare-domain name are each refused as `invalid` while `photos.alice.freepod.eu` passes.
-- [ ] 3.2 Add the subdomain validation path — a single label under a wildcard domain checked against `reserved_hostnames` and the accounts that hold labels, never against the deployments table — raising `claimed` for a held label, and verify a soft-deleted account's label still refuses.
-- [ ] 3.3 Require authentication on `GET /api/hostnames/{fqdn}`, dispatch it by depth, and refuse a deployment hostname beneath another account's subdomain with `claimed`; verify an anonymous request is refused and that the caller's own namespace still answers normally.
-- [ ] 3.4 Remove `GET=^/api/hostnames/[^/]+/?$` from `skip_auth_routes` in `tf/app/login/main.tf`, and verify `/api/domains` and `/api/cname-target` remain public.
+- [x] 3.1 Invert `_check_wildcard_depth` (`api/app/services/hostnames.py`) to require exactly two labels beneath a configured wildcard domain, retire the `nested_subdomain` reason, and verify a one-label, three-label and bare-domain name are each refused as `invalid` while `photos.alice.freepod.eu` passes.
+- [x] 3.2 Add the subdomain validation path — a single label under a wildcard domain checked against `reserved_hostnames` and the accounts that hold labels, never against the deployments table — raising `claimed` for a held label, and verify a soft-deleted account's label still refuses.
+- [x] 3.3 Require authentication on `GET /api/hostnames/{fqdn}`, dispatch it by depth, and refuse a deployment hostname beneath another account's subdomain with `claimed`; verify an anonymous request is refused and that the caller's own namespace still answers normally.
+- [x] 3.4 Remove `GET=^/api/hostnames/[^/]+/?$` from `skip_auth_routes` in `tf/app/login/main.tf`, and verify `/api/cname-target` remains public.
+- [x] 3.5 Delete `GET /api/domains` and its `skip_auth_routes` entry, and verify `settings.wildcard_domains` still drives the depth rule and that `GET /api/cname-target` is untouched.
 
 ## 4. Deployment preconditions
 
@@ -43,15 +44,17 @@
 
 ## 6. Web UI — the deploy dialog
 
-- [ ] 6.1 Replace `HostnameField`'s wildcard domain dropdown with the account's own address as a static suffix, learned from the platform at runtime, and verify only the application label accepts input and that custom domain mode is unchanged.
-- [ ] 6.2 Retire the `nested_subdomain` message and cover `in_use` and `claimed`, and verify each reason the checker can now return renders its own text.
+- [ ] 6.1 Replace `HostnameField`'s wildcard domain dropdown with the account's own address as a static suffix, read from `GET /api/me/subdomain`, and verify only the application label accepts input and that custom domain mode is unchanged.
+- [ ] 6.2 Delete `listDomains` and the `wildcardDomains` prop, including the mode-splitting that matched a stored hostname against the domain list, and verify an existing Freepod-address deployment still opens in the right mode.
+- [ ] 6.3 Retire the `nested_subdomain` message and cover `in_use` and `claimed`, and verify each reason the checker can now return renders its own text.
 
 ## 7. CLI
 
 - [ ] 7.1 Check the account's subdomain in deploy preflight before packing, for creates only, and verify no archive and no build are produced when it is missing.
 - [ ] 7.2 Write the refusal — cause, the platform origin, and that nothing was built — and verify it is distinguishable from the terms refusal and from an authentication failure, and that the platform's own `subdomain_required` code is recognized rather than its prose.
 - [ ] 7.3 Verify login and every read-only command succeed for an account holding no subdomain, and that no command or flag claims one.
-- [ ] 7.4 Complete a bare hostname in the project file under `<subdomain>.<domain>` rather than a platform wildcard domain, learning both from the platform, and verify a value already containing a dot is submitted unchanged.
+- [ ] 7.4 Complete a bare hostname in the project file under `<subdomain>.<domain>` rather than a platform wildcard domain, reading it from `GET /api/me/subdomain`, and verify a value already containing a dot is submitted unchanged.
+- [ ] 7.5 Delete `ApiClient.domains` and `_domains`, and verify no command reads `GET /api/domains`.
 
 ## 8. Rollout and documentation
 
