@@ -9,6 +9,7 @@ class FakeProvisioner:
         self.raise_on_upgrade: Exception | None = None
         self.raise_on_certificate: Exception | None = None
         self.certificate_state: tuple[bool, str | None] = (True, None)
+        self.store_write: bool = True
         self.helm_revisions: dict[str, int] = {}
 
     def ensure_namespace(self, *, name: str):
@@ -22,6 +23,10 @@ class FakeProvisioner:
     def account_certificate_state(self, *, name: str):
         self.calls.append(("account_certificate_state", {"name": name}))
         return self.certificate_state
+
+    def reconcile_certificate_store(self):
+        self.calls.append(("reconcile_certificate_store", {}))
+        return self.store_write
 
     def ensure_account_certificate(self, *, fqdn: str):
         self.calls.append(("ensure_account_certificate", {"fqdn": fqdn}))

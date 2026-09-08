@@ -417,6 +417,7 @@ class DeploymentReconciler:
         )
 
         self._await_account_certificate(certificate)
+        self._provisioner.reconcile_certificate_store()
 
         # After Helm succeeds only: a rollback leaves the previous release's
         # Secret live, and reaping here would delete it.

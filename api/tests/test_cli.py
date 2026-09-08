@@ -1065,6 +1065,9 @@ def test_cli_reconcile_command_reconciles_deployment(cli_runner, monkeypatch):
         def account_certificate_state(self, *, name: str):
             return True, None
 
+        def reconcile_certificate_store(self):
+            return False
+
         def helm_upgrade_install(self, **kwargs):
             return None
 
@@ -1110,6 +1113,9 @@ class _FakeProvisioner:
 
     def account_certificate_state(self, *, name: str):
         return True, None
+
+    def reconcile_certificate_store(self):
+        return False
 
     def helm_upgrade_install(self, **kwargs):
         return None

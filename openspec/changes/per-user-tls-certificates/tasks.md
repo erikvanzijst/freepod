@@ -57,17 +57,17 @@ moving a pointer, not by creating and deleting objects in a careful order.
 
 ## 7. Store membership
 
-- [ ] 7.1 Extend `apply_manifest` (or add a sibling) with server-side apply, a field manager, and a `resourceVersion` precondition, and verify a stale version is refused with `the object has been modified`.
-- [ ] 7.2 Add a provisioner method listing the platform-managed certificate secrets in `caelus-tls`, and verify it excludes certificates that exist but have not been issued.
-- [ ] 7.3 Implement the reconcile: read the store, compute the desired list from those secrets, and apply `spec.certificates` alone with the version read — retrying from a fresh read on conflict, bounded. Verify no write is made when the list already matches.
-- [ ] 7.4 Verify `--force-conflicts` is never passed, and that `defaultCertificate` is absent from every payload the reconciler sends.
-- [ ] 7.5 Verify concurrent additions both survive: two workers adding certificates for different accounts at the same time leave both in the list.
-- [ ] 7.6 Verify convergence: remove an entry by hand, reconcile an unrelated deployment, and confirm the list is corrected.
+- [x] 7.1 Extend `apply_manifest` (or add a sibling) with server-side apply, a field manager, and a `resourceVersion` precondition, and verify a stale version is refused with `the object has been modified`. Confirmed against the live store: kubectl prints that line, then its generic conflict advice — which mentions `--force-conflicts` and must not be read as one. An ownership conflict prints the advice without that first line, which is what tells the two apart.
+- [x] 7.2 Add a provisioner method listing the platform-managed certificate secrets in `caelus-tls`, and verify it excludes certificates that exist but have not been issued.
+- [x] 7.3 Implement the reconcile: read the store, compute the desired list from those secrets, and apply `spec.certificates` alone with the version read — retrying from a fresh read on conflict, bounded. Verify no write is made when the list already matches.
+- [x] 7.4 Verify `--force-conflicts` is never passed, and that `defaultCertificate` is absent from every payload the reconciler sends.
+- [x] 7.5 Verify concurrent additions both survive: two workers adding certificates for different accounts at the same time leave both in the list.
+- [x] 7.6 Verify convergence: remove an entry by hand, reconcile an unrelated deployment, and confirm the list is corrected.
 
 ## 8. End-to-end
 
-- [ ] 8.1 Verify by handshake that a name under an account's subdomain is served that account's certificate rather than the default wildcard, with no route defined for it — the complete proof that the store reaches routes that never reference it.
-- [ ] 8.2 Verify a `*.freepod.eu` application and a custom-domain application are both still served exactly as before, confirming the other two certificate sources are unaffected.
+- [x] 8.1 Verify by handshake that a name under an account's subdomain is served that account's certificate rather than the default wildcard, with no route defined for it — the complete proof that the store reaches routes that never reference it. `photos.erik.dev.freepod.eu` and `anything.erik.dev.freepod.eu` both serve `CN=*.erik.dev.freepod.eu`; before the store was written they served the default wildcard.
+- [x] 8.2 Verify a `*.freepod.eu` application and a custom-domain application are both still served exactly as before, confirming the other two certificate sources are unaffected.
 - [ ] 8.3 Verify a renewal is invisible: force one and confirm the secret name is unchanged, the store is not rewritten, and the new certificate is served without a restart.
 - [x] 8.4 Verify an issued account certificate carries an ECDSA P-256 key and that its secret is materially smaller than an RSA one, confirming both scaling assumptions in one check. Measured: 7.8 KB against the platform wildcard's 10.8 KB — smaller, but a quarter rather than the two thirds the change claimed; the design and spec now carry the measurement.
 
