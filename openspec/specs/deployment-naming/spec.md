@@ -1,4 +1,10 @@
-## ADDED Requirements
+# deployment-naming Specification
+
+## Purpose
+
+Every deployment is given a generated release name, which is the name of its Helm release. This capability defines how that name is generated and stored, and how its uniqueness follows from the namespace rather than from a constraint of its own.
+
+## Requirements
 
 ### Requirement: Deployment name generation
 The system MUST generate a release name for each new deployment using the formula `"{slugify(product_name)[:20]}-{random6}"`, where `slugify` lowercases, replaces non-alphanumeric characters with hyphens, collapses consecutive hyphens, and strips leading/trailing hyphens. The truncation to 20 characters MUST strip any resulting trailing hyphens. The random suffix MUST be 6 base36 characters (`[0-9a-z]{6}`).
@@ -58,22 +64,26 @@ The reconciler MUST use the deployment's `name` field as the Helm release name w
 - **WHEN** the reconciler deletes a deployment
 - **THEN** it passes `release_name=deployment.name` to `helm_uninstall`
 
-### Requirement: Unique namespace-name constraint for active deployments
-The database MUST enforce a partial unique index on `(namespace, name)` for deployments whose `status` is not `deleted`. This prevents duplicate Helm release names within the same Kubernetes namespace among active deployments.
-
-#### Scenario: Two active deployments cannot share namespace and name
-- **WHEN** an active deployment exists with a given `(namespace, name)` pair
-- **AND** another deployment is created with the same `(namespace, name)`
-- **THEN** the database MUST reject the insert with an integrity error
-
-#### Scenario: Deleted deployment does not block new deployment
-- **WHEN** a deleted deployment exists with a given `(namespace, name)` pair
-- **AND** a new deployment is created with the same `(namespace, name)`
-- **THEN** the database MUST allow the insert
-
 ### Requirement: Max name length provides sufficient headroom
 The deployment name MUST NOT exceed 27 characters, leaving at least 36 characters of headroom within the 63-character DNS label limit for chart resource suffixes and Kubernetes-generated hash labels.
 
 #### Scenario: Name length within budget
 - **WHEN** any deployment name is generated
 - **THEN** its length MUST be at most 27 characters
+
+### Requirement: The deployment name is unique within its namespace as a consequence
+A deployment's name MUST be unique within its namespace, so that it is unambiguous as a Helm release name and as the account the SSH edge presents to that deployment's sidecar. This MUST follow from the namespace being unique per deployment rather than from a constraint on the pair.
+
+The name MUST NOT be relied on as a globally unique identifier. It is generated from the product name and a 6-character random suffix, and nothing enforces uniqueness across namespaces; a component that selects a deployment by name alone can select the wrong one.
+
+#### Scenario: One release per namespace
+- **WHEN** a deployment's namespace is inspected
+- **THEN** it contains exactly one deployment's Helm release, so the name within it names one thing
+
+#### Scenario: The same name in two namespaces is permitted
+- **WHEN** two deployments of the same product are created and receive the same generated name
+- **THEN** both are accepted, because they occupy different namespaces
+
+#### Scenario: Nothing addresses a deployment by name alone
+- **WHEN** a component resolves which deployment to act on from an externally supplied identifier
+- **THEN** it MUST use the namespace, not the name
