@@ -65,6 +65,27 @@ feature is a reason to break somebody's addresses.
 - **WHEN** the API surface, the CLI and the administrative interface are examined
 - **THEN** none of them offers to change, clear, or transfer an account's subdomain
 
+### Requirement: The operator CLI claims, and only claims
+
+The `caelus` CLI MUST offer a claim mirroring `POST /api/me/subdomain`, so the
+operator tool can settle the precondition it enforces. It MUST NOT offer to
+change, clear, or transfer one.
+
+Without it `caelus create-deployment` cannot succeed for any account, which
+would break the parity between REST and the operator CLI that this codebase
+keeps deliberately. It is also what assigns subdomains during the rollout.
+
+#### Scenario: The operator can settle the precondition
+
+- **WHEN** an operator claims a subdomain for a user through the CLI and then
+  creates a deployment for them
+- **THEN** both succeed
+
+#### Scenario: The CLI offers no way back
+
+- **WHEN** the CLI's commands are examined
+- **THEN** none of them changes, clears, or transfers a subdomain
+
 ### Requirement: A deleted account does not release its subdomain
 
 A subdomain MUST remain held when its account is deleted, and MUST NOT become claimable by

@@ -178,6 +178,12 @@ The check needs the owning user, so it lives in `create_deployment` beside the o
 preconditions rather than inside `require_valid_hostname_for_deployment`, which is called
 with a session and an FQDN and has no notion of an owner.
 
+It runs before the hostname checks rather than beside the Terms of Service one, because it
+is what makes the ownership check answerable: an account holding no subdomain compared
+against a name under somebody else's would be refused as `claimed`, a conflict with nobody.
+The consequence is that an account that has settled neither precondition is told about the
+subdomain first.
+
 The endpoint answers what it can: whether the application label is free beneath the
 subdomain it was given. Under D9 it knows the caller, so it can and does refuse another
 account's namespace — but the authoritative refusal is the one at create, because that is

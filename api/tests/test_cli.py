@@ -80,6 +80,14 @@ def _seed_deployment_via_services() -> tuple[int, int]:
         return user.id, deployment.id
 
 
+def _claim_subdomain(runner, app, user_id: int) -> None:
+    """Give a user the address deploying now requires (parity with the API guard)."""
+    res = runner.invoke(
+        app, ["claim-subdomain", "--user-id", str(user_id), "--subdomain", f"acct{user_id}"]
+    )
+    assert res.exit_code == 0, res.output
+
+
 def _create_free_plan_template_via_services(product_id: int) -> int:
     """Create a free plan+template for a product via service layer. For CLI tests."""
     with session_scope() as session:
@@ -554,6 +562,7 @@ def test_cli_create_deployment_uses_current_payload_shape(cli_runner):
 
     user_res = runner.invoke(app, ["create-user", "newdep@example.com"])
     assert user_res.exit_code == 0
+    _claim_subdomain(runner, app, 1)
 
     product_res = runner.invoke(app, ["create-product", "dep-cli-product", "dep product desc"])
     assert product_res.exit_code == 0
@@ -604,6 +613,7 @@ def test_cli_create_deployment_accepts_user_values_json(cli_runner):
 
     user_res = runner.invoke(app, ["create-user", "depjson@example.com"])
     assert user_res.exit_code == 0
+    _claim_subdomain(runner, app, 1)
 
     product_res = runner.invoke(app, ["create-product", "dep-json-product", "dep json desc"])
     assert product_res.exit_code == 0
@@ -658,6 +668,7 @@ def test_cli_create_deployment_requires_tos_acceptance(cli_runner):
     user_res = runner.invoke(app, ["create-user", "deptos@example.com"])
     assert user_res.exit_code == 0
     user_id = _parse_yaml_stdout(user_res)["id"]
+    _claim_subdomain(runner, app, user_id)
     assert runner.invoke(app, ["create-product", "dep-tos-product", "dep tos desc"]).exit_code == 0
     template_res = runner.invoke(
         app,
@@ -711,6 +722,7 @@ def test_cli_create_deployment_accepts_user_values_file(cli_runner, tmp_path):
 
     user_res = runner.invoke(app, ["create-user", "depfile@example.com"])
     assert user_res.exit_code == 0
+    _claim_subdomain(runner, app, 1)
 
     product_res = runner.invoke(app, ["create-product", "dep-file-product", "dep file desc"])
     assert product_res.exit_code == 0
@@ -852,6 +864,7 @@ def test_cli_upgrade_deployment_and_delete_enqueue_jobs(cli_runner):
 
     user_res = runner.invoke(app, ["create-user", "upgradecli@example.com"])
     assert user_res.exit_code == 0
+    _claim_subdomain(runner, app, 1)
 
     product_res = runner.invoke(app, ["create-product", "upgrade-cli-product", "desc"])
     assert product_res.exit_code == 0
@@ -953,6 +966,7 @@ def test_cli_update_deployment_user_values_json_migrates_layout(cli_runner):
     runner, app = cli_runner
 
     assert runner.invoke(app, ["create-user", "migratecli@example.com"]).exit_code == 0
+    _claim_subdomain(runner, app, 1)
     assert runner.invoke(app, ["create-product", "migrate-cli-product", "desc"]).exit_code == 0
 
     # tmpl1: hostname nested under old_host; tmpl2: hostname hoisted to top-level host.

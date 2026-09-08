@@ -458,7 +458,9 @@ OTHER_EMAIL = "other@example.com"
 OTHER_AUTH_HEADER = {"X-Auth-Request-Email": OTHER_EMAIL}
 
 
-def create_user(client, email: str, accept_tos: bool = True) -> dict:
+def create_user(
+    client, email: str, accept_tos: bool = True, claim_subdomain: bool = True
+) -> dict:
     """Provision a regular (non-admin) user and return its ``UserRead`` dict.
 
     Users are created on their first authenticated request, so hitting
@@ -466,10 +468,10 @@ def create_user(client, email: str, accept_tos: bool = True) -> dict:
     returned dict's ``["id"]`` for the user id. Replaces the removed
     ``POST /api/users`` endpoint for test setup.
 
-    By default the user is also marked as having accepted the current Terms of
-    Service, since deploying now requires prior acceptance. Pass
-    ``accept_tos=False`` to leave them unaccepted (for tests of the acceptance
-    flow itself).
+    Both user-level preconditions for deploying are settled by default: the
+    current Terms of Service are accepted, and a subdomain is claimed. Pass
+    ``accept_tos=False`` or ``claim_subdomain=False`` to leave one unsettled,
+    for tests of the flows that settle them.
     """
     resp = client.get("/api/me", headers={"X-Auth-Request-Email": email})
     assert resp.status_code == 200, f"provisioning {email}: {resp.status_code}"
@@ -480,6 +482,13 @@ def create_user(client, email: str, accept_tos: bool = True) -> dict:
             headers={"X-Auth-Request-Email": email},
         )
         assert acc.status_code == 200, f"accepting tos for {email}: {acc.status_code}"
+    if claim_subdomain:
+        claim = client.post(
+            "/api/me/subdomain",
+            json={"subdomain": subdomain_for(email)},
+            headers={"X-Auth-Request-Email": email},
+        )
+        assert claim.status_code == 200, f"claiming subdomain for {email}: {claim.text}"
     return resp.json()
 
 

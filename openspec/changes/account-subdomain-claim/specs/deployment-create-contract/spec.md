@@ -50,9 +50,14 @@ deployment.
 
 When a deployment's hostname falls under a configured wildcard domain, the account subdomain
 in it MUST be the one the owning user holds. A create naming another account's subdomain
-MUST be rejected and MUST NOT create a deployment. The check MUST run wherever the owner is
-known — at deployment create — because the hostname validator is given a name and a session
-and has no notion of an owner.
+MUST be rejected and MUST NOT create a deployment. An **update** that moves an existing
+deployment's hostname under another account's subdomain MUST be rejected the same way: the
+hazard is the hostname, not the operation that set it. The check MUST run wherever the owner
+is known — at deployment create and update — because the hostname validator is given a name
+and a session and has no notion of an owner.
+
+This is the one part of the subdomain contract that an update does apply. The *precondition*
+— that the account holds a subdomain at all — remains create-only.
 
 Without it, one account can address an application beneath another's name: the traffic, the
 links and the certificate all say the name belongs to somebody who did not deploy it.
@@ -69,6 +74,12 @@ subject to this rule; they remain governed by the CNAME check.
 
 - **WHEN** a user holding `bob` creates a deployment with hostname `photos.alice.freepod.eu`
 - **THEN** the create is rejected and no deployment is created
+
+#### Scenario: An update cannot move a deployment under another subdomain
+
+- **WHEN** a user holding `bob` updates a deployment's hostname to
+  `photos.alice.freepod.eu`
+- **THEN** the update is rejected
 
 #### Scenario: A custom domain is unaffected
 

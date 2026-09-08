@@ -80,7 +80,7 @@ def hostname_settings(monkeypatch):
 
 
 def test_a_first_claim_is_accepted(client, hostname_settings):
-    create_user(client, USER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
 
     resp = client.post(
         "/api/me/subdomain", json={"subdomain": "adalovelace"}, headers=_headers(USER_EMAIL)
@@ -91,7 +91,7 @@ def test_a_first_claim_is_accepted(client, hostname_settings):
 
 
 def test_a_claim_is_normalized_to_lowercase(client, hostname_settings):
-    create_user(client, USER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
 
     resp = client.post(
         "/api/me/subdomain", json={"subdomain": "AdaLovelace"}, headers=_headers(USER_EMAIL)
@@ -114,7 +114,7 @@ def test_a_claim_is_normalized_to_lowercase(client, hostname_settings):
     ],
 )
 def test_a_malformed_candidate_is_refused(client, hostname_settings, candidate):
-    create_user(client, USER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
 
     resp = client.post(
         "/api/me/subdomain", json={"subdomain": candidate}, headers=_headers(USER_EMAIL)
@@ -128,7 +128,7 @@ def test_a_malformed_candidate_is_refused(client, hostname_settings, candidate):
 
 
 def test_a_label_of_sixty_three_characters_is_accepted(client, hostname_settings):
-    create_user(client, USER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
 
     resp = client.post(
         "/api/me/subdomain", json={"subdomain": "a" * 63}, headers=_headers(USER_EMAIL)
@@ -139,7 +139,7 @@ def test_a_label_of_sixty_three_characters_is_accepted(client, hostname_settings
 
 def test_a_reserved_label_is_refused(client, hostname_settings):
     hostname_settings(reserved=["www.freepod.eu"])
-    create_user(client, USER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
 
     resp = client.post(
         "/api/me/subdomain", json={"subdomain": "www"}, headers=_headers(USER_EMAIL)
@@ -151,14 +151,14 @@ def test_a_reserved_label_is_refused(client, hostname_settings):
 
 def test_reserving_a_hostname_reserves_its_label(client, hostname_settings):
     """One list, two roles: nothing else is touched to make a label unclaimable."""
-    create_user(client, USER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
     free = client.post(
         "/api/me/subdomain", json={"subdomain": "grafana"}, headers=_headers(USER_EMAIL)
     )
     assert free.status_code == 200
 
     hostname_settings(reserved=["grafana.freepod.eu"])
-    create_user(client, OTHER_EMAIL)
+    create_user(client, OTHER_EMAIL, claim_subdomain=False)
     resp = client.post(
         "/api/me/subdomain", json={"subdomain": "grafana"}, headers=_headers(OTHER_EMAIL)
     )
@@ -168,8 +168,8 @@ def test_reserving_a_hostname_reserves_its_label(client, hostname_settings):
 
 
 def test_a_label_another_account_holds_is_refused(client, hostname_settings):
-    create_user(client, USER_EMAIL)
-    create_user(client, OTHER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
+    create_user(client, OTHER_EMAIL, claim_subdomain=False)
     assert client.post(
         "/api/me/subdomain", json={"subdomain": "ada"}, headers=_headers(USER_EMAIL)
     ).status_code == 200
@@ -183,7 +183,7 @@ def test_a_label_another_account_holds_is_refused(client, hostname_settings):
 
 
 def test_a_second_claim_is_refused(client, hostname_settings):
-    create_user(client, USER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
     client.post("/api/me/subdomain", json={"subdomain": "ada"}, headers=_headers(USER_EMAIL))
 
     resp = client.post(
@@ -197,7 +197,7 @@ def test_a_second_claim_is_refused(client, hostname_settings):
 
 
 def test_re_submitting_the_held_label_is_also_refused(client, hostname_settings):
-    create_user(client, USER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
     client.post("/api/me/subdomain", json={"subdomain": "ada"}, headers=_headers(USER_EMAIL))
 
     resp = client.post(
@@ -217,7 +217,7 @@ def test_a_deleted_accounts_label_stays_unclaimable(client, db_session, hostname
     db_session.add(gone)
     db_session.commit()
 
-    create_user(client, USER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
     resp = client.post(
         "/api/me/subdomain", json={"subdomain": "ada"}, headers=_headers(USER_EMAIL)
     )
@@ -229,7 +229,7 @@ def test_a_deleted_accounts_label_stays_unclaimable(client, db_session, hostname
 # --- The read ----------------------------------------------------------------
 
 def test_an_unclaimed_account_reports_no_subdomain(client, hostname_settings):
-    create_user(client, USER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
 
     resp = client.get("/api/me/subdomain", headers=_headers(USER_EMAIL))
 
@@ -238,7 +238,7 @@ def test_an_unclaimed_account_reports_no_subdomain(client, hostname_settings):
 
 
 def test_a_claimed_account_reports_its_fqdn(client, hostname_settings):
-    create_user(client, USER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
     client.post(
         "/api/me/subdomain", json={"subdomain": "adalovelace"}, headers=_headers(USER_EMAIL)
     )
@@ -249,7 +249,7 @@ def test_a_claimed_account_reports_its_fqdn(client, hostname_settings):
 
 
 def test_the_claim_body_rejects_unknown_fields(client, hostname_settings):
-    create_user(client, USER_EMAIL)
+    create_user(client, USER_EMAIL, claim_subdomain=False)
 
     resp = client.post(
         "/api/me/subdomain",

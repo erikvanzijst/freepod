@@ -26,9 +26,10 @@
 
 ## 4. Deployment preconditions
 
-- [ ] 4.1 Require a claimed subdomain in `create_deployment` (`api/app/services/deployments.py`), beside the ToS check, raising with code `subdomain_required`, and verify a create for an account holding none is refused with **400** and creates nothing.
-- [ ] 4.2 Verify the refusal distinguishes itself from the ToS refusal by its code for a user who has settled neither, and that updating an existing deployment does not apply the check.
-- [ ] 4.3 Enforce that a hostname under a configured wildcard domain sits beneath the owning user's own subdomain, and verify a create naming another account's subdomain is refused, that the owner's own passes, and that a custom domain is unaffected.
+- [x] 4.1 Require a claimed subdomain in `create_deployment` (`api/app/services/deployments.py`), beside the ToS check, raising with code `subdomain_required`, and verify a create for an account holding none is refused with **400** and creates nothing.
+- [x] 4.2 Verify the refusal distinguishes itself from the ToS refusal by its code for a user who has settled neither, and that updating an existing deployment does not apply the check.
+- [x] 4.3 Enforce that a hostname under a configured wildcard domain sits beneath the owning user's own subdomain, on create and on update, and verify a create or update naming another account's subdomain is refused, that the owner's own passes, and that a custom domain is unaffected.
+- [x] 4.4 Add `caelus claim-subdomain --user-id --subdomain` mirroring the endpoint, and verify `caelus create-deployment` succeeds after it and that no command changes or releases one.
 
 ## 5. Web UI — the claim dialog
 
