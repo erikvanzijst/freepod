@@ -462,10 +462,11 @@ class DeploymentReconciler:
         Kept even though the current provider makes it redundant. Issuing the
         account's certificate writes a challenge record beneath its name, and on
         an RFC 4592-conformant server that stops `*.<domain>` answering for
-        anything under it -- leaving only this record. Cloudflare does not apply
-        that rule to empty non-terminals (measured 2026-09-08), so the hazard is
-        latent, not absent: confirming it does not reproduce today is not a
-        reason to remove the record.
+        anything under it until the challenge is cleaned up -- a bounded outage,
+        recurring at every renewal, that only this record prevents. Cloudflare
+        does not apply that rule to empty non-terminals (measured 2026-09-08),
+        so the hazard is latent, not absent: confirming it does not reproduce
+        today is not a reason to remove the record.
 
         First, and before any certificate work, for the same reason.
         """

@@ -46,12 +46,16 @@ themselves exist, so on a conformant server `*.<platform domain>` stops answerin
 under that name the moment the challenge is written, and only the account's own wildcard
 continues to.
 
+The challenge record is deleted once validation completes, so on a conformant server the
+outage is bounded by the life of the challenge — a few minutes, extended by whatever negative
+caching the resolver applies — and it recurs at every renewal rather than being permanent.
+
 Measured on Cloudflare, 2026-09-08: it does not implement that rule for empty non-terminals — a
 live challenge record beneath an account's name left every name under it resolving from
 `*.<platform domain>`. So on the platform's current provider the record is redundant, and the
-requirement stands anyway. It is one record per account either way, it is what makes the
-platform's behavior independent of a provider quirk, and a provider change is the moment the
-hazard becomes real for every account that does not already hold one.
+requirement stands anyway. It costs one record per account, against a zone's record limit that
+is the platform's account ceiling; what it buys is that a change of DNS provider does not
+introduce a recurring outage for every account that does not already hold one.
 
 #### Scenario: Certificate issuance does not interrupt the account's applications
 
