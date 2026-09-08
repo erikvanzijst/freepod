@@ -41,8 +41,9 @@ from app.services import (
     subscriptions as subscription_service,
     var_crypto,
 )
-from app.services.errors import CaelusException
+from app.services.errors import CaelusException, DeploymentInProgressException
 from app.services.reconcile_constants import (
+    JOB_REASON_UPDATE,
     JOB_STATUS_QUEUED,
     JOB_STATUS_RUNNING,
     JOB_STATUS_DONE,
@@ -764,11 +765,21 @@ def reconcile(
             raise typer.Exit(code=1)
 
         if result.deferred:
-            # No job row to hand back here, and nothing sleeps in-process: the
-            # deployment stays provisioning and the queued job carries the retry.
+            # This path holds no job to defer, and the deferred result has just
+            # put the deployment into `provisioning` -- which only a completed
+            # reconcile moves it out of. Without a job to finish the work that
+            # is a deployment stranded by an operator command, so one is queued
+            # here rather than promising a retry that does not exist.
+            try:
+                jobs_service.JobService(session).enqueue_job(
+                    deployment_id=deployment_id, reason=JOB_REASON_UPDATE
+                )
+                session.commit()
+            except DeploymentInProgressException:
+                pass
             typer.echo(
                 f"Deployment {deployment_id} is waiting for its account's TLS "
-                "certificate; it remains provisioning and its queued job will "
+                "certificate; it remains provisioning and a queued job will "
                 "retry.",
                 err=True,
             )

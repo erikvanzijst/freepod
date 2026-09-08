@@ -1242,6 +1242,35 @@ def test_cli_reconcile_reports_a_wait_without_polling(cli_runner, monkeypatch):
         assert jobs[0].locked_by is None
 
 
+def test_cli_reconcile_queues_the_retry_it_promises(cli_runner, monkeypatch):
+    """A deferred result puts the deployment into `provisioning`, which only a
+    completed reconcile moves it out of. Without a job that is a deployment
+    stranded by an operator command."""
+    runner, app = cli_runner
+    _, deployment_id = _seed_deployment_via_services()
+
+    class _WaitingProvisioner(_FakeProvisioner):
+        def account_certificate_state(self, *, name: str):
+            return False, "issuing"
+
+    monkeypatch.setattr(reconcile_service, "default_provisioner", _WaitingProvisioner())
+
+    with session_scope() as session:
+        for job in JobService(session).list_jobs(
+            deployment_id=deployment_id, statuses=["queued", "running"]
+        ):
+            JobService(session).mark_job_done(job_id=job.id)
+
+    result = runner.invoke(app, ["reconcile", str(deployment_id)])
+
+    assert result.exit_code == 0
+    with session_scope() as session:
+        open_jobs = JobService(session).list_jobs(
+            deployment_id=deployment_id, statuses=["queued"]
+        )
+        assert len(open_jobs) == 1
+
+
 def test_cli_worker_defers_a_job_waiting_for_a_certificate(cli_runner, monkeypatch):
     """The worker hands the job back rather than holding a process or a lease."""
     runner, app = cli_runner
