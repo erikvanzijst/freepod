@@ -25,6 +25,54 @@ variable "environment" {
   nullable    = true
 }
 
+variable "reserved_hostnames" {
+  description = "Hostnames that name platform infrastructure and so cannot be claimed as deployment hostnames, per Terraform workspace."
+  type        = map(list(string))
+
+  # kube.freepod.eu (the CNAME target every platform wildcard points at) and
+  # blob.freepod.eu (Garage) are one instance serving both environments, so
+  # they are reserved in both -- see s3_endpoint_url below.
+  default = {
+    default = [
+      "dev.freepod.eu",
+      "www.dev.freepod.eu",
+      "login.dev.freepod.eu",
+      "smtp.dev.freepod.eu",
+      "imap.dev.freepod.eu",
+      "ssh.dev.freepod.eu",
+      "grafana.dev.freepod.eu",
+      "prometheus.dev.freepod.eu",
+      "loki.dev.freepod.eu",
+      "alerts.dev.freepod.eu",
+      "alertmanager.dev.freepod.eu",
+      "kube.freepod.eu",
+      "blob.freepod.eu",
+    ]
+    prod = [
+      "freepod.eu",
+      "www.freepod.eu",
+      "keycloak.freepod.eu",
+      "account.freepod.eu",
+      "auth.freepod.eu",
+      "login.freepod.eu",
+      "smtp.freepod.eu",
+      "imap.freepod.eu",
+      "grafana.freepod.eu",
+      "prometheus.freepod.eu",
+      "loki.freepod.eu",
+      "alerts.freepod.eu",
+      "alertmanager.freepod.eu",
+      "kube.freepod.eu",
+      "blob.freepod.eu",
+    ]
+  }
+
+  validation {
+    condition     = alltrue([for k in ["default", "prod"] : contains(keys(var.reserved_hostnames), k)])
+    error_message = "reserved_hostnames must have both a \"default\" (dev) and a \"prod\" key. The dev workspace is named `default`, not `dev`."
+  }
+}
+
 # Keycloak client identity, keyed by Terraform workspace.
 #
 # These are maps rather than scalars because Terraform auto-loads
