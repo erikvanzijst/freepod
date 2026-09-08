@@ -68,11 +68,10 @@ variable "mollie_api_key" {
   sensitive   = true
 }
 
-# NOTE: These are currently configured in api/.env
-# variable "reserved_hostnames" {
-#   description = "Hostnames that cannot be claimed by users"
-#   type        = list(string)
-# }
+variable "reserved_hostnames" {
+  description = "Hostnames that cannot be claimed by users"
+  type        = list(string)
+}
 
 variable "sshpiper_namespace" {
   description = "Namespace of this environment's sshpiper SFTP router (for the tenant NetworkPolicy carve-out)"

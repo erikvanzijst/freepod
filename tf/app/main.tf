@@ -61,6 +61,7 @@ module "caelus" {
   ns_login           = kubernetes_namespace.login.metadata[0].name
   db_password        = var.db_password
   wildcard_domains   = [local.domain]
+  reserved_hostnames = var.reserved_hostnames[terraform.workspace]
   mollie_api_key     = var.mollie_api_key
   sshpiper_namespace = kubernetes_namespace.sshpiper.metadata[0].name
   builds_namespace   = kubernetes_namespace.builds.metadata[0].name
