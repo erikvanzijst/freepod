@@ -303,3 +303,22 @@ variable "log_keepalive_seconds" {
   type        = number
   default     = 15
 }
+
+variable "cloudflare_api_dns_token" {
+  description = "Cloudflare API token with `Zone → DNS → Edit` on the platform zone. Set in secrets.auto.tfvars; the reconciler creates each account's wildcard record with it."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "cloudflare_zone_id" {
+  description = "Id of the platform's DNS zone."
+  type        = string
+  default     = ""
+}
+
+variable "dns_record_target" {
+  description = "What an account's wildcard CNAME resolves to. Mirrors the platform's own `*.<domain>` record, so moving the ingress stays one edit."
+  type        = string
+  default     = "kube.freepod.eu"
+}

@@ -10,6 +10,12 @@ from app.services import dns
 from app.services.dns import CloudflareDns, DnsException, DnsProvider
 
 
+@pytest.fixture(autouse=True)
+def fake_dns():
+    """This module tests the real adapter, so it opts out of the suite-wide fake."""
+    return None
+
+
 class FakeRecords:
     def __init__(self, existing: list[str] | None = None) -> None:
         self.records = list(existing or [])

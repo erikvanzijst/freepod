@@ -244,6 +244,14 @@ resource "kubernetes_deployment" "worker" {
             }
           }
 
+          # The reconciler creates each account's wildcard DNS record before any
+          # certificate work; without this it fails every deployment.
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.dns.metadata[0].name
+            }
+          }
+
           # The same keyring the API holds, and it must be the same: the worker
           # decrypts the release snapshot the API encrypted. A worker missing a
           # key the API is already writing with fails every rollout -- which is

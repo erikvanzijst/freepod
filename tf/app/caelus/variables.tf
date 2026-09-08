@@ -206,3 +206,22 @@ variable "build_max_in_flight" {
   type        = number
   default     = 1
 }
+
+variable "cloudflare_api_dns_token" {
+  description = "Cloudflare API token with `Zone → DNS → Edit` on the platform zone, used by the reconciler to create each account's wildcard record."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "cloudflare_zone_id" {
+  description = "Id of the platform's DNS zone. An id rather than a name so the token needs no `Zone → Read`."
+  type        = string
+  default     = ""
+}
+
+variable "dns_record_target" {
+  description = "What an account's wildcard CNAME resolves to. Mirrors the platform's own `*.<domain>` record."
+  type        = string
+  default     = ""
+}

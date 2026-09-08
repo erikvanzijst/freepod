@@ -12,6 +12,7 @@ from app.models import DeploymentORM, DeploymentReleaseORM, ProductTemplateVersi
 from app.provisioner import Provisioner, provisioner as default_provisioner
 from app.services import (
     deployment_logs,
+    dns,
     object_storage,
     relational_storage,
     template_values,
@@ -98,9 +99,21 @@ class ReconcileResult:
 class DeploymentReconciler:
     """Reconcile a single deployment state against Kubernetes/Helm."""
 
-    def __init__(self, *, session: Session, provisioner: Provisioner | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        session: Session,
+        provisioner: Provisioner | None = None,
+        dns_provider: dns.DnsProvider | None = None,
+    ) -> None:
         self._session = session
         self._provisioner = provisioner or default_provisioner
+        self._dns_provider = dns_provider
+
+    def _dns(self) -> dns.DnsProvider:
+        if self._dns_provider is None:
+            self._dns_provider = dns.from_settings()
+        return self._dns_provider
 
     def reconcile(self, deployment_id: UUID) -> ReconcileResult:
         logger.info("Starting reconcile for deployment_id=%s", deployment_id)
@@ -314,6 +327,8 @@ class DeploymentReconciler:
             deployment.desired_template_id,
         )
 
+        self._ensure_account_dns(deployment)
+
         self._provisioner.ensure_namespace(name=deployment.namespace)
         self._provisioner.ensure_tenant_isolation(namespace=deployment.namespace)
 
@@ -360,6 +375,29 @@ class DeploymentReconciler:
             # otherwise successful apply over.
             helm_revision=getattr(outcome, "revision", None),
         )
+
+    def _ensure_account_dns(self, deployment: DeploymentORM) -> None:
+        """Ensure the wildcard record for the owner's subdomain.
+
+        Kept even though the current provider makes it redundant. Issuing the
+        account's certificate writes a challenge record beneath its name, and on
+        an RFC 4592-conformant server that stops `*.<domain>` answering for
+        anything under it -- leaving only this record. Cloudflare does not apply
+        that rule to empty non-terminals (measured 2026-09-08), so the hazard is
+        latent, not absent: confirming it does not reproduce today is not a
+        reason to remove the record.
+
+        First, and before any certificate work, for the same reason.
+        """
+        account = self._account_fqdn(deployment)
+        self._dns().ensure_wildcard_record(account)
+
+    @staticmethod
+    def _account_fqdn(deployment: DeploymentORM) -> str:
+        settings = get_settings()
+        if not settings.domain:
+            raise IntegrityException("No platform domain is configured")
+        return f"{deployment.user.subdomain}.{settings.domain}"
 
     def _reconcile_delete(self, deployment: DeploymentORM) -> ReconcileResult:
         logger.debug(

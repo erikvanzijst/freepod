@@ -23,7 +23,7 @@ def _reconcile_tls_settings(monkeypatch):
     monkeypatch.setattr(
         "app.services.reconcile.get_settings",
         lambda: CaelusSettings(
-            wildcard_domains=[], tls_cluster_issuer="letsencrypt-http", domain="", _env_file=None
+            wildcard_domains=[], tls_cluster_issuer="letsencrypt-http", domain="example.test", _env_file=None
         ),
     )
 
@@ -264,7 +264,7 @@ def _patch_wildcard_domains(monkeypatch, domains: list[str]) -> None:
     monkeypatch.setattr(
         "app.services.reconcile.get_settings",
         lambda: CaelusSettings(
-            wildcard_domains=domains, tls_cluster_issuer="letsencrypt-http", domain="", _env_file=None
+            wildcard_domains=domains, tls_cluster_issuer="letsencrypt-http", domain="example.test", _env_file=None
         ),
     )
 

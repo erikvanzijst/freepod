@@ -52,7 +52,7 @@ SCHEMA = {
 def _settings(monkeypatch):
     monkeypatch.setattr(
         "app.services.reconcile.get_settings",
-        lambda: CaelusSettings(wildcard_domains=[], domain="", _env_file=None),
+        lambda: CaelusSettings(wildcard_domains=[], domain="example.test", _env_file=None),
     )
 
 

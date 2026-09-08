@@ -471,6 +471,34 @@ def create_user(client, email: str, accept_tos: bool = True) -> dict:
     return resp.json()
 
 
+class FakeDnsProvider:
+    """Records what the reconciler asked DNS to do, and does nothing."""
+
+    def __init__(self) -> None:
+        self.ensured: list[str] = []
+        self.records: set[str] = set()
+        self.fail_with: Exception | None = None
+
+    def wildcard_record_exists(self, name: str) -> bool:
+        if self.fail_with is not None:
+            raise self.fail_with
+        return f"*.{name}" in self.records
+
+    def ensure_wildcard_record(self, name: str) -> None:
+        self.ensured.append(name)
+        if self.fail_with is not None:
+            raise self.fail_with
+        self.records.add(f"*.{name}")
+
+
+@pytest.fixture(autouse=True)
+def fake_dns(monkeypatch) -> FakeDnsProvider:
+    """No test reaches a DNS provider unless it asks for one by name."""
+    provider = FakeDnsProvider()
+    monkeypatch.setattr("app.services.dns.from_settings", lambda settings=None: provider)
+    return provider
+
+
 def subdomain_for(email: str) -> str:
     """A label for a test user.
 

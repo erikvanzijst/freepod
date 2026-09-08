@@ -1,7 +1,7 @@
 """The platform's DNS writes, behind one narrow interface.
 
-Every account that deploys gets a wildcard record for its own subdomain, and it
-is load-bearing rather than convenient: see
+Every account that deploys gets a wildcard record for its own subdomain. It is
+redundant on the current provider and kept anyway -- see
 openspec/specs/account-dns-record/spec.md. Nothing provider-shaped leaves this
 module, so a change of provider is a new implementation and a config value.
 """

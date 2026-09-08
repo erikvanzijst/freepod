@@ -67,3 +67,18 @@ resource "kubernetes_secret" "var_keys" {
     CAELUS_VAR_ENCRYPTION_KEYS = join(",", var.var_encryption_keys)
   }
 }
+
+resource "kubernetes_secret" "dns" {
+  metadata {
+    name      = "caelus-dns"
+    namespace = var.namespace
+  }
+
+  type = "Opaque"
+
+  data = {
+    CAELUS_CLOUDFLARE_DNS_API_TOKEN = var.cloudflare_api_dns_token
+    CAELUS_CLOUDFLARE_DNS_ZONE_ID   = var.cloudflare_zone_id
+    CAELUS_DNS_RECORD_TARGET        = var.dns_record_target
+  }
+}

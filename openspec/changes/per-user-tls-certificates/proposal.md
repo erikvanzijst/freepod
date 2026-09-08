@@ -15,11 +15,13 @@ where the ingress controller will find it — verifiable on its own, before any 
 - **A wildcard DNS record per account**, `*.<subdomain>.freepod.eu`, created through the DNS
   provider's API when the account first deploys.
 
-  This record is not an optimization and must not be removed as redundant. Issuing the
-  certificate writes an ACME challenge record at `_acme-challenge.<subdomain>.freepod.eu`,
-  which makes `<subdomain>.freepod.eu` exist as an empty non-terminal — and once it exists,
-  `*.freepod.eu` no longer synthesizes answers for anything beneath it. Without the account's
-  own wildcard record, requesting its certificate takes its applications off the internet.
+  This record must not be removed as redundant, even though on the current provider it is.
+  Issuing the certificate writes an ACME challenge record at
+  `_acme-challenge.<subdomain>.freepod.eu`, which makes `<subdomain>.freepod.eu` exist as an
+  empty non-terminal; RFC 4592 then stops `*.freepod.eu` answering for anything beneath it, and
+  only the account's own wildcard does. Cloudflare does not implement that rule (measured
+  2026-09-08), so the hazard is latent rather than absent — it arrives with any conformant
+  provider, for every account that does not already hold a record.
 
 - **The provider is reached through a thin adapter**, so that changing DNS provider is a new
   implementation rather than a change to the reconciler.

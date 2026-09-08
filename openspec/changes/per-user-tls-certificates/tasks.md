@@ -3,7 +3,7 @@
 - [x] 1.1 Add the nullable `subdomain` column to `UserORM` (`api/app/models/core.py`) with a partial unique index over `lower(subdomain)` where `deleted_at IS NULL`, mirroring `uq_user_active`, and verify a second non-deleted row with the same label — in any case — is refused by the database. This is `account-subdomain-claim` 1.1 verbatim; nothing else from that change is implemented here.
 - [x] 1.2 Write the Alembic migration and verify `uv run alembic upgrade head` then `downgrade -1` runs clean against the test database.
 - [x] 1.3 Reject a deployment whose owner holds no subdomain in `_validate_input_state`, beside the missing-name and missing-namespace checks, and verify the recorded cause names the subdomain rather than reading as a chart or DNS failure.
-- [ ] 1.4 Seed `erik` and `fred` on dev by hand and verify every dev account that owns a deployment holds a subdomain, because 1.3 fails the reconcile of any that does not. **Blocked until this branch reaches dev**: the column arrives with the image's migration init container, so it cannot be seeded before then — and from the moment it does arrive, dev's nine live deployments fail to reconcile until the seed is in. Migration and seed are one step, not two.
+- [x] 1.4 Seed `erik` and `fred` on dev by hand and verify every dev account that owns a deployment holds a subdomain, because 1.3 fails the reconcile of any that does not. Migration and seed are one step, not two: the column arrives with the image's migration init container, and from that moment every existing deployment fails to reconcile until the seed is in.
 
 ## 2. The platform TLS namespace and store
 
@@ -31,10 +31,11 @@ moving a pointer, not by creating and deleting objects in a careful order.
 
 ## 4. Per-account DNS record
 
-- [ ] 4.1 Ensure the account's wildcard record in the deployment reconcile, before any certificate work, as an **unproxied CNAME to the same target the platform's own wildcard names** (D9), and verify it is created on an account's first deployment and left alone on subsequent ones.
-- [ ] 4.2 Verify no record is created for the account's own bare name, and that the bare name resolves to nothing.
-- [ ] 4.3 Record the empty-non-terminal rationale at the point of creation and in the zone's Terraform, and verify it explains why the record is not redundant beside `*.freepod.eu`.
-- [ ] 4.4 Verify a DNS provider failure is reported, requests no certificate, and leaves a later reconcile able to retry from the record.
+- [x] 4.1 Ensure the account's wildcard record in the deployment reconcile, before any certificate work, as an **unproxied CNAME to the same target the platform's own wildcard names** (D9), and verify it is created on an account's first deployment and left alone on subsequent ones.
+- [x] 4.2 Verify no record is created for the account's own bare name.
+- [x] 4.3 Verify deleting a deployment — including an account's last — leaves the record in place.
+- [x] 4.4 Record the empty-non-terminal rationale at the point of creation, and verify it explains why the record is kept even though on the current provider it *is* redundant: Cloudflare does not apply RFC 4592's rule to empty non-terminals (measured 2026-09-08 with a live challenge record beneath an account's name), so the hazard is latent and arrives with a conformant provider. The zone is not in Terraform until the Hetzner move, so there is nowhere else to record it yet.
+- [x] 4.5 Verify a DNS provider failure is reported, requests no certificate, and leaves a later reconcile able to retry from the record.
 
 ## 5. Per-account certificate
 

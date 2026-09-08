@@ -36,7 +36,7 @@ def _settings(monkeypatch):
     settings = CaelusSettings(
         wildcard_domains=[],
         tls_cluster_issuer="letsencrypt-http",
-        domain="",
+        domain="example.test",
         tenant_db_pooler_host=POOLER_HOST,
         tenant_db_pooler_port=6432,
         _env_file=None,

@@ -38,20 +38,27 @@ The platform MUST create the account's wildcard record before requesting its cer
 within the same reconcile, and MUST NOT request a certificate for an account whose record it
 has not established.
 
-This ordering is not stylistic. Issuing the certificate writes an ACME challenge record at
-`_acme-challenge.<subdomain>.<platform domain>`, and the existence of anything beneath
-`<subdomain>.<platform domain>` makes that name exist as an empty non-terminal. A wildcard
-answers only for names whose closest existing ancestor is the wildcard's own parent, so once
-that name exists, the platform's `*.<platform domain>` record stops answering for everything
-under it. The account's own wildcard record is what continues to answer — and if it is not
-already there when the challenge is written, every application the account has goes dark
-until the challenge record is cleaned up.
+This ordering is not stylistic, but the hazard it guards against is the DNS standard's
+behavior rather than every server's. Issuing the certificate writes an ACME challenge record at
+`_acme-challenge.<subdomain>.<platform domain>`, which makes `<subdomain>.<platform domain>`
+exist as an empty non-terminal. RFC 4592 says a wildcard answers only for names that do not
+themselves exist, so on a conformant server `*.<platform domain>` stops answering for everything
+under that name the moment the challenge is written, and only the account's own wildcard
+continues to.
+
+Measured on Cloudflare, 2026-09-08: it does not implement that rule for empty non-terminals — a
+live challenge record beneath an account's name left every name under it resolving from
+`*.<platform domain>`. So on the platform's current provider the record is redundant, and the
+requirement stands anyway. It is one record per account either way, it is what makes the
+platform's behavior independent of a provider quirk, and a provider change is the moment the
+hazard becomes real for every account that does not already hold one.
 
 #### Scenario: Certificate issuance does not interrupt the account's applications
 
 - **WHEN** an account's certificate is issued or renewed, and a challenge record is written
   beneath its subdomain
-- **THEN** its application hostnames continue to resolve throughout
+- **THEN** its application hostnames continue to resolve throughout, on a server that stops
+  synthesizing from the platform wildcard as well as on one that does not
 
 #### Scenario: A certificate is not requested without the record
 
@@ -61,8 +68,9 @@ until the challenge record is cleaned up.
 #### Scenario: The rationale survives the record
 
 - **WHEN** an operator reviews the zone and finds a wildcard record that appears redundant
-  alongside the platform's own
-- **THEN** the reason it is not redundant is documented where the record is created
+  alongside the platform's own — and confirms on the current provider that it is
+- **THEN** what is documented where the record is created says why it is kept regardless, so
+  that testing the hazard and not reproducing it is not grounds for removing the record
 
 ### Requirement: Only the wildcard is created, not the account's own name
 
@@ -71,13 +79,14 @@ The platform MUST create the wildcard record and MUST NOT create an address reco
 
 The account's own name is reserved and serves nothing, and a DNS zone's per-zone record limit
 is the platform's account ceiling — one record per account rather than two doubles how far
-that ceiling is. The consequence is understood and accepted: the account's bare name resolves
-to nothing rather than to a page.
+that ceiling is. The consequence is understood and accepted: nothing is published at the
+account's bare name. What it resolves to is then whatever the platform's own wildcard makes of
+it, which differs by provider and is not something the platform arranges either way.
 
-#### Scenario: The account's bare name does not resolve
+#### Scenario: Nothing is published at the account's bare name
 
-- **WHEN** `<subdomain>.<platform domain>` is queried
-- **THEN** it returns no address, and this is the intended behavior
+- **WHEN** the zone is inspected for `<subdomain>.<platform domain>`
+- **THEN** no record has been created for it, and this is the intended behavior
 
 ### Requirement: The DNS provider is reached through an adapter
 
