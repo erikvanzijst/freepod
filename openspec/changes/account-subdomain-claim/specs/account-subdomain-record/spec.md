@@ -1,7 +1,7 @@
 ## Purpose
 
 The subdomain an account holds: one DNS label, claimed once, never changed and never
-released, under which everything that account deploys will be addressed. Recorded on the
+released, under which everything that account deploys is addressed. Recorded on the
 user beside the other user-level facts, and claimed through its own resource rather than as
 a field on anything else.
 

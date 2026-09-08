@@ -18,6 +18,9 @@ See proposal.md — Why. The state that shapes the approach:
   The subdomain index is that index again.
 - Deployment hostnames today are a single label under `freepod.eu`, and
   `_check_wildcard_depth` actively refuses a second label. This change does not touch that.
+- The `subdomain` column already exists, added by `per-user-tls-certificates` along with its
+  index and migration, and is what the account's DNS record and TLS certificate are derived
+  from. A deployment whose owner holds none does not reconcile.
 
 Interaction design, mockups and a working prototype of the dialog:
 <https://claude.ai/code/artifact/359c879f-7851-47a2-b869-dc25448cc756>
@@ -34,9 +37,8 @@ Interaction design, mockups and a working prototype of the dialog:
 
 - Deriving deployment hostnames from the subdomain. Deployments keep landing at
   `<app>.freepod.eu` until the hostname change lands separately.
-- Per-user TLS certificates, DNS, and everything downstream of the two-label scheme.
-- Migrating existing deployments, and assigning subdomains to existing accounts. Both are a
-  one-off operator task, deliberately out of scope.
+- Migrating existing deployments, and assigning subdomains to existing accounts. Both are
+  operator work, done as part of the rollout rather than by this change.
 - Any way to change or release a subdomain, including for administrators.
 - A CLI claim flow.
 
@@ -143,10 +145,9 @@ in the user's shell history.
 
 ## Risks / Trade-offs
 
-- **The dialog's promise is ahead of the platform.** "Everything you deploy lives under this
-  address" is not true until the hostname scheme changes: in the interim a claimed subdomain
-  reserves a name and changes no address. → See Migration Plan; this is a sequencing
-  constraint on release, not on implementation.
+- **The dialog's copy describes the finished scheme.** "Everything you deploy lives under
+  this address" is accurate on release, because the hostname scheme moves in the same
+  rollout. Write it in the present tense.
 - **The prefill nudges people toward their own name, which reaches certificate transparency
   logs permanently** once they deploy. Accepted deliberately in favor of the shortest path
   for a general audience; mitigated only by the dialog stating that the address is public.
@@ -154,10 +155,9 @@ in the user's shell history.
   answered by an operator editing the database or by nothing. Accepted: every mechanism for
   changing one is a mechanism for breaking somebody's addresses, and the alternative
   interacts badly with certificates, links and federated applications.
-- **Existing accounts.** Everyone who has already deployed holds no subdomain and would be
-  refused their next deployment. → The operator assigns subdomains to existing accounts as
-  part of the separate migration; until that runs, this change's gate must not be enabled on
-  an environment with existing users. Noted in the plan below.
+- **Existing accounts hold no subdomain.** They are assigned one as part of the same
+  rollout, so the precondition never meets an account without one. Nothing here needs to
+  tolerate that state.
 - **A claim races another claim.** Two users can be told the same label is available and both
   submit. → The unique index decides; the loser gets a refusal and the dialog stays open with
   the name marked taken. The check is advisory by nature and cannot be made otherwise.
@@ -169,15 +169,8 @@ in the user's shell history.
    changes.
 2. The UI and the CLI refusal, then the deployment-create precondition. The precondition is
    the only step that changes what an existing user can do, so it lands last.
-3. **Release ordering.** On an environment with existing users, step 2's precondition MUST
-   NOT be enabled before those accounts hold subdomains — otherwise their next deployment is
-   refused with a dialog that has nothing to say to them. The operator's assignment pass and
-   the hostname migration are separate work; this change is complete and mergeable before
-   either, and its last step is held for them.
-4. The dialog's copy is written in the present tense and is accurate from the moment the
-   hostname scheme lands. If the claim is released to users before that, the two sentences
-   promising that deployed apps live under the address are the only text that needs a
-   temporary future tense.
+3. Existing accounts are assigned subdomains, and existing deployments moved under them, as
+   part of the same rollout. Both are operator work outside this change.
 
 **Rollback:** the column is additive and the endpoints are new, so reverting the API image
 restores previous behavior with claims intact and inert. Only the deployment-create

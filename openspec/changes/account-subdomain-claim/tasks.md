@@ -50,7 +50,3 @@
 
 - [ ] 7.1 Document the subdomain in `api/README.md` beside ToS acceptance as the second user-level precondition for deploying, and verify the described refusals match the implementation.
 - [ ] 7.2 Add the claim and availability routes to oauth2-proxy's `skip_auth_routes` in `tf/app/login/main.tf` if a new public path was introduced, and verify against the change's own rule that the two public lists agree.
-
-## 8. Release gate
-
-- [ ] 8.1 Before enabling the deployment precondition on an environment with existing users, verify every non-deleted account that owns a deployment holds a subdomain — otherwise their next deploy is refused by a dialog written for new accounts.

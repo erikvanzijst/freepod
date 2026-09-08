@@ -78,5 +78,5 @@ deliberately does not touch.
 - `tf/app/login/main.tf`: the availability route joins `skip_auth_routes` if a new path is
   used rather than the existing hostname checker.
 - Not affected: the hostname derivation scheme, TLS certificate issuance, the reconciler,
-  and every existing deployment. A claimed subdomain changes no address until the separate
-  hostname change lands.
+  and every existing deployment. Those are the neighbouring changes this one is built and
+  released alongside.
