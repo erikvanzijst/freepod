@@ -11,16 +11,22 @@ See proposal.md — Why. The state that shapes the approach:
   pattern applied again.
 - `require_valid_hostname_for_deployment` (`api/app/services/hostnames.py`) runs an ordered,
   short-circuiting sequence of checks and raises one exception carrying a reason code, which
-  `GET /api/hostnames/{fqdn}` returns verbatim to an unauthenticated caller. The UI's
-  `HostnameField` already consumes it with a 400 ms debounce, so the claim dialog's live
-  validation is an existing pattern rather than a new one.
+  `GET /api/hostnames/{fqdn}` returns verbatim to the caller. The UI's `HostnameField`
+  already consumes it with a 400 ms debounce, so the claim dialog's live validation reuses
+  an existing pattern rather than inventing one.
 - `UserORM` carries a partial unique index over `lower(email)` where `deleted_at IS NULL`.
   The subdomain index is that index again.
-- Deployment hostnames today are a single label under `freepod.eu`, and
-  `_check_wildcard_depth` actively refuses a second label. This change does not touch that.
+- Deployment hostnames today are a single label under a wildcard domain, and
+  `_check_wildcard_depth` actively refuses a second label. This change inverts that rule.
+- Nothing derives a hostname server-side. `normalize_and_return_hostname` lowercases
+  whatever FQDN the client put in `user_values_json` and validates it; the client composes
+  it. So moving the scheme is a change to the validators and the two clients, not to
+  derivation, charts, or product schemas.
 - The `subdomain` column already exists, added by `per-user-tls-certificates` along with its
   index and migration, and is what the account's DNS record and TLS certificate are derived
-  from. A deployment whose owner holds none does not reconcile.
+  from. That change already issues `*.<subdomain>.<domain>` and refuses to reconcile a
+  deployment whose owner holds none, so the certificate covering `<app>.<subdomain>.<domain>`
+  is in place before this change produces the first such name.
 
 Interaction design, mockups and a working prototype of the dialog:
 <https://claude.ai/code/artifact/359c879f-7851-47a2-b869-dc25448cc756>
@@ -31,12 +37,10 @@ Interaction design, mockups and a working prototype of the dialog:
 
 - Every account that can deploy holds one permanent label, chosen by its owner.
 - The choice is made once, understood when it is made, and cannot be silently undone.
-- The change is safe to merge and deploy on its own, with the hostname scheme unchanged.
+- Every application is addressed beneath its owner's label, and beneath nobody else's.
 
 **Non-Goals:**
 
-- Deriving deployment hostnames from the subdomain. Deployments keep landing at
-  `<app>.freepod.eu` until the hostname change lands separately.
 - Migrating existing deployments, and assigning subdomains to existing accounts. Both are
   operator work, done as part of the rollout rather than by this change.
 - Any way to change or release a subdomain, including for administrators.
@@ -88,19 +92,25 @@ A second claim is a 409 even when it submits the label the account already holds
 claim is far more likely to be a client that lost track of its state than a user who meant
 it, and the endpoint that silently succeeds is the one that hides the bug.
 
-### D5: A claimed label is refused as a deployment hostname
+### D5: The two namespaces are separated by depth, not by a collision rule
 
-This is what makes the change independently deployable. Until the hostname scheme moves,
-deployments are still created at `<label>.freepod.eu`, so without this check a deployment
-could take `alice.freepod.eu` while `alice` is somebody's subdomain — and every application
-that account later deploys would sit beneath a name a stranger's app answers.
+Under a configured wildcard domain, **one label is a subdomain and two labels are an
+application**. `alice.freepod.eu` is an account; `photos.alice.freepod.eu` is one of its
+apps. The two can never collide, because nothing is ever addressed at both depths.
 
-It is refused for the holder too. The label names the account's namespace, not any one
-deployment in it, and letting the holder park an app there would collide with their own
-applications the moment the scheme changes.
+An earlier draft of this change shipped the claim alone and kept flat deployment hostnames,
+which put subdomains and applications at the same depth and therefore needed a rule
+refusing `alice.freepod.eu` as a deployment hostname while `alice` was somebody's
+subdomain. That rule was a consequence of the seam, not of the design: it exists only in the
+interim state, it has to be explained in three places, and it makes the checker answer a
+question the finished system never asks. Moving the scheme in the same change deletes both
+the rule and the interim.
 
-The check goes after `reserved` and before availability: it is a question about accounts
-rather than deployments, so it is answered before the deployments table is consulted.
+The cost is that this change is larger and cannot be rolled out piecemeal. That is
+acceptable here because it is not rolled out piecemeal either way — the whole per-account
+addressing program lands on one branch, is exercised on dev, and reaches production in a
+single step that also assigns subdomains to existing accounts and moves their deployments
+beneath them.
 
 ### D6: The odometer rests on a placeholder, and stops
 
@@ -109,7 +119,7 @@ the user is being given, not a field they must fill. Two constraints follow, and
 found by watching it rather than by reasoning:
 
 - **It must not rest on a real name.** Coming to rest on `wiki` asserts that the user picked
-  it and that it is theirs. The home slot is a placeholder, set in the UI face and italic
+  it and that it is theirs. The home slot reads `your app`, set in the UI face and italic
   where the tumbling names are monospaced, so the distinction is carried by typeface and
   needs nothing read.
 - **It must be slow enough to read.** The easing matters more than the duration: a quartic
@@ -143,11 +153,41 @@ The deploy is abandoned rather than suspended. The alternative is holding a pack
 against a decision being made in another window; the cost is one re-run of a command that is
 in the user's shell history.
 
+### D9: The hostname check endpoint becomes authenticated
+
+`GET /api/hostnames/{fqdn}` has been public since it was written, on the reasoning that its
+answer carries nothing sensitive. Under D5 it answers two different questions depending on
+depth, and the deployment-side one now depends on who is asking: whether
+`photos.alice.freepod.eu` is usable is a different answer for Alice than for Bob.
+
+No anonymous caller is lost. The endpoint is reached from exactly one place — `HostnameField`
+inside the deploy dialog — plus the claim dialog and the CLI, all of which are authenticated
+already; the landing page never calls it. Requiring authentication also closes the
+DNS-amplification handle the endpoint's own comment documents as an accepted risk, since
+`_check_cname` resolves caller-controlled nameservers.
+
+The consequence is that `account-subdomain-record`'s "availability is answerable without
+authentication" requirement is withdrawn. Its rationale — signing up is free, so
+authenticating stops nobody, and claimed subdomains are public in certificate transparency
+logs anyway — remains true; it is simply no longer worth the split answer.
+
+### D10: Ownership is enforced where the owner is known
+
+A deployment hostname under a wildcard domain must sit beneath its own owner's subdomain.
+The check needs the owning user, so it lives in `create_deployment` beside the other two
+preconditions rather than inside `require_valid_hostname_for_deployment`, which is called
+with a session and an FQDN and has no notion of an owner.
+
+The endpoint answers what it can: whether the application label is free beneath the
+subdomain it was given. Under D9 it knows the caller, so it can and does refuse another
+account's namespace — but the authoritative refusal is the one at create, because that is
+the path a client cannot skip. This is the same shape as the ToS precondition: the client is
+told early as a courtesy and the server enforces it regardless.
+
 ## Risks / Trade-offs
 
-- **The dialog's copy describes the finished scheme.** "Everything you deploy lives under
-  this address" is accurate on release, because the hostname scheme moves in the same
-  rollout. Write it in the present tense.
+- **The change is large and lands as one unit.** Accepted per D5: the alternative is a seam
+  whose only artifact is a rule the finished system deletes.
 - **The prefill nudges people toward their own name, which reaches certificate transparency
   logs permanently** once they deploy. Accepted deliberately in favor of the shortest path
   for a general audience; mitigated only by the dialog stating that the address is public.
@@ -155,23 +195,27 @@ in the user's shell history.
   answered by an operator editing the database or by nothing. Accepted: every mechanism for
   changing one is a mechanism for breaking somebody's addresses, and the alternative
   interacts badly with certificates, links and federated applications.
-- **Existing accounts hold no subdomain.** They are assigned one as part of the same
-  rollout, so the precondition never meets an account without one. Nothing here needs to
-  tolerate that state.
+- **Existing accounts hold no subdomain, and existing deployments sit at the old depth.**
+  Both are settled by hand in the same rollout, so the preconditions never meet an account
+  or a deployment in the old shape. Nothing here needs to tolerate that state.
 - **A claim races another claim.** Two users can be told the same label is available and both
   submit. → The unique index decides; the loser gets a refusal and the dialog stays open with
   the name marked taken. The check is advisory by nature and cannot be made otherwise.
 
 ## Migration Plan
 
-1. Schema and API first: the column, its index, the claim and read endpoints, and the
-   hostname check. Inert on their own — nothing calls them, and no user-visible behavior
-   changes.
-2. The UI and the CLI refusal, then the deployment-create precondition. The precondition is
-   the only step that changes what an existing user can do, so it lands last.
-3. Existing accounts are assigned subdomains, and existing deployments moved under them, as
-   part of the same rollout. Both are operator work outside this change.
+1. Schema and API first: the column, its index, the claim and read endpoints. Inert on their
+   own — nothing calls them, and no user-visible behavior changes.
+2. The hostname checker's depth dispatch, its authentication, and the ownership rule at
+   create. From here a deployment must be addressed at the new depth, so dev is migrated at
+   this point: subdomains assigned to the two accounts that exist, and their deployments'
+   hostnames moved beneath them.
+3. The UI and the CLI: the claim dialog, the first-run dashboard state, the settings panel,
+   `HostnameField`'s new shape, and the client's hostname completion and refusal.
+4. Production is cut over in one step, which assigns a subdomain to every existing account
+   and moves every existing deployment's hostname beneath its owner's. Operator work,
+   outside this change.
 
-**Rollback:** the column is additive and the endpoints are new, so reverting the API image
-restores previous behavior with claims intact and inert. Only the deployment-create
-precondition is observable, and removing it is a one-line revert.
+**Rollback:** before step 4 there is nothing to roll back in production. After it, reverting
+means restoring the previous API image and moving the hostnames back — the column and its
+claims are additive and stay valid either way.

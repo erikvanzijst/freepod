@@ -82,11 +82,14 @@ old one.
 
 ### Requirement: A candidate must be a single DNS label
 
-A claim MUST be refused unless the submitted value is one label: lowercase alphanumerics and
-hyphens, beginning and ending with an alphanumeric, and short enough to leave room for an
-application label and the platform domain beneath the 253-character limit on a fully
-qualified name. A value containing a dot MUST be refused — an account claims a label, not a
-name.
+A claim MUST be refused unless the submitted value is one label: **2 to 63 characters** of
+lowercase alphanumerics and hyphens, beginning and ending with an alphanumeric. A value
+containing a dot MUST be refused — an account claims a label, not a name.
+
+63 is the limit RFC 1035 places on a DNS label, which the platform's own hostname format
+check already enforces; a longer value would be stored and then refused by every hostname
+derived from it, and could not be certificated. The minimum of 2 reserves single-character
+labels for the platform.
 
 #### Scenario: A well-formed label is accepted
 
@@ -102,6 +105,11 @@ name.
 
 - **WHEN** a user claims a value beginning or ending with a hyphen, or containing a
   character outside the permitted set
+- **THEN** the claim is refused as malformed
+
+#### Scenario: A label outside the length bounds is refused
+
+- **WHEN** a user claims a single character, or a value longer than 63 characters
 - **THEN** the claim is refused as malformed
 
 ### Requirement: Reserved names are refused, from the list that already exists
@@ -125,20 +133,14 @@ a failure this codebase already carries elsewhere and does not need another inst
 - **THEN** its label immediately stops being claimable as a subdomain, with no second list
   to update
 
-### Requirement: A label already answering as a hostname is refused
-
-A claim MUST be refused when an active deployment already holds the hostname that label
-would form under a configured wildcard domain.
-
-#### Scenario: A label held by a live deployment is refused
-
-- **WHEN** an active deployment has the hostname `demo.freepod.eu` and a user claims `demo`
-- **THEN** the claim is refused
-
 ### Requirement: The account's subdomain is readable
 
 The platform MUST expose the subdomain an account holds, reporting its absence as a value
 rather than as an error, so a client can tell "not claimed yet" from "cannot ask".
+
+The fully qualified name it reports MUST be `<label>.<platform domain>` — the name that
+actually receives a DNS record and a wildcard certificate — so that what a client displays
+and what the reconciler provisions cannot diverge.
 
 #### Scenario: An unclaimed account reports no subdomain
 
@@ -147,22 +149,28 @@ rather than as an error, so a client can tell "not claimed yet" from "cannot ask
 
 #### Scenario: A claimed account reports its subdomain
 
-- **WHEN** a user holding `adalovelace` reads their subdomain
-- **THEN** the response reports `adalovelace` and the fully qualified name it forms
+- **WHEN** a user holding `adalovelace` reads their subdomain on a platform whose domain is
+  `freepod.eu`
+- **THEN** the response reports `adalovelace` and `adalovelace.freepod.eu`
 
-### Requirement: Availability is answerable without authentication
+### Requirement: Availability is answered by the existing hostname check
 
-Whether a label is free MUST be answerable by an unauthenticated caller, on the same terms
-as the existing hostname check.
+Whether a label is free MUST be answerable before it is claimed, through
+`GET /api/hostnames/{fqdn}` with the candidate placed under a configured wildcard domain,
+rather than through a second endpoint of its own.
 
-Signing up is free and unrestricted, so an authenticated availability check would cost a
-round trip and stop nobody; and the answer is public regardless, since every claimed
-subdomain appears in certificate transparency logs once its holder deploys anything.
+One label under a wildcard domain is a subdomain and two are an application, so the existing
+checker can answer both questions from the name it is given. A dedicated availability
+endpoint would be a second public surface answering a question the first one already holds
+all the state for.
 
-#### Scenario: An anonymous caller can check a label
+Checking MUST reserve nothing: the answer is advisory, and two clients can be told the same
+label is free.
 
-- **WHEN** an unauthenticated client asks whether a label is available
-- **THEN** it receives an answer, with no credential required
+#### Scenario: A label is checked before claiming
+
+- **WHEN** a client checks `alice.freepod.eu` and `freepod.eu` is a configured wildcard domain
+- **THEN** it receives an answer about the subdomain `alice`, not about a deployment
 
 #### Scenario: Checking reserves nothing
 

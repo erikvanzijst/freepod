@@ -45,10 +45,20 @@ account without a subdomain can damage.
 - **WHEN** a user dismisses the invitation
 - **THEN** the dashboard remains usable and the invitation is still reachable
 
+Dismissal MUST NOT be persisted — not on the server, and not in browser storage. It is
+state for the session the user is in, so the invitation returns on a reload. Remembering it
+would be recording the decision the requirement above says is not being taken.
+
 #### Scenario: Dismissing is not an answer
 
 - **WHEN** a user dismisses the invitation and later acts to deploy
 - **THEN** the claim dialog opens as it would have before
+
+#### Scenario: Dismissal is not remembered
+
+- **WHEN** a user dismisses the invitation and reloads the dashboard
+- **THEN** the invitation is presented again, and nothing was written to the server or to
+  browser storage
 
 ### Requirement: The dialog shows a whole address, with only one part editable
 
@@ -76,8 +86,10 @@ The application label MUST animate on open — candidate names passing and decel
 MUST come to rest on a placeholder that is not a usable name, never on a real one.
 
 Resting on a real name asserts two things that are false: that the user chose it, and that it
-is now theirs. The placeholder MUST be visually distinguished from the names that pass, by
-typeface rather than by any explanatory text, so that the distinction needs nothing read.
+is now theirs. The placeholder reads `your app`: plain English, and with a space in it so it
+cannot be mistaken for a hostname label. It MUST be visually distinguished from the names
+that pass, by typeface rather than by any explanatory text, so that the distinction needs
+nothing read.
 
 The animation MUST be slow enough that the names approaching rest can be read; a motion that
 is only a blur that stops teaches nothing.
@@ -126,6 +138,12 @@ resolves into anything readable; motion tied to an event the user caused is feed
 The dialog MUST validate the typed label against the platform as it is typed, debounced, and
 MUST show a distinct state for checking, available, and each way a label can be refused. A
 refusal MUST name its own cause rather than reporting every rejection as invalid.
+
+It validates by placing the typed label under the platform's wildcard domain and asking the
+existing hostname check, which reads a single label at that depth as a subdomain question.
+The refusals it can receive are `invalid`, `reserved` and `claimed`; a deployment hostname
+is at the other depth and cannot collide with a candidate here, so `in_use` is not among
+them.
 
 #### Scenario: Each refusal names its cause
 

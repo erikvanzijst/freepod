@@ -55,6 +55,15 @@ and permanent decision, and where in the web interface it is made. It MUST state
 nothing has been packed, built, or deployed, and MUST NOT report this cause as any other
 refusal.
 
+The web address it gives MUST be the platform's own origin, learned from the environment the
+client is targeting rather than carried as a constant. The dashboard of an account holding
+no subdomain is the invitation, so the origin lands the user where the choice is made
+without the client needing to know a path.
+
+Where the platform refuses a create for this reason after preflight has passed — the race in
+which a client skips the check — the client MUST recognize it by the `subdomain_required`
+error code rather than by matching the refusal's prose.
+
 The deploy is abandoned rather than suspended: holding a packed archive against a decision
 being made in another window is worse than costing the user one re-run of a command that is
 in their shell history.
@@ -75,6 +84,11 @@ in their shell history.
 - **WHEN** a deploy is refused for want of a subdomain
 - **THEN** it is not reported as a declined agreement, an authentication failure, or an
   invalid project
+
+#### Scenario: The platform's own refusal is recognized by its code
+
+- **WHEN** the platform rejects a create with the `subdomain_required` code
+- **THEN** the client reports it as a missing address rather than as a generic bad request
 
 ### Requirement: Authentication is never gated on holding a subdomain
 
