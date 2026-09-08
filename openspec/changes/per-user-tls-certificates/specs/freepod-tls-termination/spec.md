@@ -1,3 +1,35 @@
+## ADDED Requirements
+
+### Requirement: The ingress controller reads its default store from one named namespace
+
+The ingress controller MUST be configured with the namespace its `default` certificate store is
+read from, and that configuration MUST name the namespace holding the store.
+
+Left unset, a store named `default` is honoured wherever it is found — and when two exist, none
+of them is: the controller reports the ambiguity and serves its own self-signed certificate for
+every hostname it hosts, which is a whole-fleet outage produced by creating one object. Naming
+the namespace makes a store outside it inert instead, which is what allows the store to be built
+and inspected in a new namespace while the old one is still serving, and the move between them to
+be a single reversible change to this value rather than an ordering no ordering makes safe.
+
+#### Scenario: A store outside the named namespace is ignored
+
+- **WHEN** a certificate store named `default` exists in a namespace other than the configured one
+- **THEN** it has no effect on what is served, and no ambiguity is reported
+
+#### Scenario: Moving the store is moving the pointer
+
+- **WHEN** the store's namespace changes
+- **THEN** the change is made by naming the new namespace, only once a valid store exists there
+- **AND** every connection is served a valid certificate throughout, because the value moves
+  between two working states
+
+#### Scenario: The configured namespace always holds a store
+
+- **WHEN** the ingress controller's configuration is inspected
+- **THEN** the namespace it names contains a `default` store carrying a default certificate,
+  because a named namespace holding none leaves it with no default certificate at all
+
 ## MODIFIED Requirements
 
 ### Requirement: Freepod Traefik terminates TLS using the wildcard as the default certificate

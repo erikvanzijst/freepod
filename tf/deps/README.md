@@ -20,6 +20,17 @@ independent state and does not use Terraform workspaces.
   published at `blob.freepod.eu` — see [Garage object store](#garage-object-store).
   Requires a [one-time cluster-layout bootstrap](#cluster-layout-bootstrap)
   before it will serve anything.
+- `caelus-tls` namespace (`tls/`) holding the platform wildcard certificate and
+  the `TLSStore/default` Traefik serves from. The store is platform-owned rather
+  than rendered by the Traefik release, and Traefik is pinned to this namespace
+  with `providers.kubernetesCRD.defaultTLSResourcesNamespace` — a `default` store
+  anywhere else is then ignored instead of making Traefik honour none of them.
+  Terraform owns the default certificate; the reconciler owns the membership
+  list. Spec:
+  [platform-tls-store](../../openspec/specs/platform-tls-store/spec.md),
+  [freepod-tls-termination](../../openspec/specs/freepod-tls-termination/spec.md)
+  · Rationale:
+  [per-user-tls-certificates](../../openspec/changes/per-user-tls-certificates/design.md)
 
 ## Prerequisites
 

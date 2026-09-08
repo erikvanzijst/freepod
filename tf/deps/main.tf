@@ -56,9 +56,18 @@ module "certmanager" {
   letsencrypt_email    = var.letsencrypt_email
 }
 
+# Cluster singleton shared by dev and prod: Traefik honours one TLSStore named
+# `default`, and only in the namespace module.system pins it to.
+module "tls" {
+  source = "./tls"
+
+  depends_on = [module.system]
+}
+
 module "system" {
-  source          = "./system"
-  haproxy_edge_ip = var.haproxy_edge_ip
+  source                          = "./system"
+  haproxy_edge_ip                 = var.haproxy_edge_ip
+  default_tls_resources_namespace = "caelus-tls"
 
   # Traefik's default cert store points at the wildcard secret cert-manager issues.
   depends_on = [module.certmanager]

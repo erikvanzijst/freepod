@@ -1,4 +1,4 @@
-# Traefik for freepod — self-managed Helm release (chart 39.0.5 = Traefik app v3.6.10),
+# Traefik for freepod — self-managed Helm release (chart 41.5.0 = Traefik app v3.7.13),
 # replacing the k3s-bundled Traefik (disabled via /etc/rancher/k3s/config.yaml).
 #
 # Rendered by templatefile(); ${haproxy_edge_ip} is the homelab HAProxy edge IP/CIDR.
@@ -10,7 +10,7 @@
 # sees it, so the PROXY header would be rejected and the real client IP lost.
 
 image:
-  tag: "3.6.10"
+  tag: "3.7.13"
 
 # `traefik` IngressClass, marked default — so existing app Ingresses (which carry no explicit
 # class) keep matching this controller after the migration off the bundled chart.
@@ -20,11 +20,21 @@ ingressClass:
   name: traefik
 
 providers:
+  kubernetesCRD:
+    # Which namespace the `default` TLSStore is read from. Empty means "wherever
+    # one is found", which is not a choice between them: Traefik logs `Default TLS
+    # Stores defined in multiple namespaces` and honours NEITHER, serving TRAEFIK
+    # DEFAULT CERT for every hostname. Verified on 2026-09-08, at the cost of 90
+    # seconds of production. Naming a namespace is what lets the store move without
+    # a window -- the pointer moves only once both stores are valid. Requires
+    # Traefik >= 3.7; 3.6.10 rejects the field outright and will not start.
+    defaultTLSResourcesNamespace: "${default_tls_resources_namespace}"
+
   # Serve ExternalName-backed Services referenced by some app Ingresses.
   kubernetesIngress:
     allowExternalNameServices: true
   # Also read nginx-annotated Ingresses (the cluster has an `nginx` IngressClass).
-  kubernetesIngressNginx:
+  kubernetesIngressNGINX:
     enabled: true
 
 # websecure (:443) is the ONLY default entrypoint: an Ingress/router without an explicit
@@ -58,18 +68,15 @@ service:
   spec:
     externalTrafficPolicy: Local
 
-# Serve the *.freepod.eu wildcard (issued by cert-manager via Cloudflare DNS-01, stored in
-# kube-system) as the default certificate for any SNI without a more specific cert, so
-# *.freepod.eu apps need no per-app TLS secret. Custom-domain apps supply their own secret.
-tlsStore:
-  default:
-    defaultCertificate:
-      secretName: wildcard-freepod-eu-tls
+# NO tlsStore here. The default certificate store is a platform-owned object in the namespace
+# named by providers.kubernetesCRD.defaultTLSResourcesNamespace above (tf/deps/tls), because the
+# reconciler adds each account's certificate to it and a chart-rendered object is reset to the
+# chart's view of it on every upgrade -- which would drop every account's certificate at once.
+# See openspec/changes/per-user-tls-certificates, D3.
 
 # Stream access logs to stdout: kubectl -n kube-system logs -f deploy/traefik
-logs:
-  access:
-    enabled: true
+accessLog:
+  enabled: true
 
 metrics:
   prometheus:

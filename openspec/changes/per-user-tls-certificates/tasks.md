@@ -7,13 +7,20 @@
 
 ## 2. The platform TLS namespace and store
 
-- [ ] 2.1 Create the `caelus-tls` namespace in Terraform and verify Traefik can read secrets in it without an RBAC change (its ClusterRole already grants `get/list/watch` on secrets cluster-wide).
-- [ ] 2.2 Issue the platform wildcard `Certificate` into `caelus-tls` and verify the resulting secret carries `freepod.eu`, `*.freepod.eu` and `*.dev.freepod.eu`.
-- [ ] 2.3 Create a platform-owned `TLSStore/default` in `caelus-tls` with that secret as `defaultCertificate` and **no** `certificates` key, and verify Terraform owns only `f:defaultCertificate` in `managedFields` — declaring an empty list would claim ownership of the atomic field and make every reconciler apply conflict.
-- [ ] 2.4 Set `computed_fields = ["spec.certificates"]` on the Terraform resource so the planner does not report the reconciler's list as drift, and verify a `terraform apply` after a reconciler write leaves the list intact and produces no diff.
-- [ ] 2.5 Remove `tlsStore` from the Traefik chart values and delete the old `kube-system` store, verifying that exactly one store named `default` exists afterwards.
-- [ ] 2.6 Verify the apex and an existing `*.freepod.eu` application still serve the wildcard certificate from the new store, by handshake rather than by reading objects.
-- [ ] 2.7 Upgrade the Traefik release and verify the store and its contents are untouched.
+Traefik honours one `TLSStore` named `default` and, unpinned, honours none at all when it finds
+two — serving its self-signed certificate to every hostname on the cluster. So the store moves by
+moving a pointer, not by creating and deleting objects in a careful order.
+
+- [x] 2.1 Upgrade Traefik from chart 39.0.5/v3.6.10 to 41.5.0/v3.7.13, which is where `defaultTLSResourcesNamespace` exists at all — v3.6 rejects the field and will not start. Migrate the two values the chart renamed on the way (`providers.kubernetesIngressNginx` → `kubernetesIngressNGINX`, `logs.{general,access}` → top-level `log`/`accessLog`), verify the rendered arguments differ from the running ones only where intended, and verify serving, the HSTS middleware and the HTTP→HTTPS redirect afterwards.
+- [x] 2.1b Pin `providers.kubernetesCRD.defaultTLSResourcesNamespace` at `kube-system`, where the store already is, and verify the apex still serves the wildcard afterwards and Traefik logs no store ambiguity — this step must change nothing.
+- [x] 2.2 Create the `caelus-tls` namespace in Terraform and verify Traefik can read secrets in it without an RBAC change (its ClusterRole already grants `get/list/watch` on secrets cluster-wide).
+- [x] 2.3 Issue the platform wildcard `Certificate` into `caelus-tls` and verify the resulting secret carries `freepod.eu`, `*.freepod.eu` and `*.dev.freepod.eu`, and that its serial differs from the `kube-system` one — the difference is what makes 2.6 provable.
+- [x] 2.4 Create a platform-owned `TLSStore/default` in `caelus-tls` with that secret as `defaultCertificate` and **no** `certificates` key, and verify Terraform owns only `f:defaultCertificate` in `managedFields` (`kubectl get --show-managed-fields`) — declaring an empty list would claim ownership of the atomic field and make every reconciler apply conflict.
+- [x] 2.5 Verify the new store is inert while the pin names another namespace: serving is unchanged and no `Default TLS Stores defined in multiple namespaces` appears.
+- [x] 2.6 Flip the pin to `caelus-tls` and verify by handshake that the apex, an existing `*.freepod.eu` application and a custom-domain application are all served correctly, and that the apex's certificate serial is now the `caelus-tls` secret's. This is the cutover; flipping the string back is the rollback.
+- [x] 2.7 Set `computed_fields = ["spec.certificates"]` on the Terraform resource so the planner does not report the reconciler's list as drift, and verify a `terraform apply` after a reconciler write leaves the list intact and produces no diff.
+- [x] 2.8 Remove `tlsStore` from the Traefik chart values and delete the old `kube-system` store and certificate, verifying that exactly one store named `default` exists afterwards and that serving is unchanged — both are already ignored by the pin, so this step cannot affect it.
+- [x] 2.9 Upgrade the Traefik release and verify the store and its contents are untouched.
 
 ## 3. DNS adapter
 

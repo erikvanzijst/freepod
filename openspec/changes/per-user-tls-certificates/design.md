@@ -14,6 +14,17 @@ the running dev cluster rather than the code:
   `defaultTLSResourcesNamespace`, so a store named `default` is discovered wherever it lives.
   Its ClusterRole already grants `get/list/watch` on secrets cluster-wide, so a new namespace
   needs no RBAC change.
+- **Two stores named `default` are not a race, they are an outage.** Traefik's documentation says
+  it processes "whichever one it encounters"; v3.6.10 does not. It logs `Default TLS Stores
+  defined in multiple namespaces` and honours neither, serving `TRAEFIK DEFAULT CERT` for every
+  hostname on the cluster. Measured on 2026-09-08 by doing it: 90 seconds of production on a
+  self-signed certificate. `providers.kubernetesCRD.defaultTLSResourcesNamespace` is the way out,
+  and **Traefik 3.6.10 does not have it** — the field arrived in v3.7, and 3.6 rejects it as an
+  unknown field and will not start. So the move requires an ingress-controller upgrade first,
+  chart 39.0.5/v3.6.10 to 41.5.0/v3.7.13, which also renamed
+  `providers.kubernetesIngressNginx` to `kubernetesIngressNGINX` and `logs.{general,access}` to
+  top-level `log`/`accessLog`. Pinned, the ignored store is a warning rather than an error:
+  `Ignoring default TLS store: it can only be defined in the "kube-system" namespace`.
 - `websecure` is `asDefault: true`, which is why application Ingresses carrying no `tls:` block
   are served over TLS at all — their certificate comes from the store's default.
 - Custom domains already work the third way: `custom-user-app-lt697r-ingress` in a tenant
@@ -99,6 +110,14 @@ once, and the fleet is served the default wildcard for names it does not cover.
 Moving the store into `caelus-tls` and out of the release makes ownership explicit. It also has
 to move for a plainer reason: `certificates` entries carry no namespace, so the store must live
 where the certificate secrets do — which means the platform wildcard's secret moves too.
+
+The move itself is made by pinning `defaultTLSResourcesNamespace`, not by creating and deleting
+objects in the right order. Pinned, a store outside that namespace is ignored, so the new store
+can be built and inspected while the old one keeps serving; the cutover is then one string, and
+it moves only between two states that are both valid. Unpinned there is no such ordering: any
+moment in which both stores exist is a moment with no working certificate, which is what makes
+"stand the new one up beside the old and verify" — the shape this plan originally had —
+unavailable rather than merely slow.
 
 ### D4: Field-level ownership, and the declaring side must omit what it does not own
 
@@ -308,8 +327,12 @@ Hetzner, raisable) caps accounts an order of magnitude earlier, and the certific
   is why the equality check that skips the write in the common case is also the thing that keeps
   a broken derivation from being written continuously.
 - **Moving the platform wildcard's secret between namespaces touches the certificate that serves
-  everything.** → It is a separate, first step, verified before anything per-account is built;
-  the old store and secret stay in place until the new one is confirmed serving.
+  everything.** → It is a separate, first step, verified before anything per-account is built.
+  The old store and secret stay in place throughout, but they cannot be left *serving* while the
+  new one is checked — Traefik honours one default store. What makes the step safe instead is the
+  namespace pin: the new store is inert until the pin names it, and because the two secrets are
+  different certificates, the handshake's serial number is proof of which store is in effect
+  rather than an inference from the objects.
 - **The weekly allowance is a real ceiling on signups**, shared with dev, and now a ceiling on
   *first deployments* rather than a quiet limit: an account that cannot get a certificate cannot
   deploy at all (D7). → Fifty new accounts per week is far beyond current growth, and accounts
@@ -319,18 +342,28 @@ Hetzner, raisable) caps accounts an order of magnitude earlier, and the certific
 
 ## Migration Plan
 
-1. Create `caelus-tls`. Issue the platform wildcard into it and create the platform-owned
-   `TLSStore/default` there with that as its default certificate and an empty `certificates`
-   list. Confirm Traefik serves the apex and an existing application from the new store.
-2. Remove `tlsStore` from the Traefik chart's values and delete the old store in `kube-system`.
-   Confirm again, and confirm a Traefik release upgrade leaves the new store untouched.
-3. Add the DNS adapter and the record provisioning, with no certificate work. Confirm a record
+1. Upgrade Traefik to a version that has `defaultTLSResourcesNamespace` (v3.7+), and pin it to
+   `kube-system`, where the store already is. Nothing changes; confirm that, including that
+   neither the upgrade nor the pin disturbed serving. A Traefik that will not start cannot take
+   over — the Deployment is `maxUnavailable: 0` — so a bad upgrade stalls rather than breaking.
+2. Create `caelus-tls`, issue the platform wildcard into it, and create the platform-owned
+   `TLSStore/default` there with that as its default certificate and no `certificates` key.
+   All of it is ignored while the pin names another namespace; confirm serving is unchanged and
+   that Traefik reports no ambiguity.
+3. Flip the pin to `caelus-tls`. This is the cutover: confirm by handshake that the certificate
+   served is the new secret's, identified by serial. Both stores are valid throughout, so there
+   is no window, and flipping the string back is the rollback.
+4. Remove `tlsStore` from the Traefik chart's values and delete the old store and certificate in
+   `kube-system`. Both are already ignored, so this cannot affect serving. Confirm a Traefik
+   release upgrade leaves the new store untouched.
+5. Add the DNS adapter and the record provisioning, with no certificate work. Confirm a record
    appears for an account that deploys, and that a second deployment changes nothing.
-4. Add certificate issuance and store membership. Confirm with a handshake against a name under
+6. Add certificate issuance and store membership. Confirm with a handshake against a name under
    an account's subdomain: the certificate served is the account's, not the default wildcard —
    which is a complete end-to-end proof even though no deployment is addressed there yet.
 
 **Rollback:** each step is independent. Removing an account's certificate from the store returns
 its connections to the default wildcard, which is where they are today; the certificates and DNS
-records are inert if nothing is addressed at those names. Reverting step 1 means pointing the
-Traefik release's `tlsStore` value back at `kube-system`.
+records are inert if nothing is addressed at those names. Reverting the move means pointing the
+pin back at `kube-system`, which is why step 4 — the one that destroys the ability to do that —
+comes after the cutover has been confirmed rather than with it.

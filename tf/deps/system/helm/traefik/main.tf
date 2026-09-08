@@ -22,7 +22,8 @@ resource "helm_release" "traefik" {
 
   values = [
     templatefile("${path.module}/values.yaml.tftpl", {
-      haproxy_edge_ip = var.haproxy_edge_ip
+      haproxy_edge_ip                 = var.haproxy_edge_ip
+      default_tls_resources_namespace = var.default_tls_resources_namespace
     })
   ]
 }
