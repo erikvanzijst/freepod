@@ -1219,6 +1219,29 @@ def test_cli_worker_processes_job_successfully(cli_runner, monkeypatch):
     assert process_one_job("worker-test") is None
 
 
+def test_cli_reconcile_reports_a_wait_without_polling(cli_runner, monkeypatch):
+    """No job row to defer here, and nothing sleeps in-process: the deployment
+    stays provisioning and the queued job carries the retry."""
+    runner, app = cli_runner
+    _, deployment_id = _seed_deployment_via_services()
+
+    class _WaitingProvisioner(_FakeProvisioner):
+        def account_certificate_state(self, *, name: str):
+            return False, "waiting for DNS-01 propagation"
+
+    monkeypatch.setattr(reconcile_service, "default_provisioner", _WaitingProvisioner())
+    result = runner.invoke(app, ["reconcile", str(deployment_id)])
+
+    assert result.exit_code == 0
+    assert "waiting for its account" in result.output
+    assert _get_deployment_by_id(deployment_id).status == "provisioning"
+
+    with session_scope() as session:
+        jobs = JobService(session).list_jobs(deployment_id=deployment_id, statuses=["queued"])
+        assert len(jobs) == 1
+        assert jobs[0].locked_by is None
+
+
 def test_cli_worker_defers_a_job_waiting_for_a_certificate(cli_runner, monkeypatch):
     """The worker hands the job back rather than holding a process or a lease."""
     runner, app = cli_runner

@@ -105,6 +105,19 @@ This repository is a monorepo with:
   [deployment-vars-data-model](openspec/specs/deployment-vars-data-model/spec.md)
   · Rationale:
   [relational-storage](openspec/changes/archive/2026-08-27-relational-storage/design.md)
+- **Every account holds one wildcard certificate and one DNS record**, covering
+  every hostname its applications will ever have. Both are provisioned by the
+  reconcile before the Helm release and neither is ever deleted; a deployment
+  whose account has no certificate defers rather than completing, and fails
+  when the wait runs out. Nothing copies certificate material: the certificate
+  joins the ingress controller's store, which serves it to routes in namespaces
+  that never reference it. The store, the platform wildcard and every account
+  certificate are **cluster singletons shared by dev and prod**, so a change to
+  them is never environment-scoped. Spec:
+  [account-dns-record](openspec/specs/account-dns-record/spec.md),
+  [account-tls-certificate](openspec/specs/account-tls-certificate/spec.md),
+  [platform-tls-store](openspec/specs/platform-tls-store/spec.md) · Rationale:
+  [per-user-tls-certificates](openspec/changes/per-user-tls-certificates/design.md)
 - Products are either **curated** (declared in `products/catalog/<slug>.yaml`,
   reconciled into the database on rollout, and read-only through the API, CLI,
   and admin UI apart from `visibility`) or **non-curated** (database-authored).

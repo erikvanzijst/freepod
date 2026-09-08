@@ -32,12 +32,57 @@ terraform apply
 # 2. Deploy the app (dev)
 cd tf/app
 terraform init
+terraform workspace select default
 terraform apply
 
 # 3. Deploy the app (prod)
 terraform workspace select prod || terraform workspace new prod
 terraform apply
 ```
+
+`tf/app` is workspace-scoped and the selection is **sticky**: it survives
+between sessions, so a `terraform apply` run without checking which workspace
+is selected will happily apply to the other environment. Run
+`terraform workspace show` before planning, every time.
+
+## TLS
+
+Three things put a certificate in front of a request, and which one serves a
+given connection is decided by server name during the handshake, before
+routing:
+
+- **The store's default certificate** — the `*.freepod.eu` wildcard, serving
+  the apex and every single-label application hostname.
+- **The store's membership list** — one certificate per account, covering
+  everything under that account's own subdomain. Nothing is copied into a
+  tenant namespace and no route references these: a certificate in the store is
+  served to routes that know nothing about it, which is the whole point of it
+  being a store rather than a per-route secret.
+- **A route's own TLS secret** — custom domains, issued over HTTP-01 in the
+  tenant's own namespace.
+
+The store, the platform wildcard and every account certificate live in
+`caelus-tls` (`tf/deps/tls`), because a store's certificate references carry no
+namespace and resolve in its own. **All three are cluster singletons shared by
+dev and prod** — `tf/deps` has no workspaces and the ingress controller honors
+one store — so a change to any of them is never dev-only, whatever else is
+being rolled out per environment.
+
+Terraform owns the store's default certificate; the reconciler owns its
+membership list, written with a version precondition as a separate field
+manager. Neither may force its way past the other, and the flag that would is
+named and forbidden in `tf/deps/tls/main.tf`.
+
+Traefik is pinned to that namespace with
+`providers.kubernetesCRD.defaultTLSResourcesNamespace`. Without the pin a
+second store named `default` anywhere in the cluster makes Traefik honor
+**neither**, serving its self-signed certificate for every hostname — measured,
+not theorized. Requires Traefik >= 3.7.
+
+Spec: [freepod-tls-termination](../openspec/specs/freepod-tls-termination/spec.md),
+[platform-tls-store](../openspec/specs/platform-tls-store/spec.md) ·
+Rationale:
+[per-user-tls-certificates](../openspec/changes/per-user-tls-certificates/design.md)
 
 ## Build subsystem
 
@@ -75,7 +120,11 @@ Each project has its own `secrets.auto.tfvars` (gitignored):
 
 - `tf/app/secrets.auto.tfvars`: `db_password`, `smtp_password`,
   `oauth2_proxy_client_ids`, `oauth2_proxy_client_secrets`,
-  `oauth2_proxy_cookie_secret`, `s3_access_key_ids`, `s3_secret_access_keys`
+  `oauth2_proxy_cookie_secret`, `s3_access_key_ids`, `s3_secret_access_keys`,
+  `cloudflare_api_dns_token`, `cloudflare_zone_id` — the last two here rather
+  than in `tf/deps` beside the other `cloudflare_*` values, because the root
+  module that renders the reconciler's pod is the one that can reach them and
+  the two roots share no state
 - `tf/deps/secrets.auto.tfvars`: `keycloak_admin_password`, `smtp_*`,
   `cloudflare_*`, `grafana_admin_password`, `garage_admin_token`,
   `garage_rpc_secret`

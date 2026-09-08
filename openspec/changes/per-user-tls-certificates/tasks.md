@@ -68,15 +68,15 @@ moving a pointer, not by creating and deleting objects in a careful order.
 
 - [x] 8.1 Verify by handshake that a name under an account's subdomain is served that account's certificate rather than the default wildcard, with no route defined for it — the complete proof that the store reaches routes that never reference it. `photos.erik.dev.freepod.eu` and `anything.erik.dev.freepod.eu` both serve `CN=*.erik.dev.freepod.eu`; before the store was written they served the default wildcard.
 - [x] 8.2 Verify a `*.freepod.eu` application and a custom-domain application are both still served exactly as before, confirming the other two certificate sources are unaffected.
-- [ ] 8.3 Verify a renewal is invisible: force one and confirm the secret name is unchanged, the store is not rewritten, and the new certificate is served without a restart.
+- [x] 8.3 Verify a renewal is invisible: force one and confirm the secret name is unchanged, the store is not rewritten, and the new certificate is served without a restart. Forced by patching `renewBefore` past the certificate's remaining life, then reverting it — cert-manager recomputes `renewalTime` from the spec, so the value has to exceed the time left, not merely be large.
 - [x] 8.4 Verify an issued account certificate carries an ECDSA P-256 key and that its secret is materially smaller than an RSA one, confirming both scaling assumptions in one check. Measured: 7.8 KB against the platform wildcard's 10.8 KB — smaller, but a quarter rather than the two thirds the change claimed; the design and spec now carry the measurement.
 
 ## 9. Documentation
 
-- [ ] 9.1 Document the three sources of Traefik's certificate store, and which of them serves what, in `tf/README.md` or `api/README.md`, and verify the account path is described as store membership rather than as anything copied.
-- [ ] 9.2 Note in the deployment reconcile documentation that an account certificate is a precondition for its deployments, that the reconcile defers while waiting and fails when the budget is exhausted, and that this is deliberately the terminal behaviour rather than one to revisit when hostnames move.
-- [ ] 9.3 Note in `tf/README.md` that `caelus-tls`, the store and the platform wildcard are cluster singletons shared by both environments, so a change to them is never dev-only however it was rolled out.
+- [x] 9.1 Document the three sources of Traefik's certificate store, and which of them serves what, in `tf/README.md` or `api/README.md`, and verify the account path is described as store membership rather than as anything copied.
+- [x] 9.2 Note in the deployment reconcile documentation that an account certificate is a precondition for its deployments, that the reconcile defers while waiting and fails when the budget is exhausted, and that this is deliberately the terminal behaviour rather than one to revisit when hostnames move.
+- [x] 9.3 Note in `tf/README.md` that `caelus-tls`, the store and the platform wildcard are cluster singletons shared by both environments, so a change to them is never dev-only however it was rolled out.
 
 ## 10. The synchronous path
 
-- [ ] 10.1 Report a deferred outcome from `caelus reconcile` and exit without polling or sleeping, and verify the deployment is left provisioning with its job untouched — the CLI reconciles in-process with no job row to defer.
+- [x] 10.1 Report a deferred outcome from `caelus reconcile` and exit without polling or sleeping, and verify the deployment is left provisioning with its job untouched — the CLI reconciles in-process with no job row to defer.

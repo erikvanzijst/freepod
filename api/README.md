@@ -428,6 +428,26 @@ Spec: [deployment-create-contract](../openspec/specs/deployment-create-contract/
 [deployment-payment-states](../openspec/specs/deployment-payment-states/spec.md),
 [deployment-release-api](../openspec/specs/deployment-release-api/spec.md)
 
+## Per-Account TLS
+
+Every account holds one wildcard certificate covering every hostname its
+applications will ever be addressed at, and a DNS record that keeps those
+hostnames resolving. Both are provisioned by the reconcile, before the Helm
+release, and neither is ever deleted. Nothing copies certificate material
+anywhere: the certificate is added to the ingress controller's certificate
+store, which serves it to routes in namespaces that never reference it.
+
+A deployment whose account holds no certificate does not complete. The
+reconcile defers — the deployment stays `provisioning` and its job returns to
+the queue — until the certificate is issued, and fails the deployment when the
+waiting budget runs out. That is the terminal behavior, not a placeholder.
+
+Spec: [account-dns-record](../openspec/specs/account-dns-record/spec.md),
+[account-tls-certificate](../openspec/specs/account-tls-certificate/spec.md),
+[platform-tls-store](../openspec/specs/platform-tls-store/spec.md) ·
+Rationale:
+[per-user-tls-certificates](../openspec/changes/per-user-tls-certificates/design.md)
+
 ## Reconcile Queue Semantics
 
 - Enqueue runs inside same transaction as deployment mutation.
@@ -457,6 +477,11 @@ Without a lease that job is never retried and its deployment stays in
 - `mark_job_done` / `mark_job_failed` take an optional `worker_id`; when given,
   the write is conditional on the job still being leased to that worker, so a
   wedged worker that wakes up late cannot overwrite the new owner's result.
+- `defer_job` returns the **same** row to `queued` with a later `run_after`,
+  for work that is unfinished rather than done or failed — a reconcile waiting
+  for its account's certificate. The same row because one open job per
+  deployment is a constraint, and `attempt` is left alone because it counts
+  lease expiries, which a deferral is not.
 
 ## Builds (Project Archive → Container Image)
 
