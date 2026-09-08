@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import logging
 from uuid import UUID
 
@@ -24,6 +24,7 @@ from app.services.template_values import bytes_to_k8s_size
 from app.services.deployments import _get_deployment_orm
 from app.services.errors import IntegrityException
 from app.services.reconcile_constants import (
+    DEPLOYMENT_STATUS_PROVISIONING,
     DEPLOYMENT_STATUS_DELETED,
     DEPLOYMENT_STATUS_ERROR,
     DEPLOYMENT_STATUS_PENDING,
@@ -84,6 +85,30 @@ def vars_secret_name(deployment: DeploymentORM, release: DeploymentReleaseORM) -
     return f"{deployment.name}-vars-{release.number}"
 
 
+def _aware(moment: datetime) -> datetime:
+    """Postgres hands back naive datetimes for these columns; compare in UTC."""
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+
+
+class CertificateExhausted(Exception):
+    """The certificate did not arrive inside the budget, so the deployment fails."""
+
+    def __init__(self, name: str, reason: str | None, budget: timedelta) -> None:
+        detail = f": {reason}" if reason else ""
+        super().__init__(
+            f"The account's TLS certificate ({name}) was not issued within "
+            f"{int(budget.total_seconds())}s{detail}"
+        )
+
+
+class CertificateNotReady(Exception):
+    """The account's certificate is not issued yet and the budget still allows waiting."""
+
+    def __init__(self, reason: str | None) -> None:
+        super().__init__(reason or "issuance is still in progress")
+        self.reason = reason
+
+
 @dataclass(frozen=True)
 class ReconcileResult:
     status: str
@@ -94,6 +119,9 @@ class ReconcileResult:
     # on the `deployment_release` row. None on the delete path and on any
     # failure that never reached Helm.
     helm_revision: int | None = None
+    # Set when the work is unfinished rather than done or failed: the deployment
+    # stays provisioning and the job goes back to the queue (D7).
+    deferred: bool = False
 
 
 class DeploymentReconciler:
@@ -109,14 +137,25 @@ class DeploymentReconciler:
         self._session = session
         self._provisioner = provisioner or default_provisioner
         self._dns_provider = dns_provider
+        self._queued_at: datetime | None = None
 
     def _dns(self) -> dns.DnsProvider:
         if self._dns_provider is None:
             self._dns_provider = dns.from_settings()
         return self._dns_provider
 
-    def reconcile(self, deployment_id: UUID) -> ReconcileResult:
+    def reconcile(
+        self, deployment_id: UUID, *, queued_at: datetime | None = None
+    ) -> ReconcileResult:
+        """Reconcile once.
+
+        ``queued_at`` is when the work was first asked for, which bounds the
+        wait for the account's certificate. The worker passes its job's
+        ``created_at``; callers with no job (the operator CLI) pass nothing and
+        get a deferred result reported rather than a wait.
+        """
         logger.info("Starting reconcile for deployment_id=%s", deployment_id)
+        self._queued_at = queued_at
         deployment = _get_deployment_orm(self._session, deployment_id=deployment_id)
         release: DeploymentReleaseORM | None = None
         try:
@@ -136,6 +175,17 @@ class DeploymentReconciler:
             else:
                 assert release is not None
                 result = self._reconcile_apply(deployment, release)
+        except CertificateNotReady as exc:
+            logger.info(
+                "Deferring reconcile for deployment_id=%s: %s", deployment_id, exc
+            )
+            result = ReconcileResult(
+                status=DEPLOYMENT_STATUS_PROVISIONING,
+                applied_template_id=deployment.applied_template_id,
+                last_error=None,
+                last_reconcile_at=datetime.now(UTC),
+                deferred=True,
+            )
         except Exception as exc:
             logger.exception("Reconcile failed for deployment_id=%s", deployment_id)
             last_error = str(exc)
@@ -148,8 +198,9 @@ class DeploymentReconciler:
                 last_reconcile_at=datetime.now(UTC),
             )
         # Both paths, success and failure, in the same transaction as the
-        # deployment's own status below.
-        if release is not None:
+        # deployment's own status below. A deferral is neither: the release has
+        # not ended, and `_record_release_outcome` writes once.
+        if release is not None and not result.deferred:
             self._record_release_outcome(release, result)
         deployment.status = result.status
         deployment.applied_template_id = result.applied_template_id
@@ -331,7 +382,7 @@ class DeploymentReconciler:
         self._ensure_account_dns(deployment, account)
         # Requested before the release so issuance and installation proceed in
         # parallel; the wait for it is D7's, and lands with the store.
-        self._provisioner.ensure_account_certificate(fqdn=account)
+        certificate = self._provisioner.ensure_account_certificate(fqdn=account)
 
         self._provisioner.ensure_namespace(name=deployment.namespace)
         self._provisioner.ensure_tenant_isolation(namespace=deployment.namespace)
@@ -365,6 +416,8 @@ class DeploymentReconciler:
             wait=True,
         )
 
+        self._await_account_certificate(certificate)
+
         # After Helm succeeds only: a rollback leaves the previous release's
         # Secret live, and reaping here would delete it.
         self._reap_vars_secrets(deployment, keep=vars_secret)
@@ -379,6 +432,28 @@ class DeploymentReconciler:
             # otherwise successful apply over.
             helm_revision=getattr(outcome, "revision", None),
         )
+
+    def _await_account_certificate(self, name: str) -> None:
+        """Refuse to finish while the account's certificate is not issued.
+
+        Not politeness about ordering. The store's membership is derived from
+        the certificates that exist, so a reconcile that completes before
+        issuance computes a list without this one, sees no difference from what
+        is stored, and writes nothing -- correctly, by its own rules. Nothing
+        revisits it: the next opportunity is the next reconcile of any
+        deployment on the platform, which on a quiet platform may never come.
+
+        Raising rather than sleeping is what keeps the worker free and the lease
+        unconsumed; the caller returns the job to the queue.
+        """
+        ready, reason = self._provisioner.account_certificate_state(name=name)
+        if ready:
+            return
+        settings = get_settings()
+        budget = timedelta(seconds=settings.account_cert_wait_budget_seconds)
+        if self._queued_at is not None and datetime.now(UTC) - _aware(self._queued_at) > budget:
+            raise CertificateExhausted(name, reason, budget)
+        raise CertificateNotReady(reason)
 
     def _ensure_account_dns(self, deployment: DeploymentORM, account: str) -> None:
         """Ensure the wildcard record for the owner's subdomain.

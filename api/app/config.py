@@ -113,6 +113,14 @@ class CaelusSettings(BaseSettings):
     # does not control the DNS of.
     account_tls_cluster_issuer: str = "letsencrypt-dns"
 
+    # How long a reconcile waits for the account's certificate before failing
+    # the deployment, measured from when its job was first queued, and how long
+    # each deferral lasts. A DNS-01 challenge settles in one to three minutes,
+    # so the budget tolerates a slow order several times over while still
+    # failing inside the window someone is plausibly still watching.
+    account_cert_wait_budget_seconds: int = 600
+    account_cert_defer_seconds: int = 20
+
     # ── DNS (per-account wildcard records) ────────────────────────────────
     # See app/services/dns.py. Empty by default so an environment with no DNS
     # provider still starts. The zone is identified by id rather than by name so

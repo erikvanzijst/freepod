@@ -48,12 +48,12 @@ moving a pointer, not by creating and deleting objects in a careful order.
 
 ## 6. Waiting for readiness
 
-- [ ] 6.1 Add `JobService.defer_job(job, *, delay)` returning the **same** row to `queued` with a future `run_after` and clearing `locked_by`/`locked_at`, and verify it leaves `attempt` untouched (it counts lease expiries) and never trips `uq_open_reconcile_job_per_deployment`.
-- [ ] 6.2 Verify a deferred job is not claimable before its `run_after` and is claimed promptly after, exercising the existing `_claimable_clause` gate.
-- [ ] 6.3 Defer the reconcile when the account's certificate is not yet Ready, leaving the deployment in `provisioning`, and verify no worker is held and no lease is consumed while waiting.
-- [ ] 6.4 Verify the deferred run completes the deployment once the certificate is Ready, and that the store contains it at that point.
-- [ ] 6.5 Bound the wait against the job's `created_at` (no new column), defaulting to a ten-minute budget and twenty-second deferrals as settings, and verify that exhausting it fails the deployment through the reconciler's existing error path, with a cause that names the certificate rather than reading as a release failure.
-- [ ] 6.6 Verify a certificate issued after a deployment failed waiting is not deleted, and that a subsequent reconcile of that deployment finds it issued and completes without anything being reset by hand.
+- [x] 6.1 Add `JobService.defer_job(job, *, delay)` returning the **same** row to `queued` with a future `run_after` and clearing `locked_by`/`locked_at`, and verify it leaves `attempt` untouched (it counts lease expiries) and never trips `uq_open_reconcile_job_per_deployment`.
+- [x] 6.2 Verify a deferred job is not claimable before its `run_after` and is claimed promptly after, exercising the existing `_claimable_clause` gate.
+- [x] 6.3 Defer the reconcile when the account's certificate is not yet Ready, leaving the deployment in `provisioning`, and verify no worker is held and no lease is consumed while waiting.
+- [x] 6.4 Verify the deferred run completes the deployment once the certificate is Ready. That the store contains it at that point is section 7's, and is verified there — nothing writes the store yet.
+- [x] 6.5 Bound the wait against the job's `created_at` (no new column), defaulting to a ten-minute budget and twenty-second deferrals as settings, and verify that exhausting it fails the deployment through the reconciler's existing error path, with a cause that names the certificate rather than reading as a release failure. The cause carries the certificate's name, the budget and whatever cert-manager's Ready condition says — which while issuance is in flight is a generic in-progress message, because a genuine refusal (an exhausted allowance, a rejected challenge) surfaces on the `Order` rather than on the `Certificate`. Reading through to it is worth doing only if these failures turn out to be hard to diagnose in practice.
+- [x] 6.6 Verify a certificate issued after a deployment failed waiting is not deleted, and that a subsequent reconcile of that deployment finds it issued and completes without anything being reset by hand.
 
 ## 7. Store membership
 

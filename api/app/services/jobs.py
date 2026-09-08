@@ -177,6 +177,62 @@ class JobService:
         )
         return job
 
+    def defer_job(
+        self, *, job_id: int, delay: timedelta, worker_id: str | None = None
+    ) -> DeploymentReconcileJobORM:
+        """Return a claimed job to the queue, to run again after *delay*.
+
+        The **same** row, not a successor: ``uq_open_reconcile_job_per_deployment``
+        permits one open job per deployment across queued and running, so
+        enqueuing a replacement while this one is still running is refused.
+
+        ``attempt`` is deliberately untouched. It counts lease expiries -- how
+        often a worker died holding this job -- and a deferral is the opposite
+        of that: the worker is alive, finished its turn, and gave the job back.
+
+        Conditional on still holding the lease, like ``_complete_job``: a worker
+        that was merely wedged must not hand back a job somebody else now owns.
+        """
+        job = self._session.get(DeploymentReconcileJobORM, job_id)
+        if job is None:
+            raise NotFoundException("Job not found")
+        now = datetime.now(UTC)
+        run_after = now + delay
+        stmt = (
+            update(DeploymentReconcileJobORM)
+            .where(DeploymentReconcileJobORM.id == job_id)
+            .values(
+                status=JOB_STATUS_QUEUED,
+                run_after=run_after,
+                locked_by=None,
+                locked_at=None,
+                updated_at=now,
+            )
+        )
+        if worker_id is not None:
+            stmt = stmt.where(DeploymentReconcileJobORM.locked_by == worker_id)
+        result = self._session.execute(stmt, execution_options={"synchronize_session": False})
+        applied = result.rowcount == 1
+        self._session.commit()
+        self._session.refresh(job)
+        if not applied:
+            logger.warning(
+                "Refusing to defer reconcile job id=%s for worker_id=%s: lease is no longer "
+                "held by this worker (locked_by=%s status=%s)",
+                job_id,
+                worker_id,
+                job.locked_by,
+                job.status,
+            )
+        else:
+            logger.info(
+                "Deferred reconcile job id=%s deployment_id=%s until %s",
+                job_id,
+                job.deployment_id,
+                run_after,
+            )
+        return job
+
     def _complete_job(
         self,
         *,

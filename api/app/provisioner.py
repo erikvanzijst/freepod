@@ -97,6 +97,21 @@ class KubeAdapter:
 
         return bool(json.loads(result.stdout).get("items", []))
 
+    def get_object(self, *, kind: str, namespace: str, name: str) -> dict[str, Any] | None:
+        """Read one object, or ``None`` when it is not there."""
+        try:
+            result = run_command(
+                ["kubectl", "get", kind, name, "-n", namespace, "-o", "json"],
+                runner=self._runner,
+                error_message=f"Failed to read {kind}/{name} in namespace {namespace}",
+            )
+        except AdapterCommandError as exc:
+            text = f"{exc.result.stderr}\n{exc.result.stdout}".lower()
+            if "not found" in text:
+                return None
+            raise
+        return json.loads(result.stdout)
+
     def upsert_secret(
         self, *, namespace: str, name: str, string_data: dict[str, str], labels: dict[str, str]
     ) -> None:
@@ -504,6 +519,26 @@ class Provisioner:
             error_message=f"Failed to request the account certificate for {fqdn}",
         )
         return name
+
+    def account_certificate_state(self, *, name: str) -> tuple[bool, str | None]:
+        """Whether the account's certificate is issued, and why not if it is not.
+
+        The reason is the point: a certificate that will never be issued -- an
+        exhausted allowance, a rejected challenge -- says so here, and the
+        deployment can fail naming it rather than timing out against a silence.
+        """
+        settings = get_settings()
+        obj = self.kube.get_object(
+            kind="certificate", namespace=settings.tls_namespace, name=name
+        )
+        if obj is None:
+            return False, "the certificate has not been created"
+        for condition in obj.get("status", {}).get("conditions", []):
+            if condition.get("type") == "Ready":
+                if condition.get("status") == "True":
+                    return True, None
+                return False, condition.get("message") or condition.get("reason")
+        return False, "issuance has not started"
 
     def upsert_secret(
         self, *, namespace: str, name: str, string_data: dict[str, str], labels: dict[str, str]

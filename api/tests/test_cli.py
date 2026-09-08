@@ -7,6 +7,8 @@ import yaml
 from PIL import Image
 
 from app.db import session_scope
+from datetime import UTC, datetime
+
 from app.models import DeploymentORM, DeploymentReconcileJobORM
 from app.services.jobs import JobService
 from app.services import templates as template_service, reconcile as reconcile_service
@@ -1060,6 +1062,9 @@ def test_cli_reconcile_command_reconciles_deployment(cli_runner, monkeypatch):
         def ensure_account_certificate(self, *, fqdn: str):
             return "acct-" + fqdn.replace(".", "-")
 
+        def account_certificate_state(self, *, name: str):
+            return True, None
+
         def helm_upgrade_install(self, **kwargs):
             return None
 
@@ -1102,6 +1107,9 @@ class _FakeProvisioner:
 
     def ensure_account_certificate(self, *, fqdn: str):
         return "acct-" + fqdn.replace(".", "-")
+
+    def account_certificate_state(self, *, name: str):
+        return True, None
 
     def helm_upgrade_install(self, **kwargs):
         return None
@@ -1203,6 +1211,39 @@ def test_cli_worker_processes_job_successfully(cli_runner, monkeypatch):
 
     # No more jobs — should return None
     assert process_one_job("worker-test") is None
+
+
+def test_cli_worker_defers_a_job_waiting_for_a_certificate(cli_runner, monkeypatch):
+    """The worker hands the job back rather than holding a process or a lease."""
+    runner, app = cli_runner
+
+    user_id, deployment_id = _seed_deployment_via_services()
+
+    class _WaitingProvisioner(_FakeProvisioner):
+        def account_certificate_state(self, *, name: str):
+            return False, "waiting for DNS-01 propagation"
+
+    monkeypatch.setattr(reconcile_service, "default_provisioner", _WaitingProvisioner())
+
+    from app.worker import process_one_job
+
+    result = process_one_job("worker-defer")
+    assert result is not None
+    assert result["status"] == "queued"
+
+    with session_scope() as session:
+        jobs = JobService(session).list_jobs(deployment_id=deployment_id, statuses=["queued"])
+        assert len(jobs) == 1
+        assert jobs[0].locked_by is None
+        assert jobs[0].attempt == 0
+        # Naive out of Postgres for this column, like every other timestamp here.
+        assert jobs[0].run_after.replace(tzinfo=UTC) > datetime.now(UTC)
+
+        deployment = session.get(DeploymentORM, deployment_id)
+        assert deployment.status == "provisioning"
+
+    # Not due yet, so the next turn of the loop finds nothing to do.
+    assert process_one_job("worker-defer") is None
 
 
 def test_cli_worker_marks_failure(cli_runner, monkeypatch):

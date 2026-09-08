@@ -763,6 +763,16 @@ def reconcile(
             )
             raise typer.Exit(code=1)
 
+        if result.deferred:
+            # No job row to hand back here, and nothing sleeps in-process: the
+            # deployment stays provisioning and the queued job carries the retry.
+            typer.echo(
+                f"Deployment {deployment_id} is waiting for its account's TLS "
+                "certificate; it remains provisioning and its queued job will "
+                "retry.",
+                err=True,
+            )
+
         _echo_yaml_entity(result)
 
 
