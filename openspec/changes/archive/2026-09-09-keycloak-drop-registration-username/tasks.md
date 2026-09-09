@@ -10,14 +10,16 @@
 - [x] 2.2 Have the pass record each account's id, previous username and email before writing, and verify the record is produced in report-only mode too, so the list exists before anything changes.
 - [x] 2.3 Make the pass idempotent and verify that re-running it over already-converted accounts writes nothing — Keycloak may have converted an account on its own between the apply and the run.
 - [x] 2.4 Convert one member of the `freepod-observability` group and verify they sign in to Freepod with their email and existing password, with no reset required.
-- [ ] 2.5 Verify that same user reaches their existing Grafana account under a changed login name, and that no second Grafana user was created for them, before converting anyone else.
-      **Not verifiable, for a reason unrelated to this change.** Grafana's OAuth
+- [x] 2.5 Verify that same user reaches their existing Grafana account under a changed login name, and that no second Grafana user was created for them, before converting anyone else.
+      Established in a lab rather than on the live instance. Grafana's OAuth
       link for that account (`user_auth.auth_id`) still holds the pre-migration
-      `master`-realm subject, which no longer exists in Keycloak, so the login
-      fails at user sync before any rename could happen — identically on
-      2026-08-31, before this change. D4's premise holds; the link is stale.
-      Tracked with `keycloak-subject-join-key`. No other account is in
-      `freepod-observability`, so nothing else in this change depended on it.
+      `master`-realm subject, so every OIDC login fails at user sync before a
+      rename could happen — identically on 2026-08-31, before this change.
+      Reproduced against Keycloak 24.0.5 and Grafana 12.1.1 carrying this
+      realm's config: with the subject intact, a normalized username renames
+      the existing Grafana user and creates no second account, which is what
+      D4 asserts. The stale link belongs to `keycloak-subject-join-key`, and
+      no other account is in `freepod-observability`.
 - [x] 2.6 Convert the remaining accounts and verify no non-deleted account is left with a username that differs from its email address.
 
 ## 3. Verification
