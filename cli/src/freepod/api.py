@@ -45,6 +45,22 @@ MAX_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 0.5
 
 
+def _json_code(response: httpx.Response) -> Optional[str]:
+    """The `code` of a JSON error body, or None.
+
+    Several refusals share a status; the platform gives the ones worth telling
+    apart a stable identifier, and matching that is what keeps a client from
+    depending on prose it does not own.
+    """
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    if isinstance(payload, dict) and isinstance(payload.get("code"), str):
+        return payload["code"]
+    return None
+
+
 def _json_detail(response: httpx.Response) -> Optional[str]:
     """The `detail` of a JSON error body, or None if the body is not one.
 
@@ -251,6 +267,33 @@ class ApiClient:
             raise FreepodError(f"unexpected /api/me response: {body!r}")
         return body
 
+    def subdomain(self) -> dict:
+        """`GET /api/me/subdomain` — always 200, even before one is claimed.
+
+        `subdomain` and `fqdn` are null until the account holds one; `domain` is
+        the platform's own and is reported either way.
+        """
+        body = self.get_json("/api/me/subdomain")
+        if not isinstance(body, dict):
+            raise FreepodError(f"unexpected /api/me/subdomain response: {body!r}")
+        return body
+
+    def check_hostname(self, fqdn: str) -> dict:
+        """`GET /api/hostnames/{fqdn}` — always 200 with `{fqdn, usable, reason}`.
+
+        Authenticated: the answer depends on who is asking, since an application
+        name is only usable beneath the caller's own domain name.
+
+        Advisory only: the name is claimed when the deployment is created, so a
+        usable answer here is not a reservation. Note the check runs without
+        `exclude_deployment_id`, so re-checking a name we already hold reports
+        `in_use` against ourselves — see design D14.
+        """
+        body = self.get_json(f"/api/hostnames/{quote(fqdn, safe='')}")
+        if not isinstance(body, dict):
+            raise FreepodError(f"unexpected hostname check response: {body!r}")
+        return body
+
     # -- public reads -----------------------------------------------------
     #
     # Everything below is on the edge's `skip_auth_routes` list and is answered
@@ -274,26 +317,6 @@ class ApiClient:
             if isinstance(product, dict) and product.get("slug") == slug:
                 return product
         return None
-
-    def domains(self) -> list:
-        """The platform's wildcard domains, most preferred first."""
-        body = self.get_json("/api/domains")
-        if not isinstance(body, list):
-            raise FreepodError(f"unexpected /api/domains response: {body!r}")
-        return [entry for entry in body if isinstance(entry, str)]
-
-    def check_hostname(self, fqdn: str) -> dict:
-        """`GET /api/hostnames/{fqdn}` — always 200 with `{fqdn, usable, reason}`.
-
-        Advisory only: the name is claimed when the deployment is created, so a
-        usable answer here is not a reservation. Note the check runs without
-        `exclude_deployment_id`, so re-checking a name we already hold reports
-        `in_use` against ourselves — see design D14.
-        """
-        body = self.get_json(f"/api/hostnames/{quote(fqdn, safe='')}")
-        if not isinstance(body, dict):
-            raise FreepodError(f"unexpected hostname check response: {body!r}")
-        return body
 
     def ssh_edge(self) -> dict:
         """`GET /api/ssh` — this environment's edge address and host key."""

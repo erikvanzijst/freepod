@@ -94,7 +94,7 @@ def test_a_piped_deploy_carries_only_the_address_on_stdout(run_deploy, tmp_path,
     assert run_deploy(ready_platform()) == EXIT_OK
 
     captured = capsys.readouterr()
-    assert captured.out == "https://myapp.freepod.eu\n"
+    assert captured.out == "https://myapp.erik.freepod.eu\n"
 
 
 def test_the_build_log_goes_to_stderr(run_deploy, tmp_path, capsys):
@@ -141,7 +141,7 @@ def test_quiet_silences_diagnostics_but_not_the_address(run_deploy, tmp_path, ca
     assert run_deploy(ready_platform(), before=["--quiet"]) == EXIT_OK
 
     captured = capsys.readouterr()
-    assert captured.out == "https://myapp.freepod.eu\n"
+    assert captured.out == "https://myapp.erik.freepod.eu\n"
     assert captured.err == ""
 
 

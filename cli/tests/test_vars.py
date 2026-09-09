@@ -77,8 +77,10 @@ class VarPlatform:
             return json_response(200, [product()])
         if re.fullmatch(r"/api/products/\d+/plans", path):
             return json_response(200, [plan()])
-        if path == "/api/domains":
-            return json_response(200, ["freepod.eu"])
+        if path == "/api/me/subdomain":
+            return json_response(
+                200, {"subdomain": "dev", "fqdn": "dev.freepod.eu", "domain": "freepod.eu"}
+            )
         if path.startswith("/api/hostnames/"):
             fqdn = path.rsplit("/", 1)[-1]
             return json_response(200, {"fqdn": fqdn, "usable": True, "reason": None})

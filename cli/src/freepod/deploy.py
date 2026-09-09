@@ -36,8 +36,9 @@ from typing import IO, Any, Callable, Dict, List, Optional, Tuple
 import httpx
 
 from . import FreepodError, RolloutFailed, UsageError
+from . import subdomain as subdomain_module
 from . import tos
-from .api import ApiClient, _json_detail
+from .api import ApiClient, _json_code, _json_detail
 from .archive import packed_archive, report
 from .build import build_image
 from . import vars as vars_module
@@ -240,6 +241,7 @@ def preflight(
     plan = None
     if deployment is None:
         plan = select_free_plan(api, product)
+        subdomain_module.require(api)
         # Only a create is gated on the terms; an update is not. Asking on
         # every deploy would be nagging for a fact the platform records once.
         tos.require(api, interactive=interactive, echo=echo)
@@ -313,7 +315,7 @@ def _settle_values(
         )
         collector = ValueCollector(
             schema,
-            domains=_domains(api),
+            account_fqdn=_account_fqdn(api),
             check_hostname=api.check_hostname,
             interactive=interactive,
         )
@@ -350,7 +352,7 @@ def _settle_hostname(
     for a custom domain it performs a live DNS lookup that is slow and
     transiently failure-prone. See design D14.
     """
-    fqdn = normalize_hostname(value, _domains(api) if "." not in value else ())
+    fqdn = normalize_hostname(value, _account_fqdn(api) if "." not in value else None)
     current = (deployment or {}).get("hostname") or ""
 
     if already_checked:
@@ -384,16 +386,17 @@ def _hostname_key(schema: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _domains(api: ApiClient) -> List[str]:
-    """The platform's wildcard domains, tolerating their absence.
+def _account_fqdn(api: ApiClient) -> Optional[str]:
+    """The account's domain name, tolerating its absence.
 
     Only needed to complete a bare label into an FQDN; a deploy whose hostname
-    is already qualified should not fail because this read did.
+    is already qualified should not fail because this read did. A create with no
+    domain name at all was already refused in preflight.
     """
     try:
-        return api.domains()
+        return subdomain_module.held(subdomain_module.read(api))
     except FreepodError:
-        return []
+        return None
 
 
 # --------------------------------------------------------------------------
@@ -583,6 +586,13 @@ def create_deployment(
     response = api.post(f"/api/users/{user_id}/deployments", json=body)
     if response.status_code == 409:
         raise _conflict(response)
+    if response.status_code == 400 and _json_code(response) == subdomain_module.DEPLOY_REFUSAL_CODE:
+        raise FreepodError(
+            f"the platform refused the deployment because this account does not "
+            f"have a domain name.\n"
+            f"  Choose one at {api.env.api_base}, then re-run.\n"
+            f"  The build succeeded and is not lost."
+        )
     if response.status_code == 400 and _json_detail(response) == tos.DEPLOY_REFUSAL:
         # Preflight settles this, so reaching it means the acceptance was
         # withdrawn in between, or the client skipped the check. Either way it

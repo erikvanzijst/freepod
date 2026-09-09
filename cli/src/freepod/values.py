@@ -14,7 +14,7 @@ exactly `["hostname"]`.
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional
 
 import click
 
@@ -29,8 +29,8 @@ HOSTNAME_TITLE = "hostname"
 #: reasons are machine codes; these are their user-facing readings.
 HOSTNAME_REASONS = {
     "invalid": "that is not a valid hostname",
-    "nested_subdomain": "nested subdomains are not allowed on a platform domain",
     "reserved": "that name is reserved by the platform",
+    "claimed": "that name is beneath a domain name another account holds",
     "in_use": "that name is already taken by another deployment",
     "not_resolving": (
         "that name does not have a CNAME pointing at the platform yet — "
@@ -99,17 +99,22 @@ def is_hostname_property(spec: Dict[str, Any]) -> bool:
     return isinstance(title, str) and title.strip().lower() == HOSTNAME_TITLE
 
 
-def normalize_hostname(value: str, domains: Sequence[str]) -> str:
-    """Lowercase, and complete a bare label with the first platform domain.
+def normalize_hostname(value: str, account_fqdn: Optional[str]) -> str:
+    """Lowercase, and complete a bare label beneath the account's domain name.
 
-    A value containing a dot is taken as already fully qualified — it may be a
+    An application is addressed at `<app>.<subdomain>.<domain>`, so a bare label
+    is completed with the account's own name rather than with a platform domain
+    chosen from a list -- there is no list, and no other name the account may
+    deploy beneath.
+
+    A value containing a dot is taken as already fully qualified: it may be a
     custom domain, which the platform supports via CNAME.
     """
     candidate = value.strip().lower().rstrip(".")
     if not candidate:
         return candidate
-    if "." not in candidate and domains:
-        return f"{candidate}.{domains[0]}"
+    if "." not in candidate and account_fqdn:
+        return f"{candidate}.{account_fqdn}"
     return candidate
 
 
@@ -130,14 +135,14 @@ class ValueCollector:
         self,
         schema: Dict[str, Any],
         *,
-        domains: Sequence[str] = (),
+        account_fqdn: Optional[str] = None,
         check_hostname: Optional[Callable[[str], Dict[str, Any]]] = None,
         interactive: bool = True,
         echo: Callable[[str], None] = lambda message: click.echo(message, err=True),
         ask: Optional[Callable[..., str]] = None,
     ):
         self.schema = schema or {}
-        self.domains = list(domains)
+        self.account_fqdn = account_fqdn
         self.check_hostname = check_hostname
         self.interactive = interactive
         self.echo = echo
@@ -228,7 +233,7 @@ class ValueCollector:
             answer = (answer or "").strip()
 
             if hostname:
-                answer = normalize_hostname(answer, self.domains)
+                answer = normalize_hostname(answer, self.account_fqdn)
                 if answer and answer != (current or "") and "." in answer:
                     self.echo(f"  → {answer}")
 
@@ -251,7 +256,7 @@ class ValueCollector:
         self, name: str, spec: Dict[str, Any], value: str, hostname: bool
     ) -> str:
         if hostname:
-            value = normalize_hostname(value, self.domains)
+            value = normalize_hostname(value, self.account_fqdn)
         problem = check_constraints(name, value, spec)
         if problem:
             raise ValueError_(f"{problem} (currently {value!r})")

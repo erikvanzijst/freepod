@@ -51,11 +51,11 @@
 
 ## 7. CLI
 
-- [ ] 7.1 Check the account's subdomain in deploy preflight before packing, for creates only, and verify no archive and no build are produced when it is missing.
-- [ ] 7.2 Write the refusal — cause, the platform origin, and that nothing was built — and verify it is distinguishable from the terms refusal and from an authentication failure, and that the platform's own `subdomain_required` code is recognized rather than its prose.
-- [ ] 7.3 Verify login and every read-only command succeed for an account holding no subdomain, and that no command or flag claims one.
-- [ ] 7.4 Complete a bare hostname in the project file under `<subdomain>.<domain>` rather than a platform wildcard domain, reading it from `GET /api/me/subdomain`, and verify a value already containing a dot is submitted unchanged.
-- [ ] 7.5 Delete `ApiClient.domains` and `_domains`, and verify no command reads `GET /api/domains`.
+- [x] 7.1 Check the account's subdomain in deploy preflight before packing, for creates only, and verify no archive and no build are produced when it is missing.
+- [x] 7.2 Write the refusal — cause, the platform origin, and that nothing was built — and verify it is distinguishable from the terms refusal and from an authentication failure, and that the platform's own `subdomain_required` code is recognized rather than its prose.
+- [x] 7.3 Verify login and every read-only command succeed for an account holding no subdomain, and that no command or flag claims one.
+- [x] 7.4 Complete a bare hostname in the project file under `<subdomain>.<domain>` rather than a platform wildcard domain, reading it from `GET /api/me/subdomain`, and verify a value already containing a dot is submitted unchanged.
+- [x] 7.5 Delete `ApiClient.domains` and `_domains`, and verify no command reads `GET /api/domains`.
 
 ## 8. Rollout and documentation
 
