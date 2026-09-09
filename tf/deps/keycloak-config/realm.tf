@@ -9,11 +9,12 @@ resource "keycloak_realm" "freepod" {
   # via the freepod-dev group and oauth2-proxy allowed_groups.
   registration_allowed = true
 
-  # The email claim is the sole join key between Keycloak and Freepod's own
-  # user records (api/app/deps.py resolves callers by lower(email); no Keycloak
-  # subject identifier is persisted anywhere). An account whose email could be
-  # set to somebody else's would take over that Freepod account, so verification
-  # is a security control and must not be relaxed.
+  # The Keycloak subject is the join key between Keycloak and Freepod's own user
+  # records (api/app/deps.py resolves callers by subject, falling back to email
+  # to adopt a record that carries no subject). Email verification and
+  # uniqueness stay load-bearing for that fallback: an account whose email could
+  # be set to somebody else's could adopt their record, so verification is a
+  # security control and must not be relaxed.
   verify_email             = true
   duplicate_emails_allowed = false
   login_with_email_allowed = true
