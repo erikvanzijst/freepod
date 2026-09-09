@@ -39,6 +39,10 @@ resource "helm_release" "grafana" {
           root_url = "https://${var.grafana_domain}/"
         }
 
+        auth = {
+          oauth_allow_insecure_email_lookup = true
+        }
+
         # Native Keycloak OIDC. Access is restricted to members of the
         # `freepod-observability` Keycloak group: allowed_groups gates login and
         # role_attribute_strict denies anyone the JMESPath maps to no role.
