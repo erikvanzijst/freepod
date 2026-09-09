@@ -126,16 +126,21 @@ class SubdomainClaim(SQLModel):
 
 
 class SubdomainRead(SQLModel):
-    """The subdomain an account holds. Both fields are null until it claims one;
-    this resource is always readable, so "not claimed yet" is a 200 rather than
-    a 404.
+    """The subdomain an account holds. `subdomain` and `fqdn` are null until it
+    claims one; this resource is always readable, so "not claimed yet" is a 200
+    rather than a 404.
 
     `fqdn` is `<subdomain>.<platform domain>` -- the name that receives the
-    account's DNS record and wildcard certificate -- and is null when no
-    platform domain is configured.
+    account's DNS record and wildcard certificate.
+
+    `domain` is the platform domain alone, reported whether or not a subdomain is
+    held, because a client offering the claim has to render the suffix before
+    there is anything to compose it with. Null when the platform has none
+    configured.
     """
     subdomain: Optional[str] = None
     fqdn: Optional[str] = None
+    domain: Optional[str] = None
 
 
 class ProductVisibility(StrEnum):

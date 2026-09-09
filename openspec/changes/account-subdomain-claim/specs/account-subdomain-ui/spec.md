@@ -7,24 +7,51 @@ decision that cannot be taken back. Mockups and a working prototype of the inter
 
 ## ADDED Requirements
 
-### Requirement: The dialog is reached from the empty dashboard and from deploying
+### Requirement: The claim is offered on the dashboard and on deploying
 
 The web interface MUST offer the claim in two places and nowhere else: on the dashboard of
 an account holding no subdomain, and on any attempt to deploy from such an account.
 
-The dashboard of an account with nothing deployed and no subdomain MUST present the claim
-as its content rather than offering an empty deployment list beside a deploy action that
+On the dashboard it MUST be presented inline, above the dashboard's own content, and MUST
+NOT replace or obscure it: an account can hold deployments and no subdomain at once — every
+existing account is in exactly that state until the rollout assigns one — and hiding running
+applications behind a name picker is a worse first impression than the empty list the
+picker was meant to avoid. It MUST NOT be presented as a modal that no one opened.
+
+What makes an empty deployment list tolerable is not that the claim replaces it but that
+the deploy action routes through the claim, so nothing on the page is an action that
 cannot succeed.
 
-#### Scenario: A new account is invited on the dashboard
+#### Scenario: The claim sits above the dashboard, not in front of it
 
-- **WHEN** a user holding no subdomain opens the dashboard with no deployments
-- **THEN** the dashboard presents the invitation to choose an address
+- **WHEN** a user holding no subdomain opens the dashboard
+- **THEN** the claim is presented above the dashboard's content, and the deployment list and
+  the application catalog are both still shown
+
+#### Scenario: Deployments are never hidden to ask
+
+- **WHEN** a user holding deployments but no subdomain opens the dashboard
+- **THEN** their deployments remain visible
+
+#### Scenario: No modal opens by itself
+
+- **WHEN** the dashboard loads for a user holding no subdomain
+- **THEN** no modal is opened
+
+#### Scenario: The field is ready to type into
+
+- **WHEN** the dashboard presents the claim
+- **THEN** the field holds focus with its prefill selected, so the name can be replaced
+  without reaching for the mouse
+
+A modal that seizes focus on load is an interruption of nothing; an inline field that takes
+it is the page offering its one task. The distinction is whether anything was interrupted.
 
 #### Scenario: Deploying without a subdomain opens the dialog first
 
 - **WHEN** a user holding no subdomain acts to deploy a product
-- **THEN** the claim dialog opens instead of the deploy dialog
+- **THEN** the claim opens as a modal instead of the deploy dialog, because the user acted
+  and expects to be returned to what they were doing
 
 #### Scenario: A claim leads straight on to deploying
 
@@ -43,7 +70,8 @@ account without a subdomain can damage.
 #### Scenario: Dismissing leaves a usable interface
 
 - **WHEN** a user dismisses the invitation
-- **THEN** the dashboard remains usable and the invitation is still reachable
+- **THEN** it collapses to a single line offering the claim, and the dashboard is otherwise
+  unchanged
 
 Dismissal MUST NOT be persisted — not on the server, and not in browser storage. It is
 state for the session the user is in, so the invitation returns on a reload. Remembering it
@@ -60,30 +88,52 @@ would be recording the decision the requirement above says is not being taken.
 - **THEN** the invitation is presented again, and nothing was written to the server or to
   browser storage
 
-### Requirement: The dialog shows a whole address, with only one part editable
+### Requirement: The address is shown whole, with only one part editable
 
-The dialog MUST present the candidate as a complete hostname — an application label, the
-user's label, and the platform domain — with only the user's part editable.
+The claim MUST always present the candidate beside the platform domain, with only the user's
+own part editable, and MUST constrain the address to a readable measure rather than letting
+it stretch to the width of its container — a label at one edge of a wide screen and its
+domain at the other is not legible as one name.
 
-A bare text field asks for a name whose significance the user cannot see. Showing the whole
-address is what makes the question legible: this is a hostname, and you are choosing one
-part of it.
+Whether an **application label** joins them depends on which question is being asked. On the
+deploy path the user is one step from creating an instance, so the whole deployment hostname
+is shown. On the dashboard they are choosing the account's own address with no application
+in mind, and an application label there answers a question nobody has asked yet.
 
-#### Scenario: The full shape is visible before anything is typed
+A bare text field asks for a name whose significance the user cannot see. Showing the domain
+alongside it is what makes the question legible: this is a hostname, and you are choosing
+one part of it.
 
-- **WHEN** the dialog opens
-- **THEN** an application label, an editable field, and the platform domain are shown as one
-  address
+#### Scenario: The shape is visible before anything is typed
+
+- **WHEN** the claim is shown
+- **THEN** an editable field and the platform domain are shown as one address
+
+#### Scenario: The deploy path shows the whole hostname
+
+- **WHEN** the claim is opened by an attempt to deploy
+- **THEN** an application label is shown in front of the address
+
+#### Scenario: The dashboard shows the account's address alone
+
+- **WHEN** the claim is presented on the dashboard
+- **THEN** no application label is shown, because no application has been chosen
 
 #### Scenario: Only the user's own part accepts input
 
 - **WHEN** the user interacts with the address
-- **THEN** the application label and the platform domain are not editable
+- **THEN** the application label, where shown, and the platform domain are not editable
+
+#### Scenario: The address does not stretch to its container
+
+- **WHEN** the claim is rendered in a container far wider than the address
+- **THEN** the address keeps a readable width rather than spanning the container
 
 ### Requirement: The application label never rests on a real name
 
-The application label MUST animate on open — candidate names passing and decelerating — and
-MUST come to rest on a placeholder that is not a usable name, never on a real one.
+Where an application label is shown, it MUST animate on open — candidate names passing and
+decelerating — and MUST come to rest on a placeholder that is not a usable name, never on a
+real one. Where none is shown, no animation runs at all.
 
 Resting on a real name asserts two things that are false: that the user chose it, and that it
 is now theirs. The placeholder reads `your app`: plain English, and with a space in it so it

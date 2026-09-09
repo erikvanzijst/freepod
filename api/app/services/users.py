@@ -128,9 +128,9 @@ def get_subdomain(user: UserORM) -> SubdomainRead:
     the wildcard domain list, because that is the name the reconciler provisions
     a DNS record and a wildcard certificate for.
     """
-    domain = get_settings().domain
+    domain = get_settings().domain or None
     fqdn = f"{user.subdomain}.{domain}" if user.subdomain and domain else None
-    return SubdomainRead(subdomain=user.subdomain, fqdn=fqdn)
+    return SubdomainRead(subdomain=user.subdomain, fqdn=fqdn, domain=domain)
 
 
 def claim_subdomain(session: Session, *, user: UserORM, subdomain: str) -> SubdomainRead:

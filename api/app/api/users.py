@@ -145,6 +145,9 @@ def get_my_subdomain(
     - **fqdn** — `<subdomain>.<platform domain>`, the name that receives the
       account's DNS record and wildcard certificate. Null when no subdomain is
       held, or when the platform has no domain configured.
+    - **domain** — the platform domain alone, reported whether or not a subdomain
+      is held: a client offering the claim needs the suffix before there is a
+      label to compose it with. Null when the platform has none configured.
     """
     return user_service.get_subdomain(current_user)
 

@@ -87,7 +87,11 @@ def test_a_first_claim_is_accepted(client, hostname_settings):
     )
 
     assert resp.status_code == 200
-    assert resp.json() == {"subdomain": "adalovelace", "fqdn": "adalovelace.freepod.eu"}
+    assert resp.json() == {
+        "subdomain": "adalovelace",
+        "fqdn": "adalovelace.freepod.eu",
+        "domain": "freepod.eu",
+    }
 
 
 def test_a_claim_is_normalized_to_lowercase(client, hostname_settings):
@@ -234,7 +238,7 @@ def test_an_unclaimed_account_reports_no_subdomain(client, hostname_settings):
     resp = client.get("/api/me/subdomain", headers=_headers(USER_EMAIL))
 
     assert resp.status_code == 200
-    assert resp.json() == {"subdomain": None, "fqdn": None}
+    assert resp.json() == {"subdomain": None, "fqdn": None, "domain": "freepod.eu"}
 
 
 def test_a_claimed_account_reports_its_fqdn(client, hostname_settings):
@@ -245,7 +249,11 @@ def test_a_claimed_account_reports_its_fqdn(client, hostname_settings):
 
     resp = client.get("/api/me/subdomain", headers=_headers(USER_EMAIL))
 
-    assert resp.json() == {"subdomain": "adalovelace", "fqdn": "adalovelace.freepod.eu"}
+    assert resp.json() == {
+        "subdomain": "adalovelace",
+        "fqdn": "adalovelace.freepod.eu",
+        "domain": "freepod.eu",
+    }
 
 
 def test_the_claim_body_rejects_unknown_fields(client, hostname_settings):

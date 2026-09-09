@@ -15,6 +15,18 @@ export interface TosAcceptance {
   accepted_at: IsoDate | null
 }
 
+/**
+ * The subdomain an account holds. `subdomain` and `fqdn` are null until it claims
+ * one; `domain` is the platform's own domain and is reported either way, so the
+ * claim dialog can render the suffix before there is a label to compose it with.
+ * Sourced from GET /api/me/subdomain.
+ */
+export interface Subdomain {
+  subdomain: string | null
+  fqdn: string | null
+  domain: string | null
+}
+
 /** Whether a product is offered to end users ('public') or hidden ('admin'). */
 export type ProductVisibility = 'public' | 'admin'
 

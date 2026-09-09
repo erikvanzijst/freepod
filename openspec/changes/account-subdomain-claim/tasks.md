@@ -31,17 +31,17 @@
 - [x] 4.3 Enforce that a hostname under a configured wildcard domain sits beneath the owning user's own subdomain, on create and on update, and verify a create or update naming another account's subdomain is refused, that the owner's own passes, and that a custom domain is unaffected.
 - [x] 4.4 Add `caelus claim-subdomain --user-id --subdomain` mirroring the endpoint, and verify `caelus create-deployment` succeeds after it and that no command changes or releases one.
 
-## 5. Web UI — the claim dialog
+## 5. Web UI — claiming a domain name
 
-- [ ] 5.1 Build the address widget — reel, editable label, static domain suffix, status adornment — and verify it renders the full hostname with only the user's part editable. Reference: <https://claude.ai/code/artifact/359c879f-7851-47a2-b869-dc25448cc756>
-- [ ] 5.2 Implement the reel: cubic ease-out over ~2.6s landing on the `your app` placeholder set in the UI face and italic, and verify it never comes to rest on a real name, that the last names before rest are readable, and that `prefers-reduced-motion` skips the animation entirely.
-- [ ] 5.3 Wire live validation against the hostname checker with the same 400 ms debounce `HostnameField` uses, and verify `invalid`, `reserved` and `claimed` each render their own message and that the claim action is unavailable while checking or refused.
-- [ ] 5.4 Re-run the reel once when a label is first reported available, and verify it does not fire on subsequent keystrokes, while the field has focus mid-edit, or under reduced motion.
-- [ ] 5.5 Prefill from the email local part, selected for replacement, and verify an unavailable prefill renders in its refused state with no substitute chosen.
-- [ ] 5.6 Add the confirmation state showing the fully qualified name with no application label, plus a way back that preserves the typed value, and verify claiming requires the second action and never a retype.
-- [ ] 5.7 Add the first-run dashboard state and verify it is dismissible, leaves the dashboard usable, remains reachable, and that dismissal reaches neither the server nor browser storage — the invitation returns on reload.
-- [ ] 5.8 Route the deploy action through the claim dialog for an account holding none, and verify the deploy flow continues after a successful claim and that no partially filled deploy form is ever discarded to ask.
-- [ ] 5.9 Add a read-only address panel to account settings showing the held address as a fact with no edit control, and verify a non-privileged user sees it.
+- [x] 5.1 Build the domain name widget — editable label, static domain suffix, status adornment, and an app-name reel on the deploy path only — and verify it renders as one contiguous name with only the user's part editable. Reference: <https://claude.ai/code/artifact/359c879f-7851-47a2-b869-dc25448cc756>
+- [x] 5.2 Implement the reel: cubic ease-out over ~2.6s landing on the `your app` placeholder set in the UI face and italic, and verify it never comes to rest on a real name, that the last names before rest are readable, and that `prefers-reduced-motion` skips the animation entirely.
+- [x] 5.3 Wire live validation against the hostname checker with the same 400 ms debounce `HostnameField` uses, and verify `invalid`, `reserved` and `claimed` each render their own message and that the claim action is unavailable while checking or refused.
+- [x] 5.4 Re-run the reel once when a label is first reported available, and verify it does not fire on subsequent keystrokes, while the field has focus mid-edit, or under reduced motion.
+- [x] 5.5 Prefill from the email local part, selected for replacement, and verify an unavailable prefill renders in its refused state with no substitute chosen.
+- [x] 5.6 Add the confirmation state showing the fully qualified name with no application label, plus a way back that preserves the typed value, and verify claiming requires the second action and never a retype.
+- [x] 5.7 Add the first-run dashboard state, inline above the dashboard's own content rather than in front of it, and verify it is dismissible, leaves the dashboard usable, remains reachable, and that dismissal reaches neither the server nor browser storage — the invitation returns on reload.
+- [x] 5.8 Route the deploy action through the claim dialog for an account holding none, and verify the deploy flow continues after a successful claim and that no partially filled deploy form is ever discarded to ask.
+- [x] 5.9 Add a read-only panel to account settings showing the held domain name as a fact with no edit control, and verify a non-privileged user sees it.
 
 ## 6. Web UI — the deploy dialog
 

@@ -1,5 +1,5 @@
 import { requestJson, requestMultipart } from './client'
-import type { Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, TosAcceptance, User, VarWrite } from './types'
+import type { Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Subdomain, TosAcceptance, User, VarWrite } from './types'
 
 export function getMe() {
   return requestJson<User>('/me')
@@ -13,6 +13,21 @@ export function recordTosAcceptance(version: string) {
   return requestJson<TosAcceptance>('/me/tos-acceptance', {
     method: 'POST',
     body: JSON.stringify({ version }),
+  })
+}
+
+export function getMySubdomain() {
+  return requestJson<Subdomain>('/me/subdomain')
+}
+
+/**
+ * Claim the account's permanent address. Refused with `subdomain_already_claimed`
+ * once one is held — there is no second claim, and no way back.
+ */
+export function claimSubdomain(subdomain: string) {
+  return requestJson<Subdomain>('/me/subdomain', {
+    method: 'POST',
+    body: JSON.stringify({ subdomain }),
   })
 }
 

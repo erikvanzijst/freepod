@@ -163,6 +163,11 @@ The fully qualified name it reports MUST be `<label>.<platform domain>` — the 
 actually receives a DNS record and a wildcard certificate — so that what a client displays
 and what the reconciler provisions cannot diverge.
 
+It MUST also report the platform domain on its own, whether or not a subdomain is held. A
+client offering the claim has to render the suffix before there is a label to compose it
+with, and that suffix is not otherwise discoverable: it is the platform's own domain, not
+one of a list to choose from.
+
 #### Scenario: An unclaimed account reports no subdomain
 
 - **WHEN** a user holding none reads their subdomain
@@ -172,7 +177,13 @@ and what the reconciler provisions cannot diverge.
 
 - **WHEN** a user holding `adalovelace` reads their subdomain on a platform whose domain is
   `freepod.eu`
-- **THEN** the response reports `adalovelace` and `adalovelace.freepod.eu`
+- **THEN** the response reports `adalovelace`, `adalovelace.freepod.eu`, and `freepod.eu`
+
+#### Scenario: An unclaimed account still learns the suffix
+
+- **WHEN** a user holding no subdomain reads their subdomain
+- **THEN** the response reports the platform domain, so the claim can render the address it
+  is offering
 
 ### Requirement: Availability is answered by the existing hostname check
 

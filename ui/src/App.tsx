@@ -24,6 +24,9 @@ const UsersPanel = lazy(() =>
 const PlansPanel = lazy(() =>
   import('./components/PlansPanel').then((m) => ({ default: m.PlansPanel })),
 )
+const SubdomainPanel = lazy(() =>
+  import('./components/subdomain/SubdomainPanel').then((m) => ({ default: m.SubdomainPanel })),
+)
 const SshKeysPanel = lazy(() =>
   import('./components/SshKeysPanel').then((m) => ({ default: m.SshKeysPanel })),
 )
@@ -62,7 +65,8 @@ function AuthedApp() {
         <Route element={<AppShellLayout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />}>
-            <Route index element={<Navigate to="ssh-keys" replace />} />
+            <Route index element={<Navigate to="domain" replace />} />
+            <Route path="domain" element={<SubdomainPanel />} />
             <Route path="ssh-keys" element={<SshKeysPanel />} />
           </Route>
           <Route path="/admin" element={<Admin />}>

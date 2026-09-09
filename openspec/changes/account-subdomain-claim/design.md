@@ -190,6 +190,32 @@ account's namespace — but the authoritative refusal is the one at create, beca
 the path a client cannot skip. This is the same shape as the ToS precondition: the client is
 told early as a courtesy and the server enforces it regardless.
 
+### D12: The dashboard renders the picker inline; only the deploy path uses a modal
+
+An earlier build put a card on the dashboard whose only action was to open the modal, and
+hid the rest of the dashboard behind it. Both halves were wrong.
+
+The card carried nothing the picker does not: it repeated the same heading and lede, its
+static preview was a worse version of the reel, and it put the odometer — the one device
+that explains what the left-hand slot is — behind a click. Auto-opening the modal instead
+was rejected for a different reason: a modal is a response to an action, and one that opens
+by itself dims an empty page, steals focus on load, and turns Escape into an accidental
+answer to a permanent question.
+
+Hiding the dashboard was the worse half. An account can hold deployments and no subdomain
+at once — every existing account is in that state until the rollout — so the takeover would
+have greeted them with their running applications replaced by a name picker.
+
+So the dashboard renders the picker inline above its own content, and the modal survives
+only where the user acted and expects to be returned: the deploy path. One component, two
+containers.
+
+The odometer belongs to only one of them. It answers "what goes in front of my address?",
+which is a live question on the deploy path and a premature one on the dashboard, where the
+user has chosen no application and is being asked for the account's own name. Dropping it
+there also stops the field needing three columns, which is what made it sprawl across a wide
+screen; the address is capped at a readable measure in both containers regardless.
+
 ### D11: The wildcard domains endpoint is deleted, not just unused
 
 `GET /api/domains` existed so a client could offer a choice of wildcard domain to
