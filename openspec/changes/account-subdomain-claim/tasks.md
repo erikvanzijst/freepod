@@ -59,6 +59,6 @@
 
 ## 8. Rollout and documentation
 
-- [ ] 8.1 Assign subdomains to the accounts on dev and move their deployments' hostnames beneath them, and verify each deployment reconciles and serves on its new name.
-- [ ] 8.2 Document the subdomain in `api/README.md` beside ToS acceptance as the second user-level precondition for deploying, and verify the described refusals match the implementation.
-- [ ] 8.3 Verify the FastAPI public routes and oauth2-proxy's `skip_auth_routes` agree after the hostname check leaves both.
+- [x] 8.1 Assign subdomains to the accounts on dev and move their deployments' hostnames beneath them, and verify each deployment reconciles and serves on its new name.
+- [x] 8.2 Document the subdomain in `api/README.md` beside ToS acceptance as the second user-level precondition for deploying, and verify the described refusals match the implementation.
+- [x] 8.3 Verify the FastAPI public routes and oauth2-proxy's `skip_auth_routes` agree after the hostname check leaves both.

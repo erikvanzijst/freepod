@@ -83,9 +83,16 @@ before/without per-request auth:
 - Plans: `GET /api/products/{id}/plans`, `GET /api/plans/{id}`,
   `GET /api/plans/{id}/templates`
 - CNAME target: `GET /api/cname-target`
+- SSH edge: `GET /api/ssh`
 - Docs & schema: `GET /api/docs`, `GET /api/redoc`,
   `GET /api/openapi.json`
 - Static files: `GET /api/static/*` (including product icons)
+
+`POST /api/webhooks/*` is public in the app and deliberately *absent* from
+`skip_auth_routes`: it reaches FastAPI through its own ingress
+(`tf/app/caelus/ingress.tf`), which never passes through the forward-auth
+middleware. Mollie POSTs there with no session, so the route bypasses the edge
+gate rather than being excused from it.
 
 `GET /api/me` is a related special case: it *does* run
 `get_current_user`, returning the user when the header is present and
@@ -397,6 +404,15 @@ Spec: [deployment-release-ledger](../openspec/specs/deployment-release-ledger/sp
 ## Critical Invariants
 
 - Active user emails are unique (`deleted_at IS NULL` scoped uniqueness).
+- An account subdomain, once claimed, belongs to that account permanently and
+  is never claimable by another — the one uniqueness guarantee here that spans
+  deleted rows as well as active ones. Certificate transparency has already
+  published the name, so releasing it would hand a stranger the traffic, links
+  and DNS caches of the previous holder. Enforced in two places, because
+  neither covers the other: `uq_user_subdomain_active` is partial
+  (`deleted_at IS NULL`, mirroring `uq_user_active` for email) and so only
+  constrains live rows, while the claim check queries the column unfiltered
+  and is what refuses a deleted account's label.
 - Active product names are unique (`deleted_at IS NULL` scoped uniqueness).
 - Active product slugs are unique (`deleted_at IS NULL` scoped uniqueness).
 - `product.slug` and `product.curated` are written only by `CatalogReconciler`;
@@ -426,6 +442,19 @@ delete path ends `deleted`; failure stores `error` and `last_error`.
 Spec: [deployment-create-contract](../openspec/specs/deployment-create-contract/spec.md),
 [deployment-payment-states](../openspec/specs/deployment-payment-states/spec.md),
 [deployment-release-api](../openspec/specs/deployment-release-api/spec.md)
+
+## The Account Domain Name
+
+Every account holds one permanent DNS label, and every application it deploys
+is addressed beneath it at `<app>.<subdomain>.<domain>`. It is claimed once
+through its own resource and is never changed, released, or transferred — not
+by any endpoint, not on account deletion.
+
+Spec: [account-subdomain-record](../openspec/specs/account-subdomain-record/spec.md),
+[hostname-validation](../openspec/specs/hostname-validation/spec.md),
+[deployment-create-contract](../openspec/specs/deployment-create-contract/spec.md) ·
+Rationale:
+[account-subdomain-claim](../openspec/changes/account-subdomain-claim/design.md)
 
 ## Per-Account TLS
 
