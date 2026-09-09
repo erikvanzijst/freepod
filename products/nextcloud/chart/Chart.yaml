@@ -4,7 +4,7 @@ description: >-
   Lean Caelus-native chart for Nextcloud: the Nextcloud Deployment plus a bundled
   PostgreSQL StatefulSet on the official postgres image.
 type: application
-version: 0.2.1
+version: 0.2.2
 appVersion: "34.0.2"
 keywords:
   - nextcloud

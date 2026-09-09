@@ -32,14 +32,17 @@ data:
     # Runs from /docker-entrypoint-hooks.d/before-starting on every boot, after
     # the entrypoint's `occ upgrade`. DB migrations are therefore already applied
     # and the schema version matches the code, which is exactly the state these
-    # commands require. Everything here is what Nextcloud deliberately defers out
-    # of the automatic upgrade (because it can be slow on big instances) and then
-    # nags the admin to run by hand -- work that is trivial at Freepod's scale.
+    # commands require.
     #
     # All steps are idempotent no-ops once applied, so re-running each boot is
     # cheap and also catches changes that later-installed apps introduce without
     # a core upgrade. Best-effort (no `set -e`): a failed step must not keep the
     # instance from starting.
+    #
+    # The db:* and maintenance:repair steps are what Nextcloud deliberately
+    # defers out of the automatic upgrade (because it can be slow on big
+    # instances) and then nags the admin to run by hand -- work that is trivial
+    # at Freepod's scale.
     #
     # add-missing-*: clears the "missing indices/columns/primary keys" warning.
     php /var/www/html/occ db:add-missing-indices
@@ -48,6 +51,25 @@ data:
     # --include-expensive: runs the deferred repair steps, notably the mimetype
     # migration ("mimetype migrations available" warning).
     php /var/www/html/occ maintenance:repair --include-expensive
+    # Reconcile the persisted trusted_domains with the chart's host. This is NOT
+    # redundant with NEXTCLOUD_TRUSTED_DOMAINS: the image applies that variable
+    # only in its initial-install branch, and ignores it on every later boot
+    # because config.php already exists on the data PVC. So after a hostname
+    # change the OLD host stays persisted, Nextcloud answers 400 to any request
+    # whose Host header is not trusted, and the pod fails the /status.php
+    # startup probe -- 30 x 10s, which is exactly the platform's Helm timeout,
+    # so `helm upgrade --atomic` rolls the release back and silently reverts the
+    # ingress to the old hostname while the database keeps the new one. It
+    # presents as a Helm timeout and is not one.
+    #
+    # Index assignment mirrors the entrypoint's own install-time loop: index 0
+    # is the installer's `localhost`, and the chart's hosts own index 1 upward,
+    # so this rewrites only slots the platform already owns.
+    idx=1
+    for domain in $NEXTCLOUD_TRUSTED_DOMAINS; do
+        php /var/www/html/occ config:system:set trusted_domains "$idx" --value="$domain"
+        idx=$((idx + 1))
+    done
 ---
 apiVersion: v1
 kind: ConfigMap
