@@ -454,7 +454,7 @@ Spec: [account-subdomain-record](../openspec/specs/account-subdomain-record/spec
 [hostname-validation](../openspec/specs/hostname-validation/spec.md),
 [deployment-create-contract](../openspec/specs/deployment-create-contract/spec.md) ·
 Rationale:
-[account-subdomain-claim](../openspec/changes/account-subdomain-claim/design.md)
+[account-subdomain-claim](../openspec/changes/archive/2026-09-09-account-subdomain-claim/design.md)
 
 ## Per-Account TLS
 

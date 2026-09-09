@@ -118,6 +118,14 @@ This repository is a monorepo with:
   [account-tls-certificate](openspec/specs/account-tls-certificate/spec.md),
   [platform-tls-store](openspec/specs/platform-tls-store/spec.md) · Rationale:
   [per-user-tls-certificates](openspec/changes/archive/2026-09-08-per-user-tls-certificates/design.md)
+- **Every account holds one permanent domain name**, and every application it
+  deploys is addressed beneath it at `<app>.<subdomain>.<domain>`. It is claimed
+  once and never changed or released, not even on account deletion. Spec:
+  [account-subdomain-record](openspec/specs/account-subdomain-record/spec.md),
+  [account-subdomain-ui](openspec/specs/account-subdomain-ui/spec.md),
+  [cli-subdomain-claim](openspec/specs/cli-subdomain-claim/spec.md),
+  [hostname-validation](openspec/specs/hostname-validation/spec.md) · Rationale:
+  [account-subdomain-claim](openspec/changes/archive/2026-09-09-account-subdomain-claim/design.md)
 - Products are either **curated** (declared in `products/catalog/<slug>.yaml`,
   reconciled into the database on rollout, and read-only through the API, CLI,
   and admin UI apart from `visibility`) or **non-curated** (database-authored).
