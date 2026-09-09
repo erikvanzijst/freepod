@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 import logging
 import multiprocessing
 import os
@@ -7,6 +8,7 @@ import signal
 import time
 
 from app import db
+from app.config import get_settings
 from app.db import session_scope
 from app.services import (
     reconcile as reconcile_service,
@@ -39,14 +41,23 @@ def process_one_job(base_worker_id: str) -> dict | None:
         locked_at = claimed.locked_at
 
         reconciler = reconcile_service.DeploymentReconciler(session=session)
-        result = reconciler.reconcile(deployment_id)
+        result = reconciler.reconcile(deployment_id, queued_at=claimed.created_at)
 
         # Report the result under our own worker id: if this process was wedged
         # long enough for its lease to be reclaimed, the job now belongs to
         # another worker and these calls must not clobber its outcome. The
         # returned row carries whatever status actually stuck.
         last_error: str | None = result.last_error
-        if result.status == DEPLOYMENT_STATUS_ERROR:
+        if result.deferred:
+            # Unfinished, not failed: the same row goes back to the queue with a
+            # later eligibility time, so no worker and no lease is held while the
+            # account's certificate is issued.
+            completed = jobs.defer_job(
+                job_id=job_id,
+                delay=timedelta(seconds=get_settings().account_cert_defer_seconds),
+                worker_id=effective_worker_id,
+            )
+        elif result.status == DEPLOYMENT_STATUS_ERROR:
             completed = jobs.mark_job_failed(
                 job_id=job_id,
                 error=result.last_error or "unknown error",

@@ -10,55 +10,55 @@ vi.mock('../api/endpoints', () => ({
 
 describe('HostnameField', () => {
   describe('mode selection', () => {
-    it('defaults to custom mode when no wildcard domains', () => {
+    it('defaults to custom mode when the account has no domain name yet', () => {
       const onChange = vi.fn()
-      render(<HostnameField value="" onChange={onChange} wildcardDomains={[]} />)
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
 
       expect(screen.getByLabelText('Hostname')).toBeInTheDocument()
       expect(screen.queryByText('Free domain')).not.toBeInTheDocument()
     })
 
-    it('defaults to wildcard mode when wildcard domains are provided', () => {
+    it('defaults to Freepod mode when the account holds a domain name', () => {
       const onChange = vi.fn()
       render(
-        <HostnameField value="" onChange={onChange} wildcardDomains={['app.example.com']} />,
+        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
       )
 
       expect(screen.getByLabelText('Hostname')).toBeInTheDocument()
-      expect(screen.getByText('app.example.com')).toBeInTheDocument()
+      expect(screen.getByText('.app.example.com')).toBeInTheDocument()
       expect(screen.getByText('Free domain')).toBeInTheDocument()
       expect(screen.getByText('Custom domain')).toBeInTheDocument()
     })
 
-    it('switches from wildcard to custom mode', () => {
+    it('switches from Freepod to custom mode', () => {
       const onChange = vi.fn()
       render(
-        <HostnameField value="" onChange={onChange} wildcardDomains={['app.example.com']} />,
+        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
       )
 
       fireEvent.click(screen.getByText('Custom domain'))
       expect(screen.getByLabelText('Hostname')).toBeInTheDocument()
     })
 
-    it('switches from custom back to wildcard mode', () => {
+    it('switches from custom back to Freepod mode', () => {
       const onChange = vi.fn()
       render(
-        <HostnameField value="" onChange={onChange} wildcardDomains={['app.example.com']} />,
+        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
       )
 
       fireEvent.click(screen.getByText('Custom domain'))
       fireEvent.click(screen.getByText('Free domain'))
-      expect(screen.getByText('app.example.com')).toBeInTheDocument()
+      expect(screen.getByText('.app.example.com')).toBeInTheDocument()
     })
   })
 
   describe('value composition', () => {
-    it('combines prefix and domain in wildcard mode', async () => {
+    it('combines the app name with the account domain name', async () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'myapp.app.example.com', usable: true, reason: null })
 
       render(
-        <HostnameField value="" onChange={onChange} wildcardDomains={['app.example.com']} />,
+        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
       )
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'myapp' } })
@@ -72,7 +72,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'myapp.custom.com', usable: true, reason: null })
 
-      render(<HostnameField value="" onChange={onChange} wildcardDomains={[]} />)
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'myapp.custom.com' } })
 
@@ -81,10 +81,10 @@ describe('HostnameField', () => {
       })
     })
 
-    it('does not call onChange for empty prefix in wildcard mode', () => {
+    it('does not call onChange for an empty app name', () => {
       const onChange = vi.fn()
       render(
-        <HostnameField value="" onChange={onChange} wildcardDomains={['app.example.com']} />,
+        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
       )
 
       expect(onChange).not.toHaveBeenCalled()
@@ -96,7 +96,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'test.example.com', usable: true, reason: null })
 
-      render(<HostnameField value="" onChange={onChange} wildcardDomains={[]} />)
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'test.example.com' } })
 
@@ -113,7 +113,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockClear()
 
-      render(<HostnameField value="" onChange={onChange} wildcardDomains={[]} />)
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
 
       // Type something then clear it
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'x' } })
@@ -128,7 +128,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'good.example.com', usable: true, reason: null })
 
-      render(<HostnameField value="" onChange={onChange} wildcardDomains={[]} />)
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'good.example.com' } })
 
@@ -141,7 +141,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'bad', usable: false, reason: 'invalid' })
 
-      render(<HostnameField value="" onChange={onChange} wildcardDomains={[]} />)
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'bad' } })
 
@@ -155,7 +155,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'taken.example.com', usable: false, reason: 'in_use' })
 
-      render(<HostnameField value="" onChange={onChange} wildcardDomains={[]} />)
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'taken.example.com' } })
 
@@ -168,7 +168,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'smtp.example.com', usable: false, reason: 'reserved' })
 
-      render(<HostnameField value="" onChange={onChange} wildcardDomains={[]} />)
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'smtp.example.com' } })
 
@@ -178,13 +178,13 @@ describe('HostnameField', () => {
     })
   })
 
-  describe('wildcard prefix dot stripping', () => {
-    it('strips dots from prefix input in wildcard mode', async () => {
+  describe('app name dot stripping', () => {
+    it('strips dots from the app name', async () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'foobar.app.example.com', usable: true, reason: null })
 
       render(
-        <HostnameField value="" onChange={onChange} wildcardDomains={['app.example.com']} />,
+        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
       )
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'foo.bar' } })
@@ -198,7 +198,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'foo.bar.example.com', usable: true, reason: null })
 
-      render(<HostnameField value="" onChange={onChange} wildcardDomains={[]} />)
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'foo.bar.example.com' } })
 
@@ -208,17 +208,34 @@ describe('HostnameField', () => {
     })
   })
 
-  describe('nested subdomain reason label', () => {
-    it('shows nested subdomain error message', async () => {
+  describe('claimed reason label', () => {
+    it('names another account as the holder', async () => {
       const onChange = vi.fn()
-      checkHostnameMock.mockResolvedValue({ fqdn: 'foo.bar.dev.example.com', usable: false, reason: 'nested_subdomain' })
+      checkHostnameMock.mockResolvedValue({ fqdn: 'app.other.example.com', usable: false, reason: 'claimed' })
 
-      render(<HostnameField value="" onChange={onChange} wildcardDomains={[]} />)
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
 
-      fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'foo.bar.dev.example.com' } })
+      fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'app.other.example.com' } })
 
       await waitFor(() => {
-        expect(screen.getByText('Only a single subdomain level is allowed')).toBeInTheDocument()
+        expect(
+          screen.getByText('That domain name belongs to another account'),
+        ).toBeInTheDocument()
+      })
+    })
+
+    it('renders no message for the retired nested_subdomain reason', async () => {
+      const onChange = vi.fn()
+      checkHostnameMock.mockResolvedValue({ fqdn: 'a.b.example.com', usable: false, reason: 'nested_subdomain' })
+
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+
+      fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'a.b.example.com' } })
+
+      await waitFor(() => {
+        expect(
+          screen.queryByText('Only a single subdomain level is allowed'),
+        ).not.toBeInTheDocument()
       })
     })
   })
@@ -228,7 +245,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'app.example.com', usable: false, reason: 'not_resolving' })
 
-      render(<HostnameField value="" onChange={onChange} wildcardDomains={[]} cnameTarget="dev.freepod.eu" />)
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} cnameTarget="dev.freepod.eu" />)
 
       // Custom-mode helper text reflects the environment-specific target
       expect(
@@ -246,7 +263,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'app.example.com', usable: false, reason: 'not_resolving' })
 
-      render(<HostnameField value="" onChange={onChange} wildcardDomains={[]} />)
+      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'app.example.com' } })
 
@@ -256,49 +273,49 @@ describe('HostnameField', () => {
     })
   })
 
-  describe('async domain loading', () => {
-    it('switches to wildcard mode when domains arrive after mount', () => {
+  describe('async account domain name', () => {
+    it('switches to Freepod mode when the account domain name arrives after mount', () => {
       const onChange = vi.fn()
       const { rerender } = render(
-        <HostnameField value="" onChange={onChange} wildcardDomains={[]} />,
+        <HostnameField value="" onChange={onChange} accountFqdn={null} />,
       )
 
-      // Initially in custom mode (no domains yet)
+      // Initially in custom mode: no account domain name yet
       expect(screen.getByLabelText('Hostname')).toBeInTheDocument()
       expect(screen.queryByText('Free domain')).not.toBeInTheDocument()
 
       // Domains arrive asynchronously
       rerender(
-        <HostnameField value="" onChange={onChange} wildcardDomains={['app.example.com']} />,
+        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
       )
 
-      // Should switch to wildcard mode with domain pre-selected
+      // Switched to Freepod mode, rendering the account's own suffix
       expect(screen.getByText('Free domain')).toBeInTheDocument()
-      expect(screen.getByText('app.example.com')).toBeInTheDocument()
+      expect(screen.getByText('.app.example.com')).toBeInTheDocument()
     })
   })
 
   describe('initial value sync', () => {
-    it('splits initial value into prefix and domain in wildcard mode', () => {
+    it('splits an initial value into app name and account domain name', () => {
       const onChange = vi.fn()
       render(
         <HostnameField
           value="myapp.app.example.com"
           onChange={onChange}
-          wildcardDomains={['app.example.com']}
+          accountFqdn="app.example.com"
         />,
       )
 
       expect(screen.getByLabelText('Hostname')).toHaveValue('myapp')
     })
 
-    it('falls back to custom mode when value does not match any wildcard domain', () => {
+    it('falls back to custom mode when the value sits under no account domain name', () => {
       const onChange = vi.fn()
       render(
         <HostnameField
           value="myapp.other.com"
           onChange={onChange}
-          wildcardDomains={['app.example.com']}
+          accountFqdn="app.example.com"
         />,
       )
 
@@ -313,7 +330,7 @@ describe('HostnameField', () => {
         <HostnameField
           value=""
           onChange={onChange}
-          wildcardDomains={[]}
+          accountFqdn={null}
           error="Server rejected hostname"
         />,
       )
@@ -331,7 +348,7 @@ describe('HostnameField', () => {
         <HostnameField
           value="existing.example.com"
           onChange={onChange}
-          wildcardDomains={[]}
+          accountFqdn={null}
           initialHostname="existing.example.com"
         />,
       )
@@ -354,7 +371,7 @@ describe('HostnameField', () => {
         <HostnameField
           value=""
           onChange={onChange}
-          wildcardDomains={[]}
+          accountFqdn={null}
           initialHostname="existing.example.com"
         />,
       )
@@ -375,7 +392,7 @@ describe('HostnameField', () => {
         <HostnameField
           value=""
           onChange={onChange}
-          wildcardDomains={[]}
+          accountFqdn={null}
           initialHostname="original.example.com"
         />,
       )

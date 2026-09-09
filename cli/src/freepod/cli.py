@@ -50,6 +50,7 @@ from .config import (
     wait_seconds,
 )
 from .project import PROJECT_FILE, find_project_root, load
+from . import subdomain
 from .values import ValueCollector
 
 
@@ -304,7 +305,7 @@ def init(context: Context, force: bool) -> None:
 
         collector = ValueCollector(
             schema,
-            domains=api.domains(),
+            account_fqdn=subdomain.require(api),
             check_hostname=api.check_hostname,
         )
         values = collector.collect()

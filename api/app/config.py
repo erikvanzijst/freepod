@@ -101,6 +101,37 @@ class CaelusSettings(BaseSettings):
     # under a live, healthy one. 600s leaves ~2x margin.
     reconcile_job_lease_seconds: int = 600
 
+    # ── Per-account TLS ───────────────────────────────────────────────────
+    # Account certificates and the platform wildcard share one namespace, and
+    # the store Traefik serves from lives there too: a store's certificate
+    # references carry no namespace and resolve in its own.
+    tls_namespace: str = "caelus-tls"
+    tls_store_name: str = "default"
+
+    # DNS-01, because an account's names are wildcards. Distinct from
+    # `tls_cluster_issuer`, which is HTTP-01 for custom domains the platform
+    # does not control the DNS of.
+    account_tls_cluster_issuer: str = "letsencrypt-dns"
+
+    # How long a reconcile waits for the account's certificate before failing
+    # the deployment, measured from when its job was first queued, and how long
+    # each deferral lasts. A DNS-01 challenge settles in one to three minutes,
+    # so the budget tolerates a slow order several times over while still
+    # failing inside the window someone is plausibly still watching.
+    account_cert_wait_budget_seconds: int = 600
+    account_cert_defer_seconds: int = 20
+
+    # ── DNS (per-account wildcard records) ────────────────────────────────
+    # See app/services/dns.py. Empty by default so an environment with no DNS
+    # provider still starts. The zone is identified by id rather than by name so
+    # the token needs only `Zone → DNS → Edit` on the one zone, not `Zone → Read`.
+    cloudflare_dns_api_token: str = ""
+    cloudflare_dns_zone_id: str = ""
+
+    # A name rather than an address, mirroring the platform's own `*.<domain>`
+    # CNAME, so moving the ingress stays one edit.
+    dns_record_target: str = ""
+
     # ── Object store (Garage, S3-compatible) ──────────────────────────────
     s3_endpoint_url: str = ""
     s3_region: str = "garage"

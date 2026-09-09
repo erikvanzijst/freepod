@@ -1,46 +1,11 @@
 # hostname-field-ui Specification
 
 ## Purpose
-TBD - created by archiving change hostname-validation-and-domains. Update Purpose after archive.
+The deploy dialog's hostname control: an application name beneath the account's
+own domain name, or a whole FQDN the user brings themselves. It validates
+against the platform as the user types and names the cause of every refusal.
+
 ## Requirements
-### Requirement: HostnameField component supports dual-mode hostname input
-The system MUST provide a `HostnameField` React component in `ui/src/components/HostnameField.tsx` that supports two modes of hostname entry:
-1. **Freepod wildcard mode**: A text input for the hostname prefix combined with a dropdown selector for the wildcard domain suffix, concatenated as `${prefix}.${selectedDomain}`. The prefix input MUST NOT allow dot characters — dots MUST be stripped from the input value.
-2. **Custom FQDN mode**: A single text input for the complete FQDN.
-
-The user MUST be able to toggle between modes.
-
-#### Scenario: User enters hostname via Freepod wildcard mode
-- **WHEN** the user types `myapp` in the prefix field and selects `freepod.eu` from the dropdown
-- **THEN** the component emits the combined value `myapp.freepod.eu` via `onChange`
-
-#### Scenario: User enters hostname via custom FQDN mode
-- **WHEN** the user types `myapp.example.com` in the custom FQDN input
-- **THEN** the component emits `myapp.example.com` via `onChange`
-
-#### Scenario: Switching modes clears previous input
-- **WHEN** the user switches from wildcard mode to custom mode (or vice versa)
-- **THEN** the input fields are reset and `onChange` is called with the new (possibly empty) value
-
-#### Scenario: Dots are stripped from wildcard prefix input
-- **WHEN** the user types or pastes `foo.bar` in the wildcard-mode prefix field
-- **THEN** the prefix value becomes `foobar` (dots removed) and the component emits `foobar.freepod.eu` via `onChange`
-
-#### Scenario: Custom FQDN mode allows dots
-- **WHEN** the user types `foo.bar.example.com` in the custom FQDN input
-- **THEN** the component emits `foo.bar.example.com` via `onChange` without stripping any characters
-
-### Requirement: HostnameField fetches wildcard domains from API
-The component MUST fetch the list of available wildcard domains from `GET /api/domains` (via React Query) and populate the domain suffix dropdown.
-
-#### Scenario: Wildcard domains loaded successfully
-- **WHEN** `GET /api/domains` returns `["freepod.eu"]`
-- **THEN** the dropdown contains `freepod.eu` as a selectable option
-
-#### Scenario: No wildcard domains available
-- **WHEN** `GET /api/domains` returns `[]`
-- **THEN** the wildcard mode dropdown is empty or the wildcard mode option is hidden, and the component defaults to custom FQDN mode
-
 ### Requirement: HostnameField performs debounced real-time validation
 The component MUST call `GET /api/hostnames/{fqdn}` with approximately 400ms debounce after the last keystroke to validate the current hostname. The API MUST NOT be called when the input is empty.
 
@@ -55,39 +20,6 @@ The component MUST call `GET /api/hostnames/{fqdn}` with approximately 400ms deb
 #### Scenario: Empty input does not trigger validation
 - **WHEN** the hostname input is empty
 - **THEN** no API call is made and no status icon is shown
-
-### Requirement: HostnameField displays validation status icon
-The component MUST display a status indicator icon on the right side of the input field:
-- **Green check** (MUI CheckCircle): `reason === null` (hostname is usable)
-- **Red error** (MUI Error icon) with tooltip: `reason !== null` (hostname cannot be used)
-- **Spinner** (MUI CircularProgress): API call is in flight
-
-The tooltip on the red error icon MUST display a human-readable message corresponding to the reason:
-- `"invalid"` → "Invalid hostname format"
-- `"reserved"` → "Hostname is reserved"
-- `"in_use"` → "Already in use"
-- `"not_resolving"` → "Create a CNAME record pointing to <cname-target>", where `<cname-target>` is the platform's CNAME target domain fetched from `GET /api/cname-target` (e.g. `freepod.eu` in prod, `dev.freepod.eu` in dev), falling back to `freepod.eu` when the value is empty/unavailable
-- `"nested_subdomain"` → "Only a single subdomain level is allowed"
-
-#### Scenario: Usable hostname shows green check
-- **WHEN** the API returns `{"fqdn": "myapp.freepod.eu", "reason": null}`
-- **THEN** a green CheckCircle icon is displayed
-
-#### Scenario: Taken hostname shows red error with tooltip
-- **WHEN** the API returns `{"fqdn": "taken.freepod.eu", "reason": "in_use"}`
-- **THEN** a red Error icon is displayed with tooltip text "Already in use"
-
-#### Scenario: Not-resolving hostname shows CNAME instruction in tooltip
-- **WHEN** the API returns `{"fqdn": "myapp.example.com", "reason": "not_resolving"}` and `GET /api/cname-target` returned `"dev.freepod.eu"`
-- **THEN** a red Error icon is displayed with tooltip text "Create a CNAME record pointing to dev.freepod.eu"
-
-#### Scenario: Nested subdomain shows error with tooltip
-- **WHEN** the API returns `{"fqdn": "foo.bar.dev.freepod.eu", "reason": "nested_subdomain"}`
-- **THEN** a red Error icon is displayed with tooltip text "Only a single subdomain level is allowed"
-
-#### Scenario: Loading state shows spinner
-- **WHEN** an API call is in flight
-- **THEN** a CircularProgress spinner is displayed in place of the status icon
 
 ### Requirement: HostnameField shows CNAME setup instructions in custom domain mode
 When the component is in custom FQDN mode, it MUST display static helper text below the input instructing the user to create a CNAME record pointing their domain to the platform's CNAME target domain (fetched from `GET /api/cname-target`, falling back to `freepod.eu` when empty/unavailable). This text MUST be visible as soon as custom mode is active, regardless of validation state.
@@ -126,8 +58,6 @@ The `HostnameField` component MUST integrate with the existing `UserValuesForm` 
 - **WHEN** the user enters `myapp.freepod.eu` in the HostnameField for a field at path `ingress.host`
 - **THEN** the form's unflattened output includes `{"ingress": {"host": "myapp.freepod.eu"}}`
 
-## Requirements from rename-system-values
-
 ### Requirement: UserValuesForm seeds form fields from JSON Schema defaults only
 The `UserValuesForm` component MUST NOT accept a `defaultValuesJson` prop. The `flattenDefaults()` function MUST be removed. Form field initial values MUST come from the JSON Schema `default` annotation on each field (`field.default`) only.
 
@@ -139,9 +69,8 @@ The `UserValuesForm` component MUST NOT accept a `defaultValuesJson` prop. The `
 - **WHEN** a schema field has no `default` annotation
 - **THEN** the form field starts empty (or `false` for booleans)
 
-## Requirements from edit-deployment-config
-
 ### Requirement: HostnameField skips validation for unchanged hostname
+The component MUST NOT call `GET /api/hostnames/{fqdn}` while the composed FQDN equals the `initialHostname` it was given, reporting it as valid without asking. The check does not exclude the deployment that already holds the name, so re-checking an unchanged hostname would report it in use against itself.
 
 #### Scenario: Initial hostname skips API validation
 - **WHEN** `HostnameField` receives an `initialHostname` prop and the current FQDN equals `initialHostname`
@@ -154,3 +83,93 @@ The `UserValuesForm` component MUST NOT accept a `defaultValuesJson` prop. The `
 #### Scenario: Reverted hostname skips validation again
 - **WHEN** the user changes the hostname away from `initialHostname` and then changes it back
 - **THEN** the component sets validation status to `valid` without calling the API
+
+### Requirement: HostnameField offers the account's own address or a custom domain
+
+`HostnameField` MUST offer two modes: a **Freepod address** mode and a **custom domain**
+mode, with the user able to toggle between them. Freepod address mode MUST accept a single
+application label and render the account's own address as a static, non-editable suffix —
+`.<subdomain>.<domain>` — so the user composes `<app>.<subdomain>.<domain>` while typing
+only `<app>`. Dots MUST be stripped from the application label. Custom domain mode MUST
+accept a complete FQDN, dots included, unchanged.
+
+Freepod address mode MUST NOT present a choice of domain. There is one Freepod address
+available to a given account, so a selector would offer a decision the user does not have.
+
+#### Scenario: Freepod mode renders the account's address as a fixed suffix
+- **WHEN** a user holding the subdomain `alice` opens the deploy dialog on a platform whose domain is `freepod.eu`
+- **THEN** the field shows an editable application label followed by a static `.alice.freepod.eu`, with no domain selector
+
+#### Scenario: An application label is combined with the account's address
+- **WHEN** the user types `photos` and holds the subdomain `alice`
+- **THEN** the component emits `photos.alice.freepod.eu` via `onChange`
+
+#### Scenario: Only the application label is editable
+- **WHEN** the user interacts with the field in Freepod address mode
+- **THEN** the account subdomain and the platform domain do not accept input
+
+#### Scenario: Dots are stripped from the application label
+- **WHEN** the user types or pastes `foo.bar` as the application label
+- **THEN** the label becomes `foobar` and the component emits `foobar.alice.freepod.eu`
+
+#### Scenario: Custom domain mode allows dots
+- **WHEN** the user types `foo.bar.example.com` in custom domain mode
+- **THEN** the component emits `foo.bar.example.com` without stripping any characters
+
+#### Scenario: Switching modes clears previous input
+- **WHEN** the user switches between Freepod address mode and custom domain mode
+- **THEN** the input fields are reset and `onChange` is called with the new (possibly empty) value
+
+### Requirement: HostnameField learns the account's address from the platform
+
+The field MUST learn the account's own address from the platform at runtime — the held
+subdomain and the platform domain — and MUST NOT compose it from a value hardcoded in the
+client.
+
+#### Scenario: The suffix comes from the platform
+- **WHEN** the field renders in Freepod address mode
+- **THEN** the subdomain and domain in its suffix are the values the API reported for this account and environment
+
+#### Scenario: An account holding no subdomain does not reach the field
+- **WHEN** a user holding no subdomain acts to deploy
+- **THEN** the claim dialog opens instead, so the field is never rendered without an address to show
+
+### Requirement: HostnameField shows a status icon naming the reason
+
+The component MUST display a status indicator on the right of the input: a green check when
+the hostname is usable, a red error icon with a tooltip when it is not, and a spinner while
+a check is in flight. The tooltip MUST name the cause:
+
+- `"invalid"` → "Invalid hostname format"
+- `"reserved"` → "Hostname is reserved"
+- `"in_use"` → "Already in use"
+- `"claimed"` → the address belongs to another account
+- `"not_resolving"` → "Create a CNAME record pointing to <cname-target>", where
+  `<cname-target>` comes from `GET /api/cname-target`, falling back to `freepod.eu` when
+  empty or unavailable
+
+No message for `nested_subdomain` may remain: the reason is retired.
+
+#### Scenario: Usable hostname shows green check
+- **WHEN** the API returns `{"fqdn": "photos.alice.freepod.eu", "reason": null}`
+- **THEN** a green CheckCircle icon is displayed
+
+#### Scenario: Taken hostname shows red error with tooltip
+- **WHEN** the API returns `{"fqdn": "photos.alice.freepod.eu", "reason": "in_use"}`
+- **THEN** a red Error icon is displayed with tooltip text "Already in use"
+
+#### Scenario: Another account's address shows its own reason
+- **WHEN** the API returns `{"fqdn": "photos.bob.freepod.eu", "reason": "claimed"}`
+- **THEN** a red Error icon is displayed with a tooltip saying the address belongs to another account
+
+#### Scenario: Not-resolving hostname shows CNAME instruction in tooltip
+- **WHEN** the API returns `{"fqdn": "myapp.example.com", "reason": "not_resolving"}` and `GET /api/cname-target` returned `"dev.freepod.eu"`
+- **THEN** a red Error icon is displayed with tooltip text "Create a CNAME record pointing to dev.freepod.eu"
+
+#### Scenario: A retired reason is gone
+- **WHEN** the field's reason messages are examined
+- **THEN** no message for `nested_subdomain` remains
+
+#### Scenario: Loading state shows spinner
+- **WHEN** an API call is in flight
+- **THEN** a CircularProgress spinner is displayed in place of the status icon

@@ -22,7 +22,7 @@ from tests.conftest import make_deployment_with_release
 @pytest.fixture
 def scenario(db_session: Session):
     """A user and a canonical template to hang deployments off."""
-    user = UserORM(email="ns@example.com", created_at=_utcnow())
+    user = UserORM(email="ns@example.com", subdomain="ns", created_at=_utcnow())
     product = ProductORM(name="nsprod", created_at=_utcnow())
     db_session.add(user)
     db_session.add(product)

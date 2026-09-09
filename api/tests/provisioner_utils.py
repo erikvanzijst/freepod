@@ -7,6 +7,9 @@ class FakeProvisioner:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict]] = []
         self.raise_on_upgrade: Exception | None = None
+        self.raise_on_certificate: Exception | None = None
+        self.certificate_state: tuple[bool, str | None] = (True, None)
+        self.store_write: bool = True
         self.helm_revisions: dict[str, int] = {}
 
     def ensure_namespace(self, *, name: str):
@@ -16,6 +19,20 @@ class FakeProvisioner:
     def ensure_tenant_isolation(self, *, namespace: str):
         self.calls.append(("ensure_tenant_isolation", {"namespace": namespace}))
         return None
+
+    def account_certificate_state(self, *, name: str):
+        self.calls.append(("account_certificate_state", {"name": name}))
+        return self.certificate_state
+
+    def reconcile_certificate_store(self):
+        self.calls.append(("reconcile_certificate_store", {}))
+        return self.store_write
+
+    def ensure_account_certificate(self, *, fqdn: str):
+        self.calls.append(("ensure_account_certificate", {"fqdn": fqdn}))
+        if self.raise_on_certificate is not None:
+            raise self.raise_on_certificate
+        return "acct-" + fqdn.replace(".", "-")
 
     def helm_upgrade_install(
         self,

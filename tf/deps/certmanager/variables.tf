@@ -14,9 +14,3 @@ variable "chart_version" {
   type        = string
   default     = "v1.17.2"
 }
-
-variable "traefik_namespace" {
-  description = "Namespace where freepod Traefik runs and reads its default certificate (k3s bundled Traefik lives in kube-system)."
-  type        = string
-  default     = "kube-system"
-}

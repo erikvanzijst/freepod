@@ -1,5 +1,6 @@
 import { Box } from '@mui/material'
 import { Outlet } from 'react-router-dom'
+import LanguageOutlinedIcon from '@mui/icons-material/LanguageOutlined'
 import VpnKeyOutlinedIcon from '@mui/icons-material/VpnKeyOutlined'
 import { PageHeading } from '../components/PageHeading'
 import { SectionSidebar, type SectionNavItem } from '../components/SectionSidebar'
@@ -10,6 +11,7 @@ import { SectionSidebar, type SectionNavItem } from '../components/SectionSideba
  * without reworking the page.
  */
 const navItems: SectionNavItem[] = [
+  { label: 'Domain name', path: '/settings/domain', icon: <LanguageOutlinedIcon /> },
   { label: 'SSH keys', path: '/settings/ssh-keys', icon: <VpnKeyOutlinedIcon /> },
 ]
 

@@ -17,6 +17,7 @@ from app.config import CaelusSettings, get_settings
 from app.db import session_scope
 from app.logging_config import configure_logging
 from app.models import (
+    SubdomainClaim,
     TosAcceptanceCreate,
     UserCreate,
     DeploymentCreate,
@@ -41,8 +42,9 @@ from app.services import (
     subscriptions as subscription_service,
     var_crypto,
 )
-from app.services.errors import CaelusException
+from app.services.errors import CaelusException, DeploymentInProgressException
 from app.services.reconcile_constants import (
+    JOB_REASON_UPDATE,
     JOB_STATUS_QUEUED,
     JOB_STATUS_RUNNING,
     JOB_STATUS_DONE,
@@ -559,6 +561,41 @@ def accept_tos(
         _echo_yaml_entity(acceptance)
 
 
+@app.command("claim-subdomain")
+def claim_subdomain(
+    *,
+    user_id: int = typer.Option(..., "--user-id"),
+    subdomain: str = typer.Option(
+        ...,
+        "--subdomain",
+        help="The DNS label the account will be addressed under: 2-63 lowercase "
+        "letters, digits and hyphens. Permanent.",
+    ),
+) -> None:
+    """Claim a user's subdomain, the address every app they deploy sits under.
+
+    Mirrors POST /api/me/subdomain. Deploying requires that the owning user
+    holds one; run this before create-deployment for a new user.
+
+    Claimed once and never changed or released -- there is no command that
+    undoes this, deliberately.
+    """
+    with session_scope() as session:
+        _require_cli_user(session)
+        user = session.get(UserORM, user_id)
+        if not user or user.deleted_at:
+            typer.echo(f"Error: User {user_id} not found.", err=True)
+            raise typer.Exit(code=1)
+        try:
+            payload = SubdomainClaim(subdomain=subdomain)
+            claimed = user_service.claim_subdomain(
+                session, user=user, subdomain=payload.subdomain
+            )
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        _echo_yaml_entity(claimed)
+
+
 @app.command("list-deployments")
 def list_deployments(
     user_id: int | None = typer.Argument(None, help="Filter deployments by user ID"),
@@ -762,6 +799,26 @@ def reconcile(
                 err=True,
             )
             raise typer.Exit(code=1)
+
+        if result.deferred:
+            # This path holds no job to defer, and the deferred result has just
+            # put the deployment into `provisioning` -- which only a completed
+            # reconcile moves it out of. Without a job to finish the work that
+            # is a deployment stranded by an operator command, so one is queued
+            # here rather than promising a retry that does not exist.
+            try:
+                jobs_service.JobService(session).enqueue_job(
+                    deployment_id=deployment_id, reason=JOB_REASON_UPDATE
+                )
+                session.commit()
+            except DeploymentInProgressException:
+                pass
+            typer.echo(
+                f"Deployment {deployment_id} is waiting for its account's TLS "
+                "certificate; it remains provisioning and a queued job will "
+                "retry.",
+                err=True,
+            )
 
         _echo_yaml_entity(result)
 

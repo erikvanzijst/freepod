@@ -214,7 +214,7 @@ def test_the_question_names_the_deployment_and_its_address(make_api, tmp_path):
 
     shown = "\n".join(messages)
     assert "custom-d8dtx4" in shown
-    assert "https://myapp.freepod.eu" in shown
+    assert "https://myapp.erik.freepod.eu" in shown
     assert "cannot be undone" in shown
     assert "custom-d8dtx4" in asked[0]
 
@@ -241,7 +241,7 @@ def test_the_user_values_survive_the_deletion(make_api, tmp_path):
 
     run(make_api, Platform(reads=[deployment(), None]), tmp_path)
 
-    assert load(tmp_path).user_values == {"hostname": "myapp.freepod.eu"}
+    assert load(tmp_path).user_values == {"hostname": "myapp.erik.freepod.eu"}
 
 
 def test_the_pointer_is_cleared_before_the_teardown_is_followed(make_api, tmp_path):

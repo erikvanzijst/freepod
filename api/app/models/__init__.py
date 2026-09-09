@@ -48,6 +48,8 @@ from app.models.core import (  # noqa: F401
     SftpCredentialsRead,
     SshEdgeRead,
     SQLModel,
+    SubdomainClaim,
+    SubdomainRead,
     TosAcceptanceCreate,
     TosAcceptanceRead,
     UserBase,

@@ -119,34 +119,35 @@ class TestCheckFormat:
 
 
 class TestCheckWildcardDepth:
-    def test_single_level_prefix_passes(self):
-        _check_wildcard_depth("myapp.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
+    """A deployment under a wildcard domain is `<app>.<account subdomain>`. One
+    label names an account instead, and three name nothing."""
 
-    def test_multi_level_prefix_rejected(self):
-        with pytest.raises(HostnameException, match="nested_subdomain"):
-            _check_wildcard_depth("foo.bar.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
+    def test_two_level_prefix_passes(self):
+        _check_wildcard_depth("myapp.alice.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
+
+    def test_single_level_prefix_rejected(self):
+        with pytest.raises(HostnameException, match="invalid"):
+            _check_wildcard_depth("alice.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
+
+    def test_three_level_prefix_rejected(self):
+        with pytest.raises(HostnameException, match="invalid"):
+            _check_wildcard_depth("foo.bar.alice.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
 
     def test_bare_wildcard_domain_rejected(self):
-        with pytest.raises(HostnameException, match="nested_subdomain"):
+        with pytest.raises(HostnameException, match="invalid"):
             _check_wildcard_depth("dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
 
     def test_non_wildcard_fqdn_skipped(self):
         _check_wildcard_depth("foo.bar.example.com", _settings(wildcard_domains=["dev.deprutser.be"]))
-
-    def test_case_insensitive_matching(self):
-        """The FQDN is already lowercased by require_valid_hostname_for_deployment,
-        but verify the check works with lowercase input against a wildcard domain."""
-        with pytest.raises(HostnameException, match="nested_subdomain"):
-            _check_wildcard_depth("foo.bar.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
 
     def test_empty_wildcard_domains_skips(self):
         _check_wildcard_depth("foo.bar.example.com", _settings(wildcard_domains=[]))
 
     def test_multiple_wildcard_domains(self):
         settings = _settings(wildcard_domains=["dev.deprutser.be", "app.deprutser.be"])
-        _check_wildcard_depth("myapp.app.deprutser.be", settings)
-        with pytest.raises(HostnameException, match="nested_subdomain"):
-            _check_wildcard_depth("a.b.app.deprutser.be", settings)
+        _check_wildcard_depth("myapp.alice.app.deprutser.be", settings)
+        with pytest.raises(HostnameException, match="invalid"):
+            _check_wildcard_depth("alice.app.deprutser.be", settings)
 
 
 # ── Reserved check ────────────────────────────────────────────────────
@@ -344,13 +345,13 @@ class TestRequireValidHostname:
         assert exc_info.value.reason == "invalid"
 
     def test_short_circuits_on_wildcard_depth(self, db_session):
-        """Nested subdomain failure should not check reserved, availability, or DNS."""
+        """A wrong depth should not check reserved, availability, or DNS."""
         with pytest.raises(HostnameException) as exc_info:
             require_valid_hostname_for_deployment(
-                db_session, "foo.bar.dev.deprutser.be",
+                db_session, "foo.bar.alice.dev.deprutser.be",
                 settings=_settings(wildcard_domains=["dev.deprutser.be"], domain="freepod.eu"),
             )
-        assert exc_info.value.reason == "nested_subdomain"
+        assert exc_info.value.reason == "invalid"
 
     def test_short_circuits_on_reserved(self, db_session):
         """Reserved failure should not check availability or DNS."""
@@ -490,16 +491,16 @@ class TestHostnameCheckEndpoint:
         assert resp.json()["usable"] is False
         assert resp.json()["reason"] == "not_resolving"
 
-    def test_no_auth_required(self, db_session):
-        """The hostname check is intentionally public — no auth header needed."""
+    def test_auth_required(self, db_session):
+        """The check answers by depth, and the deployment-side answer depends on
+        whose subdomain the name sits under, so it is no longer public."""
         def override_get_db():
             yield db_session
 
         fastapi_app.dependency_overrides[get_session] = override_get_db
         with TestClient(fastapi_app) as no_auth_client:
             resp = no_auth_client.get("/api/hostnames/test.example.com")
-            assert resp.status_code == 200
-            assert resp.json()["fqdn"] == "test.example.com"
+            assert resp.status_code == 404
         fastapi_app.dependency_overrides.clear()
 
     def test_mixed_case_fqdn_normalized_in_response(self, client):
@@ -512,39 +513,6 @@ class TestHostnameCheckEndpoint:
         resp = client.get("/api/hostnames/clean.example.com")
         assert resp.status_code == 200
         assert set(resp.json().keys()) == {"fqdn", "usable", "reason"}
-
-
-# ── Domains endpoint tests ────────────────────────────────────────────
-
-
-class TestDomainsEndpoint:
-    def test_returns_configured_domains(self, client, monkeypatch):
-        monkeypatch.setattr(
-            "app.api.hostnames.get_settings",
-            lambda: _settings(wildcard_domains=["app.deprutser.be", "apps.example.com"]),
-        )
-        resp = client.get("/api/domains")
-        assert resp.status_code == 200
-        assert resp.json() == ["app.deprutser.be", "apps.example.com"]
-
-    def test_returns_empty_list_when_unconfigured(self, client, monkeypatch):
-        monkeypatch.setattr(
-            "app.api.hostnames.get_settings",
-            lambda: _settings(wildcard_domains=[]),
-        )
-        resp = client.get("/api/domains")
-        assert resp.status_code == 200
-        assert resp.json() == []
-
-    def test_no_auth_required(self, db_session):
-        def override_get_db():
-            yield db_session
-
-        fastapi_app.dependency_overrides[get_session] = override_get_db
-        with TestClient(fastapi_app) as no_auth_client:
-            resp = no_auth_client.get("/api/domains")
-            assert resp.status_code == 200
-        fastapi_app.dependency_overrides.clear()
 
 
 # ── CNAME target endpoint tests ───────────────────────────────────────

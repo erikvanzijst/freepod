@@ -89,7 +89,7 @@ def _log_settings(monkeypatch):
         log_stream_max_lifetime_seconds=3600,
         log_max_streams_per_user=3,
         reserved_hostnames=[],
-        domain="",
+        domain="example.test",
         _env_file=None,
     )
     monkeypatch.setattr("app.api.users.get_settings", lambda: settings)
@@ -475,7 +475,7 @@ def test_an_unconfigured_store_is_reported_as_a_platform_condition(
     user_id, _, deployment_id = _setup(client, db_session, "unconf@example.com")
     monkeypatch.setattr(
         "app.api.users.get_settings",
-        lambda: CaelusSettings(loki_base_url="", reserved_hostnames=[], domain="", _env_file=None),
+        lambda: CaelusSettings(loki_base_url="", reserved_hostnames=[], domain="example.test", _env_file=None),
     )
     resp = client.get(f"/api/users/{user_id}/deployments/{deployment_id}/log")
     assert resp.status_code >= 400

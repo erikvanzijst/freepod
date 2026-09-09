@@ -47,6 +47,12 @@ class UserORM(UserBase, table=True):
             unique=True,
             postgresql_where=Column("deleted_at").is_(None),
         ),
+        Index(
+            "uq_user_subdomain_active",
+            func.lower(Column("subdomain")),
+            unique=True,
+            postgresql_where=Column("deleted_at").is_(None),
+        ),
     )
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(nullable=False, unique=False)
@@ -59,6 +65,7 @@ class UserORM(UserBase, table=True):
     # instant of the click (a timestamp, the evidentiary value).
     tos_accepted_version: Optional[str] = Field(default=None, nullable=True)
     tos_accepted_at: Optional[datetime] = Field(default=None, nullable=True)
+    subdomain: Optional[str] = Field(default=None, nullable=True)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
     deployments: list["DeploymentORM"] = Relationship(back_populates="user")
     subscriptions: list["SubscriptionORM"] = Relationship(
@@ -110,6 +117,30 @@ class TosAcceptanceRead(SQLModel):
     version: Optional[str] = None
     accepted_at: Optional[datetime] = None
     current_version: str
+
+
+class SubdomainClaim(SQLModel):
+    """Request body for claiming the current user's subdomain."""
+    model_config = ConfigDict(extra="forbid")
+    subdomain: str
+
+
+class SubdomainRead(SQLModel):
+    """The subdomain an account holds. `subdomain` and `fqdn` are null until it
+    claims one; this resource is always readable, so "not claimed yet" is a 200
+    rather than a 404.
+
+    `fqdn` is `<subdomain>.<platform domain>` -- the name that receives the
+    account's DNS record and wildcard certificate.
+
+    `domain` is the platform domain alone, reported whether or not a subdomain is
+    held, because a client offering the claim has to render the suffix before
+    there is anything to compose it with. Null when the platform has none
+    configured.
+    """
+    subdomain: Optional[str] = None
+    fqdn: Optional[str] = None
+    domain: Optional[str] = None
 
 
 class ProductVisibility(StrEnum):

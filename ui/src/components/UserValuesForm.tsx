@@ -12,7 +12,8 @@ import {
 } from '@mui/material'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getCnameTarget, listDomains } from '../api/endpoints'
+import { getCnameTarget } from '../api/endpoints'
+import { useMySubdomain } from './subdomain/useMySubdomain'
 import { HostnameField } from './HostnameField'
 import { SensitiveVarField } from './SensitiveVarField'
 
@@ -197,12 +198,7 @@ export function UserValuesForm({
     () => fields.some((f) => f.title?.toLowerCase() === 'hostname'),
     [fields],
   )
-  const domainsQuery = useQuery({
-    queryKey: ['domains'],
-    queryFn: listDomains,
-    enabled: hasHostnameField,
-    staleTime: 5 * 60 * 1000,
-  })
+  const subdomainQuery = useMySubdomain()
   const cnameTargetQuery = useQuery({
     queryKey: ['cname-target'],
     queryFn: getCnameTarget,
@@ -368,7 +364,7 @@ export function UserValuesForm({
               value={typeof formData[field.path] === 'string' ? (formData[field.path] as string) : ''}
               onChange={(hostname) => handleChange(field.path, hostname, 'string')}
               onValidationChange={onHostnameValidationChange}
-              wildcardDomains={domainsQuery.data ?? []}
+              accountFqdn={subdomainQuery.data?.fqdn}
               cnameTarget={cnameTargetQuery.data || undefined}
               required={field.required}
               error={fieldErrors[field.path]}

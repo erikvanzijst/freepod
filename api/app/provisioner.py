@@ -97,6 +97,62 @@ class KubeAdapter:
 
         return bool(json.loads(result.stdout).get("items", []))
 
+    def get_object(self, *, kind: str, namespace: str, name: str) -> dict[str, Any] | None:
+        """Read one object, or ``None`` when it is not there."""
+        try:
+            result = run_command(
+                ["kubectl", "get", kind, name, "-n", namespace, "-o", "json"],
+                runner=self._runner,
+                error_message=f"Failed to read {kind}/{name} in namespace {namespace}",
+            )
+        except AdapterCommandError as exc:
+            text = f"{exc.result.stderr}\n{exc.result.stdout}".lower()
+            if "not found" in text:
+                return None
+            raise
+        return json.loads(result.stdout)
+
+    def list_secret_names(self, *, namespace: str, selector: str) -> list[str]:
+        """Names of the Secrets in ``namespace`` matching ``selector``."""
+        result = run_command(
+            ["kubectl", "get", "secret", "-n", namespace, "-l", selector, "-o", "json"],
+            runner=self._runner,
+            error_message=f"Failed to list Secrets matching {selector} in namespace {namespace}",
+        )
+        items = json.loads(result.stdout).get("items", [])
+        return [item["metadata"]["name"] for item in items]
+
+    def server_side_apply(self, manifest: dict[str, Any], *, field_manager: str) -> None:
+        """Apply the fields in *manifest* as *field_manager*, and no others.
+
+        `--force-conflicts` is deliberately absent and must stay absent. It is
+        what the tooling offers to get past a conflict, and taking it would let
+        this manager own a field another actor set -- then drop that field on
+        its next write, which for `defaultCertificate` means connections with no
+        fallback certificate.
+
+        A `metadata.resourceVersion` in the manifest makes the write conditional
+        on the object not having changed since it was read.
+        """
+        with NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json") as f:
+            json.dump(manifest, f)
+            f.flush()
+            run_command(
+                [
+                    "kubectl",
+                    "apply",
+                    "--server-side",
+                    f"--field-manager={field_manager}",
+                    "-f",
+                    f.name,
+                ],
+                runner=self._runner,
+                error_message=(
+                    f"Failed to apply {manifest['kind']}/{manifest['metadata']['name']} "
+                    f"as {field_manager}"
+                ),
+            )
+
     def upsert_secret(
         self, *, namespace: str, name: str, string_data: dict[str, str], labels: dict[str, str]
     ) -> None:
@@ -398,6 +454,20 @@ class _values_file:
             logger.debug("Removed temporary values file: %s", self.path)
 
 
+STORE_FIELD_MANAGER = "caelus-tls"
+STORE_WRITE_ATTEMPTS = 5
+
+
+class ProvisionerError(Exception):
+    """The cluster is not in a state this can act on."""
+
+
+def _is_stale_write(exc: AdapterCommandError) -> bool:
+    """Whether a rejected apply was the version precondition, not an ownership conflict."""
+    text = f"{exc.result.stderr}\n{exc.result.stdout}".lower()
+    return "the object has been modified" in text
+
+
 class Provisioner:
     """Facade over Kubernetes/Helm adapters used by reconcile logic."""
 
@@ -447,6 +517,159 @@ class Provisioner:
     @staticmethod
     def ssh_access_selector(instance: str) -> str:
         return f"caelus.dev/component=ssh,app.kubernetes.io/instance={instance}"
+
+    ACCOUNT_CERT_LABEL = "caelus.dev/component"
+    ACCOUNT_CERT_LABEL_VALUE = "account-tls"
+
+    @staticmethod
+    def account_certificate_name(fqdn: str) -> str:
+        """The certificate and secret name for an account's own name.
+
+        Derived from the fully qualified name so dev's and production's cannot
+        collide -- they share one namespace in one cluster, and `alice` is a
+        different person in each (D10).
+        """
+        return "acct-" + fqdn.replace(".", "-")
+
+    def ensure_account_certificate(self, *, fqdn: str) -> str:
+        """Request the certificate covering everything the account deploys.
+
+        Returns the secret name. Idempotent: a stable name means a repeat call
+        rewrites the same object, and cert-manager does not reissue for an
+        unchanged spec.
+
+        The label goes on `secretTemplate` rather than on the Certificate,
+        because cert-manager does not copy a certificate's own labels onto the
+        secret it writes -- and the secret is what the store's membership is
+        derived from.
+        """
+        settings = get_settings()
+        name = self.account_certificate_name(fqdn)
+        self.kube.apply_manifest(
+            {
+                "apiVersion": "cert-manager.io/v1",
+                "kind": "Certificate",
+                "metadata": {
+                    "name": name,
+                    "namespace": settings.tls_namespace,
+                    "labels": {self.ACCOUNT_CERT_LABEL: self.ACCOUNT_CERT_LABEL_VALUE},
+                },
+                "spec": {
+                    "secretName": name,
+                    "secretTemplate": {
+                        "labels": {self.ACCOUNT_CERT_LABEL: self.ACCOUNT_CERT_LABEL_VALUE}
+                    },
+                    "issuerRef": {
+                        "name": settings.account_tls_cluster_issuer,
+                        "kind": "ClusterIssuer",
+                    },
+                    "commonName": f"*.{fqdn}",
+                    "dnsNames": [f"*.{fqdn}", fqdn],
+                    # Explicit, not the issuer client's RSA default: the ingress
+                    # controller re-parses every certificate in its store on each
+                    # rebuild, and the secret is a third the size.
+                    "privateKey": {"algorithm": "ECDSA", "size": 256},
+                },
+            },
+            error_message=f"Failed to request the account certificate for {fqdn}",
+        )
+        return name
+
+    def account_certificate_state(self, *, name: str) -> tuple[bool, str | None]:
+        """Whether the account's certificate is issued, and why not if it is not.
+
+        The reason is the point: a certificate that will never be issued -- an
+        exhausted allowance, a rejected challenge -- says so here, and the
+        deployment can fail naming it rather than timing out against a silence.
+        """
+        settings = get_settings()
+        obj = self.kube.get_object(
+            kind="certificate", namespace=settings.tls_namespace, name=name
+        )
+        if obj is None:
+            return False, "the certificate has not been created"
+        for condition in obj.get("status", {}).get("conditions", []):
+            if condition.get("type") == "Ready":
+                if condition.get("status") == "True":
+                    return True, None
+                return False, condition.get("message") or condition.get("reason")
+        return False, "issuance has not started"
+
+    def list_account_certificate_secrets(self) -> list[str]:
+        """The account certificates that can actually be served.
+
+        Secrets, not `Certificate` objects: a requested certificate that has not
+        been issued has no secret, and naming a secret that does not exist is an
+        error the ingress controller reports on every reload.
+        """
+        settings = get_settings()
+        return sorted(
+            self.kube.list_secret_names(
+                namespace=settings.tls_namespace,
+                selector=f"{self.ACCOUNT_CERT_LABEL}={self.ACCOUNT_CERT_LABEL_VALUE}",
+            )
+        )
+
+    def reconcile_certificate_store(self) -> bool:
+        """Bring the store's membership to the set of certificates that exist.
+
+        Returns whether it wrote. Derived from the whole namespace rather than
+        from one deployment, so any reconcile corrects drift for every account --
+        which is what removes the need for a periodic sweep, at the price of a
+        read in the common case.
+
+        Compare-and-swap, because recomputing the whole list is not what makes
+        concurrent writes safe -- it is the mechanism by which they are lost.
+        Two workers computing at different moments and writing whole lists means
+        the later drops what the earlier added. The `resourceVersion` read here
+        is carried into the write, so a stale one is refused and retried.
+        """
+        settings = get_settings()
+        for _ in range(STORE_WRITE_ATTEMPTS):
+            store = self.kube.get_object(
+                kind="tlsstore",
+                namespace=settings.tls_namespace,
+                name=settings.tls_store_name,
+            )
+            if store is None:
+                # Creating one here would produce a store with no default
+                # certificate: infrastructure code owns that field, and this
+                # manager must never set it.
+                raise ProvisionerError(
+                    f"No TLSStore/{settings.tls_store_name} in {settings.tls_namespace}; "
+                    "it is created by infrastructure code, not here"
+                )
+            desired = self.list_account_certificate_secrets()
+            current = [
+                entry.get("secretName")
+                for entry in (store.get("spec", {}).get("certificates") or [])
+            ]
+            if current == desired:
+                return False
+            try:
+                self.kube.server_side_apply(
+                    {
+                        "apiVersion": "traefik.io/v1alpha1",
+                        "kind": "TLSStore",
+                        "metadata": {
+                            "name": settings.tls_store_name,
+                            "namespace": settings.tls_namespace,
+                            "resourceVersion": store["metadata"]["resourceVersion"],
+                        },
+                        "spec": {"certificates": [{"secretName": n} for n in desired]},
+                    },
+                    field_manager=STORE_FIELD_MANAGER,
+                )
+            except AdapterCommandError as exc:
+                if _is_stale_write(exc):
+                    logger.info("Certificate store changed under us; recomputing")
+                    continue
+                raise
+            logger.info("Certificate store now lists %s certificates", len(desired))
+            return True
+        raise ProvisionerError(
+            f"Could not update the certificate store after {STORE_WRITE_ATTEMPTS} attempts"
+        )
 
     def upsert_secret(
         self, *, namespace: str, name: str, string_data: dict[str, str], labels: dict[str, str]

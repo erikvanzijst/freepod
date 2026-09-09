@@ -8,7 +8,7 @@ Tests the authorization rules for all API endpoints using parameterization:
 import pytest
 from starlette.testclient import TestClient
 
-from tests.conftest import CURRENT_TOS_VERSION
+from tests.conftest import CURRENT_TOS_VERSION, subdomain_for
 from tests.conftest import (
     ADMIN_EMAIL,
     AUTH_HEADER,
@@ -32,10 +32,13 @@ def authz_setup(db_session):
     fastapi_app.dependency_overrides[get_session] = override_get_db
 
     admin = UserORM(email=ADMIN_EMAIL, is_admin=True,
+                    subdomain=subdomain_for(ADMIN_EMAIL),
                     tos_accepted_version=CURRENT_TOS_VERSION)
     user = UserORM(email=USER_EMAIL, is_admin=False,
+                   subdomain=subdomain_for(USER_EMAIL),
                    tos_accepted_version=CURRENT_TOS_VERSION)
     other = UserORM(email=OTHER_EMAIL, is_admin=False,
+                    subdomain=subdomain_for(OTHER_EMAIL),
                     tos_accepted_version=CURRENT_TOS_VERSION)
     db_session.add_all([admin, user, other])
     db_session.commit()

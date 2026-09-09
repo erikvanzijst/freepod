@@ -86,6 +86,12 @@ module "caelus" {
   garage_admin_url   = var.garage_admin_url
   garage_admin_token = var.garage_admin_token
 
+  # Both environments write into the one platform zone; the record they create
+  # is per account, and an account exists in one environment only.
+  cloudflare_api_dns_token = var.cloudflare_api_dns_token
+  cloudflare_zone_id       = var.cloudflare_zone_id
+  dns_record_target        = var.dns_record_target
+
   # Per workspace, like the Garage key above and for the same reason: a dev key
   # must not decrypt a prod tenant's secrets. Defaults to empty so a workspace
   # that has not been given one still plans -- legal only while no product

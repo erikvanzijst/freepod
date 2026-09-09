@@ -1,43 +1,12 @@
 # hostname-check-endpoint Specification
 
 ## Purpose
-TBD - created by archiving change hostname-validation-and-domains. Update Purpose after archive.
+The endpoint clients ask before committing to a name. It validates without
+reserving anything, answers by depth under a wildcard domain, and reports a
+refusal as a machine-readable reason in a 200 body rather than as an error
+status.
+
 ## Requirements
-### Requirement: Hostname check endpoint returns usability status
-The system MUST provide a `GET /api/hostnames/{fqdn}` endpoint that validates whether the given FQDN can be used for a Caelus deployment and returns a JSON response with the normalized (lowercased) FQDN and a reason for failure (or null on success). The endpoint MUST be accessible without authentication: the response carries no sensitive data and the field validates hostnames as the user types, before any deployment exists.
-
-#### Scenario: Accessible without authentication
-- **WHEN** a client sends `GET /api/hostnames/myapp.example.com` without an authentication header
-- **THEN** the endpoint returns HTTP 200 with the usability result (it does not require authentication)
-
-#### Scenario: Usable hostname
-- **WHEN** a client sends `GET /api/hostnames/myapp.app.deprutser.be` and the hostname passes all validation checks
-- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "myapp.app.deprutser.be", "reason": null}`
-
-#### Scenario: Mixed-case hostname is normalized in response
-- **WHEN** a client sends `GET /api/hostnames/MyApp.App.Deprutser.Be` and the hostname passes all validation checks
-- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "myapp.app.deprutser.be", "reason": null}`
-
-#### Scenario: Mixed-case hostname detected as in use
-- **WHEN** a client sends `GET /api/hostnames/Taken.App.Deprutser.Be` and an active deployment uses hostname `"taken.app.deprutser.be"`
-- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "taken.app.deprutser.be", "reason": "in_use"}`
-
-#### Scenario: Invalid hostname format
-- **WHEN** a client sends `GET /api/hostnames/-bad..host` and the hostname fails format validation
-- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "-bad..host", "reason": "invalid"}`
-
-#### Scenario: Reserved hostname
-- **WHEN** a client sends `GET /api/hostnames/smtp.app.deprutser.be` and the hostname is in the reserved list
-- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "smtp.app.deprutser.be", "reason": "reserved"}`
-
-#### Scenario: Hostname already in use
-- **WHEN** a client sends `GET /api/hostnames/taken.app.deprutser.be` and an active deployment uses that hostname
-- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "taken.app.deprutser.be", "reason": "in_use"}`
-
-#### Scenario: Custom hostname does not have a CNAME to the platform domain
-- **WHEN** a client sends `GET /api/hostnames/example.com` and the FQDN has no CNAME record pointing to `settings.domain` (e.g. it has an A record, no record, or a CNAME to a different target)
-- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "example.com", "reason": "not_resolving"}`
-
 ### Requirement: CNAME target endpoint exposes the platform domain
 The system MUST provide a public (unauthenticated) `GET /api/cname-target` endpoint that returns the platform's CNAME target domain (`settings.domain`) as a JSON string, so the UI can render environment-correct CNAME setup instructions. It MUST return an empty string when the domain is unconfigured.
 
@@ -62,3 +31,73 @@ The response model MUST contain exactly two fields: `fqdn` (string) and `reason`
 #### Scenario: Response shape
 - **WHEN** the endpoint returns a response
 - **THEN** the JSON body contains only the keys `fqdn` and `reason`
+
+### Requirement: The hostname check answers by depth for an authenticated caller
+
+The system MUST provide a `GET /api/hostnames/{fqdn}` endpoint that validates whether the
+given FQDN can be used, returning the normalized (lowercased) FQDN and a reason for failure
+or null on success. The endpoint MUST require authentication.
+
+It MUST answer by depth under a configured wildcard domain: a single label is a question
+about an **account subdomain**, two labels a question about a **deployment hostname**. An
+FQDN outside every configured wildcard domain is a custom deployment hostname and is
+answered as one. It MUST refuse a deployment hostname beneath an account subdomain the
+caller does not hold, with reason `claimed`.
+
+Authentication is required because the deployment-side answer depends on who is asking:
+whether `photos.alice.freepod.eu` is usable is a different answer for Alice than for another
+account.
+
+#### Scenario: Anonymous request is refused
+- **WHEN** a client sends `GET /api/hostnames/photos.alice.freepod.eu` without an authentication header
+- **THEN** the request is refused rather than answered
+
+#### Scenario: A free subdomain
+- **WHEN** an authenticated client sends `GET /api/hostnames/alice.freepod.eu`, `freepod.eu` is a wildcard domain, and no account holds `alice`
+- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "alice.freepod.eu", "reason": null}`
+
+#### Scenario: A subdomain another account holds
+- **WHEN** an authenticated client sends `GET /api/hostnames/alice.freepod.eu` and another account holds the subdomain `alice`
+- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "alice.freepod.eu", "reason": "claimed"}`
+
+#### Scenario: An application name beneath the caller's own subdomain
+- **WHEN** the caller holds `alice` and sends `GET /api/hostnames/photos.alice.freepod.eu`, and no deployment holds that hostname
+- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "photos.alice.freepod.eu", "reason": null}`
+
+#### Scenario: An application name beneath somebody else's subdomain
+- **WHEN** the caller holds `bob` and sends `GET /api/hostnames/photos.alice.freepod.eu`
+- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "photos.alice.freepod.eu", "reason": "claimed"}`
+
+#### Scenario: An application name already in use
+- **WHEN** the caller holds `alice` and an active deployment holds `photos.alice.freepod.eu`
+- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "photos.alice.freepod.eu", "reason": "in_use"}`
+
+#### Scenario: Mixed-case hostname is normalized in response
+- **WHEN** an authenticated client sends `GET /api/hostnames/Photos.Alice.Freepod.Eu` and the hostname passes all validation checks
+- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "photos.alice.freepod.eu", "reason": null}`
+
+#### Scenario: Invalid hostname format
+- **WHEN** an authenticated client sends `GET /api/hostnames/-bad..host` and the hostname fails format validation
+- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "-bad..host", "reason": "invalid"}`
+
+#### Scenario: Reserved hostname
+- **WHEN** an authenticated client sends `GET /api/hostnames/smtp.freepod.eu` and the hostname is in the reserved list
+- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "smtp.freepod.eu", "reason": "reserved"}`
+
+#### Scenario: Custom hostname does not have a CNAME to the platform domain
+- **WHEN** an authenticated client sends `GET /api/hostnames/example.com` and the FQDN has no CNAME record pointing to `settings.domain`
+- **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "example.com", "reason": "not_resolving"}`
+
+### Requirement: The public route list drops the hostname check
+
+`GET /api/hostnames/{fqdn}` MUST be removed from oauth2-proxy's `skip_auth_routes`, so the
+edge and the application agree on which routes are public. `GET /api/domains` and
+`GET /api/cname-target` remain public: neither is shaped by identity.
+
+The two lists disagreeing is a failure this deployment has met before, and an endpoint that
+requires a caller while the edge lets anonymous requests reach it answers every one of them
+with a refusal that looks like a platform fault.
+
+#### Scenario: The edge and the application agree
+- **WHEN** the route table and `skip_auth_routes` are compared after this change
+- **THEN** `GET /api/hostnames/{fqdn}` appears in neither as a public route

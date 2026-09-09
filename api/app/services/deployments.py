@@ -35,7 +35,10 @@ from app.services import subscriptions as subscription_service
 from app.services import template_values
 from app.services import vars as vars_service
 from app.services.errors import CaelusException, DeploymentInProgressException, IntegrityException, NotFoundException, ValidationException
-from app.services.hostnames import require_valid_hostname_for_deployment
+from app.services.hostnames import (
+    require_owned_subdomain,
+    require_valid_hostname_for_deployment,
+)
 from app.util import set_value_at_path, value_for_path
 from app.config import get_settings
 from app.provisioner import Provisioner, provisioner as default_provisioner
@@ -180,6 +183,13 @@ def _iter_hostname_paths(schema: Any, path: tuple[str, ...] = ()) -> list[tuple[
     return paths
 
 
+class SubdomainRequired(ValidationException):
+    """Deploying needs the account to hold an address, with a stable `code` so a
+    client tells it apart from the Terms of Service refusal."""
+
+    code = "subdomain_required"
+
+
 def normalize_and_return_hostname(
     *,
     values_schema_json: dict[str, Any] | None,
@@ -251,7 +261,13 @@ def create_deployment(
         values_schema_json=template.values_schema_json,
         user_values_json=payload.user_values_json,
     )
+    if user.subdomain is None:
+        raise SubdomainRequired(
+            "An account address must be claimed before deploying"
+        )
+
     if derived_hostname is not None:
+        require_owned_subdomain(derived_hostname, subdomain=user.subdomain)
         require_valid_hostname_for_deployment(session, derived_hostname)
 
     # Validate the plan template: must exist, belong to the same product, and be canonical.
@@ -618,6 +634,7 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
         user_values_json=new_user_values,
     )
     if derived_hostname is not None:
+        require_owned_subdomain(derived_hostname, subdomain=deployment.user.subdomain)
         require_valid_hostname_for_deployment(
             session, derived_hostname, exclude_deployment_id=deployment.id,
         )

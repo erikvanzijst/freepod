@@ -130,6 +130,14 @@ resource "kubernetes_deployment" "api" {
             }
           }
 
+          # The DNS credential, because `caelus reconcile` is run from this pod
+          # and reconciling is what creates an account's wildcard record.
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.dns.metadata[0].name
+            }
+          }
+
           # The var keyring. The API is where vars are written, and it verifies
           # this keyring covers everything already stored before it will serve
           # a single request -- a row whose key is gone can never be decrypted

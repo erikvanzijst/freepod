@@ -73,8 +73,8 @@ Rationale:
 ### Public endpoints and the production `skip-auth` footgun
 
 Several read-only endpoints are intentionally anonymous (no
-`get_current_user` dependency) so the public landing page — and the
-deploy UI's live validators — can work before/without per-request auth:
+`get_current_user` dependency) so the public landing page can work
+before/without per-request auth:
 
 - Products & templates: `GET /api/products`, `GET /api/products/{id}`,
   `GET /api/products/{id}/templates`,
@@ -82,11 +82,17 @@ deploy UI's live validators — can work before/without per-request auth:
   `GET /api/products/{id}/icon`
 - Plans: `GET /api/products/{id}/plans`, `GET /api/plans/{id}`,
   `GET /api/plans/{id}/templates`
-- Hostname/domain helpers: `GET /api/hostnames/{fqdn}`,
-  `GET /api/domains`, `GET /api/cname-target`
+- CNAME target: `GET /api/cname-target`
+- SSH edge: `GET /api/ssh`
 - Docs & schema: `GET /api/docs`, `GET /api/redoc`,
   `GET /api/openapi.json`
 - Static files: `GET /api/static/*` (including product icons)
+
+`POST /api/webhooks/*` is public in the app and deliberately *absent* from
+`skip_auth_routes`: it reaches FastAPI through its own ingress
+(`tf/app/caelus/ingress.tf`), which never passes through the forward-auth
+middleware. Mollie POSTs there with no session, so the route bypasses the edge
+gate rather than being excused from it.
 
 `GET /api/me` is a related special case: it *does* run
 `get_current_user`, returning the user when the header is present and
@@ -398,6 +404,15 @@ Spec: [deployment-release-ledger](../openspec/specs/deployment-release-ledger/sp
 ## Critical Invariants
 
 - Active user emails are unique (`deleted_at IS NULL` scoped uniqueness).
+- An account subdomain, once claimed, belongs to that account permanently and
+  is never claimable by another — the one uniqueness guarantee here that spans
+  deleted rows as well as active ones. Certificate transparency has already
+  published the name, so releasing it would hand a stranger the traffic, links
+  and DNS caches of the previous holder. Enforced in two places, because
+  neither covers the other: `uq_user_subdomain_active` is partial
+  (`deleted_at IS NULL`, mirroring `uq_user_active` for email) and so only
+  constrains live rows, while the claim check queries the column unfiltered
+  and is what refuses a deleted account's label.
 - Active product names are unique (`deleted_at IS NULL` scoped uniqueness).
 - Active product slugs are unique (`deleted_at IS NULL` scoped uniqueness).
 - `product.slug` and `product.curated` are written only by `CatalogReconciler`;
@@ -428,6 +443,39 @@ Spec: [deployment-create-contract](../openspec/specs/deployment-create-contract/
 [deployment-payment-states](../openspec/specs/deployment-payment-states/spec.md),
 [deployment-release-api](../openspec/specs/deployment-release-api/spec.md)
 
+## The Account Domain Name
+
+Every account holds one permanent DNS label, and every application it deploys
+is addressed beneath it at `<app>.<subdomain>.<domain>`. It is claimed once
+through its own resource and is never changed, released, or transferred — not
+by any endpoint, not on account deletion.
+
+Spec: [account-subdomain-record](../openspec/specs/account-subdomain-record/spec.md),
+[hostname-validation](../openspec/specs/hostname-validation/spec.md),
+[deployment-create-contract](../openspec/specs/deployment-create-contract/spec.md) ·
+Rationale:
+[account-subdomain-claim](../openspec/changes/archive/2026-09-09-account-subdomain-claim/design.md)
+
+## Per-Account TLS
+
+Every account holds one wildcard certificate covering every hostname its
+applications will ever be addressed at, and a DNS record that keeps those
+hostnames resolving. Both are provisioned by the reconcile, before the Helm
+release, and neither is ever deleted. Nothing copies certificate material
+anywhere: the certificate is added to the ingress controller's certificate
+store, which serves it to routes in namespaces that never reference it.
+
+A deployment whose account holds no certificate does not complete. The
+reconcile defers — the deployment stays `provisioning` and its job returns to
+the queue — until the certificate is issued, and fails the deployment when the
+waiting budget runs out. That is the terminal behavior, not a placeholder.
+
+Spec: [account-dns-record](../openspec/specs/account-dns-record/spec.md),
+[account-tls-certificate](../openspec/specs/account-tls-certificate/spec.md),
+[platform-tls-store](../openspec/specs/platform-tls-store/spec.md) ·
+Rationale:
+[per-user-tls-certificates](../openspec/changes/archive/2026-09-08-per-user-tls-certificates/design.md)
+
 ## Reconcile Queue Semantics
 
 - Enqueue runs inside same transaction as deployment mutation.
@@ -457,6 +505,11 @@ Without a lease that job is never retried and its deployment stays in
 - `mark_job_done` / `mark_job_failed` take an optional `worker_id`; when given,
   the write is conditional on the job still being leased to that worker, so a
   wedged worker that wakes up late cannot overwrite the new owner's result.
+- `defer_job` returns the **same** row to `queued` with a later `run_after`,
+  for work that is unfinished rather than done or failed — a reconcile waiting
+  for its account's certificate. The same row because one open job per
+  deployment is a constraint, and `attempt` is left alone because it counts
+  lease expiries, which a deferral is not.
 
 ## Builds (Project Archive → Container Image)
 

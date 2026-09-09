@@ -64,9 +64,10 @@ resource "helm_release" "oauth2_proxy" {
             "GET=^/api/plans/[0-9]+/?$",
             "GET=^/api/plans/[0-9]+/templates/?$",
 
-            # Hostname / domain helpers used by the deploy UI.
-            "GET=^/api/hostnames/[^/]+/?$",
-            "GET=^/api/domains/?$",
+            # The CNAME target custom domains must point at. The hostname check
+            # is authenticated (it answers by depth, and whether an application
+            # name is usable depends on whose subdomain it sits under), and
+            # /api/domains is gone with the choice of domain it used to offer.
             "GET=^/api/cname-target/?$",
             "GET=^/api/ssh/?$",
 

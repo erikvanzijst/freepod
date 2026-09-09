@@ -23,7 +23,7 @@ def _reconcile_tls_settings(monkeypatch):
     monkeypatch.setattr(
         "app.services.reconcile.get_settings",
         lambda: CaelusSettings(
-            wildcard_domains=[], tls_cluster_issuer="letsencrypt-http", domain="", _env_file=None
+            wildcard_domains=[], tls_cluster_issuer="letsencrypt-http", domain="example.test", _env_file=None
         ),
     )
 
@@ -119,10 +119,11 @@ def test_reconcile_apply_happy_path_returns_ready_and_applied_template(db_sessio
     assert deployment.applied_template_id == deployment.desired_template_id
     # Isolation guardrails are applied after the namespace and before Helm, so no
     # tenant pod ever runs before its NetworkPolicy jail exists.
-    assert fake_provisioner.calls[0][0] == "ensure_namespace"
-    assert fake_provisioner.calls[1][0] == "ensure_tenant_isolation"
-    assert fake_provisioner.calls[2][0] == "helm_upgrade_install"
-    assert fake_provisioner.calls[2][1]["values"] == {
+    order = [name for name, _ in fake_provisioner.calls]
+    assert order.index("ensure_namespace") < order.index("ensure_tenant_isolation")
+    assert order.index("ensure_tenant_isolation") < order.index("helm_upgrade_install")
+    helm_values = next(c[1]["values"] for c in fake_provisioner.calls if c[0] == "helm_upgrade_install")
+    assert helm_values == {
         "replicas": 1,
         "user": {"message": "hello", "domain": "reconcile.example.test"},
         "caelus": {
@@ -225,7 +226,9 @@ def test_reconcile_injects_plan_storage_into_helm_values(db_session) -> None:
     assert result.status == "ready"
 
     deployment = db_session.get(DeploymentORM, deployment_id)
-    values = fake_provisioner.calls[2][1]["values"]
+    values = next(
+        c[1]["values"] for c in fake_provisioner.calls if c[0] == "helm_upgrade_install"
+    )
     assert values["caelus"]["plan"] == {"storageBytes": 10737418240, "storageSize": "10Gi"}
     # Ingress/TLS injected alongside plan, under the same caelus namespace.
     assert values["caelus"]["ingress"] == {
@@ -251,7 +254,9 @@ def test_reconcile_injects_empty_caelus_plan_when_no_storage_quota(db_session) -
     result = reconciler.reconcile(deployment_id)
     assert result.status == "ready"
 
-    values = fake_provisioner.calls[2][1]["values"]
+    values = next(
+        c[1]["values"] for c in fake_provisioner.calls if c[0] == "helm_upgrade_install"
+    )
     assert values["caelus"]["plan"] == {}
     assert values["caelus"]["ingress"]["enabled"] is True
     assert values["replicas"] == 1
@@ -264,7 +269,7 @@ def _patch_wildcard_domains(monkeypatch, domains: list[str]) -> None:
     monkeypatch.setattr(
         "app.services.reconcile.get_settings",
         lambda: CaelusSettings(
-            wildcard_domains=domains, tls_cluster_issuer="letsencrypt-http", domain="", _env_file=None
+            wildcard_domains=domains, tls_cluster_issuer="letsencrypt-http", domain="example.test", _env_file=None
         ),
     )
 

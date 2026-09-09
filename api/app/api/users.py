@@ -15,6 +15,8 @@ from app.models import (
     DeploymentRead,
     DeploymentDatabaseRead,
     SftpCredentialsRead,
+    SubdomainClaim,
+    SubdomainRead,
     TosAcceptanceCreate,
     TosAcceptanceRead,
     UserORM,
@@ -116,6 +118,98 @@ def record_my_tos_acceptance(
     """
     return user_service.record_tos_acceptance(
         session, user=current_user, version=payload.version
+    )
+
+
+@me_router.get(
+    "/me/subdomain",
+    response_model=SubdomainRead,
+    summary="Get the subdomain the current user holds",
+    response_description="The caller's subdomain and the fully qualified name "
+    "it forms; both are null when they have not claimed one.",
+)
+def get_my_subdomain(
+    current_user: UserORM = Depends(get_current_user),
+) -> SubdomainRead:
+    """Return the subdomain the caller holds, and the name it forms.
+
+    Always readable, and **200** even when the caller has not claimed one (in
+    which case both fields are null), so clients can treat "not claimed yet" as
+    a normal state rather than a 404.
+
+    ## Authorization
+    Requires authentication. Reports the authenticated caller's own subdomain.
+
+    ## Behavior
+    - **subdomain** — the label the account holds, or null.
+    - **fqdn** — `<subdomain>.<platform domain>`, the name that receives the
+      account's DNS record and wildcard certificate. Null when no subdomain is
+      held, or when the platform has no domain configured.
+    - **domain** — the platform domain alone, reported whether or not a subdomain
+      is held: a client offering the claim needs the suffix before there is a
+      label to compose it with. Null when the platform has none configured.
+    """
+    return user_service.get_subdomain(current_user)
+
+
+@me_router.post(
+    "/me/subdomain",
+    response_model=SubdomainRead,
+    summary="Claim the current user's subdomain",
+    response_description="The subdomain now held, and the fully qualified name "
+    "it forms.",
+    responses={
+        400: {
+            "description": (
+                "The candidate cannot be claimed: `subdomain_invalid` (not a "
+                "single 2-63 character DNS label) or `subdomain_reserved` "
+                "(reserved by the platform)."
+            )
+        },
+        409: {
+            "description": (
+                "`subdomain_taken` (another account holds it) or "
+                "`subdomain_already_claimed` (this account already holds one)."
+            )
+        },
+    },
+)
+def claim_my_subdomain(
+    payload: SubdomainClaim,
+    current_user: UserORM = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> SubdomainRead:
+    """Claim the subdomain every application this account deploys will be
+    addressed under.
+
+    **This is permanent.** A subdomain is claimed once and is never changed,
+    released, or transferred — not by this endpoint, not by any other, and not
+    on account deletion. Correcting one is an operator intervention against the
+    database.
+
+    ## Authorization
+    Requires authentication. Claims for the authenticated caller only; there is
+    no administrative form of this call.
+
+    ## Behavior
+    The submitted value is normalized to lowercase before it is checked or
+    stored, so case can never distinguish two accounts. It must be a single DNS
+    label of 2-63 characters — lowercase letters, digits and hyphens, starting
+    and ending with a letter or digit — that is neither reserved by the platform
+    nor held by another account, including a deleted one.
+
+    Not idempotent: an account that already holds a subdomain is refused **409**
+    even when it submits the label it already holds.
+
+    ## Errors
+    - **400** `subdomain_invalid` — not a single well-formed label of the
+      permitted length.
+    - **400** `subdomain_reserved` — the label is reserved by the platform.
+    - **409** `subdomain_taken` — another account holds it.
+    - **409** `subdomain_already_claimed` — this account already holds one.
+    """
+    return user_service.claim_subdomain(
+        session, user=current_user, subdomain=payload.subdomain
     )
 
 

@@ -38,7 +38,7 @@ def _settings(monkeypatch):
     settings = CaelusSettings(
         wildcard_domains=[],
         tls_cluster_issuer="letsencrypt-http",
-        domain="",
+        domain="example.test",
         s3_endpoint_url=ENDPOINT,
         s3_region="garage",
         _env_file=None,
