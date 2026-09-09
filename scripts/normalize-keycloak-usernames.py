@@ -107,6 +107,22 @@ class AdminApi:
         _, payload = self.request("GET", f"/users/{user_id}")
         return json.loads(payload)
 
+    def stored_username(self, user_id: str, email: str) -> str | None:
+        """Read back the username as *stored*, not as rendered.
+
+        Once registrationEmailAsUsername is on, GET /users/{id} renders the
+        user-profile view, which reports the email as the username whether or
+        not the stored value has been converted yet. Only the search endpoint
+        still returns the stored value, so a "did this already convert?" check
+        has to go through it.
+        """
+        q = urllib.parse.urlencode({"email": email, "exact": "true"})
+        _, payload = self.request("GET", f"/users?{q}")
+        for u in json.loads(payload):
+            if u["id"] == user_id:
+                return u.get("username")
+        return None
+
     def set_username(self, user: dict, username: str) -> None:
         """PUT the whole representation back with one field changed.
 
@@ -187,9 +203,13 @@ def main() -> int:
             u["id"],
             {"id": u["id"], "previousUsername": u.get("username"), "email": u["email"]},
         )
-    with open(args.record, "w") as fh:
+    # Write and rename: a crash mid-write would otherwise truncate the only
+    # surviving copy of the previous usernames.
+    tmp = f"{args.record}.tmp"
+    with open(tmp, "w") as fh:
         json.dump([record[k] for k in sorted(record)], fh, indent=2, sort_keys=True)
         fh.write("\n")
+    os.replace(tmp, args.record)
 
     print(f"realm {args.realm!r}: {len(users)} account(s)")
     print(f"  {len(matching)} already username == email")
@@ -199,12 +219,37 @@ def main() -> int:
 
     selected = divergent
     if args.only:
-        wanted = set(args.only)
-        selected = [u for u in divergent if u.get("username") in wanted]
-        missing = wanted - {u.get("username") for u in selected}
-        if missing:
-            print(f"error: --only named no divergent account: {sorted(missing)}", file=sys.stderr)
-            return 2
+        # Resolve each name against the current username, the email, and the
+        # record's previous username. The last is what makes a re-run of the
+        # gate command a no-op rather than an error: once an account is
+        # converted the name that was typed is gone from Keycloak, and the
+        # record is the only thing still connecting it to the account.
+        by_id = {u["id"]: u for u in users}
+        previous = {
+            e["previousUsername"]: e["id"] for e in record.values() if e.get("previousUsername")
+        }
+        resolved: dict[str, dict] = {}
+        for name in set(args.only):
+            match = next(
+                (
+                    u
+                    for u in users
+                    if u.get("username") == name or (u.get("email") or "").lower() == name.lower()
+                ),
+                None,
+            ) or by_id.get(previous.get(name))
+            if match is None:
+                print(f"error: --only named no account: {name!r}", file=sys.stderr)
+                return 2
+            resolved[name] = match
+
+        divergent_ids = {u["id"] for u in divergent}
+        for name, u in sorted(resolved.items()):
+            if u["id"] not in divergent_ids:
+                print(f"  skip: {name!r} already username == email")
+        selected = list(
+            {u["id"]: u for u in resolved.values() if u["id"] in divergent_ids}.values()
+        )
 
     if not selected:
         print("\nnothing to convert")
@@ -213,16 +258,24 @@ def main() -> int:
     failures = 0
     print()
     for u in selected:
-        target = u["email"].lower()
-        print(f"{u['username']!r} -> {target!r}  ({u['id']})")
+        listed = (u.get("email") or "").lower()
+        print(f"{u['username']!r} -> {listed!r}  ({u['id']})")
         if not args.apply:
             print("    report-only; pass --apply to write")
             continue
         try:
-            # Re-read: the account may have been converted by Keycloak itself
-            # since the listing, which makes this a no-op rather than a write.
+            # Re-read, and take the target from it: Keycloak may have converted
+            # the account itself since the listing, and an email changed since
+            # the listing moves the target with it.
             current = api.get_user(u["id"])
-            if current.get("username") == target:
+            email = current.get("email")
+            if not email:
+                print("    skip: no email now; cannot convert")
+                continue
+            target = email.lower()
+            if target != listed:
+                print(f"    email changed since the listing; target is now {target!r}")
+            if api.stored_username(u["id"], target) == target:
                 print("    skip: already converted")
                 continue
             api.set_username(current, target)
