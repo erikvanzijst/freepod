@@ -18,7 +18,7 @@ template:
   chart_version: 0.2.1
   system_values:
     image:
-      tag: v3.0.3
+      tag: v3.1.0
     smtp:
       host: smtp.mailer.svc.cluster.local
       port: 25
