@@ -17,7 +17,7 @@ vi.mock('../api/endpoints', () => ({
   updateProduct: vi.fn(),
   deleteProduct: vi.fn(),
   updateProductTemplate: vi.fn(),
-  listDomains: vi.fn().mockResolvedValue([]),
+  getMySubdomain: vi.fn().mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' }),
   getCnameTarget: vi.fn().mockResolvedValue(''),
   checkHostname: vi.fn().mockResolvedValue({ fqdn: '', usable: true, reason: null }),
 }))

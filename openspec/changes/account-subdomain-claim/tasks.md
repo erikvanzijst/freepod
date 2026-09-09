@@ -45,9 +45,9 @@
 
 ## 6. Web UI — the deploy dialog
 
-- [ ] 6.1 Replace `HostnameField`'s wildcard domain dropdown with the account's own address as a static suffix, read from `GET /api/me/subdomain`, and verify only the application label accepts input and that custom domain mode is unchanged.
-- [ ] 6.2 Delete `listDomains` and the `wildcardDomains` prop, including the mode-splitting that matched a stored hostname against the domain list, and verify an existing Freepod-address deployment still opens in the right mode.
-- [ ] 6.3 Retire the `nested_subdomain` message and cover `in_use` and `claimed`, and verify each reason the checker can now return renders its own text.
+- [x] 6.1 Replace `HostnameField`'s wildcard domain dropdown with the account's own address as a static suffix, read from `GET /api/me/subdomain`, and verify only the application label accepts input and that custom domain mode is unchanged.
+- [x] 6.2 Delete `listDomains` and the `wildcardDomains` prop, including the mode-splitting that matched a stored hostname against the domain list, and verify an existing Freepod-address deployment still opens in the right mode.
+- [x] 6.3 Retire the `nested_subdomain` message and cover `in_use` and `claimed`, and verify each reason the checker can now return renders its own text.
 
 ## 7. CLI
 

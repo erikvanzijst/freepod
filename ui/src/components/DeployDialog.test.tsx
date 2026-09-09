@@ -9,7 +9,7 @@ const listPlansMock = vi.fn()
 const createDeploymentMock = vi.fn()
 const updateDeploymentMock = vi.fn()
 const checkHostnameMock = vi.fn()
-const listDomainsMock = vi.fn()
+const getMySubdomainMock = vi.fn()
 // Default: user has NOT accepted the Terms -> checkbox is shown. Individual
 // tests override to simulate an already-accepted user.
 const getTosAcceptanceMock = vi.fn().mockResolvedValue({ version: null, accepted_at: null })
@@ -21,7 +21,7 @@ vi.mock('../api/endpoints', () => ({
   createDeployment: (...args: unknown[]) => createDeploymentMock(...args),
   updateDeployment: (...args: unknown[]) => updateDeploymentMock(...args),
   checkHostname: (...args: unknown[]) => checkHostnameMock(...args),
-  listDomains: (...args: unknown[]) => listDomainsMock(...args),
+  getMySubdomain: (...args: unknown[]) => getMySubdomainMock(...args),
   getCnameTarget: vi.fn().mockResolvedValue(''),
   getTosAcceptance: (...args: unknown[]) => getTosAcceptanceMock(...args),
   recordTosAcceptance: (...args: unknown[]) => recordTosAcceptanceMock(...args),
@@ -92,7 +92,7 @@ describe('DeployDialog', () => {
   it('renders product name and description in the header', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    listDomainsMock.mockResolvedValue([])
+    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
 
     renderWithQuery(
       <DeployDialog product={helloWorld} userId={1} onClose={vi.fn()} />,
@@ -105,7 +105,7 @@ describe('DeployDialog', () => {
   it('shows Cancel and disabled Launch buttons', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    listDomainsMock.mockResolvedValue([])
+    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
 
     renderWithQuery(
       <DeployDialog product={helloWorld} userId={1} onClose={vi.fn()} />,
@@ -120,7 +120,7 @@ describe('DeployDialog', () => {
   it('calls onClose when Cancel is clicked', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    listDomainsMock.mockResolvedValue([])
+    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
     const onClose = vi.fn()
 
     renderWithQuery(
@@ -134,7 +134,7 @@ describe('DeployDialog', () => {
   it('shows warning when product has no template', async () => {
     const noTemplate: Product = { ...helloWorld, template_id: null }
     listTemplatesMock.mockResolvedValue([])
-    listDomainsMock.mockResolvedValue([])
+    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
 
     renderWithQuery(
       <DeployDialog product={noTemplate} userId={1} onClose={vi.fn()} />,
@@ -148,7 +148,7 @@ describe('DeployDialog', () => {
   it('enables Launch when hostname is valid and submits deployment', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    listDomainsMock.mockResolvedValue([])
+    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
     checkHostnameMock.mockResolvedValue({ fqdn: 'test.example.com', usable: true, reason: null })
     createDeploymentMock.mockResolvedValue({ deployment: { id: '1' }, checkout_url: null })
     const onClose = vi.fn()
@@ -196,7 +196,7 @@ describe('DeployDialog', () => {
   it('already-accepted user sees no ToS checkbox and deploys without recording again', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    listDomainsMock.mockResolvedValue([])
+    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
     checkHostnameMock.mockResolvedValue({ fqdn: 'accepted.example.com', usable: true, reason: null })
     createDeploymentMock.mockResolvedValue({ deployment: { id: '1' }, checkout_url: null })
     // This user already accepted the current Terms.
@@ -239,7 +239,7 @@ describe('DeployDialog', () => {
   it('shows error alert on deployment failure', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    listDomainsMock.mockResolvedValue([])
+    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
     checkHostnameMock.mockResolvedValue({ fqdn: 'test.example.com', usable: true, reason: null })
     createDeploymentMock.mockRejectedValue(new Error('Server error'))
 
@@ -269,7 +269,7 @@ describe('DeployDialog', () => {
   it('opening and closing the ToS modal preserves the entered hostname', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    listDomainsMock.mockResolvedValue([])
+    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
     checkHostnameMock.mockResolvedValue({ fqdn: 'keep.example.com', usable: true, reason: null })
 
     renderWithQuery(<DeployDialog product={helloWorld} userId={1} onClose={vi.fn()} />)
@@ -337,7 +337,7 @@ describe('DeployDialog', () => {
       user: { id: 1, email: 'test@example.com', is_admin: false, created_at: '2026-01-01T00:00:00Z' },
     }
 
-    listDomainsMock.mockResolvedValue([])
+    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
     listTemplatesMock.mockClear()
     updateDeploymentMock.mockResolvedValue({ id: 42 })
     const onClose = vi.fn()

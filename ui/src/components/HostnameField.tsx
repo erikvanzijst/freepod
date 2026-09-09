@@ -5,8 +5,6 @@ import {
   FormControl,
   FormHelperText,
   InputAdornment,
-  MenuItem,
-  Select,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -23,7 +21,7 @@ const REASON_LABELS: Record<string, string> = {
   invalid: 'Invalid hostname format',
   reserved: 'Hostname is reserved',
   in_use: 'Already in use',
-  nested_subdomain: 'Only a single subdomain level is allowed',
+  claimed: 'That domain name belongs to another account',
 }
 
 // Shown when the platform's CNAME target is unknown (endpoint unconfigured).
@@ -39,7 +37,12 @@ interface HostnameFieldProps {
   value: string
   onChange: (hostname: string) => void
   onValidationChange?: (valid: boolean) => void
-  wildcardDomains: string[]
+  /**
+   * The account's own domain name, e.g. `erik.freepod.eu`. An application is
+   * addressed beneath it, so there is one suffix rather than a list to choose
+   * from. Absent only while it is still loading.
+   */
+  accountFqdn?: string | null
   cnameTarget?: string
   required?: boolean
   error?: string
@@ -48,9 +51,9 @@ interface HostnameFieldProps {
   readOnly?: boolean
 }
 
-type Mode = 'wildcard' | 'custom'
+type Mode = 'freepod' | 'custom'
 
-export function HostnameField({ value, onChange, onValidationChange, wildcardDomains, cnameTarget, required, error, description, initialHostname, readOnly }: HostnameFieldProps) {
+export function HostnameField({ value, onChange, onValidationChange, accountFqdn, cnameTarget, required, error, description, initialHostname, readOnly }: HostnameFieldProps) {
   if (readOnly) {
     return (
       <TextField
@@ -63,37 +66,27 @@ export function HostnameField({ value, onChange, onValidationChange, wildcardDom
     )
   }
 
-  const hasWildcard = wildcardDomains.length > 0
-  const [mode, setMode] = useState<Mode>(hasWildcard ? 'wildcard' : 'custom')
+  const hasFreepodAddress = Boolean(accountFqdn)
+  const [mode, setMode] = useState<Mode>(hasFreepodAddress ? 'freepod' : 'custom')
   const [prefix, setPrefix] = useState('')
-  const [domain, setDomain] = useState(wildcardDomains[0] ?? '')
   const [customFqdn, setCustomFqdn] = useState('')
   const [validation, setValidation] = useState<ValidationState>({ status: 'idle' })
   const abortRef = useRef<AbortController | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Sync wildcard domains into local state when they arrive asynchronously.
-  // If a value was already set (e.g. edit mode), split it into prefix + domain.
-  const domainsInitializedRef = useRef(hasWildcard)
+  // The account's domain name arrives asynchronously; a value parked in the
+  // custom field before it did may turn out to sit beneath it after all.
+  const addressInitializedRef = useRef(hasFreepodAddress)
   useEffect(() => {
-    if (domainsInitializedRef.current || !hasWildcard) return
-    domainsInitializedRef.current = true
+    if (addressInitializedRef.current || !accountFqdn) return
+    addressInitializedRef.current = true
 
-    // Check if the current custom FQDN matches one of the new wildcard domains
-    if (customFqdn) {
-      const matchingDomain = wildcardDomains.find((d) => customFqdn.endsWith(`.${d}`))
-      if (matchingDomain) {
-        setPrefix(customFqdn.slice(0, -(matchingDomain.length + 1)))
-        setDomain(matchingDomain)
-        setCustomFqdn('')
-        setMode('wildcard')
-        return
-      }
+    if (customFqdn && customFqdn.endsWith(`.${accountFqdn}`)) {
+      setPrefix(customFqdn.slice(0, -(accountFqdn.length + 1)))
+      setCustomFqdn('')
     }
-
-    setMode('wildcard')
-    setDomain(wildcardDomains[0])
-  }, [hasWildcard, wildcardDomains, customFqdn])
+    setMode('freepod')
+  }, [accountFqdn, customFqdn])
 
   // Sync initial value into local state on mount
   const initializedRef = useRef(false)
@@ -101,20 +94,17 @@ export function HostnameField({ value, onChange, onValidationChange, wildcardDom
     if (initializedRef.current || !value) return
     initializedRef.current = true
 
-    if (hasWildcard) {
-      const matchingDomain = wildcardDomains.find((d) => value.endsWith(`.${d}`))
-      if (matchingDomain) {
-        setPrefix(value.slice(0, -(matchingDomain.length + 1)))
-        setDomain(matchingDomain)
-        setMode('wildcard')
-        return
-      }
+    if (accountFqdn && value.endsWith(`.${accountFqdn}`)) {
+      setPrefix(value.slice(0, -(accountFqdn.length + 1)))
+      setMode('freepod')
+      return
     }
     setCustomFqdn(value)
     setMode('custom')
-  }, [value, hasWildcard, wildcardDomains])
+  }, [value, accountFqdn])
 
-  const currentFqdn = mode === 'wildcard' ? (prefix ? `${prefix}.${domain}` : '') : customFqdn
+  const currentFqdn =
+    mode === 'freepod' ? (prefix ? `${prefix}.${accountFqdn}` : '') : customFqdn
 
   const validate = useCallback((fqdn: string) => {
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -177,7 +167,7 @@ export function HostnameField({ value, onChange, onValidationChange, wildcardDom
     if (!newMode) return
     setMode(newMode)
     setValidation({ status: 'idle' })
-    if (newMode === 'wildcard') {
+    if (newMode === 'freepod') {
       setCustomFqdn('')
     } else {
       setPrefix('')
@@ -192,27 +182,17 @@ export function HostnameField({ value, onChange, onValidationChange, wildcardDom
       ? `Create a CNAME record pointing to ${cnameDomain}`
       : REASON_LABELS[reason] ?? reason
 
-  const statusAdornment = (() => {
+  const statusIcon = (() => {
     switch (validation.status) {
       case 'checking':
-        return (
-          <InputAdornment position="end">
-            <CircularProgress size={20} />
-          </InputAdornment>
-        )
+        return <CircularProgress size={20} />
       case 'valid':
-        return (
-          <InputAdornment position="end">
-            <CheckCircleIcon color="success" />
-          </InputAdornment>
-        )
+        return <CheckCircleIcon color="success" />
       case 'error':
         return (
-          <InputAdornment position="end">
-            <Tooltip title={reasonLabel(validation.reason)}>
-              <ErrorIcon color="error" />
-            </Tooltip>
-          </InputAdornment>
+          <Tooltip title={reasonLabel(validation.reason)}>
+            <ErrorIcon color="error" />
+          </Tooltip>
         )
       default:
         return null
@@ -224,67 +204,53 @@ export function HostnameField({ value, onChange, onValidationChange, wildcardDom
     (validation.status === 'error' ? reasonLabel(validation.reason) : undefined) ??
     description
 
+  const modeToggle = hasFreepodAddress ? (
+    <ToggleButtonGroup
+      value={mode}
+      exclusive
+      onChange={handleModeChange}
+      size="small"
+      sx={{ alignSelf: 'flex-end' }}
+    >
+      <ToggleButton value="freepod" sx={{ whiteSpace: 'nowrap' }}>
+        <Typography variant="caption">Free domain</Typography>
+      </ToggleButton>
+      <ToggleButton value="custom" sx={{ whiteSpace: 'nowrap' }}>
+        <Typography variant="caption">Custom domain</Typography>
+      </ToggleButton>
+    </ToggleButtonGroup>
+  ) : null
+
   return (
     <FormControl fullWidth error={!!error || validation.status === 'error'}>
-        {mode === 'wildcard' ? (
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
-            <TextField
-              label="Hostname"
-              value={prefix}
-              onChange={(e) => setPrefix(e.target.value.replace(/\./g, ''))}
-              required={required}
-              error={!!error || validation.status === 'error'}
-              slotProps={{ input: { endAdornment: statusAdornment } }}
-              sx={{ flex: 1 }}
-            />
-            <Typography sx={{ mb: 2 }}>.</Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, minWidth: 180 }}>
-              {hasWildcard && (
-                <ToggleButtonGroup
-                  value={mode}
-                  exclusive
-                  onChange={handleModeChange}
-                  size="small"
-                  fullWidth
-                >
-                  <ToggleButton value="wildcard" sx={{ whiteSpace: 'nowrap' }}>
-                    <Typography variant="caption">Free domain</Typography>
-                  </ToggleButton>
-                  <ToggleButton value="custom" sx={{ whiteSpace: 'nowrap' }}>
-                    <Typography variant="caption">Custom domain</Typography>
-                  </ToggleButton>
-                </ToggleButtonGroup>
-              )}
-              <Select
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-              >
-                {wildcardDomains.map((d) => (
-                  <MenuItem key={d} value={d}>
-                    {d}
-                  </MenuItem>
-                ))}
-              </Select>
-            </Box>
-          </Box>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+        {modeToggle}
+        {mode === 'freepod' ? (
+          <TextField
+            label="Hostname"
+            value={prefix}
+            onChange={(e) => setPrefix(e.target.value.replace(/\./g, ''))}
+            required={required}
+            error={!!error || validation.status === 'error'}
+            slotProps={{
+              // Right-aligned, so the label stays against its domain: the two
+              // only read as one hostname while nothing sits between them.
+              htmlInput: { style: { textAlign: 'right', paddingRight: 0 } },
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Typography sx={{ color: 'text.secondary', mr: 1, whiteSpace: 'nowrap' }}>
+                      .{accountFqdn}
+                    </Typography>
+                    {statusIcon}
+                  </InputAdornment>
+                ),
+              },
+            }}
+            fullWidth
+          />
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-            {hasWildcard && (
-              <ToggleButtonGroup
-                value={mode}
-                exclusive
-                onChange={handleModeChange}
-                size="small"
-                sx={{ alignSelf: 'flex-end' }}
-              >
-                <ToggleButton value="wildcard">
-                  <Typography variant="caption">Free domain</Typography>
-                </ToggleButton>
-                <ToggleButton value="custom">
-                  <Typography variant="caption">Custom domain</Typography>
-                </ToggleButton>
-              </ToggleButtonGroup>
-            )}
+          <>
             <TextField
               label="Hostname"
               value={customFqdn}
@@ -292,16 +258,19 @@ export function HostnameField({ value, onChange, onValidationChange, wildcardDom
               placeholder="myapp.example.com"
               required={required}
               error={!!error || validation.status === 'error'}
-              slotProps={{ input: { endAdornment: statusAdornment } }}
+              slotProps={{
+                input: { endAdornment: <InputAdornment position="end">{statusIcon}</InputAdornment> },
+              }}
               fullWidth
             />
             <Typography variant="caption" color="text.secondary">
               Point your domain at Freepod: create a CNAME record → {cnameDomain}
             </Typography>
-          </Box>
+          </>
         )}
+      </Box>
 
-        {helperText && <FormHelperText>{helperText}</FormHelperText>}
+      {helperText && <FormHelperText>{helperText}</FormHelperText>}
     </FormControl>
   )
 }

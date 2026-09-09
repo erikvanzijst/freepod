@@ -215,10 +215,6 @@ export function checkHostname(fqdn: string) {
   return requestJson<HostnameCheckResult>(`/hostnames/${encodeURIComponent(fqdn)}`)
 }
 
-export function listDomains() {
-  return requestJson<string[]>('/domains')
-}
-
 export function getCnameTarget() {
   return requestJson<string>('/cname-target')
 }
