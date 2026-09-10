@@ -134,14 +134,33 @@ def hostname_label(name: str) -> Optional[str]:
 # --------------------------------------------------------------------------
 
 
+def can_pre_type(readline: Any) -> bool:
+    """Whether this readline implementation can pre-type an answer.
+
+    Against libedit, `set_startup_hook` and `insert_text` both exist and both
+    succeed, but the text never reaches the line: the hook runs and the user is
+    left staring at an empty prompt. Such an interpreter is not exotic — uv's
+    managed CPython builds are linked against libedit, as is the one Apple
+    ships — so the difference decides the prompt rather than being asserted.
+    """
+    backend = getattr(readline, "backend", None)  # Python 3.13 and newer
+    if backend is not None:
+        return backend == "readline"
+    version = getattr(readline, "_READLINE_LIBRARY_VERSION", "")
+    if "editline" in version.lower():
+        return False
+    return "libedit" not in (getattr(readline, "__doc__", "") or "")
+
+
 def prompt(text: str, default: Optional[str] = None) -> str:
     """Ask on stderr, with `default` pre-typed as an editable answer on a terminal.
 
-    Pre-typing needs readline, which `input()` only engages when stdin and
+    Pre-typing needs GNU readline, which `input()` only engages when stdin and
     stdout are both the terminal; click's `err=True` redirects stdout and so
     defeats it. The pre-typed prompt therefore writes to stdout, which is safe
-    only because stdout is then a terminal rather than a pipe. Anywhere else,
-    `default` is offered as click's bracketed `[default]`.
+    only because stdout is then a terminal rather than a pipe. Anywhere else —
+    off a terminal, without readline, or against a libedit readline that cannot
+    pre-type — `default` is offered as click's bracketed `[default]`.
     """
     if default and sys.stdin.isatty() and sys.stdout.isatty():
         try:
@@ -149,6 +168,8 @@ def prompt(text: str, default: Optional[str] = None) -> str:
         except ImportError:
             pass
         else:
+            if not can_pre_type(readline):
+                return click.prompt(text, default=default, err=True)
             readline.set_startup_hook(lambda: readline.insert_text(default))
             try:
                 while True:

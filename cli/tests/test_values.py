@@ -392,7 +392,8 @@ class Terminal:
 class FakeReadline:
     """Enough of readline to pre-type a line and let a scripted user edit it."""
 
-    def __init__(self, *edits):
+    def __init__(self, *edits, backend="readline"):
+        self.backend = backend
         self.edits = list(edits)
         self.hook = None
         self.prompts = []
@@ -401,7 +402,9 @@ class FakeReadline:
         self.hook = hook
 
     def insert_text(self, text):
-        self.line += text
+        # libedit accepts the call and drops the text on the floor.
+        if self.backend == "readline":
+            self.line += text
 
     def input(self, text):
         self.prompts.append(text)
@@ -416,10 +419,10 @@ class FakeReadline:
 
 @pytest.fixture
 def terminal(monkeypatch):
-    def install(*edits, readline_available=True):
+    def install(*edits, readline_available=True, backend="readline"):
         monkeypatch.setattr(sys, "stdin", Terminal())
         monkeypatch.setattr(sys, "stdout", Terminal())
-        fake = FakeReadline(*edits)
+        fake = FakeReadline(*edits, backend=backend)
         monkeypatch.setitem(sys.modules, "readline", fake if readline_available else None)
         monkeypatch.setattr("builtins.input", fake.input)
         return fake
@@ -454,6 +457,31 @@ def test_an_interrupted_pre_typed_prompt_aborts(terminal, interrupt):
     with pytest.raises(click.Abort):
         prompt("  hostname", default="myapp")
     assert readline.hook is None
+
+
+@pytest.mark.parametrize(
+    "attributes",
+    [
+        {"backend": "editline"},
+        {"_READLINE_LIBRARY_VERSION": "EditLine wrapper"},
+        {"__doc__": "Importing this module enables command line editing using libedit readline."},
+    ],
+    ids=["backend", "library_version", "docstring"],
+)
+def test_a_libedit_readline_leaves_the_default_to_click(terminal, monkeypatch, attributes):
+    """libedit cannot pre-type, so `[default]` is offered rather than an empty line."""
+    fake = terminal(lambda line: line, backend="editline")
+    if "backend" not in attributes:
+        # Only Python 3.13 and newer report one; older ones are read otherwise.
+        monkeypatch.delattr(fake, "backend")
+    for name, value in attributes.items():
+        monkeypatch.setattr(fake, name, value, raising=False)
+    calls = []
+    monkeypatch.setattr(click, "prompt", lambda text, **kwargs: calls.append(kwargs) or "x")
+
+    assert prompt("  hostname", default="myapp") == "x"
+    assert calls == [{"default": "myapp", "err": True}]
+    assert fake.prompts == [], "the pre-typing prompt must not run"
 
 
 def test_without_readline_the_default_is_offered_by_click(terminal, monkeypatch):
