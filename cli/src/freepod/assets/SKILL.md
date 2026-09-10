@@ -5,9 +5,10 @@ description: Deploy a web app to freepod.eu using the `freepod` CLI — it build
 
 # Deploying to Freepod
 
-Freepod takes a source directory, builds it into a container image with
-[Railpack](https://railpack.com), and serves it at a hostname over HTTPS. There
-is no Dockerfile to write, and for most apps no build configuration either. The
+Freepod takes a source directory, builds it into a container image, and serves
+it at a hostname over HTTPS. No Dockerfile is required — [Railpack](https://railpack.com)
+detects the stack — but a project that has one is built from it instead, so read
+*Which builder runs* before deploying a repository that ships a Dockerfile. The
 whole workflow is:
 
 ```bash
@@ -305,11 +306,44 @@ Railpack still handles dependency installation from whatever manifest it finds
 (`requirements.txt`, `pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml`,
 …). The `Procfile` only pins the last step.
 
+## Which builder runs
+
+A file named `Dockerfile` in the **project root** takes the build over. The
+platform builds that Dockerfile and does not detect the stack. Anything else is
+detected as before. The first line of the build log says which one ran.
+
+There is no opt-out and no fallback: a Dockerfile that fails to build fails the
+deploy. If a repository ships a Dockerfile you do not want used, rename it or
+exclude it with `.freepodignore`.
+
+What changes when the Dockerfile takes over:
+
+- **`railpack.json` and `Procfile` stop applying.** They are Railpack's input,
+  and Railpack did not run. Build variables declared there are not passed to
+  the Dockerfile — bake the value into the Dockerfile itself.
+- **The port contract does not change.** The image must still bind
+  `0.0.0.0:$PORT`. A Dockerfile that hardcodes a port builds and deploys and
+  then serves nothing; the build log warns when the image's declared ports do
+  not include the platform's.
+- **A `# syntax=` directive is ignored.** The platform pins the Dockerfile
+  frontend, so a directive naming another one has no effect. Dockerfiles
+  needing a syntax feature newer than the pinned frontend will fail.
+- **`RUN --security=insecure` and `network=host` are unavailable** and fail
+  with BuildKit's own error.
+- **Base images are pulled from wherever the Dockerfile names them.** A Docker
+  Hub base image is pulled anonymously and can hit that registry's rate limits.
+
+Everything else is unchanged: the same size limit on the upload, the same
+runtime constraints, and `freepod var` still supplies the running container's
+environment.
+
 ## Variables the *build* needs
 
 `freepod var` is runtime only: its values reach the running container and do
 not exist while the image is being built. `freepod deploy` takes no build
-flags. So a project whose *build* reads configuration — a Vite config branching
+flags. None of this applies to a project built from its own Dockerfile — see
+*Which builder runs* — which is built with its own `ARG` defaults. So a project
+whose *build* reads configuration — a Vite config branching
 on `process.env.FEATURE`, a static site baking in an API base URL, anything you
 would have passed to `docker build --build-arg` — needs one of two mechanisms:
 `dotenv` files, or vars declared in `railpack.json`. They do not overlap, and
