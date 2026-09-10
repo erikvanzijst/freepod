@@ -7,7 +7,8 @@ description: Deploy a web app to freepod.eu using the `freepod` CLI — it build
 
 Freepod takes a source directory, builds it into a container image with
 [Railpack](https://railpack.com), and serves it at a hostname over HTTPS. There
-is no Dockerfile to write and no build configuration. The whole workflow is:
+is no Dockerfile to write, and for most apps no build configuration either. The
+whole workflow is:
 
 ```bash
 freepod login      # once, interactive — a human has to do this
@@ -54,6 +55,9 @@ Setting a var rolls the deployment, because that is what makes it take effect.
 Several in one command produce one rollout, and `--stage` records them for the
 next deploy instead.
 
+These reach the *running* container only. A variable the build itself has to
+read goes in a `railpack.json` — see *Variables the build needs*.
+
 **Never put a credential in a file you commit, and never hardcode one.** Ask
 the user to run `freepod var set KEY --secret` themselves — a value passed as
 `KEY=value` on a command line is in the shell history, and a value you write
@@ -68,20 +72,6 @@ with `CAELUS_` or `RAILPACK_`. `freepod var set` refuses them.
 `DATABASE_URL` and the `PG*` variables are **not** refused today, but setting
 one achieves nothing: the platform's own values are applied after your vars, so
 yours is silently overridden. Never set them.
-
-Build-time configuration is a different matter, and it also works, because the
-upload carries your dotenv files. `.env` and `.env.<mode>` ship; `.env.local`
-and `.env.*.local` are excluded and never leave your machine. A framework that
-resolves its own dotenv cascade at build time therefore reads them here:
-`vite build` and `next build` run in production mode, so a committed
-`.env.production` is picked up on the platform and ignored by your local dev
-server, with no `.local` file needed. That is the idiomatic way to give a
-static site a different `API_BASE_URL` in production than in development.
-
-Whatever you put there is compiled into the image, which is why it is only
-safe for non-secret configuration. A secret in `.env` or `.env.production` is
-committed to your repository and baked into a layer in the registry — use
-`freepod var set --secret` for those, which keeps them out of both.
 
 **5. One HTTP service per deployment.** No sidecars, no worker processes, no
 scheduled jobs. If the app is a stack of cooperating services, only one of them
@@ -315,6 +305,64 @@ Railpack still handles dependency installation from whatever manifest it finds
 (`requirements.txt`, `pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml`,
 …). The `Procfile` only pins the last step.
 
+## Variables the *build* needs
+
+`freepod var` is runtime only: its values reach the running container and do
+not exist while the image is being built. `freepod deploy` takes no build
+flags. So a project whose *build* reads configuration — a Vite config branching
+on `process.env.FEATURE`, a static site baking in an API base URL, anything you
+would have passed to `docker build --build-arg` — needs one of two mechanisms:
+`dotenv` files, or vars declared in `railpack.json`. They do not overlap, and
+which one works is decided by how the code reads the  value, not by preference.
+
+### Dotenv files
+
+These are ordinary files in the source tree. Nothing on the platform reads
+them; only your own tooling does. `.env` and `.env.<mode>` ship with the
+upload, while `.env.local` and `.env.*.local` are excluded by default and never
+leave your machine. Because `vite build` and `next build` run in production
+mode, a committed `.env.production` is picked up on the platform and ignored by
+your local dev server, with no `.local` file needed — the idiomatic way to give
+a static site a different `API_BASE_URL` in production than in development.
+
+Two things about them surprise people:
+
+- **A dotenv file creates no environment variables.** Vite, for instance, maps
+  only `VITE_`-prefixed entries into `import.meta.env` for the client bundle;
+  inside `vite.config.ts`, `process.env.FOO` and even `process.env.VITE_FOO`
+  are `undefined`. A build that reads `process.env` needs `railpack.json`.
+- **A gitignored dotenv file never reaches the build**, with no warning, since
+  the upload honors `.gitignore` and most projects ignore `.env`. Commit a
+  `.env.production` rather than un-ignoring `.env`, which is local
+  configuration and may hold credentials.
+
+### `railpack.json`
+
+A `railpack.json` at the project root puts real environment variables into the
+build step's container, which is what `process.env` and `os.environ` read:
+
+```json
+{
+  "$schema": "https://schema.railpack.com",
+  "steps": { "build": { "variables": { "SIMPLE_MODE": "true" } } }
+}
+```
+
+This merges with Railpack's detection rather than replacing it: the build step
+keeps the command, inputs and caches it would have had, and gains the variable.
+
+Two spellings look right and do nothing: a top-level `"variables"` or `"env"`
+object is silently ignored — the variable has to sit under the step.
+
+### Neither one takes a secret
+
+A dotenv file is committed to your repository and compiled into the image; a
+`railpack.json` is committed too. `freepod var set --secret` keeps a value out
+of both, but it is runtime-only by design — the platform has no build-time
+secret mechanism at all today. A build that genuinely needs a credential (a
+private package registry token, say) cannot run on Freepod as-is. Say so rather
+than committing the token.
+
 ## The procedure
 
 ### 1. Confirm authentication before anything else
@@ -412,6 +460,10 @@ things those rules miss. Two wrinkles:
   `!patched.js` does nothing, and nothing under a directory you excluded
   yourself can come back — exclude `build/*` rather than `build/` if you need
   an exception.
+- A gitignored file is absent from the build with no warning — `.env` is the
+  common one, since almost every project ignores it. If a dotenv file is what
+  the build reads, commit a `.env.production` rather than un-ignoring `.env`;
+  see *Variables the build needs*.
 
 ## When it goes wrong
 
