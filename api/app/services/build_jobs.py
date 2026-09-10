@@ -154,6 +154,10 @@ def build_job_manifest(
                                     "value": settings.builds_namespace,
                                 },
                                 {"name": "CAELUS_WORKDIR", "value": WORK_DIR},
+                                {
+                                    "name": "CAELUS_ARTIFACT_MAX_BYTES",
+                                    "value": str(settings.artifact_max_bytes),
+                                },
                             ],
                             "resources": {
                                 "requests": {

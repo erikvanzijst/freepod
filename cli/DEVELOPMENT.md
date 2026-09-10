@@ -652,8 +652,8 @@ node_modules/*                 # exclude the contents instead
 The archive spools in memory up to 32 MiB and to disk beyond it. The client
 enforces exactly one limit of its own — the packed size — and learns it from the
 upload slot's `max_bytes` at runtime. The entry-count and uncompressed ceilings
-live in the builder's environment (`CAELUS_MAX_ENTRIES`,
-`CAELUS_MAX_EXTRACTED_BYTES`), are never reported to a client, and are reported
+live in the builder's environment (`CAELUS_ARCHIVE_MAX_ENTRIES`,
+`CAELUS_EXTRACTED_MAX_BYTES`), are never reported to a client, and are reported
 in the build log when hit.
 
 ## Builds
