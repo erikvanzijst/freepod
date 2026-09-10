@@ -14,6 +14,7 @@ exactly `["hostname"]`.
 from __future__ import annotations
 
 import re
+import sys
 from typing import Any, Callable, Dict, List, Optional
 
 import click
@@ -118,9 +119,47 @@ def normalize_hostname(value: str, account_fqdn: Optional[str]) -> str:
     return candidate
 
 
+def hostname_label(name: str) -> Optional[str]:
+    """The DNS label closest to `name`, or None when nothing usable remains.
+
+    Dots become hyphens too: a dotted suggestion would be taken as fully
+    qualified rather than completed beneath the account's domain name.
+    """
+    label = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:63].rstrip("-")
+    return label or None
+
+
 # --------------------------------------------------------------------------
 # The prompting loop
 # --------------------------------------------------------------------------
+
+
+def prompt(text: str, default: Optional[str] = None) -> str:
+    """Ask on stderr, with `default` pre-typed as an editable answer on a terminal.
+
+    Pre-typing needs readline, which `input()` only engages when stdin and
+    stdout are both the terminal; click's `err=True` redirects stdout and so
+    defeats it. The pre-typed prompt therefore writes to stdout, which is safe
+    only because stdout is then a terminal rather than a pipe. Anywhere else,
+    `default` is offered as click's bracketed `[default]`.
+    """
+    if default and sys.stdin.isatty() and sys.stdout.isatty():
+        try:
+            import readline
+        except ImportError:
+            pass
+        else:
+            readline.set_startup_hook(lambda: readline.insert_text(default))
+            try:
+                while True:
+                    answer = input(f"{text}: ")
+                    if answer.strip():
+                        return answer
+            except (KeyboardInterrupt, EOFError):
+                raise click.Abort() from None
+            finally:
+                readline.set_startup_hook()
+    return click.prompt(text, default=default, err=True)
 
 
 class ValueCollector:
@@ -137,6 +176,7 @@ class ValueCollector:
         *,
         account_fqdn: Optional[str] = None,
         check_hostname: Optional[Callable[[str], Dict[str, Any]]] = None,
+        suggested_hostname: Optional[str] = None,
         interactive: bool = True,
         echo: Callable[[str], None] = lambda message: click.echo(message, err=True),
         ask: Optional[Callable[..., str]] = None,
@@ -144,11 +184,10 @@ class ValueCollector:
         self.schema = schema or {}
         self.account_fqdn = account_fqdn
         self.check_hostname = check_hostname
+        self.suggested_hostname = suggested_hostname
         self.interactive = interactive
         self.echo = echo
-        self._ask = ask or (
-            lambda text, default=None: click.prompt(text, default=default, err=True)
-        )
+        self._ask = ask or prompt
 
     # -- schema access ----------------------------------------------------
 
@@ -228,8 +267,9 @@ class ValueCollector:
     def _prompt_loop(
         self, name: str, spec: Dict[str, Any], current: Optional[str], hostname: bool
     ) -> str:
+        default = current or (self.suggested_hostname if hostname else None)
         while True:
-            answer = self._ask(f"  {name}", default=current) if current else self._ask(f"  {name}")
+            answer = self._ask(f"  {name}", default=default) if default else self._ask(f"  {name}")
             answer = (answer or "").strip()
 
             if hostname:
@@ -240,14 +280,14 @@ class ValueCollector:
             problem = check_constraints(name, answer, spec)
             if problem:
                 self.echo(f"  {problem}. Try again.")
-                current = None
+                current = default = None
                 continue
 
             if hostname and self.check_hostname is not None:
                 verdict = self.check_hostname(answer)
                 if not verdict.get("usable", False):
                     self.echo(f"  {answer}: {describe_reason(verdict.get('reason'))}. Try again.")
-                    current = None
+                    current = default = None
                     continue
 
             return answer

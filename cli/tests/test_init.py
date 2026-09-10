@@ -106,16 +106,24 @@ def credential(monkeypatch):
 
 @pytest.fixture
 def answers(monkeypatch):
+    """Script the answers; `None` accepts whatever the prompt offered.
+
+    Returns the list of values each prompt offered, in order.
+    """
+
     def install(*responses):
         queue = list(responses)
+        offered = []
 
-        def fake_prompt(text, default=None, err=False, **kwargs):
+        def fake_prompt(text, default=None):
             if not queue:
                 raise AssertionError(f"unexpected prompt: {text}")
-            return queue.pop(0)
+            offered.append(default)
+            answer = queue.pop(0)
+            return default if answer is None else answer
 
-        monkeypatch.setattr("freepod.values.click.prompt", fake_prompt)
-        return queue
+        monkeypatch.setattr("freepod.values.prompt", fake_prompt)
+        return offered
 
     return install
 
@@ -181,6 +189,22 @@ def test_the_hostname_is_completed_and_shown(dev_api, credential, answers, in_tm
 
     assert load(in_tmp_dir).hostname == "myapp.erik.dev.freepod.eu"
     assert "myapp.erik.dev.freepod.eu" in capsys.readouterr().err
+
+
+def test_the_directory_name_is_offered_as_the_hostname(
+    dev_api, credential, answers, in_tmp_dir, monkeypatch, capsys
+):
+    project_dir = in_tmp_dir / "My_App.v2"
+    project_dir.mkdir()
+    monkeypatch.chdir(project_dir)
+    dev_api()
+    offered = answers(None)
+
+    assert main(["--env", "dev", "init"]) == EXIT_OK
+
+    assert offered == ["my-app-v2"]
+    assert load(project_dir).hostname == "my-app-v2.erik.dev.freepod.eu"
+    capsys.readouterr()
 
 
 def test_an_unusable_hostname_re_prompts(dev_api, credential, answers, in_tmp_dir, capsys):

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+
+import click
 import pytest
 
 from freepod.values import (
@@ -9,9 +12,11 @@ from freepod.values import (
     ValueError_,
     check_constraints,
     describe_reason,
+    hostname_label,
     is_hostname_property,
     missing_required,
     normalize_hostname,
+    prompt,
 )
 
 # The real schema from dev's `custom` product template, trimmed to shape.
@@ -38,17 +43,20 @@ ACCOUNT_FQDN = "erik.dev.freepod.eu"
 
 
 class Asker:
-    """A scripted stand-in for `click.prompt`."""
+    """A scripted stand-in for `prompt`; a `None` answer accepts the default."""
 
     def __init__(self, *answers):
         self.answers = list(answers)
         self.prompts = []
+        self.defaults = []
 
     def __call__(self, text, default=None):
         self.prompts.append(text)
+        self.defaults.append(default)
         if not self.answers:
             raise AssertionError(f"unexpected extra prompt: {text}")
-        return self.answers.pop(0)
+        answer = self.answers.pop(0)
+        return default if answer is None else answer
 
 
 def collector(schema=CUSTOM_SCHEMA, *, answers=(), usable=True, reasons=None, **kwargs):
@@ -329,3 +337,138 @@ def test_a_present_but_invalid_value_with_no_prompt_names_the_constraint():
 def test_a_valid_value_with_no_prompt_is_accepted():
     instance = ValueCollector(CUSTOM_SCHEMA, account_fqdn=ACCOUNT_FQDN, interactive=False)
     assert instance.collect({"hostname": "a.erik.dev.freepod.eu"}) == {"hostname": "a.erik.dev.freepod.eu"}
+
+
+# --------------------------------------------------------------------------
+# The suggested hostname
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("myapp", "myapp"),
+        ("My_App.v2", "my-app-v2"),
+        ("--edge--", "edge"),
+        ("a" * 62 + "_b", "a" * 62),
+        ("café", "caf"),
+        ("___", None),
+        ("", None),
+    ],
+)
+def test_a_directory_name_reduces_to_one_dns_label(name, expected):
+    assert hostname_label(name) == expected
+
+
+def test_the_suggestion_is_offered_and_can_be_accepted():
+    values, asker, _ = collector(answers=[None], suggested_hostname="myapp")
+
+    assert values.collect()["hostname"] == "myapp.erik.dev.freepod.eu"
+    assert asker.defaults == ["myapp"]
+
+
+def test_a_rejected_suggestion_is_not_offered_again():
+    values, asker, _ = collector(
+        answers=[None, "free"], reasons=["in_use", None], suggested_hostname="myapp"
+    )
+
+    assert values.collect()["hostname"] == "free.erik.dev.freepod.eu"
+    assert asker.defaults == ["myapp", None]
+
+
+def test_the_suggestion_is_not_offered_for_other_properties():
+    schema = {"properties": {"code": {"type": "string"}}, "required": ["code"]}
+    values, asker, _ = collector(schema, answers=["abc"], suggested_hostname="myapp")
+
+    values.collect()
+    assert asker.defaults == [None]
+
+
+class Terminal:
+    def isatty(self):
+        return True
+
+
+class FakeReadline:
+    """Enough of readline to pre-type a line and let a scripted user edit it."""
+
+    def __init__(self, *edits):
+        self.edits = list(edits)
+        self.hook = None
+        self.prompts = []
+
+    def set_startup_hook(self, hook=None):
+        self.hook = hook
+
+    def insert_text(self, text):
+        self.line += text
+
+    def input(self, text):
+        self.prompts.append(text)
+        self.line = ""
+        if self.hook:
+            self.hook()
+        edit = self.edits.pop(0)
+        if isinstance(edit, BaseException):
+            raise edit
+        return edit(self.line)
+
+
+@pytest.fixture
+def terminal(monkeypatch):
+    def install(*edits, readline_available=True):
+        monkeypatch.setattr(sys, "stdin", Terminal())
+        monkeypatch.setattr(sys, "stdout", Terminal())
+        fake = FakeReadline(*edits)
+        monkeypatch.setitem(sys.modules, "readline", fake if readline_available else None)
+        monkeypatch.setattr("builtins.input", fake.input)
+        return fake
+
+    return install
+
+
+def test_a_default_is_pre_typed_on_a_terminal(terminal):
+    readline = terminal(lambda line: line)
+
+    assert prompt("  hostname", default="myapp") == "myapp"
+    assert readline.prompts == ["  hostname: "]
+    assert readline.hook is None, "the startup hook must not outlive the prompt"
+
+
+def test_a_pre_typed_default_can_be_edited(terminal):
+    terminal(lambda line: line[:-3] + "pod")
+    assert prompt("  hostname", default="myapp") == "mypod"
+
+
+def test_an_erased_answer_is_asked_again(terminal):
+    readline = terminal(lambda line: "", lambda line: line)
+
+    assert prompt("  hostname", default="myapp") == "myapp"
+    assert len(readline.prompts) == 2
+
+
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt(), EOFError()])
+def test_an_interrupted_pre_typed_prompt_aborts(terminal, interrupt):
+    readline = terminal(interrupt)
+
+    with pytest.raises(click.Abort):
+        prompt("  hostname", default="myapp")
+    assert readline.hook is None
+
+
+def test_without_readline_the_default_is_offered_by_click(terminal, monkeypatch):
+    terminal(readline_available=False)
+    calls = []
+    monkeypatch.setattr(click, "prompt", lambda text, **kwargs: calls.append(kwargs) or "x")
+
+    assert prompt("  hostname", default="myapp") == "x"
+    assert calls == [{"default": "myapp", "err": True}]
+
+
+def test_off_a_terminal_the_default_is_offered_by_click(monkeypatch):
+    calls = []
+    monkeypatch.setattr(click, "prompt", lambda text, **kwargs: calls.append(kwargs) or "x")
+    monkeypatch.setattr("builtins.input", lambda _text: pytest.fail("readline path taken"))
+
+    assert prompt("  hostname", default="myapp") == "x"
+    assert calls == [{"default": "myapp", "err": True}]

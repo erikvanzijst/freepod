@@ -69,6 +69,26 @@ dot, SHALL append the platform's first wildcard domain to form a fully-qualified
 - **WHEN** the user enters a hostname containing a dot
 - **THEN** the client lowercases it and uses it as entered
 
+### Requirement: The hostname prompt offers the directory's name
+
+The client SHALL offer the current directory's name, reduced to a single DNS label, as
+the initial answer to the hostname prompt, which the user can accept unchanged or edit.
+On an interactive terminal the offered name SHALL be pre-typed as editable input; where
+line editing is unavailable it SHALL be presented as the prompt's default. When the name
+reduces to nothing, no answer SHALL be offered, and a suggestion that was rejected SHALL
+NOT be offered again.
+
+#### Scenario: The directory's name is accepted as offered
+
+- **WHEN** initialization runs in a directory named `My_App.v2` and the user accepts the
+  offered answer
+- **THEN** the client records `my-app-v2` completed beneath the account's domain name
+
+#### Scenario: A rejected suggestion is not offered again
+
+- **WHEN** the platform reports the offered name as unusable
+- **THEN** the client asks again without offering an answer
+
 ### Requirement: A hostname is checked before it is recorded
 
 The client SHALL check a candidate hostname against the platform's hostname check before

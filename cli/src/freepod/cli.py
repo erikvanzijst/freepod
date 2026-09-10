@@ -51,7 +51,7 @@ from .config import (
 )
 from .project import PROJECT_FILE, find_project_root, load
 from . import subdomain
-from .values import ValueCollector
+from .values import ValueCollector, hostname_label
 
 
 def _declared_environment() -> Optional[str]:
@@ -307,6 +307,7 @@ def init(context: Context, force: bool) -> None:
             schema,
             account_fqdn=subdomain.require(api),
             check_hostname=api.check_hostname,
+            suggested_hostname=hostname_label(root.name),
         )
         values = collector.collect()
 
