@@ -130,6 +130,9 @@ jobs:
       - name: Publish the SSH auth resolver when its version is new
         run: ./scripts/build-images.sh --ssh-resolver --skip-if-published
 
+      - name: Publish the tenant build image when its version is new
+        run: ./scripts/build-images.sh --builder --skip-if-published
+
   api-test:
     runs-on: ubuntu-latest
     permissions:

@@ -48,9 +48,9 @@ The build worker sets all of these on the Job.
 | `CAELUS_REGISTRY`            | yes      | Registry host, e.g. `registry.home`. Must match `registry` in the chart's `values.yaml`.                                   |
 | `CAELUS_CACHE_SCOPE`         | yes      | Environment discriminator for the layer cache repository. The worker sets it to the builds namespace.                      |
 | `CAELUS_WORKDIR`             | no       | Working tree. Default `/home/user/work`; the Job mounts an emptyDir here.                                                  |
-| `CAELUS_MAX_ARTIFACT_BYTES`  | no       | Ceiling on the *compressed* stream. Default 100 MiB, matching the API's upload cap.                                        |
-| `CAELUS_MAX_EXTRACTED_BYTES` | no       | Ceiling on the *extracted* tree. Default 800 MiB. This is the bound that matters: a 741-byte archive can expand to 500 KB. |
-| `CAELUS_MAX_ENTRIES`         | no       | Archive entry ceiling. Default 100,000.                                                                                    |
+| `CAELUS_ARTIFACT_MAX_BYTES`  | no       | Ceiling on the *compressed* stream. The worker sets it from the API's upload cap (`artifact_max_bytes`); default 100 MiB.  |
+| `CAELUS_EXTRACTED_MAX_BYTES` | no       | Ceiling on the *extracted* tree. Default 800 MiB. This is the bound that matters: a 741-byte archive can expand to 500 KB. |
+| `CAELUS_ARCHIVE_MAX_ENTRIES` | no       | Archive entry ceiling. Default 100,000.                                                                                    |
 | `CAELUS_TERMINATION_LOG`     | no       | Default `/dev/termination-log`.                                                                                            |
 
 ## The layer cache is per owner, and that is the whole design
@@ -126,8 +126,8 @@ explicit bounds applied *before* each member is written:
 | `../escape.txt`, `../../escape.txt`                 | rejected                                 |
 | absolute path `/tmp/escape.txt`                     | rejected                                 |
 | symlink or hardlink pointing outside the tree       | rejected                                 |
-| entry-count bomb                                    | rejected at `CAELUS_MAX_ENTRIES`         |
-| decompression bomb, single or spread across members | rejected at `CAELUS_MAX_EXTRACTED_BYTES` |
+| entry-count bomb                                    | rejected at `CAELUS_ARCHIVE_MAX_ENTRIES` |
+| decompression bomb, single or spread across members | rejected at `CAELUS_EXTRACTED_MAX_BYTES` |
 
 The absolute-path rejection is ours rather than the filter's: `data` *rewrites*
 an absolute path to a relative one instead of refusing it, which is safe but
@@ -215,11 +215,23 @@ back to ghcr.io and are merely slow.
 non-goal, so the Dockerfile fails the build on any other architecture rather
 than producing an image whose `railpack` binary cannot exec.
 
+The image is published to ghcr.io alongside the platform's own images, on an
+immutable version tag taken from `VERSION` in this directory. Bump that file,
+then:
+
 ```bash
-cd products/custom/builder
-docker build --platform linux/amd64 -t registry.home/caelus/builder:0.1.4 .
-docker push registry.home/caelus/builder:0.1.4
+./scripts/build-images.sh --builder
 ```
+
+An already-published version is refused rather than overwritten: a build Job
+names this image by tag, so re-pushing one would change what executes tenant
+code without any version having moved. CI runs the same command with
+`--skip-if-published` on every merge, so a push lands exactly when `VERSION`
+names a version GHCR does not already hold.
+
+A first push creates the package at GHCR's default visibility, which is
+private, and nothing configures an `imagePullSecret` — see
+[`tf/app/README.md`](../../../tf/app/README.md).
 
 Then point the platform to it through `builder_image` in Terraform, and mirror
 the Railpack base images if this is a new registry or a new Railpack version:

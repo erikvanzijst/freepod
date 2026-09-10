@@ -40,6 +40,7 @@ resource "kubernetes_config_map" "api" {
     CAELUS_SMTP_PORT = "25"
     CAELUS_SMTP_FROM = "no-reply@${var.domain}"
 
+    CAELUS_ARTIFACT_MAX_BYTES  = 200 * 1024 * 1024
     CAELUS_BUILDER_IMAGE       = var.builder_image
     CAELUS_BUILDS_NAMESPACE    = var.builds_namespace
     CAELUS_BUILD_MAX_IN_FLIGHT = tostring(var.build_max_in_flight)

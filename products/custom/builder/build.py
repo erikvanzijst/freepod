@@ -442,13 +442,9 @@ def main() -> int:
         cache_scope = _env("CAELUS_CACHE_SCOPE")
         workdir = Path(os.environ.get("CAELUS_WORKDIR", "/home/user/work"))
 
-        # Both bounds are on *expansion*, since the upload cap already bounds
-        # the compressed input. A legitimate source tree is nowhere near
-        # either: they exist to stop a decompression bomb, and are env-tunable
-        # so the Job spec can tighten them without rebuilding this image.
-        max_artifact_bytes = _env_int("CAELUS_MAX_ARTIFACT_BYTES", 100 * 1024 * 1024)
-        max_extracted_bytes = _env_int("CAELUS_MAX_EXTRACTED_BYTES", 800 * 1024 * 1024)
-        max_entries = _env_int("CAELUS_MAX_ENTRIES", 100_000)
+        max_artifact_bytes = _env_int("CAELUS_ARTIFACT_MAX_BYTES", 100 * 1024 * 1024)
+        max_extracted_bytes = _env_int("CAELUS_EXTRACTED_MAX_BYTES", 800 * 1024 * 1024)
+        max_entries = _env_int("CAELUS_ARCHIVE_MAX_ENTRIES", 100_000)
 
         source = workdir / "src"
         plan_dir = workdir / "plan"

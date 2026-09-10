@@ -399,15 +399,15 @@ def test_an_empty_required_variable_counts_as_missing(monkeypatch):
 
 
 def test_optional_integers_fall_back_and_validate(monkeypatch):
-    monkeypatch.delenv("CAELUS_MAX_ENTRIES", raising=False)
-    assert build._env_int("CAELUS_MAX_ENTRIES", 77) == 77
+    monkeypatch.delenv("CAELUS_ARCHIVE_MAX_ENTRIES", raising=False)
+    assert build._env_int("CAELUS_ARCHIVE_MAX_ENTRIES", 77) == 77
 
-    monkeypatch.setenv("CAELUS_MAX_ENTRIES", "5")
-    assert build._env_int("CAELUS_MAX_ENTRIES", 77) == 5
+    monkeypatch.setenv("CAELUS_ARCHIVE_MAX_ENTRIES", "5")
+    assert build._env_int("CAELUS_ARCHIVE_MAX_ENTRIES", 77) == 5
 
-    monkeypatch.setenv("CAELUS_MAX_ENTRIES", "lots")
+    monkeypatch.setenv("CAELUS_ARCHIVE_MAX_ENTRIES", "lots")
     with pytest.raises(build.BuildFailure, match="must be an integer"):
-        build._env_int("CAELUS_MAX_ENTRIES", 77)
+        build._env_int("CAELUS_ARCHIVE_MAX_ENTRIES", 77)
 
 
 def test_main_exits_non_zero_without_an_artifact_url(monkeypatch, tmp_path):
