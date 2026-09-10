@@ -20,9 +20,10 @@ freepod deploy     # https://myapp.freepod.eu
 platform and releases it. By the time the command returns, the app is live on
 its own hostname over HTTPS. Ship a new version by running it again.
 
-There is no Dockerfile to write and nothing to configure:
+No Dockerfile to write and nothing to configure:
 [Railpack](https://railpack.com) detects the stack — Node, Python, Go, Java,
-PHP, Ruby, Rust and more — and builds an image from your source as it is.
+PHP, Ruby, Rust and more — and builds an image from your source as it is. A
+project that *does* have a `Dockerfile` in its root is built from that instead.
 
 ## What you need
 
@@ -200,7 +201,7 @@ freepod skill install
 
 Then just prompt:
 
-> Build a URL shortener for freepod and deploy it to links.freepod.eu
+> Build a URL shortener and deploy it to freepod.
 
 Supported: **Claude Code**, **Codex**, **OpenCode**, **Amp**, **Gemini CLI**, **Qwen Code**
 
