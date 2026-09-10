@@ -202,9 +202,10 @@ security design.
 - **Tenant Dockerfiles can produce very large images** → No new exposure: nothing caps
   image size for detected builds either. Registry disk is an existing operational concern.
 - **The contract warnings are heuristics and can mislead** → They warn and never fail, and
-  their wording says the image *may* not serve. A correct image that declares no port is
-  warned about; that is the accepted cost of catching the case that deploys green and
-  serves nothing.
+  their wording says the image *may* not serve. The port warning fires only on a
+  contradiction — declared ports that exclude the platform's — because declaring none is
+  the norm: no Railpack-built image emits `EXPOSE`, so warning about absence would fire on
+  nearly every build and devalue the warning that means something.
 
 ## Migration Plan
 

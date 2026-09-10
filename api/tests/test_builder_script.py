@@ -13,6 +13,7 @@ command does not run is a test that does not exist.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import io
 import json
@@ -681,3 +682,348 @@ def test_the_mirror_script_pins_the_railpack_version_the_dockerfile_builds():
     )
 
     assert f"RAILPACK_VERSION={version}" in MIRROR_SCRIPT.read_text()
+
+
+# ---------------------------------------------------------------------------
+# Builder selection
+# ---------------------------------------------------------------------------
+
+
+def test_a_root_dockerfile_selects_itself(tmp_path):
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n")
+    assert build.select_builder(tmp_path) == "dockerfile"
+
+
+def test_no_dockerfile_selects_detection(tmp_path):
+    (tmp_path / "package.json").write_text("{}")
+    assert build.select_builder(tmp_path) == "railpack"
+
+
+def test_a_dockerfile_below_the_root_is_not_the_projects_answer(tmp_path):
+    """A Dockerfile deeper in the tree belongs to something else — a
+    sub-service, a fixture — and must not decide how the project is built."""
+    (tmp_path / "svc").mkdir()
+    (tmp_path / "svc" / "Dockerfile").write_text("FROM scratch\n")
+    assert build.select_builder(tmp_path) == "railpack"
+
+
+def test_a_directory_named_dockerfile_is_not_a_dockerfile(tmp_path):
+    (tmp_path / "Dockerfile").mkdir()
+    assert build.select_builder(tmp_path) == "railpack"
+
+
+# ---------------------------------------------------------------------------
+# The Dockerfile build
+# ---------------------------------------------------------------------------
+
+
+def _captured_dockerfile_buildctl(monkeypatch, **overrides) -> list[str]:
+    """Run `build_and_push_dockerfile` against a stubbed `_run`, return argv."""
+    captured: list[list[str]] = []
+    monkeypatch.setattr(
+        build, "_run", lambda command, *, stage, env=None: captured.append(command)
+    )
+
+    kwargs = {
+        "source": Path("/work/src"),
+        "metadata_file": Path("/work/metadata.json"),
+        "image_ref": "registry.home/7:some-build-id",
+        "cache_image_ref": build.cache_ref("registry.home", "caelus-builds", "7"),
+        "registry": "registry.home",
+        "buildkitd_flags": ["--config", "/work/buildkitd.toml"],
+    }
+    kwargs.update(overrides)
+    build.build_and_push_dockerfile(**kwargs)
+
+    assert len(captured) == 1
+    return captured[0]
+
+
+def test_the_dockerfile_build_reads_the_project_as_both_context_and_dockerfile(monkeypatch):
+    argv = _captured_dockerfile_buildctl(monkeypatch)
+
+    assert "--frontend=dockerfile.v0" in argv
+    assert "filename=Dockerfile" in argv
+    locals_given = [argv[i + 1] for i, arg in enumerate(argv) if arg == "--local"]
+    assert locals_given == ["context=/work/src", "dockerfile=/work/src"]
+
+
+def test_the_dockerfile_frontend_is_pinned_by_digest():
+    """A tag would let whoever can write that repository choose the code that
+    drives the build daemon. A digest makes a substituted image fail closed."""
+    assert build.DOCKERFILE_FRONTEND_DIGEST.startswith("sha256:")
+    assert len(build.DOCKERFILE_FRONTEND_DIGEST) == len("sha256:") + 64
+
+
+def test_the_syntax_directive_is_overridden_by_the_pinned_frontend(monkeypatch):
+    """Whatever interprets a Dockerfile is a client of the build daemon, not a
+    build step: it emits its own LLB, names its own cache imports and sits on
+    the daemon's image-resolution path. A `# syntax=` directive would let the
+    tenant pick it."""
+    argv = _captured_dockerfile_buildctl(monkeypatch)
+
+    syntax = next(
+        arg for arg in argv if arg.startswith("build-arg:BUILDKIT_SYNTAX=")
+    ).split("=", 1)[1]
+    assert syntax == f"registry.home/docker/dockerfile@{build.DOCKERFILE_FRONTEND_DIGEST}"
+
+
+def test_the_pinned_frontend_is_addressed_at_the_supplied_registry(monkeypatch):
+    """Named at the internal registry rather than Docker Hub, and without a
+    docker.io mirror entry that would route every tenant pull through it."""
+    argv = _captured_dockerfile_buildctl(monkeypatch, registry="some.registry")
+
+    assert any(
+        arg == f"build-arg:BUILDKIT_SYNTAX=some.registry/docker/dockerfile@{build.DOCKERFILE_FRONTEND_DIGEST}"
+        for arg in argv
+    )
+
+
+def test_both_builders_publish_and_cache_identically(monkeypatch):
+    """The cache ref is an isolation boundary and the output is where the
+    platform will look for the image. Neither may depend on which frontend
+    produced the LLB."""
+    railpack = _captured_buildctl(monkeypatch)
+    dockerfile = _captured_dockerfile_buildctl(monkeypatch)
+
+    for flag in ("--import-cache", "--export-cache", "--output", "--metadata-file"):
+        assert railpack[railpack.index(flag) + 1] == dockerfile[dockerfile.index(flag) + 1]
+    assert "--progress=plain" in dockerfile
+
+
+def test_the_dockerfile_build_carries_no_cache_key_and_no_entitlements(monkeypatch):
+    """cache-key namespaces the *Railpack* frontend's mount caches and means
+    nothing here. `--allow` would widen what tenant code may do."""
+    argv = _captured_dockerfile_buildctl(monkeypatch)
+
+    assert not any(arg.startswith("build-arg:cache-key=") for arg in argv)
+    assert not any(arg.startswith("--allow") for arg in argv)
+
+
+def test_the_mirror_script_pins_the_dockerfile_frontend_build_py_names():
+    """build.py addresses this one at the internal registry with no upstream to
+    fall through to, so a disagreement here is a broken build, not a slow one."""
+    script = MIRROR_SCRIPT.read_text()
+    assert f"DOCKERFILE_FRONTEND_DIGEST={build.DOCKERFILE_FRONTEND_DIGEST}" in script
+
+
+# ---------------------------------------------------------------------------
+# The runtime contract check
+# ---------------------------------------------------------------------------
+
+
+def test_the_platform_port_matches_the_chart():
+    """The builder cannot see the chart, so this constant is a second copy of
+    its containerPort. Drift would make the warning lie."""
+    values = (
+        REPO_ROOT / "products" / "custom" / "chart" / "values.yaml"
+    ).read_text()
+    declared = next(
+        line.split(":", 1)[1].strip()
+        for line in values.splitlines()
+        if line.startswith("containerPort:")
+    )
+    assert str(build.PLATFORM_PORT) == declared
+
+
+def test_an_image_declaring_another_port_is_warned_about(capsys):
+    build.warn_about_runtime_contract({"ExposedPorts": {"80/tcp": {}}, "Cmd": ["nginx"]})
+
+    out = capsys.readouterr().out
+    assert "WARNING" in out and "80/tcp" in out and str(build.PLATFORM_PORT) in out
+
+
+def test_an_image_with_nothing_to_run_is_warned_about(capsys):
+    build.warn_about_runtime_contract({"ExposedPorts": {"8080/tcp": {}}})
+
+    out = capsys.readouterr().out
+    assert "WARNING" in out and "nothing to run" in out
+
+
+def test_a_conforming_image_is_not_warned_about(capsys):
+    build.warn_about_runtime_contract(
+        {"ExposedPorts": {"8080/tcp": {}}, "Entrypoint": ["/app/server"]}
+    )
+
+    assert "WARNING" not in capsys.readouterr().out
+
+
+def test_an_image_declaring_no_ports_is_not_warned_about(capsys):
+    """Every Railpack-built image declares none — nothing in its plan emits
+    EXPOSE — so warning here would fire on nearly every build and teach people
+    to skip the warning that means something."""
+    build.warn_about_runtime_contract({"Cmd": ["node", "server.js"]})
+
+    assert "WARNING" not in capsys.readouterr().out
+
+
+def test_an_uninspectable_image_is_not_warned_about(capsys):
+    """A warning that could not be computed must not become a warning."""
+    build.warn_about_runtime_contract(None)
+
+    assert "WARNING" not in capsys.readouterr().out
+
+
+def _stub_registry(monkeypatch, documents: dict[str, dict]):
+    """Serve `documents` keyed by the trailing path of the registry URL."""
+    requested: list[str] = []
+
+    class _Response(io.BytesIO):
+        def close(self):  # noqa: D102 — contextlib.closing calls this
+            super().close()
+
+    def _urlopen(request, timeout=None, context=None):
+        url = request.full_url if hasattr(request, "full_url") else request
+        requested.append(url)
+        for suffix, document in documents.items():
+            if url.endswith(suffix):
+                return _Response(json.dumps(document).encode())
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(build.urllib.request, "urlopen", _urlopen)
+    return requested
+
+
+def test_the_image_config_is_read_back_from_the_registry(monkeypatch):
+    """Read back rather than parsed out of the Dockerfile: EXPOSE is often
+    inherited from a base image, and the registry holds what will actually
+    run."""
+    requested = _stub_registry(
+        monkeypatch,
+        {
+            "manifests/sha256:aa": {"config": {"digest": "sha256:bb"}},
+            "blobs/sha256:bb": {"config": {"ExposedPorts": {"8080/tcp": {}}}},
+        },
+    )
+
+    config = build.read_image_config("registry.home", "7", "sha256:aa")
+
+    assert config == {"ExposedPorts": {"8080/tcp": {}}}
+    assert requested[0].startswith("https://registry.home/v2/7/")
+
+
+def test_an_index_is_followed_to_the_platforms_manifest(monkeypatch):
+    _stub_registry(
+        monkeypatch,
+        {
+            "manifests/sha256:aa": {
+                "manifests": [
+                    {"digest": "sha256:arm", "platform": {"architecture": "arm64"}},
+                    {"digest": "sha256:amd", "platform": {"architecture": "amd64"}},
+                ]
+            },
+            "manifests/sha256:amd": {"config": {"digest": "sha256:bb"}},
+            "blobs/sha256:bb": {"config": {"Cmd": ["/app"]}},
+        },
+    )
+
+    assert build.read_image_config("registry.home", "7", "sha256:aa") == {"Cmd": ["/app"]}
+
+
+def test_an_unreadable_image_config_is_not_a_build_failure(monkeypatch):
+    """This feeds a warning. A warning that could fail a good build would be
+    worse than no warning at all."""
+    _stub_registry(monkeypatch, {})
+
+    assert build.read_image_config("registry.home", "7", "sha256:aa") is None
+
+
+# ---------------------------------------------------------------------------
+# main(): which path runs, and what happens when it fails
+# ---------------------------------------------------------------------------
+
+
+def _arrange_build(monkeypatch, tmp_path, *, dockerfile: bool):
+    """Point main() at a prepared source tree with every side effect stubbed."""
+    source = tmp_path / "src"
+    source.mkdir(exist_ok=True)
+    (source / "package.json").write_text("{}")
+    if dockerfile:
+        (source / "Dockerfile").write_text("FROM scratch\n")
+
+    for name, value in {
+        "CAELUS_ARTIFACT_URL": "https://store/one",
+        "CAELUS_USER_ID": "7",
+        "CAELUS_BUILD_ID": "b-1",
+        "CAELUS_REGISTRY": "registry.home",
+        "CAELUS_CACHE_SCOPE": "caelus-builds",
+        "CAELUS_WORKDIR": str(tmp_path),
+        "CAELUS_TERMINATION_LOG": str(tmp_path / "term"),
+    }.items():
+        monkeypatch.setenv(name, value)
+
+    # The archive is already on disk, so extraction is the one step to skip;
+    # `main` deletes and re-creates the tree, so re-plant it here.
+    @contextlib.contextmanager
+    def _artifact(*args, **kwargs):
+        yield io.BytesIO(b"")
+
+    def _extract(*args, **kwargs):
+        source.mkdir(exist_ok=True)
+        (source / "package.json").write_text("{}")
+        if dockerfile:
+            (source / "Dockerfile").write_text("FROM scratch\n")
+
+    monkeypatch.setattr(build, "open_artifact", _artifact)
+    monkeypatch.setattr(build, "extract_stream", _extract)
+    monkeypatch.setattr(build, "write_buildkitd_config", lambda path, registry: [])
+    monkeypatch.setattr(build, "read_digest", lambda path: "sha256:" + "c" * 64)
+    monkeypatch.setattr(build, "read_image_config", lambda *a, **k: None)
+
+    calls: list[str] = []
+    monkeypatch.setattr(build, "prepare_plan", lambda *a, **k: calls.append("prepare"))
+    monkeypatch.setattr(build, "build_and_push", lambda **k: calls.append("railpack"))
+    monkeypatch.setattr(
+        build, "build_and_push_dockerfile", lambda **k: calls.append("dockerfile")
+    )
+    return calls
+
+
+def test_a_project_with_a_dockerfile_never_runs_detection(monkeypatch, tmp_path, capsys):
+    calls = _arrange_build(monkeypatch, tmp_path, dockerfile=True)
+
+    assert build.main() == 0
+    assert calls == ["dockerfile"], "stack detection must not run for a Dockerfile build"
+    assert "Dockerfile" in capsys.readouterr().out
+
+
+def test_a_project_without_one_is_built_exactly_as_before(monkeypatch, tmp_path, capsys):
+    calls = _arrange_build(monkeypatch, tmp_path, dockerfile=False)
+
+    assert build.main() == 0
+    assert calls == ["prepare", "railpack"]
+    assert "detecting the project's stack" in capsys.readouterr().out.lower()
+
+
+def test_a_failing_dockerfile_build_does_not_fall_back_to_detection(
+    monkeypatch, tmp_path
+):
+    """A project that builds one way today and another tomorrow, depending on
+    whether its Dockerfile happened to compile, is indistinguishable from a
+    platform fault."""
+    calls = _arrange_build(monkeypatch, tmp_path, dockerfile=True)
+
+    def _fail(**kwargs):
+        calls.append("dockerfile")
+        raise build.BuildFailure("dockerfile parse error")
+
+    monkeypatch.setattr(build, "build_and_push_dockerfile", _fail)
+
+    assert build.main() == 1
+    assert calls == ["dockerfile"]
+    assert "image" not in json.loads((tmp_path / "term").read_text())
+
+
+def test_the_contract_warning_runs_for_both_builders(monkeypatch, tmp_path, capsys):
+    """A detected image can miss the port contract just as easily as a
+    hand-written one."""
+    for dockerfile in (True, False):
+        _arrange_build(monkeypatch, tmp_path, dockerfile=dockerfile)
+        monkeypatch.setattr(
+            build,
+            "read_image_config",
+            lambda *a, **k: {"ExposedPorts": {"3000/tcp": {}}, "Cmd": ["x"]},
+        )
+
+        assert build.main() == 0
+        assert "WARNING" in capsys.readouterr().out

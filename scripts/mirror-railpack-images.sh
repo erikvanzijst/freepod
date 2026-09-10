@@ -45,6 +45,16 @@ RAILPACK_VERSION=0.36.4
 FRONTEND_DIGEST=sha256:282e3d0e542c9299c9fc4f938c9a5c45f0666d954264deaea59d13281121a91a
 MISE_TAG=mise-2026.8.4
 
+# The Dockerfile frontend, for builds that use the project's own Dockerfile.
+# Not part of the Railpack set and on its own cadence, but mirrored by the same
+# script because it is the same job: an image every build needs before it runs
+# any tenant code.
+#
+# DOCKERFILE_FRONTEND_DIGEST duplicates `DOCKERFILE_FRONTEND_DIGEST` in
+# build.py; the same test that guards FRONTEND_DIGEST fails if they disagree.
+DOCKERFILE_FRONTEND_TAG=1
+DOCKERFILE_FRONTEND_DIGEST=sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+
 # `crane copy` retains the source digest, which the frontend requires: build.py
 # names it by digest, so a re-serialized manifest would be a different image
 # and the mirror would simply never be hit. Copying the *tag* rather than the
@@ -103,4 +113,18 @@ if [ "$mirrored" != "$FRONTEND_DIGEST" ]; then
   exit 1
 fi
 
-echo "Done. ${#IMAGES[@]} images mirrored; frontend digest matches build.py."
+echo "  docker/dockerfile:${DOCKERFILE_FRONTEND_TAG}  ->  ${REGISTRY}/docker/dockerfile"
+crane copy "docker/dockerfile:${DOCKERFILE_FRONTEND_TAG}" "${REGISTRY}/docker/dockerfile:${DOCKERFILE_FRONTEND_TAG}"
+
+# This one has no upstream to fall through to: build.py addresses it at this
+# registry by digest, so a mismatch is a broken Dockerfile build rather than a
+# slow one.
+echo "Verifying the mirrored Dockerfile frontend digest"
+mirrored=$(crane digest "${REGISTRY}/docker/dockerfile:${DOCKERFILE_FRONTEND_TAG}")
+if [ "$mirrored" != "$DOCKERFILE_FRONTEND_DIGEST" ]; then
+  echo "ERROR: mirrored Dockerfile frontend is ${mirrored}, expected ${DOCKERFILE_FRONTEND_DIGEST}" >&2
+  echo "       every Dockerfile build will fail to resolve its frontend." >&2
+  exit 1
+fi
+
+echo "Done. $(( ${#IMAGES[@]} + 1 )) images mirrored; both frontend digests match build.py."
