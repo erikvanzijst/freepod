@@ -420,7 +420,7 @@ non-interactively, pipe the answer:
 printf 'myapp\n' | freepod init
 ```
 
-A bare label becomes a subdomain of the platform (`myapp` → `myapp.freepod.eu`).
+A bare label becomes a subdomain of the platform (`myapp` → `myapp.{user}.freepod.eu`).
 A value containing a dot is taken as already qualified, for a custom domain
 pointed at the platform with a CNAME. Certificates are issued either way.
 
