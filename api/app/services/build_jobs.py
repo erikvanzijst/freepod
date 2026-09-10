@@ -50,7 +50,7 @@ BUILDKIT_SIZE_LIMIT = "6Gi"
 CPU_REQUEST = "500m"
 CPU_LIMIT = "2"
 MEMORY_REQUEST = "1Gi"
-MEMORY_LIMIT = "4Gi"
+MEMORY_LIMIT = "6Gi"
 EPHEMERAL_STORAGE_LIMIT = "8Gi"
 
 # How long a finished Job (and its pod, and therefore its logs) survives.
