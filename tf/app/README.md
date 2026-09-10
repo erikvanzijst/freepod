@@ -95,7 +95,7 @@ like the rest, so the visibility rule above applies to it too. Set it to bump
 the builder without waiting for an API release:
 
 ```bash
-terraform apply -var 'builder_image=ghcr.io/erikvanzijst/freepod/builder:0.1.5'
+terraform apply -var 'builder_image=ghcr.io/erikvanzijst/freepod/builder:0.1.6'
 ```
 
 Note that the API image also carries the product catalog (`products/catalog/`),
