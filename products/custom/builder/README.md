@@ -215,11 +215,23 @@ back to ghcr.io and are merely slow.
 non-goal, so the Dockerfile fails the build on any other architecture rather
 than producing an image whose `railpack` binary cannot exec.
 
+The image is published to ghcr.io alongside the platform's own images, on an
+immutable version tag taken from `VERSION` in this directory. Bump that file,
+then:
+
 ```bash
-cd products/custom/builder
-docker build --platform linux/amd64 -t registry.home/caelus/builder:0.1.4 .
-docker push registry.home/caelus/builder:0.1.4
+./scripts/build-images.sh --builder
 ```
+
+An already-published version is refused rather than overwritten: a build Job
+names this image by tag, so re-pushing one would change what executes tenant
+code without any version having moved. CI runs the same command with
+`--skip-if-published` on every merge, so a push lands exactly when `VERSION`
+names a version GHCR does not already hold.
+
+A first push creates the package at GHCR's default visibility, which is
+private, and nothing configures an `imagePullSecret` — see
+[`tf/app/README.md`](../../../tf/app/README.md).
 
 Then point the platform to it through `builder_image` in Terraform, and mirror
 the Railpack base images if this is a new registry or a new Railpack version:

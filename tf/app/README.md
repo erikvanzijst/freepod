@@ -88,12 +88,14 @@ a new name is a new package, at its default visibility, regardless of how the
 old one was set.
 
 `builder_image` is a third image variable, and an unusual one: it is not a
-Caelus image at all but the tenant-build image published by hand from
-[`products/custom/builder/`](../../products/custom/builder/), on its own
-cadence. Set it to bump the builder without waiting for an API release:
+Caelus image at all but the tenant-build image built from
+[`products/custom/builder/`](../../products/custom/builder/), on its own cadence
+and on an immutable version tag rather than a moving one. It is a GHCR package
+like the rest, so the visibility rule above applies to it too. Set it to bump
+the builder without waiting for an API release:
 
 ```bash
-terraform apply -var 'builder_image=registry.home/caelus/builder:0.1.5'
+terraform apply -var 'builder_image=ghcr.io/erikvanzijst/freepod/builder:0.1.5'
 ```
 
 Note that the API image also carries the product catalog (`products/catalog/`),

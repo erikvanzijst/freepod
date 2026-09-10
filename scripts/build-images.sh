@@ -10,6 +10,7 @@
 #   ./scripts/build-images.sh --keycloak     # Build only Keycloak image (Freepod theme)
 #   ./scripts/build-images.sh --ssh-sidecar   # Build only the dev-profile SSH sidecar
 #   ./scripts/build-images.sh --ssh-resolver  # Build only the SSH auth resolver
+#   ./scripts/build-images.sh --builder       # Build only the tenant build image
 #   ./scripts/build-images.sh v1.2.3 --api   # Build only API image with custom tag
 #   ./scripts/build-images.sh v1.2.3 --ui    # Build only UI image with custom tag
 #   ./scripts/build-images.sh --help         # Show this help message
@@ -34,6 +35,12 @@
 # connection, and must not roll because the API rolled: it takes its version from
 # ssh-auth/VERSION, is never re-pushed, and reaches the cluster only when
 # Terraform names a new version.
+#
+# The tenant build image is the third of these. It is not a Deployment at all --
+# the build worker names it in each build Job it creates -- so a moving tag would
+# change what runs tenant code without anything having been rolled out. Version
+# in products/custom/builder/VERSION, never re-pushed, reaching builds only when
+# Terraform names a new version.
 
 set -euo pipefail
 
@@ -42,7 +49,7 @@ REGISTRY=ghcr.io/$(gh repo view --json nameWithOwner -q .nameWithOwner)
 # Function to display help
 usage() {
   cat <<'EOF'
-Usage: ./scripts/build-images.sh [TAG] [--api|--ui|--keycloak|--ssh-sidecar|--ssh-resolver|--all|--help]
+Usage: ./scripts/build-images.sh [TAG] [--api|--ui|--keycloak|--ssh-sidecar|--ssh-resolver|--builder|--all|--help]
 
 If TAG is not provided, the current git SHA will be used.
 
@@ -56,12 +63,16 @@ Options:
   --ssh-resolver  Build only the SSH auth resolver. Ignores TAG: its version
                   comes from ssh-auth/VERSION and an already-published version
                   is refused rather than overwritten.
+  --builder       Build only the tenant build image. Ignores TAG: its version
+                  comes from products/custom/builder/VERSION and an already-
+                  published version is refused rather than overwritten.
   --skip-if-published
-                  With --ssh-sidecar or --ssh-resolver, treat an already-
-                  published version as nothing to do rather than an error. This
-                  is what makes the publish safe to run on every merge: it
-                  pushes exactly when VERSION is new. Run by hand without it, so
-                  that a version you believed you had bumped fails loudly.
+                  With --ssh-sidecar, --ssh-resolver or --builder, treat an
+                  already-published version as nothing to do rather than an
+                  error. This is what makes the publish safe to run on every
+                  merge: it pushes exactly when VERSION is new. Run by hand
+                  without it, so that a version you believed you had bumped
+                  fails loudly.
   --all           Build all images on moving tags (API, UI, Keycloak).
   --help          Show this help message and exit.
 EOF
@@ -69,7 +80,7 @@ EOF
 
 # Parse arguments
 TAG=""
-TARGET="both"  # possible values: both, api, ui, keycloak, ssh-sidecar, ssh-resolver, all
+TARGET="both"  # possible values: both, api, ui, keycloak, ssh-sidecar, ssh-resolver, builder, all
 SKIP_IF_PUBLISHED=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -91,6 +102,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --ssh-resolver)
       TARGET="ssh-resolver"
+      shift
+      ;;
+    --builder)
+      TARGET="builder"
       shift
       ;;
     --skip-if-published)
@@ -117,11 +132,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Only the two immutably-tagged images can be already-published, so anywhere
-# else this flag would silently do nothing -- which is how a publish everyone
+# Only the immutably-tagged images can be already-published, so anywhere else
+# this flag would silently do nothing -- which is how a publish everyone
 # believes is conditional turns out never to have been.
-if [[ "$SKIP_IF_PUBLISHED" == "true" && "$TARGET" != "ssh-sidecar" && "$TARGET" != "ssh-resolver" ]]; then
-  echo "--skip-if-published only applies to --ssh-sidecar and --ssh-resolver." >&2
+if [[ "$SKIP_IF_PUBLISHED" == "true" && "$TARGET" != "ssh-sidecar" && "$TARGET" != "ssh-resolver" && "$TARGET" != "builder" ]]; then
+  echo "--skip-if-published only applies to --ssh-sidecar, --ssh-resolver and --builder." >&2
   exit 1
 fi
 
@@ -215,6 +230,45 @@ if [[ "$TARGET" == "ssh-resolver" ]]; then
   echo ""
   echo "This does not reach the SSH edge on its own. Point tf/app/sshpiper at"
   echo "this version and apply; ./scripts/rollout.sh does not touch it."
+  echo "=============================================="
+  exit 0
+fi
+
+if [[ "$TARGET" == "builder" ]]; then
+  BUILDER_CONTEXT=./products/custom/builder
+  BUILDER_VERSION=$(tr -d '[:space:]' < "${BUILDER_CONTEXT}/VERSION")
+  BUILDER_REF="${REGISTRY}/builder:${BUILDER_VERSION}"
+
+  # Never overwritten, for the same reason as the two above and one specific to
+  # this image: a build Job names it by tag, so re-pushing would change what
+  # executes tenant code under a version nobody bumped.
+  if docker manifest inspect "${BUILDER_REF}" >/dev/null 2>&1; then
+    if [[ "$SKIP_IF_PUBLISHED" == "true" ]]; then
+      echo "${BUILDER_REF} is already published. Nothing to do."
+      exit 0
+    fi
+    echo "Refusing to overwrite ${BUILDER_REF}, which is already published." >&2
+    echo "Bump ${BUILDER_CONTEXT}/VERSION and repoint builder_image in tf/app." >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "[1/1] Building and pushing the tenant build image ${BUILDER_VERSION}..."
+  # amd64 only: the railpack binary the Dockerfile installs is x86_64, and the
+  # Dockerfile fails the build on any other architecture rather than shipping an
+  # image whose railpack cannot exec.
+  docker buildx build \
+    --push \
+    --platform linux/amd64 \
+    --tag "${BUILDER_REF}" \
+    "${BUILDER_CONTEXT}"
+
+  echo ""
+  echo "=============================================="
+  echo "Pushed ${BUILDER_REF}"
+  echo ""
+  echo "This does not reach any build on its own. Point builder_image in tf/app"
+  echo "at this version and apply; ./scripts/rollout.sh does not touch it."
   echo "=============================================="
   exit 0
 fi
