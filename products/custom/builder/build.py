@@ -22,6 +22,7 @@ import contextlib
 import json
 import os
 import shutil
+import ssl
 import subprocess
 import sys
 import tarfile
@@ -41,6 +42,24 @@ FRONTEND_IMAGE = (
 
 # The name the frontend looks for inside `--local dockerfile=`.
 PLAN_FILENAME = "railpack-plan.json"
+
+DOCKERFILE_NAME = "Dockerfile"
+
+# The Dockerfile frontend, pinned and mirrored the same way the Railpack one
+# is, and passed to every Dockerfile build as BUILDKIT_SYNTAX. That build-arg
+# overrides a `# syntax=` directive, which is the point: whatever interprets a
+# Dockerfile is a client of the build daemon rather than a build step — it
+# emits its own LLB, names its own cache imports, and sits on the daemon's
+# image-resolution path — so the tenant must not get to choose it.
+DOCKERFILE_FRONTEND_REPO = "docker/dockerfile"
+DOCKERFILE_FRONTEND_DIGEST = (
+    "sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32"
+)
+
+# The port the platform assigns, mirroring `containerPort` in
+# products/custom/chart/values.yaml. Only ever used to warn: the builder cannot
+# see the chart, and a build that guessed wrong must not fail a good image.
+PLATFORM_PORT = 8080
 
 # Where the Railpack images live upstream, and therefore the registry the
 # internal one is configured to stand in for. Not a general mirror: this is the
@@ -222,6 +241,10 @@ def _run(command: list[str], *, stage: str, env: dict[str, str] | None = None) -
         raise BuildFailure(f"{stage} failed with exit status {result.returncode}")
 
 
+def select_builder(source: Path) -> str:
+    return "dockerfile" if (source / DOCKERFILE_NAME).is_file() else "railpack"
+
+
 def prepare_plan(source: Path, plan_dir: Path) -> None:
     """Detect the project's stack and emit a build plan.
 
@@ -309,6 +332,49 @@ def buildkitd_env(extra_flags: list[str]) -> dict[str, str]:
     return env
 
 
+def _publish_args(
+    *,
+    image_ref: str,
+    cache_image_ref: str,
+    metadata_file: Path,
+) -> list[str]:
+    """The arguments that are the same whichever frontend produced the LLB."""
+    return [
+        "--import-cache",
+        f"type=registry,ref={cache_image_ref},registry.insecure=true",
+        # mode=max records the intermediate steps too, not just the layers
+        # of the final image. The expensive step here is dependency
+        # installation, whose result never reaches the runtime image — with
+        # mode=min it would be re-run on every build and the cache would
+        # buy almost nothing.
+        #
+        # ignore-error: the image has already been pushed by the time this
+        # runs. A registry that is full, or briefly unreachable, must cost
+        # the build its cache and nothing else — failing here would discard
+        # a good image over a missed optimization.
+        #
+        # image-manifest with oci-mediatypes is what makes the cache
+        # storable in a plain OCI registry at all; without it BuildKit
+        # writes a manifest type registry.home rejects.
+        "--export-cache",
+        (
+            f"type=registry,ref={cache_image_ref},mode=max,"
+            "image-manifest=true,oci-mediatypes=true,"
+            "ignore-error=true,registry.insecure=true"
+        ),
+        # registry.insecure: the internal registry presents a certificate
+        # for a name it is not addressed by. Tracked separately; giving it
+        # a cert-valid internal name would retire this.
+        "--output",
+        f"type=image,name={image_ref},push=true,registry.insecure=true",
+        "--metadata-file",
+        str(metadata_file),
+        # Plain, not auto: auto would emit a redrawing TTY display, and
+        # this output is stored and replayed rather than watched live.
+        "--progress=plain",
+    ]
+
+
 def build_and_push(
     *,
     source: Path,
@@ -349,46 +415,127 @@ def build_and_push(
             f"context={source}",
             "--local",
             f"dockerfile={plan_dir}",
-            # An absent ref is the normal first build for an owner. BuildKit
-            # warns and carries on rather than failing, so there is nothing to
-            # create up front and nothing to clean up when a repository is
-            # emptied.
-            "--import-cache",
-            f"type=registry,ref={cache_image_ref},registry.insecure=true",
-            # mode=max records the intermediate steps too, not just the layers
-            # of the final image. The expensive step here is dependency
-            # installation, whose result never reaches the runtime image — with
-            # mode=min it would be re-run on every build and the cache would
-            # buy almost nothing.
-            #
-            # ignore-error: the image has already been pushed by the time this
-            # runs. A registry that is full, or briefly unreachable, must cost
-            # the build its cache and nothing else — failing here would discard
-            # a good image over a missed optimization.
-            #
-            # image-manifest with oci-mediatypes is what makes the cache
-            # storable in a plain OCI registry at all; without it BuildKit
-            # writes a manifest type registry.home rejects.
-            "--export-cache",
-            (
-                f"type=registry,ref={cache_image_ref},mode=max,"
-                "image-manifest=true,oci-mediatypes=true,"
-                "ignore-error=true,registry.insecure=true"
+            *_publish_args(
+                image_ref=image_ref,
+                cache_image_ref=cache_image_ref,
+                metadata_file=metadata_file,
             ),
-            # registry.insecure: the internal registry presents a certificate
-            # for a name it is not addressed by. Tracked separately; giving it
-            # a cert-valid internal name would retire this.
-            "--output",
-            f"type=image,name={image_ref},push=true,registry.insecure=true",
-            "--metadata-file",
-            str(metadata_file),
-            # Plain, not auto: auto would emit a redrawing TTY display, and
-            # this output is stored and replayed rather than watched live.
-            "--progress=plain",
         ],
         stage="Building and pushing image",
         env=buildkitd_env(buildkitd_flags),
     )
+
+
+def dockerfile_frontend_ref(registry: str) -> str:
+    """The pinned Dockerfile frontend, addressed through the internal registry."""
+    return f"{registry}/{DOCKERFILE_FRONTEND_REPO}@{DOCKERFILE_FRONTEND_DIGEST}"
+
+
+def build_and_push_dockerfile(
+    *,
+    source: Path,
+    metadata_file: Path,
+    image_ref: str,
+    cache_image_ref: str,
+    registry: str,
+    buildkitd_flags: list[str],
+) -> None:
+    """Build the project's own Dockerfile and push the result."""
+    _run(
+        [
+            "buildctl-daemonless.sh",
+            "build",
+            "--frontend=dockerfile.v0",
+            "--opt",
+            f"filename={DOCKERFILE_NAME}",
+            # Overrides any `# syntax=` directive in the file. See
+            # DOCKERFILE_FRONTEND_REPO for why that override exists.
+            "--opt",
+            f"build-arg:BUILDKIT_SYNTAX={dockerfile_frontend_ref(registry)}",
+            "--local",
+            f"context={source}",
+            "--local",
+            f"dockerfile={source}",
+            *_publish_args(
+                image_ref=image_ref,
+                cache_image_ref=cache_image_ref,
+                metadata_file=metadata_file,
+            ),
+        ],
+        stage="Building and pushing image from Dockerfile",
+        env=buildkitd_env(buildkitd_flags),
+    )
+
+
+def read_image_config(registry: str, repository: str, digest: str) -> dict | None:
+    """Fetch a pushed image's config document from the registry.
+
+    Read back rather than inferred from the Dockerfile: `EXPOSE` is often
+    inherited from a base image.
+    """
+    accept = ", ".join(
+        [
+            "application/vnd.oci.image.manifest.v1+json",
+            "application/vnd.docker.distribution.manifest.v2+json",
+            "application/vnd.oci.image.index.v1+json",
+            "application/vnd.docker.distribution.manifest.list.v2+json",
+        ]
+    )
+
+    def fetch(path: str, headers: dict[str, str] | None = None) -> dict | None:
+        request = urllib.request.Request(
+            f"https://{registry}/v2/{repository}/{path}", headers=headers or {}
+        )
+        context = ssl._create_unverified_context()
+        with contextlib.closing(
+            urllib.request.urlopen(request, timeout=30, context=context)
+        ) as response:
+            return json.loads(response.read())
+
+    try:
+        manifest = fetch(f"manifests/{digest}", {"Accept": accept})
+        # An index names per-platform manifests rather than a config; the
+        # platform runs amd64, and a single-manifest push has no index at all.
+        if manifest and "manifests" in manifest:
+            entries = [
+                entry
+                for entry in manifest["manifests"]
+                if entry.get("platform", {}).get("architecture") == "amd64"
+            ]
+            if not entries:
+                return None
+            manifest = fetch(f"manifests/{entries[0]['digest']}", {"Accept": accept})
+        if not manifest or "config" not in manifest:
+            return None
+        blob = fetch(f"blobs/{manifest['config']['digest']}")
+    except (urllib.error.URLError, OSError, ValueError, KeyError) as exc:
+        log(f"Could not inspect the published image: {exc}")
+        return None
+    return (blob or {}).get("config") or {}
+
+
+def warn_about_runtime_contract(config: dict | None) -> None:
+    """Warn about the two image shapes that deploy green and serve nothing."""
+    if config is None:
+        return
+
+    # Only a *contradiction* is worth a line. Declaring nothing is the norm —
+    # every Railpack-built image does, since nothing in its plan emits EXPOSE —
+    # so warning about it would fire on almost every build and teach people to
+    # skip the warning that means something.
+    ports = list((config.get("ExposedPorts") or {}).keys())
+    if ports and not any(port.split("/")[0] == str(PLATFORM_PORT) for port in ports):
+        log(
+            f"WARNING: this image declares {', '.join(sorted(ports))} but the platform "
+            f"runs it with PORT={PLATFORM_PORT}. It may not serve traffic unless it "
+            f"binds 0.0.0.0:$PORT."
+        )
+
+    if not config.get("Entrypoint") and not config.get("Cmd"):
+        log(
+            "WARNING: this image declares neither an entrypoint nor a command, so it "
+            "has nothing to run and will exit immediately."
+        )
 
 
 def read_digest(metadata_file: Path) -> str:
@@ -470,17 +617,33 @@ def main() -> int:
             extract_stream(
                 stream, source, max_bytes=max_extracted_bytes, max_entries=max_entries
             )
-        prepare_plan(source, plan_dir)
-        build_and_push(
-            source=source,
-            plan_dir=plan_dir,
-            metadata_file=metadata_file,
-            image_ref=image_ref,
-            cache_key=user_id,
-            cache_image_ref=cache_image_ref,
-            buildkitd_flags=buildkitd_flags,
-        )
+
+        builder = select_builder(source)
+        if builder == "dockerfile":
+            log("Building from the project's own Dockerfile")
+            build_and_push_dockerfile(
+                source=source,
+                metadata_file=metadata_file,
+                image_ref=image_ref,
+                cache_image_ref=cache_image_ref,
+                registry=registry,
+                buildkitd_flags=buildkitd_flags,
+            )
+        else:
+            log("No Dockerfile in the project root; detecting the project's stack")
+            prepare_plan(source, plan_dir)
+            build_and_push(
+                source=source,
+                plan_dir=plan_dir,
+                metadata_file=metadata_file,
+                image_ref=image_ref,
+                cache_key=user_id,
+                cache_image_ref=cache_image_ref,
+                buildkitd_flags=buildkitd_flags,
+            )
         digest = read_digest(metadata_file)
+
+        warn_about_runtime_contract(read_image_config(registry, user_id, digest))
 
         # The registry host is deliberately stripped: this exact string is what
         # the client submits as the product's `image` user value, and the chart

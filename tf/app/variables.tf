@@ -15,7 +15,7 @@ variable "ui_image" {
 variable "builder_image" {
   description = "Image that runs tenant builds, published by ./scripts/build-images.sh --builder on its own cadence"
   type        = string
-  default     = "ghcr.io/erikvanzijst/freepod/builder:0.1.5"
+  default     = "ghcr.io/erikvanzijst/freepod/builder:0.1.6"
 }
 
 variable "environment" {

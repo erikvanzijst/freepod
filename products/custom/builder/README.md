@@ -14,20 +14,76 @@ Everything about its shape follows from that.
 presigned artifact URL
         │
         ▼
-  stream + extract (filtered, bounded, never staged on disk)  →  railpack prepare
-        │                                                    │
-        │                                              railpack-plan.json
-        ▼                                                    ▼
-   ephemeral rootless buildkitd  ←──  buildctl gateway build against
-                                       the pinned Railpack frontend
+  stream + extract (filtered, bounded, never staged on disk)
+        │
+        ├── Dockerfile at the project root?  ──yes──►  dockerfile.v0, pinned frontend
+        │                                                     │
+        └── no ──►  railpack prepare  ──►  railpack-plan.json  │
+                                                    │         │
+                                                    ▼         ▼
+                          ephemeral rootless buildkitd  ←──  buildctl build
         │
         ▼
   push {registry}/{user_id}:{build_id}   →   digest from --metadata-file
         │                     ▲
         │                     └── layer cache in/out: {registry}/cache/{scope}/{user_id}
         ▼
+  read the pushed config back, warn if it cannot serve
+        │
+        ▼
   /dev/termination-log:  {"image": "{user_id}@{digest}"}
 ```
+
+## Which builder runs
+
+A regular file named `Dockerfile` at the **project root** hands the build to
+that Dockerfile. Anything else is detected by Railpack, exactly as before. The
+first line of every build's log says which of the two ran.
+
+There is no opt-out and no fallback. A project that ships a Dockerfile has
+already said how it wants to be built, and a Dockerfile that fails to build
+fails the build rather than quietly falling back to detection — a project that
+builds one way today and another tomorrow is indistinguishable from a platform
+fault.
+
+Consequences worth knowing before enabling anything:
+
+- **Railpack configuration stops applying.** `railpack.json` and `Procfile` are
+  input to a builder that did not run. A project passing build variables that
+  way must move them into its Dockerfile, since build arguments are not passed
+  through yet.
+- **The `$PORT` contract does not move.** The chart still assigns the port and
+  the image must bind `0.0.0.0:$PORT`. A Dockerfile that hardcodes a port
+  builds fine and serves nothing, which is what the post-push warning is for.
+- **Base images come from wherever the Dockerfile names them.** Only ghcr.io is
+  mirrored; a Docker Hub base image is pulled unauthenticated, subject to that
+  registry's rate limits, on the critical path of the build.
+- **`# syntax=` directives are overridden**, see below.
+- **No entitlements are granted**, so `RUN --security=insecure` and
+  `network=host` fail with BuildKit's own error.
+
+## The Dockerfile frontend is ours, not the project's
+
+Every Dockerfile build passes `build-arg:BUILDKIT_SYNTAX` naming a
+digest-pinned frontend, which overrides any `# syntax=` directive in the file.
+
+This is a security boundary rather than a preference. Whatever interprets a
+Dockerfile is a *client of the build daemon*, not a build step: it emits its
+own LLB, names its own cache imports, and sits on the daemon's image-resolution
+path. A `RUN` instruction has none of that reach, so "the tenant runs their own
+code either way" is true and beside the point — the two run with materially
+different authority.
+
+The image is addressed at the internal registry (`DOCKERFILE_FRONTEND_REPO` and
+`DOCKERFILE_FRONTEND_DIGEST` in `build.py`), copied there by
+`scripts/mirror-railpack-images.sh`. Not through a `docker.io` mirror entry in
+the daemon config: that would route *every* Docker Hub pull in every tenant
+Dockerfile through the internal registry, and exactly one image needs to come
+from it. Unlike the Railpack images there is no fall-through — a Dockerfile
+build fails outright until the mirror holds it.
+
+The cost is that the pinned frontend's syntax level is the one tenants get.
+Newer features fail with BuildKit's own error, and the remedy is a pin bump.
 
 The container holds **no database, Kubernetes, or long-lived registry
 credential**. The only credential it receives is a presigned URL that grants
@@ -138,6 +194,15 @@ would breach a limit is never written at all.
 ## Build output
 
 What this container emits is plain text with no terminal control sequences.
+Two of its lines are worth knowing: the first names the builder that ran, and
+after the push the builder reads the image's config back from the registry and
+warns — never fails — about the two shapes that deploy green and serve nothing.
+
+An image whose declared ports exclude the platform's is warned about; declaring
+*no* ports is not, because no Railpack-built image emits `EXPOSE` and a warning
+that fires on nearly every build teaches people to skip the one that matters.
+An image with neither an entrypoint nor a command is warned about too: it has
+nothing to run and will exit immediately.
 
 **Tenant build output is a different matter and is deliberately not
 sanitized.** BuildKit runs the tenant's build steps in containers of its own,
@@ -181,6 +246,11 @@ Currently both are v0.36.4:
 railpack                     0.36.4
 ghcr.io/railwayapp/railpack-frontend@sha256:282e3d0e542c9299c9fc4f938c9a5c45f0666d954264deaea59d13281121a91a
 ```
+
+The Dockerfile frontend is **not** part of that set — it understands no
+railpack plan and moves on its own cadence — but it is pinned and mirror-checked
+the same way, and the same test file fails if `build.py` and the mirror script
+disagree about its digest.
 
 To bump: pick the new railpack release, update `RAILPACK_VERSION` and
 `RAILPACK_SHA256` from that release's `checksums.txt`, then resolve the
