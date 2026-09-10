@@ -50,6 +50,9 @@ def authz_setup(db_session):
         TestClient(fastapi_app, headers=AUTH_HEADER) as admin_client,
         TestClient(fastapi_app, headers=USER_AUTH_HEADER) as user_client,
         TestClient(fastapi_app, headers=OTHER_AUTH_HEADER) as other_client,
+        # A subject-less client (email only) so the subject-less branch of the
+        # resolution ladder stays covered alongside the subject-bearing one.
+        TestClient(fastapi_app, headers={"X-Auth-Request-Email": USER_EMAIL}) as user_client_subjectless,
     ):
         # Create a product and template (as admin) for deployment tests
         product = admin_client.post(
@@ -97,6 +100,7 @@ def authz_setup(db_session):
             "admin_client": admin_client,
             "user_client": user_client,
             "other_client": other_client,
+            "user_client_subjectless": user_client_subjectless,
             "admin": admin,
             "user": user,
             "other": other,
@@ -198,6 +202,27 @@ def test_user_can_access_own_resources(authz_setup):
         assert resp.status_code == 200, (
             f"{method} {path}: expected 200, got {resp.status_code}"
         )
+
+
+def test_subject_less_request_resolves_by_email(authz_setup):
+    # The subject-less branch (email only) resolves the regular user's own
+    # resources, so it stays covered here alongside the subject-bearing client.
+    s = authz_setup
+    for method, path, body in _self_read_endpoints(s["user"].id, s["deployment_id"]):
+        resp = s["user_client_subjectless"].request(method, path, json=body)
+        assert resp.status_code == 200, (
+            f"{method} {path}: expected 200, got {resp.status_code}"
+        )
+
+
+def test_subject_less_and_subject_bearing_resolve_to_same_user(authz_setup):
+    # Both branches of the ladder resolve the regular user to the same record.
+    s = authz_setup
+    me_bearing = s["user_client"].get("/api/me")
+    me_less = s["user_client_subjectless"].get("/api/me")
+    assert me_bearing.status_code == 200
+    assert me_less.status_code == 200
+    assert me_bearing.json()["id"] == me_less.json()["id"] == s["user"].id
 
 
 def test_other_user_rejected_from_resources(authz_setup):
