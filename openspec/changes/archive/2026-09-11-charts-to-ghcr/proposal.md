@@ -49,7 +49,8 @@ already are, published by the same path, under the same rules.
   current or in-use template references the internal registry, and from the product
   READMEs with it.
 - **The internal registry's `helm/*` and `caelus/*` repositories are retired** once no
-  live deployment resolves a chart or a placeholder from them.
+  live deployment resolves a chart or a placeholder from them: nothing installs from them
+  any more, and they are left in place rather than deleted.
 
 No tenant-visible behavior changes: a deployment keeps running its current chart until
 it is re-pointed, and the re-point is an ordinary release.

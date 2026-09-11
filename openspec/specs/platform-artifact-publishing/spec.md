@@ -1,3 +1,5 @@
+# platform-artifact-publishing Specification
+
 ## Purpose
 
 Defines where the platform's deployable artifacts — the product Helm charts and the
@@ -6,7 +8,7 @@ visibility, and what a template may reference. The artifacts the reconciler rend
 Kubernetes objects are the most privileged inputs the platform consumes, so where they
 come from is a property of the platform rather than of whoever last packaged one.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Platform artifacts are published to the platform's public registry
 Every Helm chart the platform deploys, and every platform-owned image referenced by a
@@ -137,8 +139,9 @@ reconcile resolves it — and is not required to be rewritten or deleted.
 
 Because a chart reference is part of a template's identity, moving it produces a new
 template version rather than mutating the existing one, and every deployment on the old
-version MUST be moved to the new one explicitly. Retirement MUST be the last step, and
-the repositories left behind MUST be removed rather than abandoned in place.
+version MUST be moved to the new one explicitly. Retirement MUST be the last step. The
+repositories left behind are not required to be deleted: once nothing resolves from them
+they are inert.
 
 #### Scenario: No resolvable template references the retired location
 - **WHEN** the migration is complete

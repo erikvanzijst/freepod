@@ -33,8 +33,9 @@ with:
   guarantee enforced in code.
 - A migration with no tenant-visible interruption: every deployment keeps serving while
   it waits its turn.
-- The internal registry's `helm/*` and `caelus/*` repositories genuinely retired, not
-  merely unused.
+- The internal registry genuinely retired as a source of platform artifacts: nothing may
+  resolve a chart or a chart-default image from it. Its `helm/*` and `caelus/*`
+  repositories are left in place, inert, rather than deleted.
 
 **Non-Goals:**
 
@@ -124,9 +125,11 @@ consumers.
 ### D7: Migration is per-product, and retirement is last
 
 For each product: publish the chart, point the template at it, move that product's
-deployments to the new template version, verify. Only when no template and no live
-deployment resolves from the internal registry are its `helm/*` and `caelus/*`
-repositories removed.
+deployments to the new template version, verify. Only when no current or in-use template
+and no live deployment resolves from the internal registry is the reconciler's TLS
+exception for it removed (D8). Its `helm/*` and `caelus/*` repositories are then left in
+place rather than deleted: nothing can install from them, and nothing is gained by
+removing them.
 
 Curated products move through their catalog file, which is the only writable path for
 them; database-authored products get a new template version through the operator CLI.
@@ -185,15 +188,13 @@ not needed for, which is harmless: ghcr.io's certificate verifies either way.
    and no live deployment names the internal registry.
 5. Remove `--insecure-skip-tls-verify` from the reconciler's Helm path and from the
    product READMEs; update each README's publish section to the new commands.
-6. Delete the `helm/*` and `caelus/*` repositories from the internal registry.
-
-**Rollback:** before step 6, per product, create a new template version carrying the
-previous `chart_ref` — `caelus create-template`, with `--force` on a curated product —
-and move the deployments forward onto it; the old chart is still published and still
-resolves (D7). On a curated product the next catalog reconciliation re-points the product
-at the catalog's row but leaves deployments where they are. After step 6 the rollback is
-to re-publish the affected chart to the internal registry, which is why step 6 is last
-and gated on step 4.
+**Rollback:** per product, create a new template version carrying the previous
+`chart_ref` — `caelus create-template`, with `--force` on a curated product — and move
+the deployments forward onto it; the old chart is still in the internal registry, which
+is left in place (D7). On a curated product the next catalog reconciliation re-points the
+product at the catalog's row but leaves deployments where they are. After step 5 this also
+needs the reconciler's TLS exception restored, because the internal registry's
+certificate does not verify.
 
 ## Open Questions
 
