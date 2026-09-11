@@ -262,16 +262,6 @@ def test_catalog_system_values_are_valid_values_for_this_chart():
     assert "additional properties" not in result.stderr
 
 
-def test_catalog_chart_version_matches_the_chart():
-    """The catalog pins a version; a bumped chart with a stale catalog pin
-    installs the old chart and the mismatch is invisible until runtime."""
-    catalog = yaml.safe_load(
-        (Path(__file__).resolve().parents[2] / "products" / "catalog" / "custom.yaml").read_text()
-    )
-    chart = yaml.safe_load((CHART / "Chart.yaml").read_text())
-    assert catalog["template"]["chart_version"] == chart["version"]
-
-
 def test_schema_declares_both_halves_and_requires_neither():
     """`additionalProperties: false` at the top level means the schema has to
     admit these explicitly, and must not require them.

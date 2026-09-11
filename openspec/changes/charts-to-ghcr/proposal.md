@@ -46,7 +46,8 @@ already are, published by the same path, under the same rules.
   a new template version rather than mutating the old one; existing deployments are
   re-pointed at it explicitly.
 - **`--insecure-skip-tls-verify` is removed from the reconciler's Helm path** once no
-  template references the internal registry, and from the product READMEs with it.
+  current or in-use template references the internal registry, and from the product
+  READMEs with it.
 - **The internal registry's `helm/*` and `caelus/*` repositories are retired** once no
   live deployment resolves a chart or a placeholder from them.
 

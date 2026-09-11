@@ -313,15 +313,18 @@ The placeholder is built from [`placeholder/`](placeholder/): nginx serving one
 self-contained landing page (no external CSS, fonts, or images — it has to render
 standalone, on a hostname with nothing else behind it).
 
+It is published to `ghcr.io/erikvanzijst/freepod/custom-placeholder`, tagged
+from `placeholder/VERSION`, and CI publishes it on merge when that version is
+new. To publish by hand, from the repository root:
+
 ```bash
-cd products/custom/placeholder
-docker build -t registry.home/caelus/custom-placeholder:0.1.0 .
-docker push registry.home/caelus/custom-placeholder:0.1.0
+./scripts/build-images.sh --placeholder
 ```
 
-Never re-push an existing tag: bump the version and repoint `placeholderImage`
-in `chart/values.yaml` (and the chart version with it), so running deployments
-are not swapped out from under themselves by a mutated tag.
+A published version is never overwritten: bump `placeholder/VERSION`, then
+repoint `placeholderImage` in `chart/values.yaml` and
+`products/catalog/custom.yaml` and bump the chart version with it, so running
+deployments are not swapped out from under themselves by a mutated tag.
 
 ## Manual install
 
@@ -343,33 +346,21 @@ Both `helm lint` and `helm template` pass standalone with the shipped defaults:
 
 ## Build and publish
 
-Caelus deploys charts by OCI reference, so the chart must be packaged and pushed
-before a product template can point at it. This chart has no dependencies, so
-there is no `helm dependency build` step.
+Published to `oci://ghcr.io/erikvanzijst/freepod/charts/custom` by
+[`scripts/publish-charts.sh`](../../scripts/publish-charts.sh), which CI runs on
+every merge to `master`: bump `version` in `chart/Chart.yaml` and that version
+is published. To publish by hand, from the repository root:
 
 ```bash
-cd products/custom/chart
-helm lint .
-helm package .                 # -> custom-0.1.0.tgz
-helm push custom-0.1.0.tgz oci://registry.home/helm --insecure-skip-tls-verify
+./scripts/publish-charts.sh custom
 ```
-
-Optionally verify the push:
-
-```bash
-helm pull oci://registry.home/helm/custom --version 0.1.0 \
-  --insecure-skip-tls-verify --destination /tmp
-```
-
-As with the placeholder image: bump `version` in `Chart.yaml` rather than
-re-pushing an existing chart version.
 
 ## Caelus product template
 
 | Field               | Value                                                                                                                                              |
 |---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|
-| Chart ref           | `oci://registry.home/helm/custom`                                                                                                                  |
-| Chart version       | `0.1.0`                                                                                                                                            |
+| Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/custom`                                                                                                 |
+| Chart version       | `0.9.2`                                                                                                                                            |
 | Default Helm values | `{}` — the chart's own defaults already carry `registry`, `placeholderImage`, and `containerPort`. Set them here only to override per environment. |
 | User values schema  | see below                                                                                                                                          |
 

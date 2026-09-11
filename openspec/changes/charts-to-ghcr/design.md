@@ -130,15 +130,17 @@ repositories removed.
 
 Curated products move through their catalog file, which is the only writable path for
 them; database-authored products get a new template version through the operator CLI.
-Both produce a new template version rather than a mutation, which is what makes the
-migration reversible per product: a deployment that misbehaves on the new template is
-pointed back at the old one, which still resolves, because retirement has not happened
-yet.
+Both produce a new template version rather than a mutation, which is what keeps the
+migration reversible per product: until retirement the previous chart still resolves, so
+a deployment that misbehaves on the new template is rolled forward onto another new
+template version carrying the previous `chart_ref`. It cannot be pointed back at the old
+row: `update_deployment` refuses a lower template id, and reverting a catalog file
+re-matches the old row by spec hash rather than inserting a new one.
 
 ### D8: `--insecure-skip-tls-verify` is removed at the end, not made conditional
 
 The reconciler passes the flag for every `oci://` chart reference. It is deleted in the
-final step, once no template names the internal registry.
+final step, once no current or in-use template names the internal registry.
 
 *Alternative considered:* making it conditional on the chart host, so it could be removed
 from the ghcr path immediately. Rejected — a rule whose only purpose is to expire, and
@@ -149,8 +151,11 @@ not needed for, which is harmless: ghcr.io's certificate verifies either way.
 ## Risks / Trade-offs
 
 - **A deployment left on an old template after retirement would fail to reconcile** →
-  Retirement is gated on an explicit audit: no template row, curated or not, and no live
-  deployment may name the internal registry. The audit is a task, not a judgment call.
+  Retirement is gated on an explicit audit: no product's current template, curated or
+  not, no template a live deployment desires or runs, and no live deployment may name the
+  internal registry. The audit is a task, not a judgment call. Historical rows that are
+  none of these are exempt: no reconcile resolves them, and a curated product's rows
+  cannot be deleted through the service layer at all.
 - **A package left private fails closed and confusingly** — `helm pull` returns 401 and a
   kubelet pull returns `ImagePullBackOff` → Each publish task verifies an anonymous pull
   from a context with no credentials before the reference is used.
@@ -176,15 +181,19 @@ not needed for, which is harmless: ghcr.io's certificate verifies either way.
 3. Per product, in dependency order (`custom` last, since it also carries the placeholder
    reference): update the catalog file or author a new template version, roll out, move
    that product's deployments to the new template version, verify the release is healthy.
-4. Audit: no template row and no live deployment names the internal registry.
+4. Audit: no product's current template, no template a live deployment desires or runs,
+   and no live deployment names the internal registry.
 5. Remove `--insecure-skip-tls-verify` from the reconciler's Helm path and from the
    product READMEs; update each README's publish section to the new commands.
 6. Delete the `helm/*` and `caelus/*` repositories from the internal registry.
 
-**Rollback:** before step 6, per product, point the deployments back at the previous
-template version — the old chart is still published and still resolves. After step 6 the
-rollback is to re-publish the affected chart to the internal registry, which is why step 6
-is last and gated on step 4.
+**Rollback:** before step 6, per product, create a new template version carrying the
+previous `chart_ref` — `caelus create-template`, with `--force` on a curated product —
+and move the deployments forward onto it; the old chart is still published and still
+resolves (D7). On a curated product the next catalog reconciliation re-points the product
+at the catalog's row but leaves deployments where they are. After step 6 the rollback is
+to re-publish the affected chart to the internal registry, which is why step 6 is last
+and gated on step 4.
 
 ## Open Questions
 

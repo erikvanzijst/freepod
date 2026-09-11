@@ -279,11 +279,6 @@ class HelmAdapter:
             ]
             if not chart_digest:
                 cmd.extend(["--version", chart_version])
-            if resolved_chart.startswith("oci://"):
-                # The internal OCI registry serves HTTPS with a self-signed certificate
-                # and is not publicly accessible, so skip TLS verification for the chart
-                # download.
-                cmd.append("--insecure-skip-tls-verify")
             if atomic:
                 cmd.append("--atomic")
             if wait:

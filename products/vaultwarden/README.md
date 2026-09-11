@@ -4,7 +4,9 @@ Self-contained Freepod chart for Vaultwarden. Renders the Deployment, Service, d
 Secret, and per-app TLS Ingress directly — no dependencies.
 
 - Image: `vaultwarden/server`, pinned by `image.tag` (currently `1.37.1`)
-- Chart pushed to: `oci://registry.home/helm/vaultwarden`
+- Chart published to: `oci://ghcr.io/erikvanzijst/freepod/charts/vaultwarden`, by
+  [`scripts/publish-charts.sh`](../../scripts/publish-charts.sh) — CI publishes each new
+  `version` in `chart/Chart.yaml` on merge; by hand, `./scripts/publish-charts.sh vaultwarden`
 
 Vaultwarden is a single container backed by sqlite on one PVC, so the chart is deliberately small:
 one template per resource, every setting a first-class value.
@@ -13,18 +15,18 @@ one template per resource, every setting a first-class value.
 
 See `values.yaml` for the full set. Notable entries:
 
-| Value | Default | Notes |
-| --- | --- | --- |
-| `image.tag` | `1.37.1` | Pinned so the app version is Caelus-owned and overridable through system values. |
-| `signups.allowed` | `false` | Open registration off by default; these vaults are internet-facing. |
-| `signups.verify` | `true` | `SIGNUPS_VERIFY`. Rendering fails if set without `smtp.enabled`. |
-| `admin.token` | `""` | Blank generates a 20-character token on first install. Never shown to the user — see § Admin console. |
-| `bootstrap.image` | `curlimages/curl` | Image for the first-user invite Job. |
-| `caelus.owner.email` | injected | Reconciler-supplied; the invitation target. |
-| `storage.data.size` | `1Gi` | Overridden by `caelus.plan.storageSize` when the deployment has a plan. |
-| `proxy.ipHeader` | `X-Real-IP` | `IP_HEADER` — see § Client IP below. |
-| `resources` | `{}` | Left empty deliberately: a wrong limit OOM-kills a password vault. |
-| `extraEnv` | `{}` | String-valued escape hatch for settings not modeled yet. |
+| Value                | Default           | Notes                                                                                                 |
+|----------------------|-------------------|-------------------------------------------------------------------------------------------------------|
+| `image.tag`          | `1.37.1`          | Pinned so the app version is Caelus-owned and overridable through system values.                      |
+| `signups.allowed`    | `false`           | Open registration off by default; these vaults are internet-facing.                                   |
+| `signups.verify`     | `true`            | `SIGNUPS_VERIFY`. Rendering fails if set without `smtp.enabled`.                                      |
+| `admin.token`        | `""`              | Blank generates a 20-character token on first install. Never shown to the user — see § Admin console. |
+| `bootstrap.image`    | `curlimages/curl` | Image for the first-user invite Job.                                                                  |
+| `caelus.owner.email` | injected          | Reconciler-supplied; the invitation target.                                                           |
+| `storage.data.size`  | `1Gi`             | Overridden by `caelus.plan.storageSize` when the deployment has a plan.                               |
+| `proxy.ipHeader`     | `X-Real-IP`       | `IP_HEADER` — see § Client IP below.                                                                  |
+| `resources`          | `{}`              | Left empty deliberately: a wrong limit OOM-kills a password vault.                                    |
+| `extraEnv`           | `{}`              | String-valued escape hatch for settings not modeled yet.                                              |
 
 The `features` block carries vaultwarden's own defaults (web vault, sends, emergency access,
 password hints, org creation, email change). They are surfaced so they can be tightened
@@ -195,21 +197,21 @@ been audited. That is the next hardening step, not an oversight.
 
 ## Resources
 
-| Resource | Name |
-| --- | --- |
+| Resource             | Name                    |
+|----------------------|-------------------------|
 | Deployment / Service | `<release>-vaultwarden` |
-| PVC | `<release>-data` |
-| Secret (admin token) | `<release>-admin` |
-| Ingress | `<release>-ingress` |
-| SSH Service | `<release>-ssh` |
-| Job (bootstrap hook) | `<release>-bootstrap` |
+| PVC                  | `<release>-data`        |
+| Secret (admin token) | `<release>-admin`       |
+| Ingress              | `<release>-ingress`     |
+| SSH Service          | `<release>-ssh`         |
+| Job (bootstrap hook) | `<release>-bootstrap`   |
 
 The Deployment uses `strategy: Recreate`: with a single RWO volume, a rolling update would
 deadlock because the new pod cannot mount the PVC the old one still holds.
 
 ## Caelus product template
 
-- **Chart:** `oci://registry.home/helm/vaultwarden`
+- **Chart:** `oci://ghcr.io/erikvanzijst/freepod/charts/vaultwarden`
 - **Default values (system) json:** `{}` — `values.yaml` carries the defaults.
 - **User values schema:** `user.schema.json` in this directory.
 

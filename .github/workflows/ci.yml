@@ -133,6 +133,20 @@ jobs:
       - name: Publish the tenant build image when its version is new
         run: ./scripts/build-images.sh --builder --skip-if-published
 
+      - name: Publish the custom placeholder image when its version is new
+        run: ./scripts/build-images.sh --placeholder --skip-if-published
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v4.1.1
+
+      - name: Login to GHCR for Helm
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Publish product charts whose version is new
+        run: ./scripts/publish-charts.sh --all --skip-if-published
+
   api-test:
     runs-on: ubuntu-latest
     permissions:

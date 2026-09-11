@@ -130,17 +130,23 @@ publishing path, and for any documented operator command.
 
 ### Requirement: A retired registry serves no platform artifact
 When platform artifacts move, the migration MUST be complete before the previous
-location is retired: no product template and no live deployment may still resolve a chart
-or a chart-default image from it.
+location is retired: no product's current template, no template a live deployment desires
+or runs, and no live deployment may still resolve a chart or a chart-default image from
+it. A template row that is none of these is history rather than configuration — no
+reconcile resolves it — and is not required to be rewritten or deleted.
 
 Because a chart reference is part of a template's identity, moving it produces a new
 template version rather than mutating the existing one, and every deployment on the old
 version MUST be moved to the new one explicitly. Retirement MUST be the last step, and
 the repositories left behind MUST be removed rather than abandoned in place.
 
-#### Scenario: No template references the retired location
+#### Scenario: No resolvable template references the retired location
 - **WHEN** the migration is complete
-- **THEN** no product template — catalog-declared or database-authored — carries a chart reference to the retired registry
+- **THEN** no product's current template and no template a live deployment desires or runs — catalog-declared or database-authored — carries a chart reference or a chart-default image reference to the retired registry
+
+#### Scenario: A historical template row is exempt
+- **WHEN** a template row is neither a product's current template nor desired or run by any live deployment
+- **THEN** it may still name the retired registry, because no reconcile resolves it
 
 #### Scenario: No live deployment resolves from the retired location
 - **WHEN** the migration is complete

@@ -231,34 +231,23 @@ curl -H 'Accept: application/activity+json' https://lemmy.example.com/
 
 ## Build and publish
 
-Caelus deploys charts by OCI reference, so the chart must be packaged and pushed
-to the registry before a product template can point at it. `helm dependency
-build` vendors the `ssh-sidecar` library into `charts/`; skipping it fails the
-package with a missing-dependency error.
+Published to `oci://ghcr.io/erikvanzijst/freepod/charts/lemmy` by
+[`scripts/publish-charts.sh`](../../scripts/publish-charts.sh), which CI runs on
+every merge to `master`: bump `version` in `chart/Chart.yaml` and that version
+is published. To publish by hand, from the repository root:
 
 ```bash
-cd products/lemmy/chart
-helm dependency build .        # vendor ssh-sidecar-*.tgz into charts/
-helm lint .
-helm package .                 # -> lemmy-0.4.0.tgz
-helm push lemmy-0.4.0.tgz oci://registry.home/helm --insecure-skip-tls-verify
-```
-
-Optionally verify the push:
-
-```bash
-helm pull oci://registry.home/helm/lemmy --version 0.4.0 \
-  --insecure-skip-tls-verify --destination /tmp
+./scripts/publish-charts.sh lemmy
 ```
 
 The published chart is then referenced from a Caelus product template:
 
-| Field               | Value                                   |
-|---------------------|-----------------------------------------|
-| Chart ref           | `oci://registry.home/helm/lemmy`        |
-| Chart version       | `0.4.0`                                 |
-| User values schema  | `chart/user.schema.json` (see below)    |
-| Default Helm values | `chart/default_values.json` (see below) |
+| Field               | Value                                             |
+|---------------------|---------------------------------------------------|
+| Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/lemmy` |
+| Chart version       | `0.5.1`                                           |
+| User values schema  | `chart/user.schema.json` (see below)              |
+| Default Helm values | `chart/default_values.json` (see below)           |
 
 ## User values schema
 

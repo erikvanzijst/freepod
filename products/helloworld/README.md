@@ -21,25 +21,25 @@ helm template demo ./products/helloworld/chart \
   --set user.message="Hello from values"
 ```
 
-## Publish to docker registry
+## Build and publish
+
+Published to `oci://ghcr.io/erikvanzijst/freepod/charts/helloworld` by
+[`scripts/publish-charts.sh`](../../scripts/publish-charts.sh), which CI runs on
+every merge to `master`: bump `version` in `chart/Chart.yaml` and that version
+is published. To publish by hand, from the repository root:
 
 ```bash
-helm lint ./products/helloworld/chart
-helm package ./products/helloworld/chart --destination ./build
-helm push ./build/helloworld-0.1.4.tgz oci://registry.home/helm --insecure-skip-tls-verify
+./scripts/publish-charts.sh helloworld
 ```
-
-Optionally pull to verify: `helm pull oci://registry.home/helm/helloworld --version 0.1.4 --insecure-skip-tls-verify --destination /tmp`
 
 ## Deploy to k3s
 
 ```bash
-helm install helloworld oci://registry.home/helm/helloworld \
+helm install helloworld oci://ghcr.io/erikvanzijst/freepod/charts/helloworld \
   --kubeconfig ./kubeconfigs/k3s-dev.yaml \
-  --version 0.1.4 \
+  --version 0.2.1 \
   --namespace hello2 \
   --create-namespace \
-  --insecure-skip-tls-verify \
   --set ingress.host=hello2.app.deprutser.be
 ```
 

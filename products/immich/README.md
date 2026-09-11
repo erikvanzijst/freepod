@@ -38,33 +38,22 @@ release. Set `smtp.host`/`smtp.from` to enable notification email.
 
 ## Build and publish
 
-Caelus deploys charts by OCI reference, so the chart must be packaged and pushed
-to the registry before a product template can point at it. `helm dependency
-build` vendors the `ssh-sidecar` library into `charts/`; skipping it fails the
-package with a missing-dependency error.
+Published to `oci://ghcr.io/erikvanzijst/freepod/charts/immich` by
+[`scripts/publish-charts.sh`](../../scripts/publish-charts.sh), which CI runs on
+every merge to `master`: bump `version` in `chart/Chart.yaml` and that version
+is published. To publish by hand, from the repository root:
 
 ```bash
-cd products/immich2/chart
-helm dependency build .        # vendor ssh-sidecar-*.tgz into charts/
-helm lint .
-helm package .                 # -> immich-0.1.1.tgz (named from Chart.yaml)
-helm push immich-0.1.1.tgz oci://registry.home/helm --insecure-skip-tls-verify
-```
-
-Optionally verify the push:
-
-```bash
-helm pull oci://registry.home/helm/immich --version 0.1.1 \
-  --insecure-skip-tls-verify --destination /tmp
+./scripts/publish-charts.sh immich
 ```
 
 The published chart is then referenced from a Caelus product template:
 
-| Field | Value                                                                               |
-|---|-------------------------------------------------------------------------------------|
-| Chart ref | `oci://registry.home/helm/immich`                                                   |
-| Chart version | `0.1.2`                                                                             |
-| User values schema | see [Caelus product template](#caelus-product-template) below                       |
+| Field               | Value                                                                               |
+|---------------------|-------------------------------------------------------------------------------------|
+| Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/immich`                                  |
+| Chart version       | `0.2.1`                                                                             |
+| User values schema  | see [Caelus product template](#caelus-product-template) below                       |
 | Default Helm values | see [Default values (system_values_json)](#default-values-system_values_json) below |
 
 ## Caelus product template
