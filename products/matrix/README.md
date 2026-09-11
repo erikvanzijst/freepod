@@ -59,21 +59,15 @@ The chart always injects:
 
 This supports federation on a single hostname with TLS termination handled upstream.
 
-## Package and Push (OCI)
+## Build and publish
 
-Package the chart and push to the Caelus OCI registry:
-
-```bash
-cd products/matrix/chart
-helm package .
-helm registry login registry.home --insecure
-helm push matrix-0.1.0.tgz oci://registry.home/helm --insecure-skip-tls-verify
-```
-
-Pull test:
+Published to `oci://ghcr.io/erikvanzijst/freepod/charts/matrix` by
+[`scripts/publish-charts.sh`](../../scripts/publish-charts.sh), which CI runs on
+every merge to `master`: bump `version` in `chart/Chart.yaml` and that version
+is published. To publish by hand, from the repository root:
 
 ```bash
-helm pull oci://registry.home/helm/matrix --version 0.1.0 --insecure-skip-tls-verify
+./scripts/publish-charts.sh matrix
 ```
 
 ## Caelus product template

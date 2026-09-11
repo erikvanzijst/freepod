@@ -27,20 +27,23 @@ helm template demo ./products/naas/chart \
   --set ingress.host=no.example.com
 ```
 
-## Publish to docker registry
+## Build and publish
+
+Published to `oci://ghcr.io/erikvanzijst/freepod/charts/naas` by
+[`scripts/publish-charts.sh`](../../scripts/publish-charts.sh), which CI runs on
+every merge to `master`: bump `version` in `chart/Chart.yaml` and that version
+is published. To publish by hand, from the repository root:
 
 ```bash
-helm lint ./products/naas/chart
-helm package ./products/naas/chart --destination ./build
-helm push ./build/naas-0.1.0.tgz oci://registry.home/helm --insecure-skip-tls-verify
+./scripts/publish-charts.sh naas
 ```
 
 ## Caelus product template
 
 Create a new NaaS product in the Admin UI and add a template with the following values:
 
-- Chart: `oci://registry.home/helm/naas`
-- Tag: `0.1.0`
+- Chart: `oci://ghcr.io/erikvanzijst/freepod/charts/naas`
+- Tag: `0.1.7`
 
 Default values:
 

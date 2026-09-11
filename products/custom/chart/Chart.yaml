@@ -6,7 +6,7 @@ description: >-
   than pinned by the platform; until a build exists the release serves a
   placeholder page.
 type: application
-version: 0.9.1
+version: 0.9.2
 # There is no meaningful upstream app version: the running application is
 # whatever the user built. Tracks the chart version so the field is not
 # misleading.

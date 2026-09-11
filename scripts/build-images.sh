@@ -11,6 +11,7 @@
 #   ./scripts/build-images.sh --ssh-sidecar   # Build only the dev-profile SSH sidecar
 #   ./scripts/build-images.sh --ssh-resolver  # Build only the SSH auth resolver
 #   ./scripts/build-images.sh --builder       # Build only the tenant build image
+#   ./scripts/build-images.sh --placeholder   # Build only the custom placeholder image
 #   ./scripts/build-images.sh v1.2.3 --api   # Build only API image with custom tag
 #   ./scripts/build-images.sh v1.2.3 --ui    # Build only UI image with custom tag
 #   ./scripts/build-images.sh --help         # Show this help message
@@ -49,7 +50,7 @@ REGISTRY=ghcr.io/$(gh repo view --json nameWithOwner -q .nameWithOwner)
 # Function to display help
 usage() {
   cat <<'EOF'
-Usage: ./scripts/build-images.sh [TAG] [--api|--ui|--keycloak|--ssh-sidecar|--ssh-resolver|--builder|--all|--help]
+Usage: ./scripts/build-images.sh [TAG] [--api|--ui|--keycloak|--ssh-sidecar|--ssh-resolver|--builder|--placeholder|--all|--help]
 
 If TAG is not provided, the current git SHA will be used.
 
@@ -66,13 +67,17 @@ Options:
   --builder       Build only the tenant build image. Ignores TAG: its version
                   comes from products/custom/builder/VERSION and an already-
                   published version is refused rather than overwritten.
+  --placeholder   Build only the custom chart's placeholder image. Ignores TAG:
+                  its version comes from products/custom/placeholder/VERSION and
+                  an already-published version is refused rather than
+                  overwritten.
   --skip-if-published
-                  With --ssh-sidecar, --ssh-resolver or --builder, treat an
-                  already-published version as nothing to do rather than an
-                  error. This is what makes the publish safe to run on every
-                  merge: it pushes exactly when VERSION is new. Run by hand
-                  without it, so that a version you believed you had bumped
-                  fails loudly.
+                  With --ssh-sidecar, --ssh-resolver, --builder or
+                  --placeholder, treat an already-published version as nothing
+                  to do rather than an error. This is what makes the publish
+                  safe to run on every merge: it pushes exactly when VERSION is
+                  new. Run by hand without it, so that a version you believed
+                  you had bumped fails loudly.
   --all           Build all images on moving tags (API, UI, Keycloak).
   --help          Show this help message and exit.
 EOF
@@ -80,7 +85,7 @@ EOF
 
 # Parse arguments
 TAG=""
-TARGET="both"  # possible values: both, api, ui, keycloak, ssh-sidecar, ssh-resolver, builder, all
+TARGET="both"  # possible values: both, api, ui, keycloak, ssh-sidecar, ssh-resolver, builder, placeholder, all
 SKIP_IF_PUBLISHED=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -106,6 +111,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --builder)
       TARGET="builder"
+      shift
+      ;;
+    --placeholder)
+      TARGET="placeholder"
       shift
       ;;
     --skip-if-published)
@@ -135,8 +144,8 @@ done
 # Only the immutably-tagged images can be already-published, so anywhere else
 # this flag would silently do nothing -- which is how a publish everyone
 # believes is conditional turns out never to have been.
-if [[ "$SKIP_IF_PUBLISHED" == "true" && "$TARGET" != "ssh-sidecar" && "$TARGET" != "ssh-resolver" && "$TARGET" != "builder" ]]; then
-  echo "--skip-if-published only applies to --ssh-sidecar, --ssh-resolver and --builder." >&2
+if [[ "$SKIP_IF_PUBLISHED" == "true" && "$TARGET" != "ssh-sidecar" && "$TARGET" != "ssh-resolver" && "$TARGET" != "builder" && "$TARGET" != "placeholder" ]]; then
+  echo "--skip-if-published only applies to --ssh-sidecar, --ssh-resolver, --builder and --placeholder." >&2
   exit 1
 fi
 
@@ -269,6 +278,40 @@ if [[ "$TARGET" == "builder" ]]; then
   echo ""
   echo "This does not reach any build on its own. Point builder_image in tf/app"
   echo "at this version and apply; ./scripts/rollout.sh does not touch it."
+  echo "=============================================="
+  exit 0
+fi
+
+if [[ "$TARGET" == "placeholder" ]]; then
+  PLACEHOLDER_CONTEXT=./products/custom/placeholder
+  PLACEHOLDER_VERSION=$(tr -d '[:space:]' < "${PLACEHOLDER_CONTEXT}/VERSION")
+  PLACEHOLDER_REF="${REGISTRY}/custom-placeholder:${PLACEHOLDER_VERSION}"
+
+  if docker manifest inspect "${PLACEHOLDER_REF}" >/dev/null 2>&1; then
+    if [[ "$SKIP_IF_PUBLISHED" == "true" ]]; then
+      echo "${PLACEHOLDER_REF} is already published. Nothing to do."
+      exit 0
+    fi
+    echo "Refusing to overwrite ${PLACEHOLDER_REF}, which is already published." >&2
+    echo "Bump ${PLACEHOLDER_CONTEXT}/VERSION and repoint placeholderImage in the custom chart and catalog." >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "[1/1] Building and pushing the custom placeholder image ${PLACEHOLDER_VERSION}..."
+  docker buildx build \
+    --push \
+    --platform linux/amd64 \
+    --tag "${PLACEHOLDER_REF}" \
+    "${PLACEHOLDER_CONTEXT}"
+
+  echo ""
+  echo "=============================================="
+  echo "Pushed ${PLACEHOLDER_REF}"
+  echo ""
+  echo "This does not reach any deployment on its own. Point placeholderImage in"
+  echo "products/custom/chart/values.yaml and products/catalog/custom.yaml at this"
+  echo "version, bump the chart, and publish it with ./scripts/publish-charts.sh."
   echo "=============================================="
   exit 0
 fi

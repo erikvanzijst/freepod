@@ -35,7 +35,7 @@ registry: registry.home
 # second user-settable image reference would bypass the ownership assertion
 # entirely and hand tenants an arbitrary-image escape hatch. Built and published
 # from products/custom/placeholder (see README).
-placeholderImage: registry.home/caelus/custom-placeholder:0.1.0
+placeholderImage: ghcr.io/erikvanzijst/freepod/custom-placeholder:0.1.0
 
 # Digests are immutable, so there is nothing to re-pull; the placeholder is tag
 # addressed but changes only when the platform republishes it.

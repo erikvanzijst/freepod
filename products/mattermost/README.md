@@ -197,18 +197,17 @@ connections, preventing startup race conditions.
 helm upgrade --install mattermost ./products/mattermost/chart \
   --namespace mattermost \
   --create-namespace \
-  --set host=mattermost.app.deprutser.be
+  --set host=mattermost.prutser.freepod.eu
 ```
 
 ### From OCI Registry
 
 ```bash
-helm upgrade --install mattermost oci://registry.home/helm/mattermost \
-  --insecure-skip-tls-verify \
-  --version 1.0.1 \
+helm upgrade --install mattermost oci://ghcr.io/erikvanzijst/freepod/charts/mattermost \
+  --version 1.1.1 \
   --namespace mattermost \
   --create-namespace \
-  --set host=mattermost.app.deprutser.be
+  --set host=mattermost.prutser.freepod.eu
 ```
 
 ### Using a Values File
@@ -216,7 +215,7 @@ helm upgrade --install mattermost oci://registry.home/helm/mattermost \
 Create a `values.yaml`:
 
 ```yaml
-host: mattermost.app.deprutser.be
+host: mattermost.prutser.freepod.eu
 ```
 
 ```bash
@@ -230,13 +229,13 @@ helm upgrade --install mattermost ./products/mattermost/chart \
 
 ### 1. Package and Publish
 
-The chart must be packaged and pushed to the OCI registry
-before Caelus can reference it:
+Published to `oci://ghcr.io/erikvanzijst/freepod/charts/mattermost` by
+[`scripts/publish-charts.sh`](../../scripts/publish-charts.sh), which CI runs on
+every merge to `master`: bump `version` in `chart/Chart.yaml` and that version
+is published. To publish by hand, from the repository root:
 
 ```bash
-cd products/mattermost/chart
-helm package .
-helm push mattermost-1.0.2.tgz oci://registry.home/helm --insecure-skip-tls-verify
+./scripts/publish-charts.sh mattermost
 ```
 
 ### 2. Register as a Product Template
@@ -244,12 +243,12 @@ helm push mattermost-1.0.2.tgz oci://registry.home/helm --insecure-skip-tls-veri
 In the Caelus Admin UI, create a new product (or add a
 template version to an existing one) with:
 
-| Field | Value |
-|---|---|
-| Chart ref | `oci://registry.home/helm/mattermost` |
-| Chart version | `1.0.2` |
-| User values schema | See [values schema](#values-schema) below |
-| Default Helm values | See [system values](#system-values) below |
+| Field               | Value                                                  |
+|---------------------|--------------------------------------------------------|
+| Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/mattermost` |
+| Chart version       | `1.1.1`                                                |
+| User values schema  | See [values schema](#values-schema) below              |
+| Default Helm values | See [system values](#system-values) below              |
 
 The schema declares the values that end users configure
 when deploying Mattermost through Caelus:

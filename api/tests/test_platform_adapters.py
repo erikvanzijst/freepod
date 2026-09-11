@@ -79,7 +79,7 @@ def test_helm_upgrade_install_passes_values_and_returns_status() -> None:
     assert "--atomic" in upgrade_cmd
     assert "--wait" in upgrade_cmd
     assert "--plain-http" not in upgrade_cmd
-    assert "--insecure-skip-tls-verify" in upgrade_cmd
+    assert "--insecure-skip-tls-verify" not in upgrade_cmd
 
 
 def test_helm_status_not_found_returns_exists_false() -> None:

@@ -14,7 +14,7 @@ upstream:
   match: ^v(?P<version>\d+\.\d+\.\d+)$
   version_path: template.system_values.image.tag
 template:
-  chart_ref: oci://registry.home/helm/immich
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/immich
   chart_version: 0.2.1
   system_values:
     image:
