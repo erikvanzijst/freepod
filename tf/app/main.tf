@@ -98,6 +98,9 @@ module "caelus" {
   # template declares vars.
   var_encryption_keys = lookup(var.var_encryption_keys, terraform.workspace, [])
 
+  registry_signing_private_key = var.registry_signing_private_keys[terraform.workspace]
+  registry_pull_hmac_key       = var.registry_pull_hmac_keys[terraform.workspace]
+
   # Loki, like Garage above, is a tf/deps singleton shared by both workspaces.
   loki_base_url         = var.loki_base_url
   log_keepalive_seconds = var.log_keepalive_seconds

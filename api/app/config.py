@@ -300,6 +300,15 @@ class CaelusSettings(BaseSettings):
     # Sleep between worker passes.
     build_worker_interval_seconds: float = 1
 
+    # ── Tenant registry ───────────────────────────────────────────────────
+    # Only the token endpoint, the build worker and the
+    # reconciler's pull-Secret publication read these.
+    # Keys: authenticated-tenant-registry D11, D14.
+    registry_host: str = ""
+    registry_token_issuer: str = ""
+    registry_signing_private_key: str = ""
+    registry_pull_hmac_key: str = ""
+
     # ── Deployment var encryption ─────────────────────────────────────────
     # Fernet keys, newest first. Only the first key encrypts; every key in the
     # list can decrypt, and each stored row names the key that produced it by

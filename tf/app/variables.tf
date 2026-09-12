@@ -194,6 +194,65 @@ variable "sshpiper_host_private_keys" {
   }
 }
 
+# The tenant registry's keys, keyed by Terraform workspace
+# (authenticated-tenant-registry D14). Generate the signing key and its JWKS
+# with `caelus registry-keygen`, once per environment, and the pull HMAC key
+# with:
+#
+#   python -c "import secrets; print(secrets.token_urlsafe(32))"
+variable "registry_signing_private_keys" {
+  description = "EC P-256 private key (PEM) the API and build worker sign registry tokens with, per Terraform workspace. Set in secrets.auto.tfvars."
+  type        = map(string)
+  sensitive   = true
+
+  validation {
+    condition     = alltrue([for k in ["default", "prod"] : contains(keys(var.registry_signing_private_keys), k)])
+    error_message = "registry_signing_private_keys must have both a \"default\" (dev) and a \"prod\" key. The dev workspace is named `default`, not `dev`."
+  }
+
+  validation {
+    condition = (
+      !alltrue([for k in ["default", "prod"] : contains(keys(var.registry_signing_private_keys), k)])
+      || var.registry_signing_private_keys["default"] != var.registry_signing_private_keys["prod"]
+    )
+    error_message = "The dev and prod signing keys must differ: one key for both would let a token minted in dev authorize against the prod registry."
+  }
+}
+
+variable "registry_jwks" {
+  description = "JWKS each environment's registry trusts, per Terraform workspace: the public half of registry_signing_private_keys as printed by `caelus registry-keygen`."
+  type        = map(string)
+
+  validation {
+    condition     = alltrue([for k in ["default", "prod"] : contains(keys(var.registry_jwks), k)])
+    error_message = "registry_jwks must have both a \"default\" (dev) and a \"prod\" key. The dev workspace is named `default`, not `dev`."
+  }
+
+  validation {
+    condition     = alltrue([for v in values(var.registry_jwks) : can(jsondecode(v).keys)])
+    error_message = "Each registry_jwks entry must be a JSON object with a \"keys\" array, as printed by `caelus registry-keygen`."
+  }
+}
+
+variable "registry_pull_hmac_keys" {
+  description = "Key each deployment's registry pull credential is derived from by HMAC, per Terraform workspace. Set in secrets.auto.tfvars."
+  type        = map(string)
+  sensitive   = true
+
+  validation {
+    condition     = alltrue([for k in ["default", "prod"] : contains(keys(var.registry_pull_hmac_keys), k)])
+    error_message = "registry_pull_hmac_keys must have both a \"default\" (dev) and a \"prod\" key. The dev workspace is named `default`, not `dev`."
+  }
+
+  validation {
+    condition = (
+      !alltrue([for k in ["default", "prod"] : contains(keys(var.registry_pull_hmac_keys), k)])
+      || var.registry_pull_hmac_keys["default"] != var.registry_pull_hmac_keys["prod"]
+    )
+    error_message = "The dev and prod pull HMAC keys must differ: one key for both would make a dev pull credential valid in prod."
+  }
+}
+
 # The resolver image. Immutable tag from ssh-auth/VERSION, never re-pushed, and
 # deliberately not a moving tag like the API's: the SSH edge must not roll
 # because the API rolled. Bump it here to deploy a new resolver.

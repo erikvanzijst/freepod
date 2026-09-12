@@ -1,8 +1,8 @@
 ## 1. Keys and settings
 
-- [ ] 1.1 Add `caelus registry-keygen` emitting an EC P-256 private key in PEM and the matching JWKS JSON with a `kid` — verify the printed JWKS parses and its key id matches the one the signing helper puts in a token header
-- [ ] 1.2 Add the signing-key, HMAC-key, registry host and token-endpoint settings to `api/app/config.py`, absent by default so every non-registry path still constructs settings — verify `cd api && uv run --no-sync pytest` passes with none of them set
-- [ ] 1.3 Generate one keypair and one HMAC key per environment, add them to `tf/app/secrets.auto.tfvars` keyed by workspace, and declare the variables — verify `terraform validate` passes in both workspaces
+- [x] 1.1 Add `caelus registry-keygen` emitting an EC P-256 private key in PEM and the matching JWKS JSON with a `kid` — verify the printed JWKS parses and its key id matches the one the signing helper puts in a token header
+- [x] 1.2 Add the signing-key, HMAC-key, registry host and token-endpoint settings to `api/app/config.py`, absent by default so every non-registry path still constructs settings — verify `cd api && uv run --no-sync pytest` passes with none of them set
+- [x] 1.3 Generate one keypair and one HMAC key per environment, add them to `tf/app/secrets.auto.tfvars` keyed by workspace, declare the variables, and deliver the keys as two Secrets consumed by `env_from` — the signing key to `caelus-api` and `caelus-build-worker`, the HMAC key to `caelus-api` and `caelus-worker` (D14) — verify `terraform validate` passes in both workspaces
 
 ## 2. The registry (`tf/app`)
 

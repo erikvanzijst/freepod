@@ -207,6 +207,20 @@ variable "build_max_in_flight" {
   default     = 1
 }
 
+# --- Tenant registry --------------------------------------------------------
+
+variable "registry_signing_private_key" {
+  description = "EC P-256 private key (PEM) registry tokens are signed with"
+  type        = string
+  sensitive   = true
+}
+
+variable "registry_pull_hmac_key" {
+  description = "Key each deployment's registry pull credential is derived from by HMAC"
+  type        = string
+  sensitive   = true
+}
+
 variable "cloudflare_api_dns_token" {
   description = "Cloudflare API token with `Zone → DNS → Edit` on the platform zone, used by the reconciler to create each account's wildcard record."
   type        = string

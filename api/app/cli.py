@@ -40,6 +40,7 @@ from app.services import (
     jobs as jobs_service,
     plans as plan_service,
     subscriptions as subscription_service,
+    registry_tokens,
     var_crypto,
 )
 from app.services.errors import CaelusException, DeploymentInProgressException
@@ -947,6 +948,19 @@ def keyring_rotate(
         except CaelusException as e:
             _exit_for_domain_error(e)
     _echo_yaml_entity({"rotated": rotated, "current_key_id": key_id})
+
+
+@app.command("registry-keygen")
+def registry_keygen() -> None:
+    """Generate a tenant-registry signing key: the private PEM, then its JWKS.
+
+    The PEM is what the environment's token signers hold; the JWKS is what its
+    registry trusts. Run once per environment -- a key shared between them
+    would let a token minted in one authorize in the other.
+    """
+    key = registry_tokens.generate_private_key()
+    typer.echo(registry_tokens.private_key_pem(key), nl=False)
+    typer.echo(json.dumps(registry_tokens.jwks(key.public_key())))
 
 
 @app.command("sync-network-policies")

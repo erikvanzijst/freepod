@@ -136,11 +136,11 @@ credential in the pod that could be exchanged for anything else.
 For build `7f3a9c…` owned by user 5 in dev:
 
 ```json
-{ "typ": "JWT", "alg": "ES256", "kid": "dev-1" }
+{ "typ": "JWT", "alg": "ES256", "kid": "<RFC 7638 thumbprint of the signing key>" }
 ```
 ```json
 {
-  "iss": "caelus-build-worker",
+  "iss": "<the environment's registry token issuer>",
   "sub": "build:7f3a9c2e-...",
   "aud": "cr.dev.freepod.eu",
   "iat": 1757592000, "nbf": 1757591940, "exp": 1757596200,
@@ -158,7 +158,15 @@ For build `7f3a9c…` owned by user 5 in dev:
 
 `Verify` checks `iss` against the configured issuer, `aud` against the configured service,
 and `exp`/`nbf` with 60s leeway; `sub`, `iat` and `jti` are unverified and exist for the
-audit trail. `exp` is the build deadline plus margin — about 70 minutes — so a build that
+audit trail.
+
+The registry trusts exactly **one** issuer — distribution v3.0.0 builds
+`TrustedIssuers: []string{ac.issuer}` from its config — so the build worker's capabilities
+and the API's pull tokens must carry the same `iss`, or one of the two paths fails
+verification. Terraform supplies one value to the registry's `auth.token.issuer` and to
+both signers (`CAELUS_REGISTRY_TOKEN_ISSUER`); `sub` (`build:…` or `pull-{uid}`) is what
+tells the two apart. The `kid` is the RFC 7638 thumbprint of the signing key, derived by
+the signer rather than configured, so it cannot drift from the JWKS the registry holds. `exp` is the build deadline plus margin — about 70 minutes — so a build that
 runs to its deadline can still push. `pull` accompanies `push` on both writable
 repositories because a cache hit is mounted across repositories at push time, and that
 mount reads the source.
@@ -202,8 +210,9 @@ removes — an internal name needs a certificate the node trusts and a resolver 
 which means a `registries.yaml` block and a node-local dependency outside Terraform.
 
 *Honest limit:* the registry cannot enforce the read-only property. Any key in its JWKS
-may sign any access claim, so the API's key could technically mint write. Separate keys
-give attribution by `kid`, not enforcement. Someone who can make the API sign arbitrary
+may sign any access claim, and the API holds the same signing key and issuer as the build
+worker (D14), so the API could technically mint write. Only the unverified `sub` tells
+the two token paths apart: attribution, not enforcement. Someone who can make the API sign arbitrary
 tokens already holds its database credentials and cluster RBAC.
 
 ### D11: Per-owner pull credentials, derived rather than stored

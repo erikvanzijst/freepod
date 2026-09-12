@@ -68,6 +68,35 @@ resource "kubernetes_secret" "var_keys" {
   }
 }
 
+# Two Secrets rather than one so neither worker holds a key it has no use for
+# (authenticated-tenant-registry D14): the build worker never derives a pull
+# credential, and the reconcile worker never signs a token.
+resource "kubernetes_secret" "registry_signing" {
+  metadata {
+    name      = "caelus-registry-signing"
+    namespace = var.namespace
+  }
+
+  type = "Opaque"
+
+  data = {
+    CAELUS_REGISTRY_SIGNING_PRIVATE_KEY = var.registry_signing_private_key
+  }
+}
+
+resource "kubernetes_secret" "registry_pull_hmac" {
+  metadata {
+    name      = "caelus-registry-pull-hmac"
+    namespace = var.namespace
+  }
+
+  type = "Opaque"
+
+  data = {
+    CAELUS_REGISTRY_PULL_HMAC_KEY = var.registry_pull_hmac_key
+  }
+}
+
 resource "kubernetes_secret" "dns" {
   metadata {
     name      = "caelus-dns"
