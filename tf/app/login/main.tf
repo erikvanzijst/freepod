@@ -73,6 +73,12 @@ resource "helm_release" "oauth2_proxy" {
 
             # Static files (product icons, etc.).
             "GET=^/api/static/.*",
+
+            # The tenant registry's token endpoint. Its caller is the node's
+            # container runtime, which carries the credential in the request
+            # and has no session (authenticated-tenant-registry D10).
+            "GET=^/api/registry/token$",
+            "POST=^/api/registry/token$",
           ]
         EOT
       }

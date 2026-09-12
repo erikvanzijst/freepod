@@ -17,6 +17,7 @@ from app.api import (
     deployments,
     hostnames,
     plans,
+    registry,
     releases,
     ssh,
     ssh_keys,
@@ -100,6 +101,7 @@ app.include_router(builds.router, prefix="/api")
 app.include_router(vars.router, prefix="/api")
 app.include_router(ssh_keys.router, prefix="/api")
 app.include_router(ssh.router, prefix="/api")
+app.include_router(registry.router, prefix="/api")
 
 _init_static_dir()
 app.mount("/api/static", StaticFiles(directory=str(_settings.static_path)), name="static")
