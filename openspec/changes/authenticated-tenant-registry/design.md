@@ -300,7 +300,12 @@ proceeds — so nothing needs pre-creating.
 
 ### D16: Collection now, retention later
 
-`delete` is enabled and a CronJob runs garbage collection, which reclaims what nothing
+`delete` is enabled and garbage collection reclaims what nothing references. Upstream
+collection is stop-the-world — an image pushed while it runs can lose its layers — so it
+runs as an init container of the registry Deployment rather than as a CronJob beside it:
+`Recreate` guarantees nothing is serving while it runs, and the weekly restart that puts a
+renewed certificate in service (D3) doubles as the weekly collection. `--delete-untagged`
+is safe for multi-arch images: 3.1.1 spares an untagged manifest that a tagged index
 references. What is **not** built here is a retention rule — keeping the current release's
 image plus the last N builds per owner — because that requires knowing which images are
 live, which is database knowledge. Its natural home is `caelus db-worker`, which already

@@ -87,7 +87,8 @@ accumulated builds is left to a follow-up now that the node has headroom for it.
 ## Impact
 
 - **Terraform** (`tf/app`): new registry module (namespace, Deployment, PVC, Service with
-  pinned ClusterIP, Certificate, config, JWKS ConfigMap, restart CronJob, GC CronJob),
+  pinned ClusterIP, Certificate, config, JWKS ConfigMap, restart CronJob, garbage
+  collection as an init container),
   two new secrets threaded to the API, reconcile worker and build worker, and an egress
   change in `caelus/builds.tf`.
 - **API** (`api/app/`): the token endpoint route; `services/build_jobs.py` token minting;

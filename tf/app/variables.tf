@@ -45,6 +45,7 @@ variable "reserved_hostnames" {
       "loki.dev.freepod.eu",
       "alerts.dev.freepod.eu",
       "alertmanager.dev.freepod.eu",
+      "cr.dev.freepod.eu",
       "kube.freepod.eu",
       "blob.freepod.eu",
     ]
@@ -62,6 +63,7 @@ variable "reserved_hostnames" {
       "loki.freepod.eu",
       "alerts.freepod.eu",
       "alertmanager.freepod.eu",
+      "cr.freepod.eu",
       "kube.freepod.eu",
       "blob.freepod.eu",
     ]

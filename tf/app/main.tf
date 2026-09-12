@@ -50,6 +50,16 @@ module "sshpiper" {
   )
 }
 
+module "registry" {
+  source       = "./registry"
+  namespace    = kubernetes_namespace.registry.metadata[0].name
+  host         = local.registry_host
+  cluster_ip   = local.registry_cluster_ip
+  token_realm  = "https://${local.domain}/api/registry/token"
+  token_issuer = local.registry_token_issuer
+  jwks         = var.registry_jwks[terraform.workspace]
+}
+
 module "caelus" {
   source             = "./caelus"
   namespace          = kubernetes_namespace.caelus.metadata[0].name
@@ -100,6 +110,11 @@ module "caelus" {
 
   registry_signing_private_key = var.registry_signing_private_keys[terraform.workspace]
   registry_pull_hmac_key       = var.registry_pull_hmac_keys[terraform.workspace]
+  registry_host                = local.registry_host
+  registry_token_issuer        = local.registry_token_issuer
+  registry_namespace           = kubernetes_namespace.registry.metadata[0].name
+  registry_pod_labels          = module.registry.pod_labels
+  registry_cluster_ip          = module.registry.cluster_ip
 
   # Loki, like Garage above, is a tf/deps singleton shared by both workspaces.
   loki_base_url         = var.loki_base_url

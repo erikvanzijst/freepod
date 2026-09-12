@@ -6,19 +6,19 @@
 
 ## 2. The registry (`tf/app`)
 
-- [ ] 2.1 Add the registry namespace per environment (`caelus-registry` / `caelus-registry-dev`) — verify `terraform plan` creates exactly one per workspace and no other namespace changes
-- [ ] 2.2 Add the registry Deployment (`registry:3`, one replica, `Recreate`), its PVC, and its config with `auth.token` (realm, issuer, service, jwks) and `delete: enabled` — verify the pod reaches Ready and `GET /v2/` returns 401 with a `Bearer realm=…` challenge naming the environment's token endpoint
-- [ ] 2.3 Add the Service with a pinned `clusterIP`, confirming at apply time that the chosen address is unallocated — verify the address matches the plan after apply and survives a `kubectl rollout restart` of the Deployment
-- [ ] 2.4 Add the JWKS ConfigMap and mount it — verify the registry accepts a token signed by the environment's key and rejects one signed by the other environment's key
-- [ ] 2.5 Add the Certificate resource against `letsencrypt-dns` and serve TLS from it — verify `openssl s_client` against the ClusterIP from inside the cluster shows a valid chain for the registry's own name
-- [ ] 2.6 Add the weekly restart CronJob and the Role and RoleBinding letting it restart only that Deployment — verify a manual `kubectl create job --from=cronjob/…` restarts the registry and the job's ServiceAccount cannot restart anything else
-- [ ] 2.7 Add the garbage collection CronJob — verify a manual run completes and reports reclaimed blobs against a repository with unreferenced content
-- [ ] 2.8 Confirm the reachability the design assumes without adding a policy in the registry namespace (D18): verify that a tenant application pod cannot reach the registry, that a build pod can, and that the node can pull
-- [ ] 2.9 Publish the DNS records for both names pointing at the pinned ClusterIPs — verify each resolves from the node and that a client outside the cluster cannot connect
+- [x] 2.1 Add the registry namespace per environment (`caelus-registry` / `caelus-registry-dev`) — verify `terraform plan` creates exactly one per workspace and no other namespace changes
+- [x] 2.2 Add the registry Deployment (`registry:3`, one replica, `Recreate`), its PVC, and its config with `auth.token` (realm, issuer, service, jwks) and `delete: enabled`, and deliver the registry host and token issuer to the platform's pods through `caelus-api-config` — verify the pod reaches Ready and `GET /v2/` returns 401 with a `Bearer realm=…` challenge naming the environment's token endpoint
+- [x] 2.3 Add the Service with a pinned `clusterIP`, confirming at apply time that the chosen address is unallocated — verify the address matches the plan after apply and survives a `kubectl rollout restart` of the Deployment
+- [x] 2.4 Add the JWKS ConfigMap and mount it — verify the registry accepts a token signed by the environment's key and rejects one signed by the other environment's key
+- [x] 2.5 Add the Certificate resource against `letsencrypt-dns` and serve TLS from it — verify `openssl s_client` against the ClusterIP from inside the cluster shows a valid chain for the registry's own name
+- [x] 2.6 Add the weekly restart CronJob and the Role and RoleBinding letting it restart only that Deployment — verify a manual `kubectl create job --from=cronjob/…` restarts the registry and the job's ServiceAccount cannot restart anything else
+- [x] 2.7 Run garbage collection (`--delete-untagged`) as an init container of the registry Deployment, so it never runs beside a push and the weekly restart collects (D16) — verify a restart completes and the init container's log reports reclaimed blobs against a repository with unreferenced content
+- [ ] 2.8 Open the builds NetworkPolicy's egress to the environment's registry, and confirm the reachability the design assumes without adding a policy in the registry namespace (D18): verify that a tenant application pod cannot reach the registry, that a build pod can, and that the node can pull
+- [x] 2.9 Publish the DNS records for both names pointing at the pinned ClusterIPs, and add both names to `reserved_hostnames` so no account can claim the `cr` subdomain — verify each resolves from the node, that a client outside the cluster cannot connect, and that `cr` is refused as a subdomain
 
 ## 3. Token endpoint
 
-- [ ] 3.1 Add `GET`/`POST /api/registry/token` to the API, accepting both the form-encoded exchange and the header-carried one — verify a unit test covers both forms and that neither requires the caller to retry in the other
+- [ ] 3.1 Add `GET`/`POST /api/registry/token` to the API, accepting both the form-encoded exchange and the header-carried one, and exempt exactly that path from oauth2-proxy through `skip_auth_routes` in `tf/app/login/main.tf` — verify a unit test covers both forms and that neither requires the caller to retry in the other
 - [ ] 3.2 Implement credential verification by HMAC recomputation over `registry-pull:v1:{uid}` with username `pull-{uid}` — verify a test asserts a wrong password, an unknown user and a mismatched version marker all yield no token
 - [ ] 3.3 Implement scope filtering: return the intersection of the requested scope and the credential's authority, pull-only, never write, never delete, never catalog — verify tests assert that a request for `push`, for `delete`, for another owner's repository, and for the catalog each return no such access
 - [ ] 3.4 Sign the returned token with the environment's key, with `iss`, `aud`, `exp`, `nbf` and `kid` set as the registry expects — verify an integration test has the real registry accept a token minted by this endpoint

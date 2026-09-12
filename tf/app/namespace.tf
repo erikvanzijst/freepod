@@ -54,6 +54,24 @@ resource "kubernetes_namespace" "builds" {
   }
 }
 
+# The tenant registry's own namespace rather than the platform's, so the builds
+# policy's "never reach the platform namespace" needs no exception (D4 of
+# authenticated-tenant-registry). `restricted`: the registry runs non-root
+# with nothing to lift.
+resource "kubernetes_namespace" "registry" {
+  metadata {
+    name = local.ns_registry
+
+    labels = {
+      name        = local.ns_registry
+      environment = local.environment
+
+      "pod-security.kubernetes.io/enforce"         = "restricted"
+      "pod-security.kubernetes.io/enforce-version" = "latest"
+    }
+  }
+}
+
 resource "kubernetes_namespace" "sshpiper" {
   metadata {
     name = local.ns_sshpiper

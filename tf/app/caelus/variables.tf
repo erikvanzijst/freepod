@@ -221,6 +221,31 @@ variable "registry_pull_hmac_key" {
   sensitive   = true
 }
 
+variable "registry_host" {
+  description = "The tenant registry's name, e.g. cr.dev.freepod.eu; also every token's audience"
+  type        = string
+}
+
+variable "registry_token_issuer" {
+  description = "The one issuer the registry trusts, shared by every token signer"
+  type        = string
+}
+
+variable "registry_namespace" {
+  description = "Namespace the tenant registry runs in, for the builds NetworkPolicy"
+  type        = string
+}
+
+variable "registry_pod_labels" {
+  description = "Labels selecting the tenant registry pod, for the builds NetworkPolicy"
+  type        = map(string)
+}
+
+variable "registry_cluster_ip" {
+  description = "The tenant registry's pinned ClusterIP, for the builds NetworkPolicy's pre-DNAT match"
+  type        = string
+}
+
 variable "cloudflare_api_dns_token" {
   description = "Cloudflare API token with `Zone → DNS → Edit` on the platform zone, used by the reconciler to create each account's wildcard record."
   type        = string
