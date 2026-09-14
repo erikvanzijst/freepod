@@ -1,3 +1,5 @@
+[![CI](https://github.com/erikvanzijst/freepod/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/erikvanzijst/freepod/actions/workflows/ci.yml)
+
 # Freepod
 
 Cloud provisioning tool with FastAPI + SQLModel + Alembic + Typer CLI and React UI.
