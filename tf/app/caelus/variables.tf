@@ -177,20 +177,6 @@ variable "builder_image" {
   type = string
 }
 
-variable "build_registry_cidr" {
-  description = <<-EOT
-    Address of the internal container registry, as a CIDR, for the builds
-    NetworkPolicy. It is a LAN address and therefore inside the policy's
-    `except` list, so without this rule a build could not push.
-
-    Names the same machine as `build_registry_host` in api/app/config.py.
-    Moving the registry means changing both; changing only one fails at push
-    time with a connection timeout.
-  EOT
-  type        = string
-  default     = "192.168.0.12/32"
-}
-
 variable "dns_cluster_ip" {
   description = "CoreDNS ClusterIP, allowed explicitly by the builds NetworkPolicy (k3s default)"
   type        = string
@@ -205,6 +191,45 @@ variable "build_max_in_flight" {
   EOT
   type        = number
   default     = 1
+}
+
+# --- Tenant registry --------------------------------------------------------
+
+variable "registry_signing_private_key" {
+  description = "EC P-256 private key (PEM) registry tokens are signed with"
+  type        = string
+  sensitive   = true
+}
+
+variable "registry_pull_hmac_key" {
+  description = "Key each deployment's registry pull credential is derived from by HMAC"
+  type        = string
+  sensitive   = true
+}
+
+variable "registry_host" {
+  description = "The tenant registry's name, e.g. cr.dev.freepod.eu; also every token's audience"
+  type        = string
+}
+
+variable "registry_token_issuer" {
+  description = "The one issuer the registry trusts, shared by every token signer"
+  type        = string
+}
+
+variable "registry_namespace" {
+  description = "Namespace the tenant registry runs in, for the builds NetworkPolicy"
+  type        = string
+}
+
+variable "registry_pod_labels" {
+  description = "Labels selecting the tenant registry pod, for the builds NetworkPolicy"
+  type        = map(string)
+}
+
+variable "registry_cluster_ip" {
+  description = "The tenant registry's pinned ClusterIP, for the builds NetworkPolicy's pre-DNAT match"
+  type        = string
 }
 
 variable "cloudflare_api_dns_token" {

@@ -45,6 +45,9 @@ resource "kubernetes_config_map" "api" {
     CAELUS_BUILDS_NAMESPACE    = var.builds_namespace
     CAELUS_BUILD_MAX_IN_FLIGHT = tostring(var.build_max_in_flight)
 
+    CAELUS_REGISTRY_HOST         = var.registry_host
+    CAELUS_REGISTRY_TOKEN_ISSUER = var.registry_token_issuer
+
     # Deployment logs. Loki is a singleton in tf/deps, shared by both
     # workspaces, and is reached in-cluster -- it is deliberately not routed by
     # an Ingress, so a tenant cannot query it directly. It has

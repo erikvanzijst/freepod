@@ -17,6 +17,13 @@ locals {
 
   ns_builds = local.is_prod_workspace ? "caelus-builds" : "caelus-builds-dev"
 
+  # The tenant registry (authenticated-tenant-registry D2). The ClusterIPs come
+  # from the service CIDR's low band, which dynamic allocation leaves alone.
+  ns_registry           = local.is_prod_workspace ? "caelus-registry" : "caelus-registry-dev"
+  registry_host         = "cr.${local.domain}"
+  registry_cluster_ip   = local.is_prod_workspace ? "10.43.0.20" : "10.43.0.21"
+  registry_token_issuer = "caelus-${local.environment}"
+
   # SFTP entry point (see the sftp-file-access OpenSpec change). The cluster
   # port is what klipper ServiceLB binds on the node and the homelab HAProxy
   # dials; internal hops avoid 22 because the hosts' own sshd lives there.

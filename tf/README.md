@@ -93,10 +93,11 @@ the `caelus-build-worker` Deployment. It is the only namespace that runs
 untrusted tenant code; see [`app/README.md`](./app/README.md) for why it is
 per-environment and why it runs under Pod Security `privileged`.
 
-Two node-level prerequisites are **not** captured by Terraform and are needed
-again after any node rebuild (the userns sysctl for rootless BuildKit, and
-containerd's trust for the internal registry). Both are documented in
-[`../api/README.md`](../api/README.md) § Builds.
+One node-level prerequisite is **not** captured by Terraform and is needed
+again after any node rebuild: the userns sysctl for rootless BuildKit,
+documented in
+[`../products/custom/builder/README.md`](../products/custom/builder/README.md)
+§ Node prerequisites.
 
 Spec: [build-worker](../openspec/specs/build-worker/spec.md),
 [build-execution](../openspec/specs/build-execution/spec.md) · Rationale:
@@ -124,7 +125,9 @@ Each project has its own `secrets.auto.tfvars` (gitignored):
   `cloudflare_api_dns_token`, `cloudflare_zone_id` — the last two here rather
   than in `tf/deps` beside the other `cloudflare_*` values, because the root
   module that renders the reconciler's pod is the one that can reach them and
-  the two roots share no state
+  the two roots share no state; and the tenant registry's keys,
+  `registry_signing_private_keys`, `registry_jwks` and
+  `registry_pull_hmac_keys` — see § Tenant registry keys
 - `tf/deps/secrets.auto.tfvars`: `keycloak_admin_password`, `smtp_*`,
   `cloudflare_*`, `grafana_admin_password`, `garage_admin_token`,
   `garage_rpc_secret`
@@ -160,6 +163,22 @@ One Garage instance serves both environments, separated by bucket and access
 key (`dev` / `prod`), so mixing these up does not fail loudly — it points one
 environment at the other's objects. See `tf/deps/README.md` § Garage object
 store.
+
+### Tenant registry keys
+
+Each environment has its own signing keypair and pull HMAC key, as maps keyed
+by workspace. Generate them once per environment:
+
+```bash
+cd api && uv run --no-sync python -m app.cli registry-keygen   # private PEM, then JWKS
+python -c "import secrets; print(secrets.token_urlsafe(32))"   # pull HMAC key
+```
+
+**Rotating the signing key** is additive: put both keys' entries in
+`registry_jwks` and apply, switch the PEM and apply, then drop the old entry.
+
+Spec: `registry-authorization` · Rationale: `authenticated-tenant-registry` D6,
+D11, D14
 
 ### Deployment var encryption keyring
 

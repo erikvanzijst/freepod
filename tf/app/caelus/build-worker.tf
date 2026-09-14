@@ -70,6 +70,14 @@ resource "kubernetes_deployment" "build_worker" {
               name = kubernetes_secret.s3.metadata[0].name
             }
           }
+
+          # Mints each build's capability in process; the key itself never
+          # reaches a build pod.
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.registry_signing.metadata[0].name
+            }
+          }
         }
       }
     }

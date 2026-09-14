@@ -40,6 +40,7 @@ from app.services import (
     jobs as jobs_service,
     plans as plan_service,
     subscriptions as subscription_service,
+    registry_tokens,
     var_crypto,
 )
 from app.services.errors import CaelusException, DeploymentInProgressException
@@ -947,6 +948,44 @@ def keyring_rotate(
         except CaelusException as e:
             _exit_for_domain_error(e)
     _echo_yaml_entity({"rotated": rotated, "current_key_id": key_id})
+
+
+@app.command("registry-keygen")
+def registry_keygen() -> None:
+    """Generate a tenant-registry signing key: the private PEM, then its JWKS.
+
+    The PEM is what the environment's token signers hold; the JWKS is what its
+    registry trusts. Run once per environment -- a key shared between them
+    would let a token minted in one authorize in the other.
+    """
+    key = registry_tokens.generate_private_key()
+    typer.echo(registry_tokens.private_key_pem(key), nl=False)
+    typer.echo(json.dumps(registry_tokens.jwks(key.public_key())))
+
+
+@app.command("registry-token")
+def registry_token(
+    push: list[str] | None = typer.Option(
+        None, "--push", help="Repository to grant pull and push on. Repeatable."
+    ),
+    pull: list[str] | None = typer.Option(
+        None, "--pull", help="Repository to grant pull on. Repeatable."
+    ),
+    ttl_seconds: int = typer.Option(900, "--ttl-seconds", help="Lifetime, at most an hour."),
+) -> None:
+    """Mint a short-lived registry token for exactly the named repositories.
+
+    Operator tooling for seeding the tenant registry from inside the cluster
+    (scripts/mirror-railpack-images.sh). Run it where the signing key already
+    is: `kubectl exec deploy/caelus-build-worker -- caelus registry-token ...`.
+    """
+    try:
+        issued = registry_tokens.operator_token(
+            get_settings(), push=push or [], pull=pull or [], ttl_seconds=ttl_seconds
+        )
+    except CaelusException as e:
+        _exit_for_domain_error(e)
+    typer.echo(issued.token)
 
 
 @app.command("sync-network-policies")

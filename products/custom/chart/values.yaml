@@ -12,7 +12,8 @@ hostname: ""
 # The image to run, as "{user_id}@{digest}" — e.g.
 # "5@sha256:4777d0…" with a 64 hex-char digest. This is a real image reference
 # with the registry host stripped off: the repository is the owner's user id, so
-# the pull reference is just this value prefixed with `registry` (below).
+# the pull reference is just this value prefixed with `caelus.registry.prefix`,
+# which the reconciler injects per environment.
 #
 # Both omissions are deliberate. Withholding the registry host stops a tenant
 # pointing at an arbitrary one, and the "{user_id}" repository is a claim that is
@@ -26,10 +27,6 @@ hostname: ""
 image: ""
 
 # --- System values ------------------------------------------------------------
-
-# Registry holding user images. Prefixed onto `image` to form the pull
-# reference: "{registry}/{user_id}@{digest}".
-registry: registry.home
 
 # Served whenever `image` is empty. Deliberately a system value with a default: a
 # second user-settable image reference would bypass the ownership assertion
@@ -70,7 +67,7 @@ resources: {}
 # `objectStorage` rather than `storage` to stay distinct from
 # `caelus.plan.storageBytes`, which is block storage (a PVC size).
 #
-# A **system value**, like `registry` and `placeholderImage` above: it is set by
+# A **system value**, like `placeholderImage` above: it is set by
 # the product's catalog entry and is deliberately absent from the tenant-facing
 # values schema, so a tenant can neither enable nor disable it.
 #
@@ -108,6 +105,8 @@ caelus:
   # chart renders the placeholder and never reads it, which is what keeps a
   # standalone render working.
   owner: {}
+  # Where tenant images are pulled from, and the Secret to pull them with.
+  registry: {}
   ingress:
     enabled: false
     tls: {}

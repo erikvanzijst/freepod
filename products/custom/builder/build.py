@@ -22,7 +22,6 @@ import contextlib
 import json
 import os
 import shutil
-import ssl
 import subprocess
 import sys
 import tarfile
@@ -67,11 +66,15 @@ PLATFORM_PORT = 8080
 # reaches before running any of the tenant's own code.
 UPSTREAM_REGISTRY = "ghcr.io"
 
+# Where an owner's images live. A prefix keeps tenant content apart from the
+# mirrored upstream repositories at the registry root (authenticated-tenant-
+# registry D12).
+IMAGE_REPO_PREFIX = "u"
+
 # Repository prefix for the layer cache, under the same registry the built image
-# is pushed to. One repository per owner per environment, never shared — see
-# `cache_ref` for why both halves are needed: a build cache is an execution
-# result keyed by a hash the tenant controls, so a cache reachable by two
-# tenants is a channel between them, not an optimization.
+# is pushed to. One repository per owner, never shared — see `cache_ref`: a
+# build cache is an execution result keyed by a hash the tenant controls, so a
+# cache reachable by two tenants is a channel between them, not an optimization.
 #
 # Same registry as the output on purpose. A cache hit's layers are then already
 # where the push needs them, so BuildKit can mount them across repositories
@@ -277,13 +280,7 @@ def buildkitd_config(registry: str) -> str:
     the old speed — which is why this may be configured before, or without, any
     mirroring having happened.
     """
-    return (
-        f'[registry."{UPSTREAM_REGISTRY}"]\n'
-        f'  mirrors = ["{registry}"]\n'
-        "\n"
-        f'[registry."{registry}"]\n'
-        "  insecure = true\n"
-    )
+    return f'[registry."{UPSTREAM_REGISTRY}"]\n  mirrors = ["{registry}"]\n'
 
 
 def write_buildkitd_config(path: Path, registry: str) -> list[str]:
@@ -298,24 +295,39 @@ def write_buildkitd_config(path: Path, registry: str) -> list[str]:
     return ["--config", str(path)]
 
 
-def cache_ref(registry: str, scope: str, user_id: str) -> str:
-    """The layer cache repository for one owner within one environment.
+def image_repository(user_id: str) -> str:
+    return f"{IMAGE_REPO_PREFIX}/{user_id}"
+
+
+def cache_ref(registry: str, user_id: str) -> str:
+    """The layer cache repository for one owner.
 
     Derived entirely from values the platform supplies — never from anything
     inside the archive — because this string *is* the isolation boundary. Two
     owners resolving to one ref would share a cache, and a shared build cache
-    is a write primitive: poison an entry and the next tenant executes it.
+    is a write primitive: poison an entry and the next tenant executes it. The
+    registry enforces it too: a build's capability names this repository and no
+    other owner's.
 
-    `scope` is why the owner alone is not enough. Dev and prod run separate
-    databases behind one registry, so their user id sequences are independent:
-    user 1 in dev and user 1 in prod are different people. Without the scope
-    they would land on the same repository under the same moving tag and read
-    each other's cache — the exact channel this is meant to prevent. The image
-    repositories share that ambiguity today and get away with it only because
-    their tags are unguessable build UUIDs, which a cache under one stable tag
-    is not.
+    The owner alone suffices because each environment has its own registry, so
+    user 1 in dev and user 1 in prod never meet in one.
     """
-    return f"{registry}/{CACHE_REPO_PREFIX}/{scope}/{user_id}:{CACHE_TAG}"
+    return f"{registry}/{CACHE_REPO_PREFIX}/{user_id}:{CACHE_TAG}"
+
+
+def write_docker_config(directory: Path, registry: str, token: str) -> Path:
+    """Hand the build its registry capability, where BuildKit's client reads it.
+
+    `registrytoken` is used verbatim as a bearer token, so nothing ever
+    exchanges it for anything else: the capability is all the pod holds, and
+    it names only this build's repositories. Outside the build context, so no
+    build step is handed it as a file.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "config.json"
+    path.touch(mode=0o600)
+    path.write_text(json.dumps({"auths": {registry: {"registrytoken": token}}}))
+    return directory
 
 
 def buildkitd_env(extra_flags: list[str]) -> dict[str, str]:
@@ -341,7 +353,7 @@ def _publish_args(
     """The arguments that are the same whichever frontend produced the LLB."""
     return [
         "--import-cache",
-        f"type=registry,ref={cache_image_ref},registry.insecure=true",
+        f"type=registry,ref={cache_image_ref}",
         # mode=max records the intermediate steps too, not just the layers
         # of the final image. The expensive step here is dependency
         # installation, whose result never reaches the runtime image — with
@@ -355,18 +367,14 @@ def _publish_args(
         #
         # image-manifest with oci-mediatypes is what makes the cache
         # storable in a plain OCI registry at all; without it BuildKit
-        # writes a manifest type registry.home rejects.
+        # writes a manifest type the registry rejects.
         "--export-cache",
         (
             f"type=registry,ref={cache_image_ref},mode=max,"
-            "image-manifest=true,oci-mediatypes=true,"
-            "ignore-error=true,registry.insecure=true"
+            "image-manifest=true,oci-mediatypes=true,ignore-error=true"
         ),
-        # registry.insecure: the internal registry presents a certificate
-        # for a name it is not addressed by. Tracked separately; giving it
-        # a cert-valid internal name would retire this.
         "--output",
-        f"type=image,name={image_ref},push=true,registry.insecure=true",
+        f"type=image,name={image_ref},push=true",
         "--metadata-file",
         str(metadata_file),
         # Plain, not auto: auto would emit a redrawing TTY display, and
@@ -467,11 +475,12 @@ def build_and_push_dockerfile(
     )
 
 
-def read_image_config(registry: str, repository: str, digest: str) -> dict | None:
+def read_image_config(registry: str, repository: str, digest: str, token: str) -> dict | None:
     """Fetch a pushed image's config document from the registry.
 
     Read back rather than inferred from the Dockerfile: `EXPOSE` is often
-    inherited from a base image.
+    inherited from a base image. Over a verified connection, with the build's
+    capability as the bearer token.
     """
     accept = ", ".join(
         [
@@ -484,12 +493,10 @@ def read_image_config(registry: str, repository: str, digest: str) -> dict | Non
 
     def fetch(path: str, headers: dict[str, str] | None = None) -> dict | None:
         request = urllib.request.Request(
-            f"https://{registry}/v2/{repository}/{path}", headers=headers or {}
+            f"https://{registry}/v2/{repository}/{path}",
+            headers={"Authorization": f"Bearer {token}", **(headers or {})},
         )
-        context = ssl._create_unverified_context()
-        with contextlib.closing(
-            urllib.request.urlopen(request, timeout=30, context=context)
-        ) as response:
+        with contextlib.closing(urllib.request.urlopen(request, timeout=30)) as response:
             return json.loads(response.read())
 
     try:
@@ -583,10 +590,7 @@ def main() -> int:
         user_id = _env("CAELUS_USER_ID")
         build_id = _env("CAELUS_BUILD_ID")
         registry = _env("CAELUS_REGISTRY")
-        # Required, not defaulted: a missing scope silently collapsing two
-        # environments onto one cache repository is precisely the failure the
-        # scope exists to prevent, so it fails the build instead.
-        cache_scope = _env("CAELUS_CACHE_SCOPE")
+        token = _env("CAELUS_REGISTRY_TOKEN")
         workdir = Path(os.environ.get("CAELUS_WORKDIR", "/home/user/work"))
 
         max_artifact_bytes = _env_int("CAELUS_ARTIFACT_MAX_BYTES", 100 * 1024 * 1024)
@@ -605,12 +609,13 @@ def main() -> int:
         # manifest is removable by a registry garbage collection pass run with
         # --delete-untagged, which would silently break every deployment
         # referencing it by digest.
-        image_ref = f"{registry}/{user_id}:{build_id}"
+        image_ref = f"{registry}/{image_repository(user_id)}:{build_id}"
 
         # Scoped to the owner rather than to this build: a cache that only its
         # own build could read would never be read at all.
-        cache_image_ref = cache_ref(registry, cache_scope, user_id)
+        cache_image_ref = cache_ref(registry, user_id)
         buildkitd_flags = write_buildkitd_config(workdir / "buildkitd.toml", registry)
+        os.environ["DOCKER_CONFIG"] = str(write_docker_config(workdir / "docker", registry, token))
 
         log(f"Build {build_id} for user {user_id}")
         with open_artifact(artifact_url, max_bytes=max_artifact_bytes) as stream:
@@ -643,7 +648,9 @@ def main() -> int:
             )
         digest = read_digest(metadata_file)
 
-        warn_about_runtime_contract(read_image_config(registry, user_id, digest))
+        warn_about_runtime_contract(
+            read_image_config(registry, image_repository(user_id), digest, token)
+        )
 
         # The registry host is deliberately stripped: this exact string is what
         # the client submits as the product's `image` user value, and the chart

@@ -1,17 +1,10 @@
 # The builds namespace's own resources: the identity build pods run as, and
 # the network jail they run inside.
-#
-# The namespace itself is created in ../namespace.tf, alongside the other
-# per-environment namespaces, and its name arrives here as var.builds_namespace.
 
 # Build pods run as this ServiceAccount and it is granted nothing — no Role, no
 # RoleBinding, anywhere. That is the point: the pod executes tenant-supplied
 # build commands, so any permission here would be a permission handed to every
 # tenant.
-#
-# It exists rather than letting the pods use `default` so that the absence of
-# permissions is explicit and auditable, and so a future RoleBinding to
-# `default` in this namespace cannot silently grant build pods anything.
 #
 # `automount_service_account_token = false` is what makes it real: without it
 # the pod would still receive a mounted token for this account, and a token is
@@ -33,7 +26,7 @@ resource "kubernetes_service_account" "builder" {
 # Default-deny both directions, then open exactly what a build needs.
 #
 # Shaped after the tenant baseline policy in api/app/network_policy.py, with
-# two deliberate differences — and both are load-bearing, because concurrent
+# two deliberate differences, because concurrent
 # builds belonging to *different tenants* share this namespace:
 #
 #   1. There is no ingress allowance at all. Nothing should ever connect to a
@@ -121,30 +114,35 @@ resource "kubernetes_network_policy" "builds" {
       }
     }
 
-    # The internal registry, to push the built image and to read and write the
-    # owner's layer cache at `cache/{namespace}/{user_id}`. A LAN address, so it sits
-    # inside the `except` list below and would otherwise be unreachable.
-    #
-    # This CIDR and `build_registry_host` in api/app/config.py name the same
-    # machine two different ways; moving the registry means changing both, and
-    # changing only this one fails at push time with a connection timeout.
-    #
-    # Port 80 is open alongside 443 because the builder pushes with
-    # `registry.insecure=true`, which permits BuildKit to fall back to plain
-    # HTTP. The host is already trusted to receive the image, so allowing its
-    # other port reaches no service that 443 did not already.
+    # This environment's tenant registry (authenticated-tenant-registry D18).
+    # The pod on its container port is what the policy sees once the
+    # Service's ClusterIP is DNAT'd; the ClusterIP itself is the pre-DNAT
+    # match, as for DNS above.
+    egress {
+      to {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = var.registry_namespace
+          }
+        }
+        pod_selector {
+          match_labels = var.registry_pod_labels
+        }
+      }
+      ports {
+        port     = "5000"
+        protocol = "TCP"
+      }
+    }
+
     egress {
       to {
         ip_block {
-          cidr = var.build_registry_cidr
+          cidr = "${var.registry_cluster_ip}/32"
         }
       }
       ports {
         port     = "443"
-        protocol = "TCP"
-      }
-      ports {
-        port     = "80"
         protocol = "TCP"
       }
     }

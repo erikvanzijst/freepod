@@ -85,6 +85,29 @@ def test_tenant_db_settings_from_env(monkeypatch):
     assert settings.tenant_db_pooler_port == 6432
 
 
+def test_registry_settings_default_to_absent(monkeypatch):
+    for key in list(os.environ):
+        if key.startswith("CAELUS_REGISTRY_"):
+            monkeypatch.delenv(key)
+    settings = CaelusSettings(_env_file=None)
+    assert settings.registry_host == ""
+    assert settings.registry_token_issuer == ""
+    assert settings.registry_signing_private_key == ""
+    assert settings.registry_pull_hmac_key == ""
+
+
+def test_registry_signing_key_survives_the_environment(monkeypatch):
+    """The PEM arrives through a Secret's env_from, newlines and all."""
+    from app.services import registry_tokens
+
+    key = registry_tokens.generate_private_key()
+    monkeypatch.setenv("CAELUS_REGISTRY_SIGNING_PRIVATE_KEY", registry_tokens.private_key_pem(key))
+    loaded = registry_tokens.load_private_key(
+        CaelusSettings(_env_file=None).registry_signing_private_key
+    )
+    assert registry_tokens.key_id(loaded.public_key()) == registry_tokens.key_id(key.public_key())
+
+
 def test_environment_defaults_to_dev(monkeypatch):
     """An unconfigured platform is never production."""
     monkeypatch.delenv("CAELUS_ENVIRONMENT", raising=False)

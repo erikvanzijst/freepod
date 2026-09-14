@@ -275,7 +275,6 @@ class CaelusSettings(BaseSettings):
     # get their own Pod Security Admission labels, ServiceAccount, and
     # NetworkPolicy, none of which should be shared with anything else.
     builds_namespace: str = "caelus-builds"
-    build_registry_host: str = "registry.home"
 
     # Largest project archive accepted, enforced by Garage itself through the
     # presigned POST policy's content-length-range rather than by the client or
@@ -299,6 +298,15 @@ class CaelusSettings(BaseSettings):
 
     # Sleep between worker passes.
     build_worker_interval_seconds: float = 1
+
+    # ── Tenant registry ───────────────────────────────────────────────────
+    # Only the token endpoint, the build worker and the
+    # reconciler's pull-Secret publication read these.
+    # Keys: authenticated-tenant-registry D11, D14.
+    registry_host: str = ""
+    registry_token_issuer: str = ""
+    registry_signing_private_key: str = ""
+    registry_pull_hmac_key: str = ""
 
     # ── Deployment var encryption ─────────────────────────────────────────
     # Fernet keys, newest first. Only the first key encrypts; every key in the

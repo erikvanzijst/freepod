@@ -63,7 +63,8 @@ the user asking for it is the user it was built for.
 `.Values.image` is tenant-supplied in the form "{user_id}@{digest}", e.g.
 "5@sha256:<64 hex>". That is exactly a real image reference with the registry
 host stripped off: the repository is the owner's user id, so the pull reference
-is composed here by prefixing the `registry` system value.
+is composed here by prefixing `caelus.registry.prefix`, which the reconciler
+injects per environment (registry-chart-contract).
 
 Keeping the registry host out of the tenant's hands is half the guarantee; the
 ownership check is the other half. It compares the "{user_id}" repository against
@@ -112,6 +113,6 @@ is a system value, so it never reaches this assertion and never needs to.
 {{- end -}}
 {{- /* Both halves are validated above, so prefixing the registry is all that is
        left — the tenant value is already a well-formed digest reference. */ -}}
-{{- printf "%s/%s" (required "custom: registry is required to compose an image reference" .Values.registry) $image -}}
+{{- printf "%s/%s" (required "custom: caelus.registry.prefix is missing, so the image cannot be located; the Caelus reconciler injects it for every deployment" .Values.caelus.registry.prefix) $image -}}
 {{- end -}}
 {{- end -}}

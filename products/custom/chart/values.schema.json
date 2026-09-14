@@ -16,11 +16,6 @@
       "description": "User-supplied image as \"{user_id}@{digest}\" (a digest reference with the registry host stripped), or empty to serve placeholderImage.",
       "pattern": "^$|^[0-9]+@sha256:[a-f0-9]{64}$"
     },
-    "registry": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Registry host that user images are pulled from"
-    },
     "placeholderImage": {
       "type": "string",
       "minLength": 1,
@@ -106,6 +101,21 @@
         "releaseNumber": {
           "type": "string",
           "description": "The same rollout as the client shows it: the per-deployment number in `freepod releases`, injected by the Caelus reconciler. Handed to the SSH sidecar, whose session banner reports it, so a developer is told which release answered in the spelling they can look up. A string rather than an integer so that the standalone default is distinguishable from release 0; the sidecar refuses to start on an empty one."
+        },
+        "registry": {
+          "type": "object",
+          "description": "Where tenant images are pulled from, injected by the Caelus reconciler per environment and never a chart default: one chart serves every environment, and each has its own registry. References only; the credential lives in the Secret named by pullSecret.",
+          "properties": {
+            "prefix": {
+              "type": "string",
+              "description": "Registry host and repository prefix, e.g. cr.freepod.eu/u. The pull reference is this, a slash, and `image`."
+            },
+            "pullSecret": {
+              "type": "string",
+              "description": "Name of the kubernetes.io/dockerconfigjson Secret the reconciler writes into this deployment's namespace, referenced by imagePullSecrets whenever `image` is set."
+            }
+          },
+          "additionalProperties": true
         },
         "owner": {
           "type": "object",

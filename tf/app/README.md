@@ -8,7 +8,9 @@ Shared dependencies (Keycloak, Echo) are managed separately in `../deps/`.
 ## What It Creates
 
 - Namespaces: `caelus` / `caelus-dev`, `login` / `login-dev`,
-  `caelus-builds` / `caelus-builds-dev`
+  `caelus-builds` / `caelus-builds-dev`, `caelus-registry` /
+  `caelus-registry-dev`
+- The tenant image registry, in its own namespace (see below)
 - API deployment + service
 - UI deployment + service
 - Worker deployment (`caelus worker --follow`)
@@ -95,7 +97,7 @@ like the rest, so the visibility rule above applies to it too. Set it to bump
 the builder without waiting for an API release:
 
 ```bash
-terraform apply -var 'builder_image=ghcr.io/erikvanzijst/freepod/builder:0.1.6'
+terraform apply -var 'builder_image=ghcr.io/erikvanzijst/freepod/builder:0.2.0'
 ```
 
 Note that the API image also carries the product catalog (`products/catalog/`),
@@ -142,6 +144,35 @@ garage_admin_token = "replace-with-garage-admin-token"
 var_encryption_keys = {
   default = ["replace-with-a-fernet-key"]
   prod    = ["replace-with-a-different-fernet-key"]
+}
+```
+
+```hcl
+# The tenant registry's keys, per workspace. Generating and rotating them:
+# tf/README.md § Tenant registry keys.
+registry_signing_private_keys = {
+  default = <<EOT
+-----BEGIN PRIVATE KEY-----
+…
+-----END PRIVATE KEY-----
+EOT
+  prod    = <<EOT
+…
+EOT
+}
+
+registry_jwks = {
+  default = <<EOT
+{"keys": […]}
+EOT
+  prod    = <<EOT
+…
+EOT
+}
+
+registry_pull_hmac_keys = {
+  default = "replace-with-a-random-key"
+  prod    = "replace-with-a-different-random-key"
 }
 ```
 
@@ -237,6 +268,30 @@ Destroy only the currently selected workspace environment:
 terraform destroy
 ```
 
+## Tenant image registry (`caelus-registry` / `caelus-registry-dev`)
+
+Where builds push and tenant pods pull from: `registry:3.1.1`, one per
+environment, addressed as `cr.freepod.eu` / `cr.dev.freepod.eu` on a pinned
+ClusterIP (`10.43.0.20` / `10.43.0.21`, from the service CIDR's statically
+reserved low band). There is no Ingress: it is reachable from the node and from
+build pods, and from nowhere outside the cluster.
+
+- **Every request authenticates.** The registry trusts tokens signed by keys in
+  `registry_jwks`, and names the API's `/api/registry/token` as its realm,
+  which oauth2-proxy lets through (`login/main.tf`).
+- **It serves its own certificate**, issued by cert-manager over DNS-01, and
+  reads it only at startup. A weekly CronJob restarts it, which loads a renewed
+  certificate and — through an init container, because collection must not
+  run beside a push — garbage-collects unreferenced blobs.
+- **Seeding the mirrored Railpack images** is
+  `scripts/mirror-railpack-images.sh dev|prod`, run from inside the cluster.
+
+The registry namespace has no NetworkPolicy: the builds policy opens egress to
+it, and the tenant baseline keeps tenant pods away from it.
+
+Spec: `tenant-image-registry`, `registry-authorization` · Rationale:
+`authenticated-tenant-registry` D2, D3, D16, D18
+
 ## Build namespace (`caelus-builds` / `caelus-builds-dev`)
 
 Where per-build Kubernetes Jobs run. This is the only namespace in the platform
@@ -270,7 +325,8 @@ What actually contains a build, none of which depends on Pod Security:
 
 ### NetworkPolicy (`caelus-build-baseline`)
 
-Default-deny both directions, then egress to DNS, the internal registry, and
+Default-deny both directions, then egress to DNS, the environment's tenant
+registry (its pod and its pinned ClusterIP), and
 `0.0.0.0/0` minus every internal range. That `except` list is what blocks
 Postgres, the Kubernetes API server, both `caelus` namespaces, and every tenant
 workload — without naming any of them.
@@ -294,9 +350,10 @@ fetch its artifact.**
 
 ### Node prerequisites
 
-Builds also need two node-level settings that Terraform does not manage — see
-[`../../api/README.md`](../../api/README.md) § Builds, and
-[`../../products/custom/builder/README.md`](../../products/custom/builder/README.md).
+Builds also need one node-level setting that Terraform does not manage, the
+userns sysctl — see
+[`../../products/custom/builder/README.md`](../../products/custom/builder/README.md)
+§ Node prerequisites.
 
 ## Notes
 

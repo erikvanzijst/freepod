@@ -72,9 +72,12 @@ could be exchanged for a different one.
 - **WHEN** a build attempts to delete a manifest in its own repository
 - **THEN** the registry refuses it
 
-### Requirement: Write capability is minted only where builds are run
-Only the platform component that creates builds MAY mint a capability carrying write
-access, and it MUST do so in process.
+### Requirement: Write capability is minted only inside the platform
+Write capability MUST be minted in process by something that already holds the platform's
+signing key: the component that creates builds, and operator tooling run inside the
+cluster to seed the registry with the images every build reads and with migrated tenant
+images. Operator tooling MUST name every repository exactly, MUST NOT grant deletion or
+enumeration, and MUST NOT mint a token that outlives an hour.
 
 Any endpoint reachable from outside the cluster MUST NOT mint write or delete access for
 any caller, whatever credential is presented. The worst outcome of a compromised external
@@ -84,6 +87,10 @@ reached from outside the cluster.
 #### Scenario: The externally reachable endpoint never mints write access
 - **WHEN** a caller asks the token endpoint for write access to any repository
 - **THEN** the returned authorization carries no write access
+
+#### Scenario: Operator tooling grants only what it names
+- **WHEN** an operator mints a token to seed the registry
+- **THEN** it carries access to exactly the repositories named, never deletion, and expires within an hour
 
 ### Requirement: A deployment pulls with a per-owner credential the platform publishes
 A deployment MUST pull its image using a credential scoped to its owner's image

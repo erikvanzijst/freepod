@@ -21,6 +21,7 @@ from uuid import UUID
 
 from app.config import CaelusSettings
 from app.proc import run_command
+from app.services import registry_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +59,40 @@ EPHEMERAL_STORAGE_LIMIT = "8Gi"
 # rather than losing it, so it is generous relative to the poll interval.
 TTL_SECONDS_AFTER_FINISHED = 3600
 
+MIRRORED_REPOSITORIES = (
+    "railwayapp/railpack-frontend",
+    "railwayapp/railpack-builder",
+    "railwayapp/railpack-runtime",
+    "docker/dockerfile",
+)
+
+# Past the build's deadline, so a build that runs to it can still push (D7).
+CAPABILITY_MARGIN_SECONDS = 600
+
 
 def job_name(build_id: UUID | str) -> str:
     return f"{JOB_NAME_PREFIX}{build_id}"
+
+
+def build_access(user_id: int) -> list[dict[str, Any]]:
+    """Everything one build may touch, by exact name (D8)."""
+    writable = (registry_tokens.image_repository(user_id), f"cache/{user_id}")
+    return [
+        *({"type": "repository", "name": n, "actions": ["pull", "push"]} for n in writable),
+        *({"type": "repository", "name": n, "actions": ["pull"]} for n in MIRRORED_REPOSITORIES),
+    ]
+
+
+def build_capability(*, build_id: UUID | str, user_id: int, settings: CaelusSettings) -> str:
+    """The build's registry authorization, minted here and handed to the pod (D7)."""
+    return registry_tokens.mint(
+        registry_tokens.signer(settings),
+        issuer=settings.registry_token_issuer,
+        audience=settings.registry_host,
+        subject=f"build:{build_id}",
+        access=build_access(user_id),
+        ttl_seconds=settings.build_deadline_seconds + CAPABILITY_MARGIN_SECONDS,
+    ).token
 
 
 def build_job_manifest(
@@ -95,6 +127,7 @@ def build_job_manifest(
         )
 
     name = job_name(build_id)
+    capability = build_capability(build_id=build_id, user_id=user_id, settings=settings)
     return {
         "apiVersion": "batch/v1",
         "kind": "Job",
@@ -142,17 +175,8 @@ def build_job_manifest(
                                 {"name": "CAELUS_ARTIFACT_URL", "value": artifact_url},
                                 {"name": "CAELUS_USER_ID", "value": str(user_id)},
                                 {"name": "CAELUS_BUILD_ID", "value": str(build_id)},
-                                {"name": "CAELUS_REGISTRY", "value": settings.build_registry_host},
-                                # Scopes the builder's per-owner layer cache
-                                # repository. The builds namespace is the one
-                                # value that already differs between dev and
-                                # prod, which is what stops their independent
-                                # user id sequences colliding on one cache in
-                                # the registry both environments share.
-                                {
-                                    "name": "CAELUS_CACHE_SCOPE",
-                                    "value": settings.builds_namespace,
-                                },
+                                {"name": "CAELUS_REGISTRY", "value": settings.registry_host},
+                                {"name": "CAELUS_REGISTRY_TOKEN", "value": capability},
                                 {"name": "CAELUS_WORKDIR", "value": WORK_DIR},
                                 {
                                     "name": "CAELUS_ARTIFACT_MAX_BYTES",

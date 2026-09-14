@@ -52,6 +52,14 @@ spec:
       What makes the `dev` access profile work.
       */}}
       shareProcessNamespace: true
+      {{- /*
+      The node pulls a tenant image with the owner's credential, which the
+      reconciler publishes before Helm runs. The placeholder needs none.
+      */}}
+      {{- if trim (default "" .Values.image) }}
+      imagePullSecrets:
+        - name: {{ required "custom: caelus.registry.pullSecret is missing; the Caelus reconciler publishes it for every deployment" .Values.caelus.registry.pullSecret | quote }}
+      {{- end }}
       containers:
         - name: app
           image: {{ include "custom.imageRef" . | quote }}

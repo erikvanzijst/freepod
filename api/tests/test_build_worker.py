@@ -27,7 +27,17 @@ from app.services.build_constants import (
     BUILD_STATUS_RUNNING,
     BUILD_STATUS_SUCCEEDED,
 )
-from app.services.build_jobs import BUILD_ID_LABEL, build_job_manifest, job_name
+import jwt
+
+from app.services import registry_tokens
+from app.services.build_jobs import (
+    BUILD_ID_LABEL,
+    CAPABILITY_MARGIN_SECONDS,
+    MIRRORED_REPOSITORIES,
+    build_job_manifest,
+    job_name,
+)
+from app.services.registry_tokens import RegistryKeyException
 from tests.conftest import db_session, make_accepted_user  # noqa: F401
 
 IMAGE = "7@sha256:" + "d" * 64
@@ -81,8 +91,13 @@ def cluster():
     return FakeCluster()
 
 
+@pytest.fixture(scope="module")
+def signing_key():
+    return registry_tokens.generate_private_key()
+
+
 @pytest.fixture
-def settings():
+def settings(signing_key):
     return CaelusSettings(
         _env_file=None,
         s3_endpoint_url="https://blob.example.invalid",
@@ -90,9 +105,12 @@ def settings():
         s3_access_key_id="k",
         s3_secret_access_key="s",
         build_max_in_flight=1,
-        # Terraform supplies this in a real environment; the default is empty
-        # and `build_job_manifest` refuses to build a Job without it.
+        # Terraform supplies these in a real environment; the defaults are
+        # empty and `build_job_manifest` refuses to build a Job without them.
         builder_image="registry.invalid/caelus/builder:0.0.0-test",
+        registry_host="cr.test.example",
+        registry_token_issuer="caelus-test",
+        registry_signing_private_key=registry_tokens.private_key_pem(signing_key),
     )
 
 
@@ -578,39 +596,95 @@ def test_the_job_manifest_bounds_its_resources(settings):
         assert volume["emptyDir"]["sizeLimit"], f"{volume['name']} is unbounded"
 
 
-def test_the_job_manifest_carries_only_the_artifact_credential(settings):
-    """No database URL, no registry password, nothing long-lived."""
+def _env(manifest) -> dict[str, str]:
+    return {e["name"]: e["value"] for e in manifest["spec"]["template"]["spec"]["containers"][0]["env"]}
+
+
+def test_the_job_manifest_carries_only_expiring_credentials(settings):
+    """The artifact URL and the build's capability; no database URL, no
+    registry key, nothing long-lived."""
     manifest = build_job_manifest(
         build_id=uuid4(), user_id=7, artifact_url="https://store/one-object", settings=settings
     )
-    env = {e["name"]: e["value"] for e in manifest["spec"]["template"]["spec"]["containers"][0]["env"]}
+    env = _env(manifest)
 
     assert env["CAELUS_ARTIFACT_URL"] == "https://store/one-object"
     assert env["CAELUS_USER_ID"] == "7"
-    assert env["CAELUS_REGISTRY"] == settings.build_registry_host
-    assert env["CAELUS_CACHE_SCOPE"] == settings.builds_namespace
+    assert env["CAELUS_REGISTRY"] == settings.registry_host
+    assert env["CAELUS_REGISTRY_TOKEN"]
+    assert "CAELUS_CACHE_SCOPE" not in env
     blob = json.dumps(manifest).lower()
-    for forbidden in ("database_url", "postgres", "secret_access_key", "s3_access"):
+    for forbidden in ("database_url", "postgres", "secret_access_key", "s3_access", "private key"):
         assert forbidden not in blob, f"{forbidden} leaked into the build Job"
 
 
-def test_the_cache_scope_separates_the_environments(settings):
-    """Dev and prod push to one registry but keep independent user id
-    sequences, so the owner alone does not identify a cache. The builds
-    namespace is what keeps dev user 1 and prod user 1 apart."""
-    prod = build_job_manifest(
-        build_id=uuid4(), user_id=1, artifact_url="https://x/y", settings=settings
-    )
-    settings.builds_namespace = f"{settings.builds_namespace}-dev"
-    dev = build_job_manifest(
-        build_id=uuid4(), user_id=1, artifact_url="https://x/y", settings=settings
+def _capability(manifest, settings, key) -> dict:
+    return jwt.decode(
+        _env(manifest)["CAELUS_REGISTRY_TOKEN"], key.public_key(), algorithms=["ES256"],
+        audience=settings.registry_host, issuer=settings.registry_token_issuer,
     )
 
-    def scope(manifest):
-        env = manifest["spec"]["template"]["spec"]["containers"][0]["env"]
-        return next(e["value"] for e in env if e["name"] == "CAELUS_CACHE_SCOPE")
 
-    assert scope(prod) != scope(dev)
+def test_the_build_capability_names_exactly_six_repositories(settings, signing_key):
+    build_id = uuid4()
+    manifest = build_job_manifest(
+        build_id=build_id, user_id=7, artifact_url="https://x/y", settings=settings
+    )
+    claims = _capability(manifest, settings, signing_key)
+
+    assert claims["access"] == [
+        {"type": "repository", "name": "u/7", "actions": ["pull", "push"]},
+        {"type": "repository", "name": "cache/7", "actions": ["pull", "push"]},
+        {"type": "repository", "name": "railwayapp/railpack-frontend", "actions": ["pull"]},
+        {"type": "repository", "name": "railwayapp/railpack-builder", "actions": ["pull"]},
+        {"type": "repository", "name": "railwayapp/railpack-runtime", "actions": ["pull"]},
+        {"type": "repository", "name": "docker/dockerfile", "actions": ["pull"]},
+    ]
+    assert claims["sub"] == f"build:{build_id}"
+
+
+def test_the_build_capability_holds_no_pattern_delete_or_catalog(settings, signing_key):
+    manifest = build_job_manifest(
+        build_id=uuid4(), user_id=7, artifact_url="https://x/y", settings=settings
+    )
+    for entry in _capability(manifest, settings, signing_key)["access"]:
+        assert entry["type"] == "repository"
+        assert "*" not in entry["name"] and not entry["name"].endswith("/")
+        assert set(entry["actions"]) <= {"pull", "push"}
+
+
+def test_the_build_capability_outlives_the_deadline_by_the_margin(settings, signing_key):
+    manifest = build_job_manifest(
+        build_id=uuid4(), user_id=7, artifact_url="https://x/y", settings=settings
+    )
+    claims = _capability(manifest, settings, signing_key)
+
+    assert claims["exp"] - claims["iat"] == settings.build_deadline_seconds + CAPABILITY_MARGIN_SECONDS
+
+
+def test_the_capability_names_the_repositories_the_builder_uses(settings, signing_key):
+    """build.py derives the push and cache targets on its own; the two sides
+    must agree or every push is refused."""
+    from tests.test_builder_script import build
+
+    manifest = build_job_manifest(
+        build_id=uuid4(), user_id=7, artifact_url="https://x/y", settings=settings
+    )
+    names = {e["name"] for e in _capability(manifest, settings, signing_key)["access"]}
+    cache_repo = build.cache_ref("registry", "7").split("/", 1)[1].split(":")[0]
+
+    assert {build.image_repository("7"), cache_repo} <= names
+    assert build.FRONTEND_IMAGE.split("/", 1)[1].split("@")[0] in MIRRORED_REPOSITORIES
+    assert build.DOCKERFILE_FRONTEND_REPO in MIRRORED_REPOSITORIES
+
+
+def test_a_job_is_refused_when_the_registry_is_not_configured(settings):
+    settings.registry_signing_private_key = ""
+
+    with pytest.raises(RegistryKeyException):
+        build_job_manifest(
+            build_id=uuid4(), user_id=7, artifact_url="https://x/y", settings=settings
+        )
 
 
 def test_the_job_uses_the_configured_builder_image(settings):

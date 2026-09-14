@@ -149,6 +149,20 @@ resource "kubernetes_deployment" "api" {
             }
           }
 
+          # Both registry keys: the token endpoint verifies a pull credential
+          # by recomputing it, then signs the token it issues.
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.registry_signing.metadata[0].name
+            }
+          }
+
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.registry_pull_hmac.metadata[0].name
+            }
+          }
+
           volume_mount {
             name       = "sqlite-data"
             mount_path = "/app/db"

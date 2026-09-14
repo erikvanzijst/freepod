@@ -68,6 +68,8 @@ def _pod_spec(docs: list[dict]) -> dict:
 BASE = {
     "hostname": "app.example.test",
     "caelus__owner__id": "1",
+    "caelus__registry__prefix": "cr.test.example/u",
+    "caelus__registry__pullSecret": "t-registry-pull",
 }
 VARS = {"caelus__vars__secretName": "custom-user-app-abc123-vars"}
 STORAGE = {
@@ -221,6 +223,7 @@ def test_catalog_system_values_are_valid_values_for_this_chart():
         {
             "caelus": {
                 "owner": {"id": 1, "email": "t@example.test"},
+                "registry": {"prefix": "cr.test.example/u", "pullSecret": "t-registry-pull"},
                 "plan": {"storageBytes": 1073741824, "storageSize": "1Gi"},
                 "ingress": {
                     "enabled": True,
@@ -303,6 +306,53 @@ def test_the_ownership_assertion_still_holds_with_storage_enabled():
     result = subprocess.run(args, capture_output=True, text=True)
     assert result.returncode != 0
     assert "does not match deployment owner" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# The registry and its pull credential (registry-chart-contract)
+# ---------------------------------------------------------------------------
+
+
+def _render_failure(**values: str) -> str:
+    args = ["helm", "template", "t", str(CHART)]
+    for key, value in values.items():
+        args += ["--set", f"{key.replace('__', '.')}={value}"]
+    result = subprocess.run(args, capture_output=True, text=True)
+    assert result.returncode != 0, result.stdout
+    return result.stderr
+
+
+def test_an_image_is_pulled_from_the_injected_registry_with_the_pull_secret():
+    pod = _pod_spec(_render(**BASE, image=f"1@{DIGEST}"))
+
+    assert pod["containers"][0]["image"] == f"cr.test.example/u/1@{DIGEST}"
+    assert pod["imagePullSecrets"] == [{"name": "t-registry-pull"}]
+
+
+def test_the_placeholder_needs_no_pull_credential():
+    pod = _pod_spec(_render(**BASE))
+
+    assert "imagePullSecrets" not in pod
+    assert pod["containers"][0]["image"].startswith(
+        "ghcr.io/erikvanzijst/freepod/custom-placeholder:"
+    )
+
+
+@pytest.mark.parametrize("half", ["prefix", "pullSecret"])
+def test_an_image_without_either_injected_half_fails_loudly(half):
+    values = {k: v for k, v in BASE.items() if k != f"caelus__registry__{half}"}
+
+    assert f"caelus.registry.{half} is missing" in _render_failure(**values, image=f"1@{DIGEST}")
+
+
+def test_the_chart_carries_no_registry_of_its_own():
+    """One chart serves every environment and each has its own registry, so a
+    default could only ever be right for one of them."""
+    values = yaml.safe_load((CHART / "values.yaml").read_text())
+
+    assert "registry" not in values
+    assert values["caelus"]["registry"] == {}
+    assert "registry" in _render_failure(**BASE, registry="elsewhere.example")
 
 
 # ---------------------------------------------------------------------------
