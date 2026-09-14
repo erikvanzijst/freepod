@@ -106,3 +106,23 @@ sizing) go.
 
 `image.tag` pins the Immich release (otherwise it floats on the chart
 `appVersion`); leave `smtp.host` empty to disable notification email.
+
+## Upstream references
+
+- **Release notes:** GitHub releases at
+  <https://github.com/immich-app/immich/releases>.
+- **Reference deployment artifacts** (in the upstream repository):
+  - `docker/docker-compose.yml` — base compose (all services, env vars).
+  - `docker/docker-compose.prod.yml` — production overrides (restart policy,
+    monitoring).
+  - `docker/docker-compose.rootless.yml` — rootless variant (user, security
+    options, volume differences).
+  - `docker/server/Dockerfile` — server image build (runtime stage: `ENV`,
+    `USER`, `VOLUME`, `EXPOSE`, `ENTRYPOINT`).
+  - `docker/machine-learning/Dockerfile` — ML image build (runtime stage).
+- **Known pitfalls:**
+  - PostgreSQL must use the `ghcr.io/immich-app/postgres` image
+    (vectorchord/pgvecto.rs build). Stock PostgreSQL will not work because
+    Immich requires the vector extension.
+  - The ML container needs a writable `/cache` directory for model downloads
+    and matplotlib config.
