@@ -514,7 +514,7 @@ Without a lease that job is never retried and its deployment stays in
 ## Builds (Project Archive → Container Image)
 
 A build turns a user's project directory into a digest-pinned container image
-in the internal registry. Builds belong to a **user**, never to a deployment:
+in the environment's tenant registry. Builds belong to a **user**, never to a deployment:
 most products build nothing, a single deployment may consume several images,
 and **nothing here triggers a rollout** — the client takes a successful
 build's `image` and submits it to the deployment update endpoint itself.
@@ -533,11 +533,23 @@ every response, capped at 10 MiB.
 The build worker (`caelus build-worker`) runs one repeating non-blocking
 pass: advance every running build, then claim queued builds while below
 `CAELUS_BUILD_MAX_IN_FLIGHT`. The build container holds no platform
-credentials and reports its result through the pod's termination message.
+credentials — only a capability for its own repositories that expires with the
+build — and reports its result through the pod's termination message.
 
-The layer cache (one repository per owner per environment), the ghcr.io
-mirror, and the node prerequisites (a rebuilt node fails at two separate
-points) are operational: the reasoning and the failure modes live in
+Each environment has its own registry (`cr.freepod.eu` / `cr.dev.freepod.eu`,
+reachable only inside the cluster), and every operation on it authenticates.
+The build worker mints each build's capability in process. A deployment's node
+pulls with a per-owner credential the reconciler publishes, exchanged at
+`/api/registry/token` — the one route outside the login, which mints pull
+access only. Seeding it is operator work: `caelus registry-token` mints a
+short-lived token for exactly the repositories named, run inside the build
+worker (see `scripts/mirror-railpack-images.sh`). The keys, and `caelus
+registry-keygen`, are in [`tf/README.md`](../tf/README.md) § Tenant registry
+keys. Spec: `tenant-image-registry`, `registry-authorization`,
+`registry-chart-contract`.
+
+The layer cache (one repository per owner), the ghcr.io mirror, and the node
+prerequisite are operational: the reasoning and the failure modes live in
 [`products/custom/builder/README.md`](../products/custom/builder/README.md).
 
 Spec: [build-api](../openspec/specs/build-api/spec.md),

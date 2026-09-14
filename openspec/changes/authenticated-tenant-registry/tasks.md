@@ -55,10 +55,10 @@
 ## 8. Cutover
 
 - [ ] 8.1 Remove the internal-registry entry from the node's `/etc/rancher/k3s/registries.yaml` — verify a tenant image still pulls after a kubelet restart, with no registry configuration on the node
-- [ ] 8.2 Verify the end state against the threat that motivated the change: from a build pod, confirm that pulling another owner's image is refused, that pushing to another owner's repository is refused, that the catalog is refused, and that an unauthenticated request is refused
+- [x] 8.2 Verify the end state against the threat that motivated the change: from a build pod, confirm that pulling another owner's image is refused, that pushing to another owner's repository is refused, that the catalog is refused, and that an unauthenticated request is refused
 
 ## 9. Documentation
 
-- [ ] 9.1 Update `products/custom/builder/README.md`: the cache section without the environment scope, the mirror section against the new registry, and the node prerequisites reduced to the one that remains — verify no reference to the retired scope or the old registry survives
-- [ ] 9.2 Update `api/README.md` § Builds, `tf/README.md` and `tf/app/README.md` for the registry, the token endpoint, the keys and `registry-keygen` — verify the two node prerequisites are described as one
+- [x] 9.1 Update `products/custom/builder/README.md`: the cache section without the environment scope, the mirror section against the new registry, and the node prerequisites reduced to the one that remains — verify no reference to the retired scope or the old registry survives
+- [x] 9.2 Update `api/README.md` § Builds, `tf/README.md` and `tf/app/README.md` for the registry, the token endpoint, the keys and `registry-keygen` — verify the two node prerequisites are described as one
 - [ ] 9.3 Add the capability entry and links to `AGENTS.md` per its documentation-layering rule — verify it is a terse orientation plus links rather than a restatement of the specs

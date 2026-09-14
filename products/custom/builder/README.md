@@ -24,9 +24,9 @@ presigned artifact URL
                           ephemeral rootless buildkitd  ←──  buildctl build
         │
         ▼
-  push {registry}/{user_id}:{build_id}   →   digest from --metadata-file
-        │                     ▲
-        │                     └── layer cache in/out: {registry}/cache/{scope}/{user_id}
+  push {registry}/u/{user_id}:{build_id}   →   digest from --metadata-file
+        │                       ▲
+        │                       └── layer cache in/out: {registry}/cache/{user_id}
         ▼
   read the pushed config back, warn if it cannot serve
         │
@@ -74,11 +74,11 @@ path. A `RUN` instruction has none of that reach, so "the tenant runs their own
 code either way" is true and beside the point — the two run with materially
 different authority.
 
-The image is addressed at the internal registry (`DOCKERFILE_FRONTEND_REPO` and
+The image is addressed at the environment's registry (`DOCKERFILE_FRONTEND_REPO` and
 `DOCKERFILE_FRONTEND_DIGEST` in `build.py`), copied there by
 `scripts/mirror-railpack-images.sh`. Not through a `docker.io` mirror entry in
 the daemon config: that would route *every* Docker Hub pull in every tenant
-Dockerfile through the internal registry, and exactly one image needs to come
+Dockerfile through the environment's registry, and exactly one image needs to come
 from it. Unlike the Railpack images there is no fall-through — a Dockerfile
 build fails outright until the mirror holds it.
 
@@ -86,11 +86,14 @@ The cost is that the pinned frontend's syntax level is the one tenants get.
 Newer features fail with BuildKit's own error, and the remedy is a pin bump.
 
 The container holds **no database, Kubernetes, or long-lived registry
-credential**. The only credential it receives is a presigned URL that grants
-read on exactly one object and expires. It reports its result through the pod's
-termination message, so it never needs write access to anything — a
-`DATABASE_URL` here would be a Postgres connection handed to every tenant, no
-subversion of this script required.
+credential**. It receives two credentials, both expiring and both scoped to this
+build: a presigned URL that grants read on exactly one object, and a registry
+capability naming exactly the owner's image and cache repositories and the
+mirrored base images, which it writes into BuildKit's Docker config as
+`registrytoken` (`registry-authorization`). It reports its result through the
+pod's termination message, so it needs no write access beyond those two
+repositories — a `DATABASE_URL` here would be a Postgres connection handed to
+every tenant, no subversion of this script required.
 
 ## Environment contract
 
@@ -101,8 +104,8 @@ The build worker sets all of these on the Job.
 | `CAELUS_ARTIFACT_URL`        | yes      | Presigned GET for the project archive. Expiring, single-object.                                                            |
 | `CAELUS_USER_ID`             | yes      | The build's owner. Becomes the repository name, the frontend cache key, and the layer cache repository.                    |
 | `CAELUS_BUILD_ID`            | yes      | The build's id. Becomes the anchor tag.                                                                                    |
-| `CAELUS_REGISTRY`            | yes      | Registry host, e.g. `registry.home`. Must match `registry` in the chart's `values.yaml`.                                   |
-| `CAELUS_CACHE_SCOPE`         | yes      | Environment discriminator for the layer cache repository. The worker sets it to the builds namespace.                      |
+| `CAELUS_REGISTRY`            | yes      | The environment's registry host, e.g. `cr.freepod.eu`. The worker sets it from `registry_host`.                            |
+| `CAELUS_REGISTRY_TOKEN`      | yes      | The build's registry capability, minted by the worker and expiring shortly after the build's deadline. Never logged.       |
 | `CAELUS_WORKDIR`             | no       | Working tree. Default `/home/user/work`; the Job mounts an emptyDir here.                                                  |
 | `CAELUS_ARTIFACT_MAX_BYTES`  | no       | Ceiling on the *compressed* stream. The worker sets it from the API's upload cap (`artifact_max_bytes`); default 100 MiB.  |
 | `CAELUS_EXTRACTED_MAX_BYTES` | no       | Ceiling on the *extracted* tree. Default 800 MiB. This is the bound that matters: a 741-byte archive can expand to 500 KB. |
@@ -122,27 +125,20 @@ So the cache that survives has to be a remote one. Each build imports from and
 exports to a registry cache at:
 
 ```
-{CAELUS_REGISTRY}/cache/{CAELUS_CACHE_SCOPE}/{CAELUS_USER_ID}:latest
+{CAELUS_REGISTRY}/cache/{CAELUS_USER_ID}:latest
 ```
 
-**One repository per owner per environment, never shared.** A build cache is an
-execution result keyed by a hash the tenant controls, so a cache two tenants
-can reach is not an optimization, it is a channel: poison an entry and the next
-tenant's build executes it. The ref is built in `cache_ref()` from values the
-platform supplies and nothing from inside the archive, which is what makes that
-claim checkable. It pairs with `build-arg:cache-key`, which scopes the
-frontend's own mount cache ids the same way.
+**One repository per owner, never shared.** A build cache is an execution
+result keyed by a hash the tenant controls, so a cache two tenants can reach is
+not an optimization, it is a channel: poison an entry and the next tenant's
+build executes it. The ref is built in `cache_ref()` from values the platform
+supplies and nothing from inside the archive, and the registry enforces it: the
+build's capability names this repository and no other owner's. It pairs with
+`build-arg:cache-key`, which scopes the frontend's own mount cache ids the same
+way.
 
-`CAELUS_CACHE_SCOPE` — the builds namespace, so `caelus-builds` or
-`caelus-builds-dev` — is why the owner alone is not enough. Dev and prod run
-**separate databases behind one registry**, so their user id sequences are
-independent and user 1 in dev is a different person from user 1 in prod. Under
-the owner alone they would share a repository *and* a stable tag, reading and
-overwriting each other. The image repositories (`{registry}/{user_id}`) carry
-the same ambiguity and get away with it only because their tags are
-unguessable build UUIDs — a cache under one moving tag has no such cover. The
-variable is required rather than defaulted for the same reason: a missing scope
-would silently collapse the two environments back together.
+The owner alone is enough because each environment has its own registry, so
+user 1 in dev and user 1 in prod never meet in one.
 
 Some consequences worth knowing:
 
@@ -158,14 +154,14 @@ Some consequences worth knowing:
 - **`mode=max` is deliberate.** The expensive step is dependency installation,
   whose result never reaches the runtime image. `mode=min` records only the
   final image's layers and would leave that step re-running every time.
-- **It costs registry disk**, on the registry host rather than the cluster
-  node, and it grows per owner with every distinct dependency set. There is no
+- **It costs registry disk**, on the registry's volume on the cluster node,
+  and it grows per owner with every distinct dependency set. There is no
   eviction policy yet: `mode=max` under one moving tag means each export
-  unreferences the previous one's blobs, so a registry garbage collection pass
-  reclaims them, but nothing bounds a single owner's working set. Worth
-  watching before the owner count grows.
-- **Emptying `cache/{scope}/{user_id}` is always safe** — it forces the next
-  build cold and nothing needs recreating.
+  unreferences the previous one's blobs, which the registry's garbage
+  collection reclaims at its weekly restart, but nothing bounds a single
+  owner's working set. Worth watching before the owner count grows.
+- **Emptying `cache/{user_id}` is always safe** — it forces the next build cold
+  and nothing needs recreating.
 - **The cache shares the registry with the images.** That is what lets a cache
   hit be mounted across repositories at push time instead of pulled down and
   sent back up.
@@ -213,7 +209,7 @@ bytes, and the platform stores them faithfully rather than rewriting them,
 which is why the `build.log` column is `bytea`. Rendering is the reader's
 choice; a client that wants a tidy transcript can collapse CR runs itself.
 
-## Pulls from ghcr.io go through the internal registry
+## Pulls from ghcr.io go through the environment's registry
 
 Before a build runs a line of the tenant's own code it pulls the Railpack
 frontend, builder and runtime images. With BuildKit's state on an emptyDir none
@@ -221,10 +217,13 @@ of that is ever reused — measured on a 62s build, materializing the 225 MB
 builder base alone took ~26s, split roughly evenly between transfer and
 decompression.
 
-The ephemeral daemon is therefore configured with the internal registry as a
-**mirror for ghcr.io** (`buildkitd_config` in `build.py`, written at startup and
-passed as `--config` through `BUILDKITD_FLAGS`). `scripts/mirror-railpack-images.sh`
-copies the images in.
+The ephemeral daemon is therefore configured with the environment's registry as
+a **mirror for ghcr.io** (`buildkitd_config` in `build.py`, written at startup
+and passed as `--config` through `BUILDKITD_FLAGS`).
+`scripts/mirror-railpack-images.sh dev|prod` copies the images in. It works from
+inside the cluster, because that is the only place the registry can be reached,
+and authenticates with a short-lived token from `caelus registry-token` in that
+environment's build worker: no build's capability can write these repositories.
 
 A mirror is a per-repository substitution, not a host alias: BuildKit asks the
 mirror for the *same* path, so `ghcr.io/railwayapp/foo` is looked for at
@@ -248,9 +247,9 @@ ghcr.io/railwayapp/railpack-frontend@sha256:282e3d0e542c9299c9fc4f938c9a5c45f066
 ```
 
 The Dockerfile frontend is **not** part of that set — it understands no
-railpack plan and moves on its own cadence — but it is pinned and mirror-checked
-the same way, and the same test file fails if `build.py` and the mirror script
-disagree about its digest.
+railpack plan and moves on its own cadence — but it is pinned the same way, and
+the same test file fails if `build.py` and the mirror script disagree about its
+digest.
 
 To bump: pick the new railpack release, update `RAILPACK_VERSION` and
 `RAILPACK_SHA256` from that release's `checksums.txt`, then resolve the
@@ -307,13 +306,14 @@ Then point the platform to it through `builder_image` in Terraform, and mirror
 the Railpack base images if this is a new registry or a new Railpack version:
 
 ```bash
-./scripts/mirror-railpack-images.sh
+./scripts/mirror-railpack-images.sh dev
+./scripts/mirror-railpack-images.sh prod
 ```
 
 ## Node prerequisites
 
-Node-level settings are required and **neither is captured by Terraform**;
-a rebuilt node fails at two separate points with unrelated-looking errors.
+One node-level setting is required and **is not captured by Terraform**; a
+rebuilt node without it fails every build.
 
 1. `/etc/sysctl.d/99-buildkit-userns.conf` — `kernel.apparmor_restrict_unprivileged_userns=0`.
    Ubuntu 24.04 ships this at `1`, which transitions any unconfined process

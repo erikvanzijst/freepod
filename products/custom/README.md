@@ -38,13 +38,15 @@ repository is the owner's own user id. So composing the pull reference is just a
 prefix:
 
 ```
-{registry}/{user_id}@{digest}
+{caelus.registry.prefix}/{user_id}@{digest}
 ```
 
-`5@sha256:4777d0…` under `registry.home` becomes
-`registry.home/5@sha256:4777d0…`. The chart still splits on `@` — but only to
-police the two halves, not to reassemble them. Digests and repository paths
-cannot contain `@`, so the split is unambiguous.
+In prod, where the reconciler injects `cr.freepod.eu/u`, `5@sha256:4777d0…`
+becomes `cr.freepod.eu/u/5@sha256:4777d0…`. The chart still splits on `@` —
+but only to police the two halves, not to reassemble them. Digests and
+repository paths cannot contain `@`, so the split is unambiguous. The node pulls
+it with the owner's credential, a Secret the reconciler publishes and the chart
+names in `imagePullSecrets`; the placeholder needs none (`registry-chart-contract`).
 
 Withholding the registry host is deliberate, and so is verifying rather than
 trusting the `{user_id}` repository. Together they are what make the ownership
