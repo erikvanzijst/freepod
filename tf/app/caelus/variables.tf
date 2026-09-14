@@ -177,20 +177,6 @@ variable "builder_image" {
   type = string
 }
 
-variable "build_registry_cidr" {
-  description = <<-EOT
-    Address of the internal container registry, as a CIDR, for the builds
-    NetworkPolicy. It is a LAN address and therefore inside the policy's
-    `except` list, so without this rule a build could not push.
-
-    Names the same machine as `build_registry_host` in api/app/config.py.
-    Moving the registry means changing both; changing only one fails at push
-    time with a connection timeout.
-  EOT
-  type        = string
-  default     = "192.168.0.12/32"
-}
-
 variable "dns_cluster_ip" {
   description = "CoreDNS ClusterIP, allowed explicitly by the builds NetworkPolicy (k3s default)"
   type        = string

@@ -963,6 +963,31 @@ def registry_keygen() -> None:
     typer.echo(json.dumps(registry_tokens.jwks(key.public_key())))
 
 
+@app.command("registry-token")
+def registry_token(
+    push: list[str] | None = typer.Option(
+        None, "--push", help="Repository to grant pull and push on. Repeatable."
+    ),
+    pull: list[str] | None = typer.Option(
+        None, "--pull", help="Repository to grant pull on. Repeatable."
+    ),
+    ttl_seconds: int = typer.Option(900, "--ttl-seconds", help="Lifetime, at most an hour."),
+) -> None:
+    """Mint a short-lived registry token for exactly the named repositories.
+
+    Operator tooling for seeding the tenant registry from inside the cluster
+    (scripts/mirror-railpack-images.sh). Run it where the signing key already
+    is: `kubectl exec deploy/caelus-build-worker -- caelus registry-token ...`.
+    """
+    try:
+        issued = registry_tokens.operator_token(
+            get_settings(), push=push or [], pull=pull or [], ttl_seconds=ttl_seconds
+        )
+    except CaelusException as e:
+        _exit_for_domain_error(e)
+    typer.echo(issued.token)
+
+
 @app.command("sync-network-policies")
 def sync_network_policies(
     concurrency: int = typer.Option(16, "--concurrency", "-c", help="Parallel kubectl applies"),

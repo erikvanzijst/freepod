@@ -17,6 +17,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import tarfile
 import tomllib
 import urllib.error
@@ -417,7 +418,7 @@ def test_main_exits_non_zero_without_an_artifact_url(monkeypatch, tmp_path):
         "CAELUS_USER_ID",
         "CAELUS_BUILD_ID",
         "CAELUS_REGISTRY",
-        "CAELUS_CACHE_SCOPE",
+        "CAELUS_REGISTRY_TOKEN",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CAELUS_TERMINATION_LOG", str(tmp_path / "term"))
@@ -465,7 +466,7 @@ def _captured_buildctl(monkeypatch, **overrides) -> list[str]:
         "metadata_file": Path("/work/metadata.json"),
         "image_ref": "registry.home/7:some-build-id",
         "cache_key": "7",
-        "cache_image_ref": build.cache_ref("registry.home", "caelus-builds", "7"),
+        "cache_image_ref": build.cache_ref("registry.home", "7"),
         "buildkitd_flags": ["--config", "/work/buildkitd.toml"],
     }
     kwargs.update(overrides)
@@ -486,26 +487,22 @@ def test_the_cache_ref_is_scoped_to_the_owner():
     """The whole isolation argument is that two owners cannot name the same
     ref. A cache one tenant can write and another can read is a way to hand a
     tenant's build a step result of your choosing."""
-    assert build.cache_ref("registry.home", "caelus-builds", "7") != build.cache_ref(
-        "registry.home", "caelus-builds", "8"
+    assert build.cache_ref("registry.home", "7") != build.cache_ref(
+        "registry.home", "8"
     )
-    assert "/7:" in build.cache_ref("registry.home", "caelus-builds", "7")
+    assert "/7:" in build.cache_ref("registry.home", "7")
 
 
-def test_the_cache_ref_is_scoped_to_the_environment_too():
-    """Dev and prod keep separate databases behind one registry, so their user
-    id sequences are independent — user 1 in dev is a different person from
-    user 1 in prod. Owner alone would put them on one repository under one
-    moving tag, reading and overwriting each other's cache."""
-    assert build.cache_ref("registry.home", "caelus-builds", "1") != build.cache_ref(
-        "registry.home", "caelus-builds-dev", "1"
-    )
+def test_the_owner_alone_identifies_the_cache():
+    """Each environment has its own registry, so dev user 1 and prod user 1
+    never meet in one, and no environment discriminator belongs in the path."""
+    assert build.cache_ref("cr.test", "1") == "cr.test/cache/1:latest"
 
 
 def test_the_cache_lives_in_the_registry_the_image_is_pushed_to():
     """Cross-repository mounting is what keeps a cache hit from turning into a
     download and re-upload of layers the registry already holds."""
-    assert build.cache_ref("registry.home", "caelus-builds", "7").startswith("registry.home/")
+    assert build.cache_ref("registry.home", "7").startswith("registry.home/")
 
 
 def test_the_build_imports_and_exports_the_owner_cache(monkeypatch):
@@ -519,7 +516,7 @@ def test_the_build_imports_and_exports_the_owner_cache(monkeypatch):
     assert imported["type"] == exported["type"] == "registry"
     # Reading and writing the same ref is what makes it a cache rather than a
     # one-way seed.
-    assert imported["ref"] == exported["ref"] == build.cache_ref("registry.home", "caelus-builds", "7")
+    assert imported["ref"] == exported["ref"] == build.cache_ref("registry.home", "7")
 
 
 def test_the_cache_export_records_intermediate_steps(monkeypatch):
@@ -544,12 +541,12 @@ def test_the_cache_export_uses_a_manifest_a_plain_registry_accepts(monkeypatch):
     assert exported["oci-mediatypes"] == "true"
 
 
-def test_both_cache_ends_tolerate_the_registry_certificate(monkeypatch):
-    """Same reason as the image push: the registry presents a certificate for a
-    name it is not addressed by. A cache end without this fails to connect."""
+def test_nothing_the_build_sends_to_the_registry_skips_verification(monkeypatch):
+    """The capability travels as a bearer token, so an unverified connection
+    would be a way to capture it (tenant-image-registry)."""
     argv = _captured_buildctl(monkeypatch)
-    assert _attrs(argv, "--import-cache")["registry.insecure"] == "true"
-    assert _attrs(argv, "--export-cache")["registry.insecure"] == "true"
+    for flag in ("--import-cache", "--export-cache", "--output"):
+        assert "registry.insecure" not in _attrs(argv, flag), flag
 
 
 def test_the_cache_ref_reaching_buildctl_is_the_one_it_was_given(monkeypatch):
@@ -586,12 +583,11 @@ def test_ghcr_is_mirrored_to_the_supplied_registry():
     assert config["registry"]["ghcr.io"]["mirrors"] == ["some.registry"]
 
 
-def test_the_mirror_entry_tolerates_the_registry_certificate():
-    """BuildKit reads a mirror's TLS settings from that mirror's *own* section,
-    not from the entry naming it. Without this the mirror fetch fails and the
-    build falls back to ghcr.io silently — the log looks normal and nothing
-    gets faster."""
-    assert _buildkitd_config("some.registry")["registry"]["some.registry"]["insecure"] is True
+def test_the_mirror_is_reached_over_a_verified_connection():
+    """BuildKit reads a mirror's TLS settings from that mirror's *own* section.
+    There is none: the registry's certificate verifies, and a pull from it
+    carries the build's capability."""
+    assert "some.registry" not in _buildkitd_config("some.registry")["registry"]
 
 
 def test_only_ghcr_is_mirrored():
@@ -649,7 +645,7 @@ def test_the_daemon_flags_reach_the_spawned_buildkitd(monkeypatch):
         metadata_file=Path("/work/metadata.json"),
         image_ref="registry.home/7:b",
         cache_key="7",
-        cache_image_ref=build.cache_ref("registry.home", "caelus-builds", "7"),
+        cache_image_ref=build.cache_ref("registry.home", "7"),
         buildkitd_flags=["--config", "/work/buildkitd.toml"],
     )
 
@@ -728,7 +724,7 @@ def _captured_dockerfile_buildctl(monkeypatch, **overrides) -> list[str]:
         "source": Path("/work/src"),
         "metadata_file": Path("/work/metadata.json"),
         "image_ref": "registry.home/7:some-build-id",
-        "cache_image_ref": build.cache_ref("registry.home", "caelus-builds", "7"),
+        "cache_image_ref": build.cache_ref("registry.home", "7"),
         "registry": "registry.home",
         "buildkitd_flags": ["--config", "/work/buildkitd.toml"],
     }
@@ -896,10 +892,23 @@ def test_the_image_config_is_read_back_from_the_registry(monkeypatch):
         },
     )
 
-    config = build.read_image_config("registry.home", "7", "sha256:aa")
+    config = build.read_image_config("registry.home", "u/7", "sha256:aa", "tok")
 
     assert config == {"ExposedPorts": {"8080/tcp": {}}}
-    assert requested[0].startswith("https://registry.home/v2/7/")
+    assert requested[0].startswith("https://registry.home/v2/u/7/")
+
+
+def test_the_image_config_is_read_with_the_capability_over_verified_tls(monkeypatch):
+    seen: list[tuple] = []
+
+    def _urlopen(request, timeout=None, context=None):
+        seen.append((request.get_header("Authorization"), context))
+        raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(build.urllib.request, "urlopen", _urlopen)
+    build.read_image_config("cr.test", "u/7", "sha256:aa", "tok")
+
+    assert seen == [("Bearer tok", None)]
 
 
 def test_an_index_is_followed_to_the_platforms_manifest(monkeypatch):
@@ -917,7 +926,7 @@ def test_an_index_is_followed_to_the_platforms_manifest(monkeypatch):
         },
     )
 
-    assert build.read_image_config("registry.home", "7", "sha256:aa") == {"Cmd": ["/app"]}
+    assert build.read_image_config("registry.home", "u/7", "sha256:aa", "tok") == {"Cmd": ["/app"]}
 
 
 def test_an_unreadable_image_config_is_not_a_build_failure(monkeypatch):
@@ -925,7 +934,7 @@ def test_an_unreadable_image_config_is_not_a_build_failure(monkeypatch):
     worse than no warning at all."""
     _stub_registry(monkeypatch, {})
 
-    assert build.read_image_config("registry.home", "7", "sha256:aa") is None
+    assert build.read_image_config("registry.home", "u/7", "sha256:aa", "tok") is None
 
 
 # ---------------------------------------------------------------------------
@@ -946,8 +955,11 @@ def _arrange_build(monkeypatch, tmp_path, *, dockerfile: bool):
         "CAELUS_USER_ID": "7",
         "CAELUS_BUILD_ID": "b-1",
         "CAELUS_REGISTRY": "registry.home",
-        "CAELUS_CACHE_SCOPE": "caelus-builds",
+        "CAELUS_REGISTRY_TOKEN": "capability",
         "CAELUS_WORKDIR": str(tmp_path),
+        # main() points this at the capability it writes; registered here so
+        # the test restores it rather than leaking it into later tests.
+        "DOCKER_CONFIG": str(tmp_path / "unused"),
         "CAELUS_TERMINATION_LOG": str(tmp_path / "term"),
     }.items():
         monkeypatch.setenv(name, value)
@@ -1027,3 +1039,27 @@ def test_the_contract_warning_runs_for_both_builders(monkeypatch, tmp_path, caps
 
         assert build.main() == 0
         assert "WARNING" in capsys.readouterr().out
+
+
+def test_the_build_pushes_to_the_owners_repository_with_its_capability(monkeypatch, tmp_path):
+    _arrange_build(monkeypatch, tmp_path, dockerfile=False)
+    pushed: dict = {}
+    inspected: list[tuple] = []
+    monkeypatch.setattr(build, "build_and_push", lambda **k: pushed.update(k))
+    monkeypatch.setattr(build, "read_image_config", lambda *a: inspected.append(a))
+
+    assert build.main() == 0
+    assert pushed["image_ref"] == "registry.home/u/7:b-1"
+    assert pushed["cache_image_ref"] == "registry.home/cache/7:latest"
+    config = json.loads((Path(os.environ["DOCKER_CONFIG"]) / "config.json").read_text())
+    assert config == {"auths": {"registry.home": {"registrytoken": "capability"}}}
+    assert inspected == [("registry.home", "u/7", "sha256:" + "c" * 64, "capability")]
+    assert json.loads((tmp_path / "term").read_text()) == {"image": "7@sha256:" + "c" * 64}
+
+
+def test_the_capability_file_is_readable_by_its_owner_alone(tmp_path):
+    directory = build.write_docker_config(tmp_path / "docker", "cr.test", "tok")
+    path = directory / "config.json"
+
+    assert json.loads(path.read_text()) == {"auths": {"cr.test": {"registrytoken": "tok"}}}
+    assert path.stat().st_mode & 0o777 == 0o600

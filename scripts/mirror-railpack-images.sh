@@ -1,33 +1,38 @@
 #!/bin/bash
 #
-# Mirror the Railpack base images into the internal registry.
+# Mirror the Railpack base images, and the Dockerfile frontend, into an
+# environment's tenant registry.
 #
 # Every build pulls these before it runs a line of the tenant's own code, and
 # the pod's BuildKit state is an emptyDir, so nothing about that pull is ever
 # reused. Measured on a 62s build: ~9s transferring the 225 MB builder base
-# from ghcr.io and ~10s extracting it. Serving it from the LAN registry instead
-# reclaims the transfer (110 MB/s measured, against ~25 MB/s from ghcr) and
-# takes ghcr.io off the critical path of every build.
+# from ghcr.io and ~10s extracting it. Serving it from the in-cluster registry
+# instead reclaims the transfer and takes ghcr.io off the critical path of
+# every build.
 #
-# The builder image configures its ephemeral buildkitd to treat the internal
-# registry as a mirror for ghcr.io (see `buildkitd_config` in
+# The builder image configures its ephemeral buildkitd to treat the registry as
+# a mirror for ghcr.io (see `buildkitd_config` in
 # products/custom/builder/build.py). BuildKit asks a mirror for the *same*
 # repository path, which is why these land at `railwayapp/...` rather than
 # under a prefix of our own.
 #
-# Running this is optional and repeatable. A mirror that lacks an image is not
-# an error — BuildKit falls through to ghcr.io — so builds keep working before
-# this has ever run, and keep working at the old speed after a Railpack bump
-# whose new base images have not been mirrored yet.
+# Running this is repeatable. A mirror that lacks a Railpack image is not an
+# error — BuildKit falls through to ghcr.io — but the Dockerfile frontend has
+# no such fallback, so a new registry needs this before its first Dockerfile
+# build.
+#
+# The registry is reachable only from inside the cluster and authorizes every
+# write, so nothing here talks to it from this machine: the token comes from
+# `caelus registry-token` in the environment's build worker, which holds the
+# signing key, and `crane` runs in a throwaway pod with that token as its only
+# credential (authenticated-tenant-registry D19).
 #
 # Usage:
-#   ./scripts/mirror-railpack-images.sh              # mirror into registry.home
-#   ./scripts/mirror-railpack-images.sh my.registry  # mirror somewhere else
+#   ./scripts/mirror-railpack-images.sh dev
+#   ./scripts/mirror-railpack-images.sh prod
 #   ./scripts/mirror-railpack-images.sh --help
 
 set -euo pipefail
-
-DEFAULT_REGISTRY=registry.home
 
 # These three are part of the version-matched set described in
 # products/custom/builder/README.md, and must move with `RAILPACK_VERSION` in
@@ -60,27 +65,34 @@ DOCKERFILE_FRONTEND_DIGEST=sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6df
 # and the mirror would simply never be hit. Copying the *tag* rather than the
 # digest gets both — the digest resolves, and the manifest stays tagged, out of
 # reach of a `registry garbage-collect --delete-untagged` pass.
-CRANE_IMAGE=gcr.io/go-containerregistry/crane:latest
+#
+# The debug variant, because we need a shell
+CRANE_IMAGE=gcr.io/go-containerregistry/crane/debug:v0.22.1
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/mirror-railpack-images.sh [REGISTRY]
+Usage: ./scripts/mirror-railpack-images.sh dev|prod
 
-Copies the Railpack frontend, builder and runtime images from ghcr.io into
-REGISTRY (default: registry.home), preserving digests.
+Copies the Railpack frontend, builder and runtime images from ghcr.io, and the
+Dockerfile frontend from Docker Hub, into that environment's tenant registry,
+preserving digests.
 
-Requires docker, and network reach to both ghcr.io and the target registry.
+Requires kubectl pointed at the cluster.
 EOF
 }
 
 case "${1:-}" in
+  dev)  NAMESPACE=caelus-dev REGISTRY=cr.dev.freepod.eu ;;
+  prod) NAMESPACE=caelus REGISTRY=cr.freepod.eu ;;
   --help | -h)
     usage
     exit 0
     ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
 esac
-
-REGISTRY="${1:-$DEFAULT_REGISTRY}"
 
 IMAGES=(
   "railwayapp/railpack-frontend:v${RAILPACK_VERSION}"
@@ -88,43 +100,38 @@ IMAGES=(
   "railwayapp/railpack-runtime:${MISE_TAG}"
 )
 
-crane() {
-  # --insecure: the internal registry presents a certificate for a name it is
-  # not addressed by, the same reason build.py passes `registry.insecure=true`.
-  docker run --rm "$CRANE_IMAGE" --insecure "$@"
-}
+echo "Minting a mirror token in ${NAMESPACE}"
+token=$(kubectl -n "$NAMESPACE" exec deploy/caelus-build-worker -c build-worker -- \
+  caelus registry-token --ttl-seconds 900 \
+  --push railwayapp/railpack-frontend \
+  --push railwayapp/railpack-builder \
+  --push railwayapp/railpack-runtime \
+  --push docker/dockerfile)
 
 echo "Mirroring Railpack v${RAILPACK_VERSION} base images into ${REGISTRY}"
 
-for image in "${IMAGES[@]}"; do
-  echo "  ghcr.io/${image}  ->  ${REGISTRY}/${image}"
-  crane copy "ghcr.io/${image}" "${REGISTRY}/${image}"
-done
+# Fed through stdin so the token never appears in the pod spec.
+output=$(kubectl -n "$NAMESPACE" run "mirror-railpack-$$" --rm -i --restart=Never --quiet \
+  --image="$CRANE_IMAGE" --command -- /busybox/sh -s <<EOF | tee /dev/stderr
+set -eu
+export PATH=/ko-app:/busybox:\$PATH DOCKER_CONFIG=/tmp/.docker
+mkdir -p \$DOCKER_CONFIG
+printf '{"auths":{"%s":{"registrytoken":"%s"}}}' '${REGISTRY}' '${token}' > \$DOCKER_CONFIG/config.json
 
-# The frontend is the one image build.py names by digest, so a mirror serving
-# anything else there is not slow, it is invisible: BuildKit would ask for a
-# digest the mirror does not have and fall through to ghcr.io on every build.
-# Check it rather than assume it.
-echo "Verifying the mirrored frontend digest"
-mirrored=$(crane digest "${REGISTRY}/railwayapp/railpack-frontend:v${RAILPACK_VERSION}")
-if [ "$mirrored" != "$FRONTEND_DIGEST" ]; then
-  echo "ERROR: mirrored frontend is ${mirrored}, expected ${FRONTEND_DIGEST}" >&2
-  echo "       builds will silently keep pulling the frontend from ghcr.io." >&2
-  exit 1
-fi
+for image in ${IMAGES[*]}; do
+  echo "  ghcr.io/\$image  ->  ${REGISTRY}/\$image"
+  crane copy "ghcr.io/\$image" "${REGISTRY}/\$image"
+done
 
 echo "  docker/dockerfile:${DOCKERFILE_FRONTEND_TAG}  ->  ${REGISTRY}/docker/dockerfile"
 crane copy "docker/dockerfile:${DOCKERFILE_FRONTEND_TAG}" "${REGISTRY}/docker/dockerfile:${DOCKERFILE_FRONTEND_TAG}"
 
-# This one has no upstream to fall through to: build.py addresses it at this
-# registry by digest, so a mismatch is a broken Dockerfile build rather than a
-# slow one.
-echo "Verifying the mirrored Dockerfile frontend digest"
-mirrored=$(crane digest "${REGISTRY}/docker/dockerfile:${DOCKERFILE_FRONTEND_TAG}")
-if [ "$mirrored" != "$DOCKERFILE_FRONTEND_DIGEST" ]; then
-  echo "ERROR: mirrored Dockerfile frontend is ${mirrored}, expected ${DOCKERFILE_FRONTEND_DIGEST}" >&2
-  echo "       every Dockerfile build will fail to resolve its frontend." >&2
+echo MIRROR_OK
+EOF
+)
+
+if ! grep -qx MIRROR_OK <<<"$output"; then
+  echo "ERROR: mirroring into ${REGISTRY} did not complete" >&2
   exit 1
 fi
-
-echo "Done. $(( ${#IMAGES[@]} + 1 )) images mirrored; both frontend digests match build.py."
+echo "Done. $(( ${#IMAGES[@]} + 1 )) images mirrored into ${REGISTRY}."

@@ -25,18 +25,18 @@
 
 ## 4. Build path
 
-- [ ] 4.1 Add capability minting to `api/app/services/build_jobs.py`: six exact repository entries, expiry at the build deadline plus margin, signed with the build worker's key — verify a test asserts the exact access list, that no entry is a pattern, and that neither `delete` nor the catalog appears
-- [ ] 4.2 Pass the capability to the Job and have `build.py` write it into the pod's Docker configuration as `registrytoken` — verify a real build pushes to the new registry
-- [ ] 4.3 Remove `registry.insecure=true` from all three call sites in `build.py` and make `read_image_config` verify TLS and send the capability as a bearer token — verify a build's post-push inspection still reports the runtime-contract warnings
-- [ ] 4.4 Drop `CAELUS_CACHE_SCOPE`: `cache_ref` derives from the owner alone, and the worker stops setting it — verify `cd api && uv run --no-sync pytest api/tests/test_builder_script.py` passes with the scope argument gone
-- [ ] 4.5 Bump `products/custom/builder/VERSION`, publish, and point `builder_image` at it in Terraform — verify a build runs end to end on the published image and its layer cache is imported on a second run of the same project
+- [x] 4.1 Add capability minting to `api/app/services/build_jobs.py`: six exact repository entries, expiry at the build deadline plus margin, signed with the build worker's key — verify a test asserts the exact access list, that no entry is a pattern, and that neither `delete` nor the catalog appears
+- [x] 4.2 Pass the capability to the Job and have `build.py` write it into the pod's Docker configuration as `registrytoken` — verify a real build pushes to the new registry
+- [x] 4.3 Remove `registry.insecure=true` from all three call sites in `build.py` and make `read_image_config` verify TLS and send the capability as a bearer token — verify a build's post-push inspection still reports the runtime-contract warnings
+- [x] 4.4 Drop `CAELUS_CACHE_SCOPE`: `cache_ref` derives from the owner alone, and the worker stops setting it; retire `build_registry_host` and the builds NetworkPolicy's egress rule to the old registry (`build_registry_cidr`), which no build reaches any more — verify `cd api && uv run --no-sync pytest api/tests/test_builder_script.py` passes with the scope argument gone
+- [x] 4.5 Bump `products/custom/builder/VERSION`, publish, and point `builder_image` at it in Terraform — verify a build runs end to end on the published image and its layer cache is imported on a second run of the same project
 
 ## 5. Mirrors and image migration
 
-- [ ] 5.1 Repoint `scripts/mirror-railpack-images.sh` at the new registries and drop its `--insecure` flag — verify both frontend digest checks pass against each environment's registry
-- [ ] 5.2 Point the builder's mirror configuration at the new registry — verify a build's log shows the base images resolving through it rather than from ghcr.io
-- [ ] 5.3 Copy the 17 referenced images into the new registries with digests preserved — verify each copied image reports the same digest it had on the old registry
-- [ ] 5.4 Verify a tenant capability cannot reach the mirror repositories for writing: attempt a push to `railwayapp/railpack-builder` with a build capability and confirm the registry refuses it
+- [ ] 5.1 Add `caelus registry-token`, minting a short-lived token for exactly the repositories an operator names (D19), and repoint `scripts/mirror-railpack-images.sh` at the new registries: authenticated by that token, run in the build-worker pod, with `crane` in a throwaway in-cluster pod and no `--insecure` flag — verify both frontend digest checks pass against each environment's registry
+- [x] 5.2 Point the builder's mirror configuration at the new registry — verify a build's log shows the base images resolving through it rather than from ghcr.io
+- [ ] 5.3 Copy the 17 referenced images into the new registries with digests preserved, through the same operator path — verify each copied image reports the same digest it had on the old registry
+- [x] 5.4 Verify a tenant capability cannot reach the mirror repositories for writing: attempt a push to `railwayapp/railpack-builder` with a build capability and confirm the registry refuses it
 
 ## 6. Chart and reconciler
 

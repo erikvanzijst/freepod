@@ -114,34 +114,6 @@ resource "kubernetes_network_policy" "builds" {
       }
     }
 
-    # The internal registry, to push the built image and to read and write the
-    # owner's layer cache at `cache/{namespace}/{user_id}`. A LAN address, so it sits
-    # inside the `except` list below and would otherwise be unreachable.
-    #
-    # This CIDR and `build_registry_host` in api/app/config.py name the same
-    # machine two different ways; moving the registry means changing both, and
-    # changing only this one fails at push time with a connection timeout.
-    #
-    # Port 80 is open alongside 443 because the builder pushes with
-    # `registry.insecure=true`, which permits BuildKit to fall back to plain
-    # HTTP. The host is already trusted to receive the image, so allowing its
-    # other port reaches no service that 443 did not already.
-    egress {
-      to {
-        ip_block {
-          cidr = var.build_registry_cidr
-        }
-      }
-      ports {
-        port     = "443"
-        protocol = "TCP"
-      }
-      ports {
-        port     = "80"
-        protocol = "TCP"
-      }
-    }
-
     # This environment's tenant registry (authenticated-tenant-registry D18).
     # The pod on its container port is what the policy sees once the
     # Service's ClusterIP is DNAT'd; the ClusterIP itself is the pre-DNAT

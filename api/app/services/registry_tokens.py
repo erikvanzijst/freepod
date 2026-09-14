@@ -37,8 +37,14 @@ _COORDINATE_BYTES = 32
 
 PULL_CREDENTIAL_VERSION = "v1"
 PULL_TOKEN_TTL_SECONDS = 300
+OPERATOR_TOKEN_MAX_TTL_SECONDS = 3600
 _NOT_BEFORE_SKEW_SECONDS = 60
 _PULL_USERNAME = re.compile(r"pull-([1-9][0-9]*)")
+
+# Distribution's repository name grammar: lowercase path components joined by
+# `/`. Anything else -- a wildcard in particular -- is not an exact name.
+_REPOSITORY_COMPONENT = r"[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*"
+_REPOSITORY_NAME = re.compile(rf"{_REPOSITORY_COMPONENT}(?:/{_REPOSITORY_COMPONENT})*")
 
 
 class RegistryKeyException(CaelusException):
@@ -213,6 +219,12 @@ def pull_access(user_id: int, scopes: Iterable[str]) -> list[dict[str, Any]]:
     return []
 
 
+def signer(settings: CaelusSettings) -> ec.EllipticCurvePrivateKey:
+    if not (settings.registry_host and settings.registry_token_issuer):
+        raise RegistryKeyException("registry token issuance is not configured")
+    return load_private_key(settings.registry_signing_private_key)
+
+
 def issue_pull_token(
     session: Session,
     settings: CaelusSettings,
@@ -222,13 +234,9 @@ def issue_pull_token(
     password: str,
     scopes: Iterable[str],
 ) -> IssuedToken:
-    if not (
-        settings.registry_host
-        and settings.registry_token_issuer
-        and settings.registry_pull_hmac_key
-    ):
+    if not settings.registry_pull_hmac_key:
         raise RegistryKeyException("registry token issuance is not configured")
-    key = load_private_key(settings.registry_signing_private_key)
+    key = signer(settings)
     if service != settings.registry_host:
         raise RegistryServiceException(f"tokens are issued only for {settings.registry_host}")
     user_id = _verified_owner(session, settings.registry_pull_hmac_key, username, password)
@@ -239,4 +247,41 @@ def issue_pull_token(
         subject=pull_username(user_id),
         access=pull_access(user_id, scopes),
         ttl_seconds=PULL_TOKEN_TTL_SECONDS,
+    )
+
+
+def operator_token(
+    settings: CaelusSettings,
+    *,
+    push: Iterable[str],
+    pull: Iterable[str],
+    ttl_seconds: int,
+) -> IssuedToken:
+    """A short-lived token for exactly the repositories an operator names.
+
+    For seeding the registry from inside the cluster, where nothing else may
+    write: the mirrored base images and migrated tenant images (D19). Exact
+    names only, never delete, never the catalog.
+    """
+    push, pull = list(dict.fromkeys(push)), list(dict.fromkeys(pull))
+    if not push and not pull:
+        raise ValidationException("name at least one repository")
+    for name in [*push, *pull]:
+        if not _REPOSITORY_NAME.fullmatch(name):
+            raise ValidationException(f"not an exact repository name: {name!r}")
+    if not 0 < ttl_seconds <= OPERATOR_TOKEN_MAX_TTL_SECONDS:
+        raise ValidationException(
+            f"a token may live at most {OPERATOR_TOKEN_MAX_TTL_SECONDS} seconds"
+        )
+    access = [{"type": "repository", "name": n, "actions": ["pull", "push"]} for n in push]
+    access += [
+        {"type": "repository", "name": n, "actions": ["pull"]} for n in pull if n not in push
+    ]
+    return mint(
+        signer(settings),
+        issuer=settings.registry_token_issuer,
+        audience=settings.registry_host,
+        subject="operator",
+        access=access,
+        ttl_seconds=ttl_seconds,
     )

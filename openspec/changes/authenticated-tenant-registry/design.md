@@ -345,6 +345,23 @@ registry process. What it would cost is the failure mode described under Risks: 
 kubelet pulls from the node's host network, so the natural `podSelector` rule silently
 blocks every image pull. Given mandatory authentication, that is a poor trade.
 
+### D19: Seeding the registry is operator tooling run inside the cluster
+
+Something has to write the mirrored base images (D17) and the migrated tenant images
+(D15), and by construction nothing else can: no tenant capability carries write on the
+mirror repositories, the token endpoint mints pull only, and the registry is reachable
+only from inside the cluster.
+
+`caelus registry-token` mints a token for exactly the repositories an operator names —
+push or pull, never delete, never the catalog, at most an hour. It runs where the signing
+key already is (`kubectl exec` into the build worker), and `crane` runs in a throwaway
+in-cluster pod with that token as its only credential. It grants nothing an operator
+with that cluster access does not already hold.
+
+*Alternative considered:* a third, mirror-only key in the JWKS and a Terraform-managed Job
+that runs `crane`. Cleaner attribution by `kid` and no minting CLI, but the most new
+infrastructure for two operations an operator runs by hand.
+
 ## Risks / Trade-offs
 
 - **Nothing restricts who may attempt a connection to the registry** (D18) → accepted:

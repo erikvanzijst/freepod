@@ -275,7 +275,6 @@ class CaelusSettings(BaseSettings):
     # get their own Pod Security Admission labels, ServiceAccount, and
     # NetworkPolicy, none of which should be shared with anything else.
     builds_namespace: str = "caelus-builds"
-    build_registry_host: str = "registry.home"
 
     # Largest project archive accepted, enforced by Garage itself through the
     # presigned POST policy's content-length-range rather than by the client or
