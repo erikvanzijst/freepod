@@ -177,7 +177,9 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"   # pull HMAC key
 **Rotating the signing key** is additive: put both keys' entries in
 `registry_jwks` and apply, switch the PEM and apply, then drop the old entry.
 
-Spec: `registry-authorization` · Rationale: `authenticated-tenant-registry` D6,
+Spec: [registry-authorization](../openspec/specs/registry-authorization/spec.md) ·
+Rationale:
+[authenticated-tenant-registry](../openspec/changes/archive/2026-09-14-authenticated-tenant-registry/design.md) D6,
 D11, D14
 
 ### Deployment var encryption keyring

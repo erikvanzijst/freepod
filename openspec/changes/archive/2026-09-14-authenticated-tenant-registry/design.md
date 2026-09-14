@@ -406,11 +406,12 @@ infrastructure for two operations an operator runs by hand.
    registry.
 9. Remove the node's `registries.yaml` entry; confirm pulls still work after a kubelet
    restart.
-10. Retire the old registry's repositories.
+Emptying the old registry is out of scope: its repositories are left in place, unused.
 
 **Rollback:** through step 7, a deployment is pointed back at the previous template version
-and pulls from the old registry, which is still serving. After step 10 the rollback is
-restoring images to the old registry, which is why the audit gates it.
+and pulls from the old registry, which is still serving. After step 9 that also means
+restoring the node's `registries.yaml` entry, since the old registry's certificate does
+not cover the name it is addressed by.
 
 ## Open Questions
 

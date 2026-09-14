@@ -90,7 +90,9 @@ credential**. It receives two credentials, both expiring and both scoped to this
 build: a presigned URL that grants read on exactly one object, and a registry
 capability naming exactly the owner's image and cache repositories and the
 mirrored base images, which it writes into BuildKit's Docker config as
-`registrytoken` (`registry-authorization`). It reports its result through the
+`registrytoken`
+([registry-authorization](../../../openspec/specs/registry-authorization/spec.md)).
+It reports its result through the
 pod's termination message, so it needs no write access beyond those two
 repositories — a `DATABASE_URL` here would be a Postgres connection handed to
 every tenant, no subversion of this script required.

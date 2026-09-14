@@ -33,9 +33,9 @@
 
 ## 5. Mirrors and image migration
 
-- [ ] 5.1 Add `caelus registry-token`, minting a short-lived token for exactly the repositories an operator names (D19), and repoint `scripts/mirror-railpack-images.sh` at the new registries: authenticated by that token, run in the build-worker pod, with `crane` in a throwaway in-cluster pod and no `--insecure` flag — verify both frontend digest checks pass against each environment's registry
+- [x] 5.1 Add `caelus registry-token`, minting a short-lived token for exactly the repositories an operator names (D19), and repoint `scripts/mirror-railpack-images.sh` at the new registries: authenticated by that token, run in the build-worker pod, with `crane` in a throwaway in-cluster pod and no `--insecure` flag — verify both frontend digest checks pass against each environment's registry
 - [x] 5.2 Point the builder's mirror configuration at the new registry — verify a build's log shows the base images resolving through it rather than from ghcr.io
-- [ ] 5.3 Copy the 17 referenced images into the new registries with digests preserved, through the same operator path — verify each copied image reports the same digest it had on the old registry
+- [x] 5.3 Copy the 17 referenced images into the new registries with digests preserved, through the same operator path — verify each copied image reports the same digest it had on the old registry
 - [x] 5.4 Verify a tenant capability cannot reach the mirror repositories for writing: attempt a push to `railwayapp/railpack-builder` with a build capability and confirm the registry refuses it
 
 ## 6. Chart and reconciler
@@ -48,17 +48,17 @@
 
 ## 7. Deployment migration
 
-- [ ] 7.1 Move one `custom` deployment per environment to the new template version — verify each reaches `ready`, serves traffic, and its pod pulled from the new registry
-- [ ] 7.2 Move the remaining `custom` deployments — verify every one reaches `ready` and no pod references the old registry
-- [ ] 7.3 Audit that no template and no live deployment in either environment resolves a tenant image from the old registry — verify the audit returns empty before continuing
+- [x] 7.1 Move one `custom` deployment per environment to the new template version — verify each reaches `ready`, serves traffic, and its pod pulled from the new registry
+- [x] 7.2 Move the remaining `custom` deployments — verify every one reaches `ready` and no pod references the old registry
+- [x] 7.3 Audit that no template and no live deployment in either environment resolves a tenant image from the old registry — verify the audit returns empty before continuing
 
 ## 8. Cutover
 
-- [ ] 8.1 Remove the internal-registry entry from the node's `/etc/rancher/k3s/registries.yaml` — verify a tenant image still pulls after a kubelet restart, with no registry configuration on the node
+- [x] 8.1 Remove the internal-registry entry from the node's `/etc/rancher/k3s/registries.yaml` — verify a tenant image still pulls after a kubelet restart, with no registry configuration on the node
 - [x] 8.2 Verify the end state against the threat that motivated the change: from a build pod, confirm that pulling another owner's image is refused, that pushing to another owner's repository is refused, that the catalog is refused, and that an unauthenticated request is refused
 
 ## 9. Documentation
 
 - [x] 9.1 Update `products/custom/builder/README.md`: the cache section without the environment scope, the mirror section against the new registry, and the node prerequisites reduced to the one that remains — verify no reference to the retired scope or the old registry survives
 - [x] 9.2 Update `api/README.md` § Builds, `tf/README.md` and `tf/app/README.md` for the registry, the token endpoint, the keys and `registry-keygen` — verify the two node prerequisites are described as one
-- [ ] 9.3 Add the capability entry and links to `AGENTS.md` per its documentation-layering rule — verify it is a terse orientation plus links rather than a restatement of the specs
+- [x] 9.3 Add the capability entry and links to `AGENTS.md` per its documentation-layering rule — verify it is a terse orientation plus links rather than a restatement of the specs

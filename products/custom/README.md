@@ -46,7 +46,8 @@ becomes `cr.freepod.eu/u/5@sha256:4777d0…`. The chart still splits on `@` —
 but only to police the two halves, not to reassemble them. Digests and
 repository paths cannot contain `@`, so the split is unambiguous. The node pulls
 it with the owner's credential, a Secret the reconciler publishes and the chart
-names in `imagePullSecrets`; the placeholder needs none (`registry-chart-contract`).
+names in `imagePullSecrets`; the placeholder needs none
+([registry-chart-contract](../../openspec/specs/registry-chart-contract/spec.md)).
 
 Withholding the registry host is deliberate, and so is verifying rather than
 trusting the `{user_id}` repository. Together they are what make the ownership

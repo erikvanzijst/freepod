@@ -545,8 +545,12 @@ access only. Seeding it is operator work: `caelus registry-token` mints a
 short-lived token for exactly the repositories named, run inside the build
 worker (see `scripts/mirror-railpack-images.sh`). The keys, and `caelus
 registry-keygen`, are in [`tf/README.md`](../tf/README.md) § Tenant registry
-keys. Spec: `tenant-image-registry`, `registry-authorization`,
-`registry-chart-contract`.
+keys. Spec:
+[tenant-image-registry](../openspec/specs/tenant-image-registry/spec.md),
+[registry-authorization](../openspec/specs/registry-authorization/spec.md),
+[registry-chart-contract](../openspec/specs/registry-chart-contract/spec.md) ·
+Rationale:
+[authenticated-tenant-registry](../openspec/changes/archive/2026-09-14-authenticated-tenant-registry/design.md)
 
 The layer cache (one repository per owner), the ghcr.io mirror, and the node
 prerequisite are operational: the reasoning and the failure modes live in

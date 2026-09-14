@@ -32,6 +32,17 @@ This repository is a monorepo with:
   [build-worker](openspec/specs/build-worker/spec.md) · Rationale:
   [add-build-subsystem](openspec/changes/archive/2026-08-14-add-build-subsystem/design.md),
   [add-deployment-logs](openspec/changes/archive/2026-08-18-add-deployment-logs/design.md)
+- **Tenant images live in a per-environment registry where every operation
+  authenticates**, reachable only inside the cluster. A build pushes with a
+  short-lived capability the build worker mints for exactly its own
+  repositories; a deployment's node pulls with a per-owner credential the
+  reconciler publishes, exchanged at `/api/registry/token`, which mints pull
+  access only. Spec:
+  [tenant-image-registry](openspec/specs/tenant-image-registry/spec.md),
+  [registry-authorization](openspec/specs/registry-authorization/spec.md),
+  [registry-chart-contract](openspec/specs/registry-chart-contract/spec.md) ·
+  Rationale:
+  [authenticated-tenant-registry](openspec/changes/archive/2026-09-14-authenticated-tenant-registry/design.md)
 - **Three worker processes.** `caelus worker` (reconcile queue), `caelus
   build-worker` (builds), and `caelus db-worker` (tenant-database housekeeping:
   quota measurement, purging deleted deployments' databases after their grace
@@ -200,12 +211,14 @@ For details, see `tf/README.md`, `tf/app/README.md`, `tf/deps/README.md`.
 - Keep CLI and REST functionality in lockstep. **Exception**: the `caelus
   catalog` command group (`apply`, `curate`, `lint`), the long-running worker
   entry points (`caelus worker`, `caelus build-worker`, `caelus db-worker`),
-  and `caelus keyring-rotate` are intentionally CLI-only and require no REST
-  equivalent. These are operator and build tooling rather than tenant-facing
-  surface — `catalog apply` is invoked by an init container during rollout,
-  `lint` runs in CI with no database, the workers are processes rather than
-  requests, and `keyring-rotate` is a maintenance sweep an operator runs while
-  rotating an encryption key. The write guards they depend on live in
+  `caelus keyring-rotate`, and `caelus registry-keygen` / `caelus
+  registry-token` are intentionally CLI-only and require no REST equivalent.
+  These are operator and build tooling rather than tenant-facing surface —
+  `catalog apply` is invoked by an init container during rollout, `lint` runs in
+  CI with no database, the workers are processes rather than requests,
+  `keyring-rotate` is a maintenance sweep an operator runs while rotating an
+  encryption key, and the registry commands generate a key and mint a seeding
+  token where the signing key already is. The write guards they depend on live in
   `api/app/services/`, so REST, CLI, and the admin UI still enforce identical
   rules and no parity gap is introduced.
 - Put all DB/ORM logic in `api/app/services/` and call from API + CLI (DRY).

@@ -289,8 +289,11 @@ build pods, and from nowhere outside the cluster.
 The registry namespace has no NetworkPolicy: the builds policy opens egress to
 it, and the tenant baseline keeps tenant pods away from it.
 
-Spec: `tenant-image-registry`, `registry-authorization` · Rationale:
-`authenticated-tenant-registry` D2, D3, D16, D18
+Spec: [tenant-image-registry](../../openspec/specs/tenant-image-registry/spec.md),
+[registry-authorization](../../openspec/specs/registry-authorization/spec.md) ·
+Rationale:
+[authenticated-tenant-registry](../../openspec/changes/archive/2026-09-14-authenticated-tenant-registry/design.md)
+D2, D3, D16, D18
 
 ## Build namespace (`caelus-builds` / `caelus-builds-dev`)
 
