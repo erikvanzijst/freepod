@@ -55,8 +55,7 @@
 ## 8. Cutover
 
 - [ ] 8.1 Remove the internal-registry entry from the node's `/etc/rancher/k3s/registries.yaml` — verify a tenant image still pulls after a kubelet restart, with no registry configuration on the node
-- [ ] 8.2 Delete the tenant repositories, caches, mirrors and remaining platform repositories from the old registry — verify its catalog is empty of platform and tenant content and that one deployment per product still reconciles
-- [ ] 8.3 Verify the end state against the threat that motivated the change: from a build pod, confirm that pulling another owner's image is refused, that pushing to another owner's repository is refused, that the catalog is refused, and that an unauthenticated request is refused
+- [ ] 8.2 Verify the end state against the threat that motivated the change: from a build pod, confirm that pulling another owner's image is refused, that pushing to another owner's repository is refused, that the catalog is refused, and that an unauthenticated request is refused
 
 ## 9. Documentation
 
