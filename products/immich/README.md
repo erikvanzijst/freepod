@@ -106,3 +106,34 @@ sizing) go.
 
 `image.tag` pins the Immich release (otherwise it floats on the chart
 `appVersion`); leave `smtp.host` empty to disable notification email.
+
+## Upstream references
+
+What a version upgrade has to review beyond the tag in
+[`products/catalog/immich.yaml`](../catalog/immich.yaml), whose `upstream` block
+detects new releases.
+
+- **Release notes:** GitHub releases of `immich-app/immich`.
+- **Reference deployment:** `immich-app/immich` at the release tags:
+  `docker/docker-compose.yml`, `docker/docker-compose.rootless.yml`,
+  `docker/example.env`, `docker/hwaccel.*.yml`, and the runtime stages of
+  `server/Dockerfile` and `machine-learning/Dockerfile`.
+- **Official chart:** `immich-app/immich-charts`, `charts/immich`, tagged
+  `immich-<chart version>`. Its `appVersion` names the Immich release a chart
+  version targets.
+- **Images:** one tag drives both `ghcr.io/immich-app/immich-server` and
+  `ghcr.io/immich-app/immich-machine-learning`, so both must exist.
+
+Pitfalls:
+
+- `postgresql.image` is pinned by digest to the image upstream's
+  `docker-compose.yml` uses. When upstream moves it (a new vectorchord
+  version), this chart has to follow, and the database usually needs a
+  migration.
+- Valkey floats on `valkey/valkey:9.0-alpine`, while upstream pins a digest of
+  `valkey:9`. An upstream digest bump needs nothing here; a new major version
+  does.
+- The machine-learning container keeps its caches on the `/cache` emptyDir
+  (`TRANSFORMERS_CACHE`, `HF_XET_CACHE`, `MPLCONFIGDIR`). Since v3.2.0 the image
+  also sets `HF_HOME=/cache/hf-cache` itself. If upstream adds a cache location
+  outside `/cache`, it needs the same treatment.

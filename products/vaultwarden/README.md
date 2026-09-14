@@ -218,3 +218,26 @@ deadlock because the new pod cannot mount the PVC the old one still holds.
 Both files are chart-local because vaultwarden is not in the curated catalog
 (`products/catalog/`) yet. Moving it there, as immich and nextcloud have been, would fold
 `chart_ref`, `system_values`, and `values_schema` into one git-managed entry.
+
+## Upstream references
+
+What a version upgrade has to review beyond the tag in
+[`products/catalog/vaultwarden.yaml`](../catalog/vaultwarden.yaml), whose `upstream` block
+detects new releases.
+
+- **Release notes:** GitHub releases of `dani-garcia/vaultwarden` (tags have no `v` prefix).
+- **No official chart.** The reference deployment is the image itself: `dani-garcia/vaultwarden`
+  `docker/` at the release tags. That means the runtime stage of `Dockerfile.debian` (the plain
+  `X.Y.Z` tag is the Debian image), `healthcheck.sh`, `start.sh`, and `DockerSettings.yaml`, which
+  pins the bundled web vault version.
+- **Settings:** `.env.template` documents every setting, and new or renamed ones show up there
+  first.
+
+Pitfalls:
+
+- Some releases are required by newer Bitwarden clients (1.37.2 was required for clients
+  2026.8.0 and newer). Call that out, because tenants' apps update on their own.
+- A new setting usually defaults to the old behavior. If its default affects security, model it
+  as a value here instead of leaving it to `extraEnv`.
+- The vault is sqlite on the PVC, and migrations run at startup. Fixes for the MySQL and
+  PostgreSQL backends don't apply.

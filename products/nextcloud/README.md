@@ -108,3 +108,37 @@ auto-generated DB password go.
 it floats on `<appVersion>-apache`); leave `smtp.host` empty to disable mail.
 `admin.password` seeds the first-run admin account and is shared by every
 deployment created from the template.
+
+## Upstream references
+
+What a version upgrade has to review beyond the tag in
+[`products/catalog/nextcloud.yaml`](../catalog/nextcloud.yaml), whose `upstream`
+block detects new releases.
+
+- **Release notes:** the `nextcloud/server` GitHub releases are only one-line
+  pointers. The changelog is on the `nextcloud-releases/server` release with the
+  same tag (`vX.Y.Z`).
+- **Image source:** `nextcloud/docker`, directory `<major>/apache/`
+  (`Dockerfile`, `entrypoint.sh`, `cron.sh`, `upgrade.exclude`,
+  `config/*.config.php`), which is generated from `Dockerfile-debian.template`
+  and `docker-entrypoint.sh` at the repository root. That repository has no
+  per-release tags. `git log -- <major>/apache/Dockerfile` lists the
+  "Runs update.sh" commits that bump `NEXTCLOUD_VERSION`, so diff from the
+  commit that bumped to the current version to the one that bumped to the
+  target.
+- **Official chart:** `nextcloud/helm`, `charts/nextcloud`. Its `appVersion`
+  names the release a chart version targets, and it can lag behind the image.
+
+Pitfalls:
+
+- Nextcloud upgrades one major version at a time. An instance can't skip a
+  major.
+- The bundled PostgreSQL (`postgres:17-alpine`) doesn't follow Nextcloud's
+  version. On a new major, check its supported database versions against it.
+- The image's `config/*.config.php` files (S3, Swift, Redis, SMTP, …) only take
+  effect when their environment variables are set. Check which ones this chart
+  sets (`templates/configmap.yaml`) before calling a change to one of them not
+  applicable.
+- The `before-starting` hook (§ What it deploys) runs the post-upgrade repair
+  steps. If upstream starts recommending a new one after upgrades, it belongs
+  there.
