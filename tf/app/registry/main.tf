@@ -46,6 +46,11 @@ locals {
     run_as_user  = 1000
     run_as_group = 1000
   }
+
+  probe = [
+    "sh", "-c",
+    "wget -q -O /dev/null --no-check-certificate https://127.0.0.1:5000/v2/ 2>&1 | grep -q ' 401 '",
+  ]
 }
 
 resource "kubernetes_config_map" "config" {
@@ -194,20 +199,21 @@ resource "kubernetes_deployment" "registry" {
             protocol       = "TCP"
           }
 
-          # TCP rather than HTTP: every path answers 401 without a token.
           readiness_probe {
-            tcp_socket {
-              port = "https"
+            exec {
+              command = local.probe
             }
-            period_seconds = 5
+            period_seconds  = 15
+            timeout_seconds = 5
           }
 
           liveness_probe {
-            tcp_socket {
-              port = "https"
+            exec {
+              command = local.probe
             }
             initial_delay_seconds = 10
-            period_seconds        = 20
+            period_seconds        = 30
+            timeout_seconds       = 5
           }
 
           resources {
