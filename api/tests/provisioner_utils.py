@@ -102,7 +102,13 @@ class FakeProvisioner:
         return None
 
     def upsert_secret(
-        self, *, namespace: str, name: str, string_data: dict[str, str], labels: dict[str, str]
+        self,
+        *,
+        namespace: str,
+        name: str,
+        string_data: dict[str, str],
+        labels: dict[str, str],
+        secret_type: str = "Opaque",
     ):
         self.calls.append(
             (
@@ -112,6 +118,7 @@ class FakeProvisioner:
                     "name": name,
                     "string_data": string_data,
                     "labels": labels,
+                    "secret_type": secret_type,
                 },
             )
         )

@@ -40,11 +40,11 @@
 
 ## 6. Chart and reconciler
 
-- [ ] 6.1 Add the registry host and pull-Secret name as reconciler-injected system values, following `_build_ssh_overrides` — verify a test asserts a tenant-supplied value cannot shadow either
-- [ ] 6.2 Publish the pull Secret per deployment namespace before Helm runs, alongside the existing storage and database Secrets — verify the Secret is present with `type: kubernetes.io/dockerconfigjson` and its password recomputes from the HMAC key
-- [ ] 6.3 Add `imagePullSecrets` and the system values to the `custom` chart and its schema — verify `helm template` renders the pull secret reference for a deployment with an image, and renders without one for a deployment still on the placeholder
-- [ ] 6.4 Bump the `custom` chart version and publish it to ghcr.io — verify `helm show chart` resolves the new version anonymously
-- [ ] 6.5 Update `products/catalog/custom.yaml` to the new chart version — verify `caelus catalog lint` passes and a rollout creates exactly one new template version
+- [x] 6.1 Add the registry host and pull-Secret name as reconciler-injected system values, following `_build_ssh_overrides` — verify a test asserts a tenant-supplied value cannot shadow either
+- [x] 6.2 Publish the pull Secret per deployment namespace before Helm runs, alongside the existing storage and database Secrets — verify the Secret is present with `type: kubernetes.io/dockerconfigjson` and its password recomputes from the HMAC key
+- [x] 6.3 Add `imagePullSecrets` and the system values to the `custom` chart and its schema — verify `helm template` renders the pull secret reference for a deployment with an image, and renders without one for a deployment still on the placeholder
+- [x] 6.4 Bump the `custom` chart version and publish it to ghcr.io — verify `helm show chart` resolves the new version anonymously
+- [x] 6.5 Update `products/catalog/custom.yaml` to the new chart version — verify `caelus catalog lint` passes and a rollout creates exactly one new template version
 
 ## 7. Deployment migration
 

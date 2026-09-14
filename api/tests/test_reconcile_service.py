@@ -392,3 +392,35 @@ def test_build_owner_overrides_id_is_not_shadowable_by_user_values() -> None:
     )
 
     assert merged["caelus"]["owner"] == {"id": 5, "email": "owner@example.com"}
+
+
+def test_build_registry_overrides_name_the_environments_registry_and_secret(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.reconcile.get_settings",
+        lambda: SimpleNamespace(registry_host="cr.test.example"),
+    )
+
+    assert DeploymentReconciler._build_registry_overrides("r-registry-pull") == {
+        "caelus": {"registry": {"prefix": "cr.test.example/u", "pullSecret": "r-registry-pull"}}
+    }
+    assert DeploymentReconciler._build_registry_overrides(None) is None
+
+
+def test_build_registry_overrides_are_not_shadowable_by_user_values(monkeypatch) -> None:
+    """A tenant naming another registry, or another owner's Secret, would be
+    pointing the node's pull somewhere of their choosing."""
+    monkeypatch.setattr(
+        "app.services.reconcile.get_settings",
+        lambda: SimpleNamespace(registry_host="cr.test.example"),
+    )
+
+    merged = template_values.merge_values_scoped(
+        {},
+        {"caelus": {"registry": {"prefix": "elsewhere.example/u", "pullSecret": "someone-elses"}}},
+        DeploymentReconciler._build_registry_overrides("r-registry-pull"),
+    )
+
+    assert merged["caelus"]["registry"] == {
+        "prefix": "cr.test.example/u",
+        "pullSecret": "r-registry-pull",
+    }

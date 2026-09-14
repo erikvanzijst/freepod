@@ -18,6 +18,7 @@ from app.services import (
     template_values,
     var_crypto,
 )
+from app.services import registry_tokens
 from app.services import vars as vars_service
 from app.services.loki import DIRECTION_BACKWARD, LokiQueryClient
 from app.services.template_values import bytes_to_k8s_size
@@ -55,6 +56,11 @@ def database_secret_name(deployment: DeploymentORM) -> str:
     updated in place rather than churned.
     """
     return f"{deployment.name}-database"
+
+
+def registry_pull_secret_name(deployment: DeploymentORM) -> str:
+    """Name of the Secret the node pulls the deployment's image with."""
+    return f"{deployment.name}-registry-pull"
 
 
 VARS_SECRET_COMPONENT = "vars"
@@ -395,6 +401,7 @@ class DeploymentReconciler:
         storage = self._ensure_object_storage(deployment)
         database = self._ensure_database(deployment)
         vars_secret = self._ensure_vars_secret(deployment, release)
+        pull_secret = self._ensure_registry_pull_secret(deployment)
         merged_values = self._build_merged_values(
             deployment,
             template,
@@ -402,6 +409,7 @@ class DeploymentReconciler:
             storage=storage,
             database=database,
             vars_secret=vars_secret,
+            pull_secret=pull_secret,
         )
 
         outcome = self._provisioner.helm_upgrade_install(
@@ -588,6 +596,35 @@ class DeploymentReconciler:
         )
         return credentials
 
+    def _ensure_registry_pull_secret(self, deployment: DeploymentORM) -> str | None:
+        """Publish the owner's pull credential for the node. Returns its name, or None.
+
+        Every deployment gets one (authenticated-tenant-registry D11). It is
+        derived rather than stored, so rewriting it on every reconcile is what
+        rotates it. Nothing mounts it: it authorizes the kubelet's pull and is
+        never the workload's to read. None where no registry is configured.
+        """
+        settings = get_settings()
+        if not (settings.registry_host and settings.registry_pull_hmac_key):
+            return None
+        name = registry_pull_secret_name(deployment)
+        self._provisioner.upsert_secret(
+            namespace=deployment.namespace,
+            name=name,
+            string_data={
+                ".dockerconfigjson": registry_tokens.pull_dockerconfig(
+                    settings.registry_pull_hmac_key, settings.registry_host, deployment.user_id
+                )
+            },
+            labels={
+                "app.kubernetes.io/managed-by": "caelus",
+                "app.kubernetes.io/instance": deployment.name,
+                "caelus.dev/component": "registry-pull",
+            },
+            secret_type="kubernetes.io/dockerconfigjson",
+        )
+        return name
+
     def _ensure_vars_secret(
         self, deployment: DeploymentORM, release: DeploymentReleaseORM
     ) -> str | None:
@@ -643,6 +680,7 @@ class DeploymentReconciler:
         storage: object_storage.ObjectStorageCredentials | None = None,
         database: relational_storage.DatabaseCredentials | None = None,
         vars_secret: str | None = None,
+        pull_secret: str | None = None,
     ) -> dict:
         template_values.validate_user_values(deployment.user_values_json, template.values_schema_json)
         system_overrides = self._build_system_overrides(
@@ -651,6 +689,7 @@ class DeploymentReconciler:
             storage=storage,
             database=database,
             vars_secret=vars_secret,
+            pull_secret=pull_secret,
         )
         return template_values.merge_values_scoped(
             template.system_values_json,
@@ -667,6 +706,7 @@ class DeploymentReconciler:
         storage: object_storage.ObjectStorageCredentials | None = None,
         database: relational_storage.DatabaseCredentials | None = None,
         vars_secret: str | None = None,
+        pull_secret: str | None = None,
     ) -> dict | None:
         """Combine all system-controlled value overrides under the ``caelus`` namespace.
 
@@ -684,6 +724,7 @@ class DeploymentReconciler:
             cls._build_vars_overrides(vars_secret),
             cls._build_release_overrides(release),
             cls._build_ssh_overrides(),
+            cls._build_registry_overrides(pull_secret),
         ):
             if part:
                 overrides = template_values.deep_merge(overrides, part)
@@ -694,6 +735,19 @@ class DeploymentReconciler:
         """The platform SSH key every sidecar trusts, from per-environment settings."""
         key = get_settings().sftp_platform_public_key.strip()
         return {"caelus": {"ssh": {"platformPublicKey": key}}} if key else None
+
+    @staticmethod
+    def _build_registry_overrides(pull_secret: str | None) -> dict | None:
+        """Where this environment's tenant images live, and the Secret to pull with.
+
+        Injected rather than defaulted in a chart, because each environment has
+        its own registry (registry-chart-contract). No block without a published
+        pull Secret, so a chart that needs one fails loudly.
+        """
+        if pull_secret is None:
+            return None
+        prefix = f"{get_settings().registry_host}/{registry_tokens.IMAGE_REPOSITORY_PREFIX}"
+        return {"caelus": {"registry": {"prefix": prefix, "pullSecret": pull_secret}}}
 
     @staticmethod
     def _build_vars_overrides(vars_secret: str | None) -> dict | None:

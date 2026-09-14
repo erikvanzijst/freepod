@@ -154,9 +154,15 @@ class KubeAdapter:
             )
 
     def upsert_secret(
-        self, *, namespace: str, name: str, string_data: dict[str, str], labels: dict[str, str]
+        self,
+        *,
+        namespace: str,
+        name: str,
+        string_data: dict[str, str],
+        labels: dict[str, str],
+        secret_type: str = "Opaque",
     ) -> None:
-        """Declaratively upsert an Opaque Secret.
+        """Declaratively upsert a Secret, Opaque unless ``secret_type`` says otherwise.
 
         ``stringData`` rather than ``data`` so nothing here has to base64 the
         values; the API server does it. Keyed on (namespace, name), so a stable
@@ -171,7 +177,7 @@ class KubeAdapter:
             {
                 "apiVersion": "v1",
                 "kind": "Secret",
-                "type": "Opaque",
+                "type": secret_type,
                 "metadata": {"name": name, "namespace": namespace, "labels": labels},
                 "stringData": string_data,
             },
@@ -667,11 +673,21 @@ class Provisioner:
         )
 
     def upsert_secret(
-        self, *, namespace: str, name: str, string_data: dict[str, str], labels: dict[str, str]
+        self,
+        *,
+        namespace: str,
+        name: str,
+        string_data: dict[str, str],
+        labels: dict[str, str],
+        secret_type: str = "Opaque",
     ) -> None:
         """Upsert a platform-owned Secret into a deployment's namespace."""
         self.kube.upsert_secret(
-            namespace=namespace, name=name, string_data=string_data, labels=labels
+            namespace=namespace,
+            name=name,
+            string_data=string_data,
+            labels=labels,
+            secret_type=secret_type,
         )
 
     def delete_secrets_by_label(

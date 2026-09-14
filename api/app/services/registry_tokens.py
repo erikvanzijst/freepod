@@ -174,8 +174,11 @@ def mint(
     return IssuedToken(sign(private_key, claims), access, issued_at, ttl_seconds)
 
 
+IMAGE_REPOSITORY_PREFIX = "u"
+
+
 def image_repository(user_id: int) -> str:
-    return f"u/{user_id}"
+    return f"{IMAGE_REPOSITORY_PREFIX}/{user_id}"
 
 
 def pull_username(user_id: int) -> str:
@@ -185,6 +188,19 @@ def pull_username(user_id: int) -> str:
 def pull_password(hmac_key: str, user_id: int, *, version: str = PULL_CREDENTIAL_VERSION) -> str:
     message = f"registry-pull:{version}:{user_id}".encode()
     return hmac.new(hmac_key.encode(), message, hashlib.sha256).hexdigest()
+
+
+def pull_dockerconfig(hmac_key: str, host: str, user_id: int) -> str:
+    """The `.dockerconfigjson` a deployment's namespace holds for the node (D11).
+
+    `auth` is what the kubelet decodes; the other two are what registry
+    clients conventionally write alongside it.
+    """
+    username, password = pull_username(user_id), pull_password(hmac_key, user_id)
+    auth = base64.b64encode(f"{username}:{password}".encode()).decode()
+    return json.dumps(
+        {"auths": {host: {"username": username, "password": password, "auth": auth}}}
+    )
 
 
 def _verified_owner(session: Session, hmac_key: str, username: str, password: str) -> int:
