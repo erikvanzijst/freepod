@@ -176,9 +176,15 @@ fi
 # variables do not reach the dispatcher on their own. They are staged here in
 # the same NUL-delimited form as /proc/<pid>/environ, which the dispatcher can
 # read back without quoting or re-evaluating anything.
+#
+# The transfer program's paths travel the same way. A session in an application
+# that runs as another user continues under that user's credentials, which read
+# nothing under /etc/freepod, so the dispatcher exports all of it before then.
 install -m 0600 /dev/null "$SESSION_ENV"
 for var in PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE PGSSLMODE PGAPPNAME \
-    FREEPOD_RELEASE_ID FREEPOD_RELEASE_NUMBER FREEPOD_SESSION_ROOT; do
+    FREEPOD_RELEASE_ID FREEPOD_RELEASE_NUMBER FREEPOD_SESSION_ROOT \
+    FREEPOD_SFTP_LOADER FREEPOD_SFTP_LIBPATH FREEPOD_SFTP_SERVER \
+    FREEPOD_SESSION_JAIL FREEPOD_SESSION_JAIL_PREFIX; do
     [[ -n ${!var:-} ]] && printf '%s=%s\0' "$var" "${!var}" >> "$SESSION_ENV"
 done
 

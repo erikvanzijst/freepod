@@ -141,4 +141,4 @@ caelus:
   # chart-generated admin password.
   vars: {}
 
-sshSidecarImage: ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.1
+sshSidecarImage: ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2

@@ -1,0 +1,11 @@
+# A tenant image that runs as a user of its own, as `USER node` or distroless's
+# `nonroot` do. Root without CAP_SYS_PTRACE cannot read such a process through
+# /proc, so this is the fixture that proves a session does not need it. The
+# supplementary group is there to be seen from inside one.
+FROM debian:trixie-slim
+RUN set -eux; \
+    echo "nonroot-application-container" > /etc/app-marker; \
+    useradd -u 1000 -U -G users -m app
+WORKDIR /home/app
+USER app
+CMD ["sleep", "infinity"]

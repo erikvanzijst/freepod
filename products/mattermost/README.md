@@ -246,7 +246,7 @@ template version to an existing one) with:
 | Field               | Value                                                  |
 |---------------------|--------------------------------------------------------|
 | Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/mattermost` |
-| Chart version       | `1.1.1`                                                |
+| Chart version       | `1.1.2`                                                |
 | User values schema  | See [values schema](#values-schema) below              |
 | Default Helm values | See [system values](#system-values) below              |
 
