@@ -276,19 +276,19 @@ compose files and env templates; the **runtime** stage of each Dockerfile
 config); entrypoint or startup scripts. Build-stage-only changes (compilers,
 base builder images) don't matter here.
 
-Technique: a blobless clone plus a path-limited diff. It's fast even for large
-repos:
+Technique: a full clone and a path-limited diff. The repos you diff are small
+(Immich, the largest, clones in about 20 seconds), and after the clone
+everything is local:
 
 ```bash
-git clone -q --filter=blob:none --no-checkout https://github.com/<org>/<repo>.git "$scratch/<repo>"
+git clone -q --no-checkout https://github.com/<org>/<repo>.git "$scratch/<repo>"
 git -C "$scratch/<repo>" diff --stat <old-ref> <new-ref> -- <paths>
 git -C "$scratch/<repo>" diff <old-ref> <new-ref> -- <paths>
 ```
 
-In a blobless clone every file you read is a network fetch, so always give
-`git grep`, `git log -p`, `git show` and `git diff` specific paths. Run without
-paths, they download the entire repository one file at a time and can run for
-an hour.
+Check the size first: `gh api repos/<org>/<repo> --jq .size` (in KB). Above
+1 GB, don't clone it. Nextcloud's `nextcloud/server` is 7 GB, for example.
+Read what you need through the API or raw file URLs instead.
 
 `git diff` prints nothing for a path that doesn't exist, so an empty diff
 proves nothing until `git ls-tree <ref> -- <path>` shows the path at both refs.
