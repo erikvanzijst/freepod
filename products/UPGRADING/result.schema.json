@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Upgrade skill result",
+  "description": "The result.json an upgrade-product session writes. Contract: openspec capability product-upgrade-skill.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "product",
+    "dry_run",
+    "status",
+    "current_version",
+    "target_version",
+    "draft",
+    "needs_human"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "product": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "dry_run": { "type": "boolean" },
+    "status": {
+      "enum": ["up_to_date", "opened", "would_open", "skipped", "would_skip", "failed"]
+    },
+    "current_version": { "type": ["string", "null"] },
+    "target_version": { "type": ["string", "null"] },
+    "draft": { "type": "boolean" },
+    "pr_url": { "type": ["string", "null"] },
+    "branch": { "type": ["string", "null"] },
+    "skip_reason": { "type": ["string", "null"] },
+    "needs_human": { "type": "array", "items": { "type": "string" } },
+    "error": { "type": ["string", "null"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "opened" } } },
+      "then": {
+        "required": ["pr_url", "branch"],
+        "properties": {
+          "pr_url": { "type": "string", "pattern": "^https://github\\.com/[^/]+/[^/]+/pull/[0-9]+$" },
+          "branch": { "type": "string", "pattern": "^upgrade/" }
+        }
+      },
+      "else": { "properties": { "pr_url": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "status": { "enum": ["would_open", "would_skip"] } } },
+      "then": {
+        "required": ["branch"],
+        "properties": { "branch": { "type": "string", "pattern": "^upgrade/" } }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "enum": ["skipped", "would_skip"] } } },
+      "then": {
+        "required": ["skip_reason"],
+        "properties": { "skip_reason": { "type": "string", "minLength": 1 } }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "failed" } } },
+      "then": {
+        "required": ["error"],
+        "properties": { "error": { "type": "string", "minLength": 1 } }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "up_to_date" } } },
+      "then": { "properties": { "target_version": { "type": "null" } } }
+    }
+  ]
+}
