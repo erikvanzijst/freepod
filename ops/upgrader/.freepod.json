@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "env": "prod",
+  "deployment": null,
+  "user_values": {
+    "hostname": "upgrader.prutser.freepod.eu"
+  }
+}
