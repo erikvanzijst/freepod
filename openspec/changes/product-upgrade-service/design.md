@@ -91,7 +91,7 @@ Freepod gives a deployment one container and one HTTP service, and runs no sched
 So the scheduler lives in the dashboard's process. uvicorn serves the dashboard with a
 single worker, and runs execute one at a time on a background thread. The entrypoint
 applies migrations before the server starts (`alembic upgrade head && exec uvicorn …`),
-under `tini` as PID 1.
+under `tini -s`.
 
 The long-running work is already a separate process tree: pi and everything it spawns.
 What runs in the service's process is the loop that starts pi, waits for it, and redacts
@@ -103,9 +103,11 @@ Two constraints follow:
 
 - **One worker, and no `--reload` in the image.** A second worker would be a second
   scheduler with a lock of its own.
-- **`tini` as PID 1.** The timeout kills pi's process group (D12), and a process whose
-  parent has died is handed to PID 1. uvicorn does not reap such processes, so they would
-  stay behind as zombies.
+- **`tini`, as a subreaper.** The timeout kills pi's process group (D12), and a process
+  whose parent has died is handed to the nearest subreaper, or else to PID 1. uvicorn
+  reaps no such processes, so they would stay behind as zombies. On Freepod the pod's
+  containers share one process namespace, so PID 1 is the pod's `pause` process, not
+  tini; `-s` registers tini as a subreaper, and in a plain container it is PID 1 anyway.
 
 *Alternative considered:* the dashboard and the scheduler as two processes under
 supervisord, each restarted on its own. That protects a run only from the dashboard
@@ -313,8 +315,12 @@ directly and "For pull requests only" would refuse that:
   deletions". `publish-cli.yml` publishes to PyPI on any `freepod-v*` tag, so without
   this rule the App could publish a build of any commit it had pushed.
 
-The `pypi` environment also gets the owner as a required reviewer, so a publish waits for
-the owner whoever pushed the tag.
+*Alternative considered:* the owner as a required reviewer on the `pypi` environment, so a
+publish waits for approval whoever pushed the tag. Rejected: the tag ruleset already refuses
+every tag to anyone but the owner, CI's own token included, and an admin can bypass an
+environment's reviewers by default. The reviewer would stop no one the rulesets let through,
+and it would add a click to every release for the one case of the tag ruleset being turned
+off by mistake.
 
 What the App can still do, in this repository only: create, update and delete `upgrade/*`
 branches, and open, edit, close, label and comment on any PR. It cannot ship anything.
@@ -545,8 +551,7 @@ because the behavior under test there (the interrupted-run update) is Postgres b
 
 1. Merge the change: the skill, the READMEs and the service code. Nothing runs yet, since
    the skill in `products/UPGRADING/` is inert without a runner.
-2. The operator registers and installs the App, creates the two rulesets, and adds the
-   owner as a reviewer on the `pypi` environment (tasks § 9).
+2. The operator registers and installs the App, and creates the two rulesets (tasks § 9).
 3. Run `freepod init` from `ops/upgrader/`, stage the vars and secrets, and run
    `freepod deploy`. The service starts in dry-run mode.
 4. Trigger one product from the dashboard. Then let the nightly run go for several nights,
