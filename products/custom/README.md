@@ -363,7 +363,7 @@ is published. To publish by hand, from the repository root:
 | Field               | Value                                                                                                                                              |
 |---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|
 | Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/custom`                                                                                                 |
-| Chart version       | `0.9.2`                                                                                                                                            |
+| Chart version       | `0.10.1`                                                                                                                                           |
 | Default Helm values | `{}` — the chart's own defaults already carry `registry`, `placeholderImage`, and `containerPort`. Set them here only to override per environment. |
 | User values schema  | see below                                                                                                                                          |
 

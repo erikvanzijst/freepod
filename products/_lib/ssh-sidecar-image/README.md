@@ -150,8 +150,9 @@ than run, and a command given as a path reaches the application container as any
 other would.
 
 The allowlist routes; it does not confine. A developer who reaches this server
-is authenticated and gets a root shell in the application container, which
-already shares the pod's network namespace — so the sidecar is not a boundary
+is authenticated and gets a shell in the application container as the user the
+application runs as — root, for most images — which already shares the pod's
+network namespace — so the sidecar is not a boundary
 they are being held outside of, and `PermitOpen` constrains forwarding rather
 than egress in general.
 
@@ -175,6 +176,30 @@ conclusions from it; a refusal costs them a question, and a wrong container cost
 them an afternoon. Multi-container products are consequently not supported on
 an application-container session root.
 
+### Entering it as the user it runs as
+
+The dispatcher reads the application container through `/proc/<pid>` — its
+root, its environment, its working directory — and the kernel guards all of it
+with a ptrace access check. Root passes that check for a process of another uid
+or gid only by holding `CAP_SYS_PTRACE`, which Pod Security `baseline` refuses.
+So once it has identified the application, the dispatcher starts over under that
+process's uid, gid and supplementary groups (`setpriv`), keeping
+`CAP_SYS_CHROOT` as an ambient capability because entering is a chroot. An
+application running as root is entered as root, as before; one running as
+`USER node` is entered as `node`, which is what `kubectl exec` does too.
+
+The transfer program lives in the sidecar, out of reach of those credentials,
+so for a transfer the dispatcher opens the session jail as a descriptor before
+switching and runs the program through `/proc/self/fd/3`. The jail holds that
+program and nothing else, so a transfer that keeps it open exposes nothing of
+the sidecar's. A session keeps `CAP_SYS_CHROOT`, which is strictly less than a
+session in a root application holds.
+
+One application cannot be entered this way: a process that switched its user in
+place without then starting a new program, which the kernel marks as closed to
+every other process. The session says so. Starting the program as its final
+user, or `exec`ing it after the switch as `gosu` and `su-exec` do, avoids it.
+
 ### What the application image has to provide
 
 A **shell** session runs in the tenant's own image, so what it can do is a
@@ -184,9 +209,12 @@ user's own and adding a shell to it is a change they can make. The session is
 *not* redirected into the sidecar, which would have them debugging a container
 that is not theirs.
 
-**File transfer** needs nothing of the tenant's, with one exception: a
-hand-built image carrying no `/etc/passwd` at all cannot host one, because the
-transfer program resolves the user it runs as before it does anything else.
+**File transfer** needs nothing of the tenant's, with one exception: the
+image's `/etc/passwd` must name the user the application runs as, because the
+transfer program resolves the user it runs as before it does anything else. A
+hand-built image with no `/etc/passwd`, or an application started as a bare uid
+its image does not name, cannot host one; a shell and remote commands still
+work there.
 
 ### The banner
 

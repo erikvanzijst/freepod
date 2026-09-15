@@ -120,9 +120,15 @@ A tenant's image is theirs and commonly contains no such helper — the image th
 - **WHEN** a client uploads a file to an application-rooted deployment
 - **THEN** it appears in the application container's own filesystem, not in the sidecar's
 
+A transfer into an application container runs as the application's user, and the transfer program resolves the user it runs as before it does anything else. That user MUST therefore be named in the application image's user database, and a transfer where it is not MUST be refused with a reason naming the uid. This is the one thing the image asks of a tenant's image for a transfer, and it is what `USER` in a Dockerfile ordinarily provides.
+
 #### Scenario: The tenant's image is not consulted
 - **WHEN** a session requests file transfer
 - **THEN** the server uses its own tooling regardless of what the application image contains
+
+#### Scenario: A transfer as a user the image does not name is refused
+- **WHEN** a transfer is requested into an application that runs as a uid its image's user database does not name
+- **THEN** it is refused, and the reason names the uid
 
 ### Requirement: Whether a session may write follows from the filesystem
 Whether a session may modify what it can reach MUST be taken from the filesystem of the declared path rather than from a separate setting. A declared path that is mounted read-only MUST be served read-only.

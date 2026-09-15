@@ -15,8 +15,11 @@
 # interpreting rather than anything here.
 set -uo pipefail
 
+# Set only when this program re-enters itself under the application's
+# credentials (see below), to the process it identified. sshd passes nothing.
+readonly entered_pid=${1:-}
+
 readonly SESSION_ENV=/etc/freepod/session-env
-readonly SFTP_ENV=/etc/freepod/sftp-server.env
 readonly SHELLS=(/bin/bash /bin/sh /bin/ash /busybox/sh)
 
 # Tools that live here and nowhere else. Membership is decided on the command
@@ -31,13 +34,14 @@ die() { say "$*"; exit 1; }
 # variables are staged by the entrypoint in /proc/<pid>/environ's NUL-delimited
 # form and read back here. NUL delimiting is what makes this safe for values
 # holding newlines, quotes or spaces -- nothing is parsed or re-evaluated.
+#
+# Re-entered under an application's credentials, the file is unreadable, and
+# nothing in it is needed again: it was exported before the switch.
 if [[ -r $SESSION_ENV ]]; then
     while IFS= read -r -d '' entry; do
         [[ $entry =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && export "${entry?}"
     done < "$SESSION_ENV"
 fi
-
-. "$SFTP_ENV"
 
 case ${FREEPOD_SESSION_ROOT:-} in
     app-container) session_kind=app ;;
@@ -58,6 +62,8 @@ serve_transfer() {
         || die "file transfer cannot be served into this session root: it has no /dev/null, which the transfer program opens before it does anything else."
     [[ -r ${root}/etc/passwd ]] \
         || die "file transfer cannot be served into this session root: it has no /etc/passwd, so the transfer program cannot resolve the user it runs as. Add one to the image to copy files into it."
+    grep -q "^[^:]*:[^:]*:${EUID}:" "${root}/etc/passwd" \
+        || die "file transfer cannot be served into this session root: its /etc/passwd has no entry for uid ${EUID}, the user the application runs as, so the transfer program cannot resolve the user it runs as. Add one to the image to copy files into it."
 
     is_readonly "$start" && args+=(-R)
     [[ -n $start ]] && args+=(-d "$start")
@@ -87,7 +93,7 @@ is_readonly() {
 # banner naming a uuid tells a user which release answered in a spelling they
 # cannot find in `freepod releases`. The id stays on the sidecar's startup line,
 # where it is read alongside the log stream it keys.
-[[ -t 2 ]] && say "release ${FREEPOD_RELEASE_NUMBER:-unknown}"
+[[ -t 2 && -z $entered_pid ]] && say "release ${FREEPOD_RELEASE_NUMBER:-unknown}"
 
 # --- routing ---------------------------------------------------------------
 command=${SSH_ORIGINAL_COMMAND:-}
@@ -149,7 +155,7 @@ fi
 # Grouping by cgroup is correct in both, which is what lets the harness prove
 # the production behavior rather than an approximation of it.
 find_app_pid() {
-    local self_cgroup pid cgroup comm
+    local self_cgroup pid cgroup status comm
     self_cgroup=$(< /proc/self/cgroup) || return 1
 
     local -A lowest=()
@@ -158,10 +164,13 @@ find_app_pid() {
         [[ -r /proc/$pid/cgroup ]] || continue
         cgroup=$(< "/proc/$pid/cgroup") || continue
         [[ $cgroup == "$self_cgroup" ]] && continue
-        # Every file under /proc reports a size of zero, so a test for a
-        # non-empty cmdline silently excludes everything. The exe link is the
-        # honest check: kernel threads and reaped zombies have none.
-        [[ -n $(readlink "/proc/$pid/exe" 2>/dev/null) ]] || continue
+        # An address space is the honest check: kernel threads and reaped
+        # zombies have none. The exe link would say the same, but reading it
+        # is refused for a process of another user (see below), and every file
+        # under /proc reports a size of zero, so a test for a non-empty cmdline
+        # silently excludes everything.
+        status=$(< "/proc/$pid/status") || continue
+        [[ $status == *$'\nVmSize:'* ]] || continue
         comm=$(< "/proc/$pid/comm") || continue
         [[ $comm == pause ]] && continue                  # pod infrastructure
         [[ -z ${lowest[$cgroup]:-} || pid -lt ${lowest[$cgroup]} ]] && lowest[$cgroup]=$pid
@@ -177,18 +186,55 @@ find_app_pid() {
 # Only now, once the request is known not to be a platform tool: a developer
 # reaches for psql precisely when the application is broken, so the toolbox
 # must not depend on an application container being identifiable at all.
-app_pid=$(find_app_pid)
-case $? in
-    1)  die "no application process is visible from the sidecar. The application container is not running, or the pod does not share a process namespace." ;;
-    2)  die "more than one candidate application container is visible; refusing to guess which one to enter." ;;
-esac
-readonly app_pid
+if [[ -z $entered_pid ]]; then
+    app_pid=$(find_app_pid)
+    case $? in
+        1)  die "no application process is visible from the sidecar. The application container is not running, or the pod does not share a process namespace." ;;
+        2)  die "more than one candidate application container is visible; refusing to guess which one to enter." ;;
+    esac
+
+    # --- take the application's credentials --------------------------------
+    # Everything below reads the application container through /proc/<pid>,
+    # which the kernel guards with a ptrace access check: root passes it for a
+    # process of another uid or gid only by holding CAP_SYS_PTRACE, which Pod
+    # Security `baseline` refuses. So the session takes the credentials of the
+    # process it enters, and this program starts over under them, keeping
+    # CAP_SYS_CHROOT -- the one capability entering needs -- as an ambient one.
+    app_uid="" app_gid="" app_groups=""
+    while read -r key fields; do
+        case $key in
+            Uid:)    read -r _ app_uid _ <<< "$fields" ;;
+            Gid:)    read -r _ app_gid _ <<< "$fields" ;;
+            Groups:) app_groups=${fields// /,} ;;
+        esac
+    done < "/proc/$app_pid/status"
+    [[ -n $app_uid && -n $app_gid ]] \
+        || die "the application process exited while the session was opening."
+    groups_arg=--clear-groups
+    [[ -n $app_groups ]] && groups_arg=--groups=$app_groups
+
+    # The transfer program's paths are the sidecar's, which the application's
+    # credentials cannot reach, so it is held open from here. The jail rather
+    # than the sidecar's root, because the transfer keeps it open: the jail
+    # holds the program and nothing else.
+    if $is_transfer; then
+        exec 3< "${FREEPOD_SESSION_JAIL}${FREEPOD_SESSION_JAIL_PREFIX}"
+    fi
+
+    exec setpriv --reuid="$app_uid" --regid="$app_gid" "$groups_arg" \
+        --inh-caps=-all,+sys_chroot --ambient-caps=-all,+sys_chroot \
+        -- "$0" "$app_pid"
+fi
+readonly app_pid=$entered_pid
 readonly app_root=/proc/$app_pid/root
+
+[[ -d $app_root/ ]] \
+    || die "the application process (pid ${app_pid}, uid ${EUID}) cannot be entered: it changed its user without then starting a new program, which closes it to every other process. Start it as its final user, or exec after switching."
 
 app_cwd=$(readlink "/proc/$app_pid/cwd" 2>/dev/null) || app_cwd=/
 
 if $is_transfer; then
-    serve_transfer "$app_root" "/proc/$PPID/root" "$app_cwd"
+    serve_transfer "$app_root" /proc/self/fd/3 "$app_cwd"
 fi
 
 # --- enter the application container ---------------------------------------

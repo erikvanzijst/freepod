@@ -57,6 +57,39 @@ When the rule cannot identify exactly one candidate, the dispatcher MUST say so 
 - **WHEN** no application process can be identified, because it is not running or the process namespace is not shared
 - **THEN** the dispatcher reports that plainly, naming the likely cause
 
+#### Scenario: An application running as another user is identified
+- **WHEN** the application process runs as a user other than the sidecar's
+- **THEN** the rule identifies it from what the kernel shows every process, reading nothing it withholds from another user
+
+### Requirement: A session in the application container runs with the application's credentials
+A session the dispatcher places in the application container — a shell, a command, or a file transfer — MUST run under the uid, gid and supplementary groups of the application process it entered, whichever user that is, and MUST NOT depend on a capability Pod Security `baseline` refuses.
+
+The kernel guards another process's filesystem, environment and working directory with a ptrace access check, which root passes for a process of a different user only by holding `CAP_SYS_PTRACE`. A dispatcher that entered as root would reach only applications that run as root, and images that declare a user of their own are common. Taking the application's credentials passes the check without the capability, and is what `docker exec` and `kubectl exec` do: files a session creates belong to the application, and a session can do in the container what the application can.
+
+Entering needs `CAP_SYS_CHROOT`, and a session MAY keep it. It MUST hold no other capability the application's user does not.
+
+When the application process cannot be entered under its own credentials — it changed its user without then starting a new program, which the kernel treats as closing it to other processes — the dispatcher MUST say so rather than report a missing process or a missing shell.
+
+#### Scenario: An application running as a non-root user is entered
+- **WHEN** a user opens a session against an application whose process runs as a non-root user, beside a sidecar holding no `CAP_SYS_PTRACE`
+- **THEN** the session opens in the application container and runs as that process's uid, gid and supplementary groups
+
+#### Scenario: An application running as root is entered as root
+- **WHEN** the application process runs as root
+- **THEN** the session runs as root
+
+#### Scenario: A transferred file belongs to the application
+- **WHEN** a client uploads a file to an application that runs as a non-root user
+- **THEN** the file is owned by that user
+
+#### Scenario: No capability beyond entering
+- **WHEN** a session in an application that runs as a non-root user inspects its capabilities
+- **THEN** it holds none other than `CAP_SYS_CHROOT`
+
+#### Scenario: A process closed to entry is reported
+- **WHEN** the application process changed its user in place, without starting a new program
+- **THEN** the dispatcher refuses the session, naming that cause
+
 ### Requirement: The platform's database tooling is served only where the session root is the application container
 A session requesting one of the platform's own tools — the PostgreSQL client and dump/restore tooling — MUST run it in the sidecar, where those tools live and where their connection details are, and MUST do so only where the declared session root is the application container.
 

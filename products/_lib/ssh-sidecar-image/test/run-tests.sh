@@ -23,6 +23,7 @@ readonly NET=$PREFIX-net
 readonly APP_IMAGE=$PREFIX/app
 readonly NOSHELL_IMAGE=$PREFIX/noshell
 readonly ALPINE_IMAGE=$PREFIX/alpine
+readonly NONROOT_IMAGE=$PREFIX/nonroot
 readonly PG_IMAGE=postgres:18-alpine
 readonly BUSYBOX_IMAGE=busybox:latest
 # The path a volume-rooted session is started in, and the path the chart mounts
@@ -193,6 +194,7 @@ fi
 docker build -q -f Dockerfile.app -t "$APP_IMAGE" . >/dev/null || exit 1
 docker build -q -f Dockerfile.noshell -t "$NOSHELL_IMAGE" . >/dev/null || exit 1
 docker build -q -f Dockerfile.alpine -t "$ALPINE_IMAGE" . >/dev/null || exit 1
+docker build -q -f Dockerfile.nonroot -t "$NONROOT_IMAGE" . >/dev/null || exit 1
 echo "testing image: $IMAGE"
 
 ssh-keygen -q -t ed25519 -N '' -C harness -f "$WORK/id"
@@ -231,6 +233,21 @@ run_container "$PREFIX-alpine-side" --pid="container:$PREFIX-alpine-app" \
 run_container "$PREFIX-noshell-app" --network "$NET" "${PUBLISH[@]}" "$NOSHELL_IMAGE"
 run_container "$PREFIX-noshell-side" --pid="container:$PREFIX-noshell-app" \
     --network "container:$PREFIX-noshell-app" --cap-add SYS_PTRACE "${SIDE_ENV[@]}" "$IMAGE"
+
+# Applications that run as another user, beside sidecars holding no
+# CAP_SYS_PTRACE, as under Pod Security `baseline`: one as its image's own user,
+# one as a uid its image does not name, and one that switched its user in place
+# without starting a new program afterwards.
+mapfile -t NONROOT_ENV < <(sidecar_env_nodb release-nonroot-uuid 8)
+run_container "$PREFIX-nonroot-app" --network "$NET" "${PUBLISH[@]}" \
+    -e APP_ONLY_VAR=from-the-application "$NONROOT_IMAGE"
+run_container "$PREFIX-anon-app" --network "$NET" "${PUBLISH[@]}" --user 4242:4242 "$APP_IMAGE"
+run_container "$PREFIX-dropped-app" --network "$NET" "${PUBLISH[@]}" "$APP_IMAGE" \
+    perl -MPOSIX -e 'POSIX::setgid(1000); POSIX::setuid(1000); sleep'
+for app in nonroot anon dropped; do
+    run_container "$PREFIX-$app-side" --pid="container:$PREFIX-$app-app" \
+        --network "container:$PREFIX-$app-app" "${NONROOT_ENV[@]}" "$IMAGE"
+done
 
 # A deployment of a product with no relational storage: an ordinary application
 # container beside a sidecar configured with no database and no allowlist.
@@ -271,7 +288,8 @@ run_container "$PREFIX-volshared-side" --pid="container:$PREFIX-volshared-app" \
     --env PGPASSWORD=harness-secret --env PGDATABASE=appdb "$IMAGE"
 
 for owner in "$PREFIX-app" "$PREFIX-lone" "$PREFIX-noshell-app" "$PREFIX-nodb-app" \
-             "$PREFIX-alpine-app" "$PREFIX-vol-side" "$PREFIX-volshared-app"; do
+             "$PREFIX-alpine-app" "$PREFIX-vol-side" "$PREFIX-volshared-app" \
+             "$PREFIX-nonroot-app" "$PREFIX-anon-app" "$PREFIX-dropped-app"; do
     wait_for_port "$owner" || { echo "sidecar on $owner never opened its port" >&2; docker logs "${owner/-app/-side}" 2>&1 | tail -20; exit 1; }
 done
 
@@ -836,6 +854,57 @@ expect_missing "the refusal does not claim there is no database" "no database" "
 out=$(printf 'ls\nquit\n' | sftp "${SSH_OPTS[@]}" -i "$WORK/id" -P "$sport" "root@$shost" 2>&1)
 expect_contains "file transfer still reads the mount, not the application" "marker.txt" "$out"
 expect_missing "and not the application container's filesystem" "app-marker" "$out"
+
+# --- 17. an application that runs as another user --------------------------
+# Root without CAP_SYS_PTRACE is refused another user's process under /proc, so
+# every session here opens only because it takes the application's credentials.
+group "dispatcher: an application running as another user"
+
+expect_missing "the sidecar's root cannot read the application, so the test means something" \
+    "nonroot-application-container" \
+    "$(docker exec "$PREFIX-nonroot-side" sh -c 'cat /proc/[0-9]*/root/etc/app-marker 2>/dev/null')"
+
+expect_eq "a shell session reads the application's filesystem" \
+    "nonroot-application-container" "$(ssh_to "$PREFIX-nonroot-app" 'cat /etc/app-marker' 2>/dev/null)"
+expect_eq "it runs as the application's user and group" \
+    "1000:1000" "$(ssh_to "$PREFIX-nonroot-app" 'echo "$(id -u):$(id -g)"' 2>/dev/null)"
+expect_contains "and with its supplementary groups" "users" \
+    "$(ssh_to "$PREFIX-nonroot-app" 'id -Gn' 2>/dev/null)"
+expect_eq "it carries the application's environment" \
+    "from-the-application" "$(ssh_to "$PREFIX-nonroot-app" 'echo $APP_ONLY_VAR' 2>/dev/null)"
+expect_eq "it starts in the application's working directory" \
+    "/home/app" "$(ssh_to "$PREFIX-nonroot-app" 'pwd' 2>/dev/null)"
+out=$(ssh_to "$PREFIX-nonroot-app" 2>&1 </dev/null); rc=$?
+expect_zero "a session with no command opens" "$rc"
+
+caps=$(ssh_to "$PREFIX-nonroot-app" 'awk "/^CapEff/ {print \$2}" /proc/self/status' 2>/dev/null)
+expect_eq "it holds no capability beyond CAP_SYS_CHROOT, which entering needs" \
+    "0" "$(( 16#${caps:-ffff} & ~0x40000 ))"
+
+head -c 200000 /dev/urandom > "$WORK/nonroot.bin"
+read -r host port <<< "$(endpoint_of "$PREFIX-nonroot-app")"
+scp "${SSH_OPTS[@]}" -i "$WORK/id" -P "$port" "$WORK/nonroot.bin" "root@$host:/tmp/nonroot.bin" >/dev/null 2>&1
+expect_zero "a file copy into it succeeds" "$?"
+expect_eq "it is byte-identical in the application container" \
+    "$(sha256sum < "$WORK/nonroot.bin" | cut -d' ' -f1)" \
+    "$(docker exec "$PREFIX-nonroot-app" sha256sum /tmp/nonroot.bin 2>/dev/null | cut -d' ' -f1)"
+expect_eq "and owned by the application's user, which can therefore change it" \
+    "1000" "$(docker exec "$PREFIX-nonroot-app" stat -c %u /tmp/nonroot.bin 2>/dev/null)"
+expect_contains "a transfer starts where a shell session starts" "/home/app" \
+    "$(printf 'pwd\nquit\n' | sftp "${SSH_OPTS[@]}" -i "$WORK/id" -P "$port" "root@$host" 2>&1)"
+
+# The shell needs no user database; the transfer program does, so its refusal
+# is read over a command session, the channel that carries text.
+expect_eq "a shell session opens as a uid the image does not name" \
+    "4242" "$(ssh_to "$PREFIX-anon-app" 'id -u' 2>/dev/null)"
+out=$(ssh_to "$PREFIX-anon-app" sftp-server 2>&1); rc=$?
+expect_nonzero "a transfer as that uid is refused" "$rc"
+expect_contains "the refusal names the uid" "no entry for uid 4242" "$out"
+
+out=$(ssh_to "$PREFIX-dropped-app" 'true' 2>&1); rc=$?
+expect_nonzero "an application that switched its user in place is refused" "$rc"
+expect_contains "the refusal names the cause" "changed its user" "$out"
+expect_missing "and is not reported as a missing shell" "provides no shell" "$out"
 
 # --- summary ---------------------------------------------------------------
 printf '\n\033[1m%d passed, %d failed\033[0m\n' "$PASS" "$FAIL"

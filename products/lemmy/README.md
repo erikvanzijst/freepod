@@ -245,7 +245,7 @@ The published chart is then referenced from a Caelus product template:
 | Field               | Value                                             |
 |---------------------|---------------------------------------------------|
 | Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/lemmy` |
-| Chart version       | `0.5.1`                                           |
+| Chart version       | `0.5.2`                                           |
 | User values schema  | `chart/user.schema.json` (see below)              |
 | Default Helm values | `chart/default_values.json` (see below)           |
 
