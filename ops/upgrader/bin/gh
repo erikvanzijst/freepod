@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# The gh an agent session finds first on its PATH (product-upgrade-guardrails). It keeps the
+# normal path to reading and opening; the App's permissions and the rulesets are the limit (D8).
+REAL="${UPGRADER_REAL_GH:-/usr/bin/gh}"
+deny() { echo "gh: refused by the upgrade service's guard: gh $*" >&2; exit 1; }
+dry_run() { [ "${UPGRADE_DRY_RUN:-1}" != 0 ]; }
+
+if [ -n "${UPGRADER_TOKEN_FILE:-}" ] && [ -r "$UPGRADER_TOKEN_FILE" ]; then
+  GH_TOKEN="$(cat "$UPGRADER_TOKEN_FILE")"
+  export GH_TOKEN
+fi
+
+case "${1:-}" in
+  --version|version|help|search) exec "$REAL" "$@" ;;
+  auth)
+    case "${2:-}" in
+      status) exec "$REAL" "$@" ;;
+      setup-git) exit 0 ;;  # git already has a credential helper (D8)
+      *) deny "$@" ;;
+    esac ;;
+  pr)
+    case "${2:-}" in
+      list|view|diff|checks|status) exec "$REAL" "$@" ;;
+      create) dry_run && deny "$@"; exec "$REAL" "$@" ;;
+      *) deny "$@" ;;
+    esac ;;
+  label)
+    case "${2:-}" in
+      list) exec "$REAL" "$@" ;;
+      create) dry_run && deny "$@"; exec "$REAL" "$@" ;;
+      *) deny "$@" ;;
+    esac ;;
+  issue|release|run|workflow|cache)
+    case "${2:-}" in
+      list|view|status|diff|download|watch) exec "$REAL" "$@" ;;
+      *) deny "$@" ;;
+    esac ;;
+  repo)
+    case "${2:-}" in
+      view|list) exec "$REAL" "$@" ;;
+      *) deny "$@" ;;
+    esac ;;
+  api)
+    method=GET explicit=0 fields=0
+    args=("${@:2}")
+    for ((i = 0; i < ${#args[@]}; i++)); do
+      a="${args[$i]}"
+      case "$a" in
+        -X|--method) method="${args[$((i + 1))]^^}"; explicit=1 ;;
+        -X*) method="${a#-X}"; method="${method^^}"; explicit=1 ;;
+        --method=*) method="${a#--method=}"; method="${method^^}"; explicit=1 ;;
+        -f|-F|--field|--raw-field|--input|-f*|-F*|--field=*|--raw-field=*|--input=*) fields=1 ;;
+      esac
+    done
+    [ "$method" = GET ] || deny "$@"
+    [ "$fields" = 1 ] && [ "$explicit" = 0 ] && deny "$@"
+    exec "$REAL" "$@" ;;
+  *) deny "$@" ;;
+esac

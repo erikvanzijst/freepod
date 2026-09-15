@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Upgrader{% endblock %}</title>
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"
+          integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
+          crossorigin="anonymous"></script>
+  <style>
+    body { font: 14px/1.45 system-ui, sans-serif; margin: 0 auto; max-width: 1100px; padding: 1rem; color: #1d1d1f; }
+    a { color: #0a58ca; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: .3rem .5rem; border-bottom: 1px solid #e5e5e5; vertical-align: top; }
+    .outcome { font-weight: 600; }
+    .opened, .would_open { color: #1a7f37; }
+    .failed, .timed_out, .interrupted { color: #cf222e; }
+    .muted { color: #6e7781; }
+    .card { border: 1px solid #d0d7de; border-radius: 6px; padding: .75rem 1rem; margin: 1rem 0; }
+    .message { background: #fff8c5; padding: .5rem 1rem; border-radius: 6px; }
+    iframe { width: 100%; height: 22rem; border: 1px solid #d0d7de; }
+    form { display: inline; margin-right: 1rem; }
+    code { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1><a href="/">Upgrader</a></h1>
+  {% block content %}{% endblock %}
+</body>
+</html>

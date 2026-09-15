@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "env": "prod",
+  "deployment": {
+    "id": "107d4dc1-a001-4bde-8588-d7db2c8d1e23",
+    "name": "custom-user-app-pkws5e"
+  },
+  "user_values": {
+    "hostname": "upgrader.prutser.freepod.eu"
+  }
+}

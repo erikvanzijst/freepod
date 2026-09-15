@@ -71,14 +71,6 @@ owner's own pushes, merges and tags keep working, including direct pushes to `ma
 - **WHEN** the owner pushes a commit to `master`, or merges a pull request the App opened
 - **THEN** the push or merge succeeds
 
-### Requirement: Publishing the CLI waits for the owner
-The `pypi` environment MUST list the owner as a required reviewer, so that a publish job
-waits for the owner's approval whoever pushed the tag that started it.
-
-#### Scenario: A release tag is pushed
-- **WHEN** a `freepod-v*` tag is pushed
-- **THEN** the publish job waits for the owner's approval before it uploads anything to PyPI
-
 ### Requirement: The gh guard keeps the agent's gh use to reading and opening
 The `gh` that an agent session finds first on its `PATH` MUST be a guard in front of the
 real binary. The guard supplies the current installation token to the real binary, and

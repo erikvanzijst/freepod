@@ -92,9 +92,8 @@ None. The catalog's `upstream` block (`product-catalog-format`) is consumed as s
 - **Product READMEs:** `products/immich/README.md` and `products/nextcloud/README.md`
   gain the additions in `var/proposed_readme_changes.patch`.
 - **GitHub (operator):** a GitHub App registered under the owner's account and installed
-  on this repository, a branch ruleset and a tag ruleset, and the owner as a required
-  reviewer on the `pypi` environment. The `product-upgrade` label is created by the first
-  real run.
+  on this repository, and a branch ruleset and a tag ruleset. The `product-upgrade` label is
+  created by the first real run.
 - **Freepod (operator):** one new `custom` deployment on the owner's account, with its
   database, its bucket, and its vars and secrets.
 - **Docs:** an `AGENTS.md` entry per § Documentation Layering, and

@@ -45,8 +45,10 @@ fresh clone of `master` for each product (see `product-upgrade-runs`).
 The container MUST run a single server process, with one worker, that serves the dashboard
 and executes runs on a background thread. A run MUST NOT keep the dashboard from answering.
 
-PID 1 in the container MUST be an init process that reaps orphaned processes, so that no
-process a terminated session leaves behind remains as a zombie.
+The container's init MUST reap orphaned processes, so that no process a terminated session
+leaves behind remains as a zombie. It does so as PID 1 or, where the platform puts another
+process at PID 1 (a pod whose containers share one process namespace), as a registered
+subreaper.
 
 Database schema migrations MUST be applied when the container starts, before the server
 starts.
@@ -60,6 +62,10 @@ The dashboard MUST answer `GET /healthz` with status 200, and without authentica
 #### Scenario: A timed-out session leaves no zombies
 - **WHEN** a product times out and its session's processes are terminated
 - **THEN** none of those processes remains in the container's process table
+
+#### Scenario: The init is not PID 1
+- **WHEN** the container runs with another process as PID 1, and a terminated session leaves a child behind
+- **THEN** that child is re-parented to the container's init and does not remain as a zombie
 
 #### Scenario: A release with a schema change
 - **WHEN** a release that adds a migration starts

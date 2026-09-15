@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+  {% if message %}<p class="message">{{ message }}</p>{% endif %}
+  {% include "_progress.html" %}
+  <div class="card">
+    <form method="post" action="/runs">
+      <button type="submit" {% if active %}disabled{% endif %}>Run now</button>
+    </form>
+    <form method="post" action="/runs">
+      <select name="product" required {% if active or not choices %}disabled{% endif %}>
+        {% for slug in choices %}<option value="{{ slug }}">{{ slug }}</option>{% endfor %}
+      </select>
+      <button type="submit" {% if active or not choices %}disabled{% endif %}>Run one product</button>
+    </form>
+  </div>
+  <table>
+    <thead><tr><th>Run</th><th>Trigger</th><th>Scope</th><th>Mode</th><th>Started</th><th>Duration</th><th>State</th><th>Outcomes</th></tr></thead>
+    <tbody>
+      {% for run in runs %}
+        <tr>
+          <td><a href="/runs/{{ run.id }}">{{ run.id }}</a></td>
+          <td>{{ run.trigger }}</td>
+          <td>{{ run.scope or "catalog" }}</td>
+          <td>{{ "dry run" if run.dry_run else "real" }}</td>
+          <td>{{ run.started_at.strftime("%Y-%m-%d %H:%M UTC") }}</td>
+          <td>{{ duration(run.started_at, run.finished_at) }}</td>
+          <td class="{{ run.state }}">{{ run.state }}</td>
+          <td>
+            {% set counts = {} %}
+            {% for p in run.products %}{% set _ = counts.update({p.outcome: counts.get(p.outcome, 0) + 1}) %}{% endfor %}
+            {% for outcome, n in counts | dictsort %}<span class="outcome {{ outcome }}">{{ n }} {{ outcome.replace("_", " ") }}</span>{% if not loop.last %}, {% endif %}{% endfor %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

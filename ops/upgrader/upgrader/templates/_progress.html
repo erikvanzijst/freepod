@@ -1,0 +1,20 @@
+<div id="progress" class="card" hx-get="/progress" hx-trigger="every 5s" hx-swap="outerHTML">
+  {% if run %}
+    <strong>Run <a href="/runs/{{ run.id }}">{{ run.id }}</a> is active</strong>
+    <span class="muted">({{ "dry" if run.dry_run else "real" }}, {{ run.trigger }}, {{ duration(run.started_at, None) }})</span>
+    <ul>
+      {% for p in run.products %}
+        {% if p.finished_at %}
+          <li>{{ p.slug }}: <span class="outcome {{ p.outcome }}">{{ p.outcome.replace("_", " ") }}</span>
+            <span class="muted">{{ duration(p.started_at, p.finished_at) }}</span></li>
+        {% else %}
+          <li>{{ p.slug }}: running for {{ duration(p.started_at, None) }}</li>
+        {% endif %}
+      {% endfor %}
+    </ul>
+  {% elif active %}
+    <strong>A run is starting.</strong>
+  {% else %}
+    <span class="muted">No run in progress.</span>
+  {% endif %}
+</div>

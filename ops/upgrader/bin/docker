@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# The service's image carries no docker. On a development machine the local runner puts this
+# first on the agent's PATH, so a dry run there cannot reach the host's daemon either.
+echo "docker: not available to the upgrade agent: verify from upstream sources, docs and release notes instead" >&2
+exit 127

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# The git an agent session finds first on its PATH (D9). In a blobless clone, a git grep or a
+# pickaxe or patch log with no pathspec fetches every file of the repository, one at a time.
+REAL="${UPGRADER_REAL_GIT:-/usr/bin/git}"
+args=("$@")
+i=0
+while [ $i -lt ${#args[@]} ]; do
+  case "${args[$i]}" in
+    -C|-c) i=$((i + 2)) ;;
+    -*) i=$((i + 1)) ;;
+    *) break ;;
+  esac
+done
+sub="${args[$i]:-}"
+has_paths=0 pickaxe=0 after=0
+for a in "$@"; do
+  if [ $after = 1 ]; then
+    case "$a" in
+      ''|.|./|:/|'*'|'**'|':(top)') ;;
+      *) has_paths=1 ;;
+    esac
+  else
+    case "$a" in
+      --) after=1 ;;
+      -p|--patch|-S*|-G*|--pickaxe*) pickaxe=1 ;;
+    esac
+  fi
+done
+if { [ "$sub" = grep ] || { [ "$sub" = log ] && [ $pickaxe = 1 ]; }; } && [ $has_paths = 0 ]; then
+  echo "git: refused by the upgrade service's guard: 'git $sub' without paths downloads every file of a blobless clone. Limit it with '-- <path>'; a bare '--', '.' or ':/' still means every file." >&2
+  exit 2
+fi
+exec "$REAL" "$@"
