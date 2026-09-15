@@ -123,6 +123,9 @@ detects new releases.
   version targets.
 - **Images:** one tag drives both `ghcr.io/immich-app/immich-server` and
   `ghcr.io/immich-app/immich-machine-learning`, so both must exist.
+- **Major versions:** each X.0.0 release note links a migration guide (v3:
+  `https://immich.app/blog/v3-migration`). It lists removed env vars, database
+  and hardware requirements that the release notes only summarize.
 
 Pitfalls:
 

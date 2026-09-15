@@ -128,11 +128,16 @@ block detects new releases.
   target.
 - **Official chart:** `nextcloud/helm`, `charts/nextcloud`. Its `appVersion`
   names the release a chart version targets, and it can lag behind the image.
+- **Major versions:** critical changes are listed at
+  `https://docs.nextcloud.com/server/<major>/admin_manual/release_notes/upgrade_to_<major>.html`,
+  and requirements (PHP, databases) at
+  `https://docs.nextcloud.com/server/<major>/admin_manual/installation/system_requirements.html`.
 
 Pitfalls:
 
 - Nextcloud upgrades one major version at a time. An instance can't skip a
-  major.
+  major, and must be on the latest patch release of its current major before
+  moving to the next (for example 32.0.6 → 32.0.15 → 33.x).
 - The bundled PostgreSQL (`postgres:17-alpine`) doesn't follow Nextcloud's
   version. On a new major, check its supported database versions against it.
 - The image's `config/*.config.php` files (S3, Swift, Redis, SMTP, …) only take
