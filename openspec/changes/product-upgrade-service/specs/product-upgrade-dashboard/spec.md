@@ -44,11 +44,17 @@ A run's page MUST show, for each product:
 - links to the HTML transcript and the other stored files.
 
 The links to stored files MUST be signed URLs from the object store that expire within
-one hour. The file contents MUST NOT pass through the dashboard.
+one hour. The file contents MUST NOT pass through the dashboard. The pull request
+description MUST be shown rendered from its Markdown, sanitized so that nothing in it can
+run as script.
 
 #### Scenario: A dry-run result
 - **WHEN** the owner opens a dry run in which `immich` ended as `would_open`
 - **THEN** the page shows the would-be pull request's description and patch for `immich`
+
+#### Scenario: Markup in a description
+- **WHEN** a would-be pull request's description contains a `<script>` element
+- **THEN** the page shows the description rendered, without the script
 
 #### Scenario: Reading a transcript
 - **WHEN** the owner follows a product's transcript link
@@ -60,11 +66,16 @@ one hour. The file contents MUST NOT pass through the dashboard.
 
 ### Requirement: Runs can be started from the dashboard
 The dashboard MUST offer "Run now", which requests a run of the whole catalog, and "Run
-one product", which requests a run of one product chosen from those the most recent
-full-catalog run covered. Both follow the request rules in `product-upgrade-runs`.
+one product", which requests a run of any one product a whole-catalog run would cover:
+those eligible on `master`, as `product-upgrade-runs` defines. Both follow the request
+rules in `product-upgrade-runs`.
 
 While a run is active, the buttons MUST be disabled, and a request submitted anyway MUST
 be refused with a message saying why.
+
+#### Scenario: A fresh deployment
+- **WHEN** the owner opens the dashboard before any run has happened
+- **THEN** "Run one product" offers every eligible product on `master`
 
 #### Scenario: Starting a run
 - **WHEN** the owner presses "Run now" while no run is active
@@ -79,10 +90,33 @@ While a run is active, the dashboard MUST show which product is running and for 
 and the outcomes of the products that have finished. The display MUST refresh itself at
 least every ten seconds without a page reload.
 
+It MUST also show the running product's session as it is written: its latest steps when
+the panel opens, then each new step, without a page reload. A refresh MUST read only what
+the session wrote since the previous refresh, so that its cost does not grow with the
+length of the transcript. Every step MUST be redacted as stored files are
+(`product-upgrade-history`) and shown as plain text: nothing from the transcript is
+rendered as markup.
+
 #### Scenario: Watching a run
 - **WHEN** the owner has the dashboard open while the second of three products runs
 - **THEN** the page names the running product and its elapsed time, and shows the first product's outcome
 - **AND** when the second product finishes, the page shows its outcome without being reloaded
+
+#### Scenario: Opening the panel mid-session
+- **WHEN** the owner opens the dashboard after a product's session has written many steps
+- **THEN** the panel shows the session's latest steps, not the whole transcript
+
+#### Scenario: A new step
+- **WHEN** the running session writes a step
+- **THEN** the panel adds it within ten seconds, and that refresh fetches no step already shown
+
+#### Scenario: A secret in the live session
+- **WHEN** the running session prints an installation token minted for it
+- **THEN** the panel shows `[redacted:github-token]` in its place
+
+#### Scenario: Markup in the live session
+- **WHEN** a step contains `<script>alert(1)</script>`
+- **THEN** the panel shows that text, and nothing runs
 
 ### Requirement: Each pull request's current state is shown
 For every product result with a pull request URL, the dashboard MUST show the pull

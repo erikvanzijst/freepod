@@ -42,9 +42,11 @@
 
 - [x] 6.1 Add the FastAPI app with Basic authentication and `/healthz` (D13) — verify tests: 401 without credentials and with a wrong password; with `DASHBOARD_PASSWORD` unset every page except `/healthz` is refused; `/healthz` answers 200
 - [x] 6.2 Add the run history and run pages, with signed links that expire within one hour — verify `TestClient` tests with a fake S3: newest run first, a `would_open` product shows its description and patch, and links carry the expiry
-- [x] 6.3 Add "Run now" and "Run one product" — verify tests: both are refused while a run is active, and product choices come from the most recent full-catalog run
+- [x] 6.3 Add "Run now" and "Run one product" — verify tests: both are refused while a run is active, and product choices are the products eligible on `master`, with no run needed first
 - [x] 6.4 Add the progress fragment and htmx polling every five seconds — verify a test that the fragment names the running product and its elapsed time, and lists the finished products' outcomes
 - [x] 6.5 Show PR state from GitHub with a five-minute in-memory cache — verify tests with a fake GitHub: a merged PR shows as merged, a cached state is reused within five minutes, and an unreachable GitHub renders the page with the state unknown
+- [x] 6.6 Stream the running session in the progress panel (D13): a byte-offset reader of pi's transcript, redacted steps in a terminal-style layout, and a console kept across refreshes that fetches only new steps — verify tests: opening returns the latest steps and the end offset, a refresh returns only new steps, a partial line waits, an oversized line is skipped with a note, a rewritten file restarts from its end, a minted token is redacted, and a `<script>` in a step arrives escaped
+- [x] 6.7 Render the pull request description as sanitized Markdown in the browser (D13) — verify in a browser that its headings, tables and `<details>` sections render, and that no `<script>` element survives
 
 ## 7. Notifications
 

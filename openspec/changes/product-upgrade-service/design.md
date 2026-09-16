@@ -469,6 +469,21 @@ with read access to pull requests only (D8), and are cached in memory for five m
 A page load then costs at most one request per PR not already cached, well inside
 GitHub's limit of 5,000 requests an hour.
 
+The progress panel also streams the running product's session. The runner registers that
+session's directory and redactor in memory, which the single process (D1) makes possible,
+and `/live/<result>` reads pi's transcript by byte offset. A panel that opens reads the
+file's last 64 KiB and shows the latest twenty steps. Each later refresh, every three
+seconds, seeks to its offset and reads at most 256 KiB, up to the last complete line, so it
+costs what pi wrote since the previous refresh, never the whole transcript. pi appends to
+the file from its first reply on; should the file shrink, the next read starts again from
+its end. Each line is redacted before it is parsed, and the steps are rendered as escaped
+text in a layout modeled on Claude Code's terminal view. Unlike the stored HTML export
+(D6), nothing from the transcript becomes markup on the dashboard's origin.
+
+The pull request description is fetched by the browser from its signed link, rendered as
+Markdown with marked and sanitized with DOMPurify, so it reads as it will on GitHub. The
+patch stays plain text in a sandboxed frame.
+
 ### D14: Email only when something needs the owner
 
 The service sends one email per run, when the run ends, and only if a product opened (or
