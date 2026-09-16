@@ -274,6 +274,10 @@
     .expand-body .paper { box-shadow: none; }
     .expand-body .paper figcaption, .expand-body .widget { display: none; }
     .expand-body .markdown, .expand-body .patch { height: min(78vh, 980px); }
+    .terminal-bar .widget { margin-left: 12px; border-color: var(--line-2); color: var(--fog-3); }
+    .terminal-bar .widget:hover:not(:disabled) { border-color: var(--amber); color: var(--amber); background: var(--amber-dim); }
+    .expand-body .terminal { box-shadow: none; border: 0; border-radius: 0; }
+    .expand-body .terminal .console { max-height: none; height: min(74vh, 900px); }
     .markdown > :first-child { margin-top: 0; }
     .markdown h1, .markdown h2, .markdown h3, .markdown h4 { font-family: var(--display); text-transform: none; letter-spacing: 0.01em; color: #1c1813; margin: 1.2em 0 0.4em; line-height: 1.1; }
     .markdown h1 { font-size: 26px; } .markdown h2 { font-size: 21px; } .markdown h3 { font-size: 17px; }
@@ -326,6 +330,16 @@
     </div>
   </header>
   <main>{% block content %}{% endblock %}</main>
+  {# One dialog for every panel that can be read at full width: a run's documents and a
+     running session's console. The panel itself moves in and back out, so nothing it holds
+     is fetched or rendered again. #}
+  <dialog class="expand" id="expand">
+    <div class="expand-bar">
+      <span class="expand-title"></span>
+      <button type="button" class="expand-close" autofocus>Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="expand-body"></div>
+  </dialog>
   <footer>freepod · upgrade-product skill · runs one product at a time, one fresh session each</footer>
   <script>
     document.addEventListener("htmx:afterSwap", function (event) {
@@ -350,10 +364,56 @@
     // animations, so the terminals are refetched only when the set of running products changes.
     function syncTerminals() {
       var progress = document.getElementById("progress"), box = document.getElementById("terminals");
+      // Not while one is open over the page: the refetch would replace the very console
+      // being read, and its steps cannot be fetched again.
+      if (expanded) return;
       if (!progress || !box || box.dataset.running === progress.dataset.running) return;
       box.dataset.running = progress.dataset.running;
       htmx.ajax("GET", "/terminals", { target: "#terminals", swap: "innerHTML" });
     }
+
+    // Opening a panel over the page moves the panel itself, so a console keeps its poller,
+    // its steps and its following of the session: nothing is refetched and nothing re-rendered.
+    // Re-parenting resets scrollTop, so the reading position is carried across by hand.
+    var expanded = null;
+    function openExpanded(button) {
+      var panel = button.closest(".paper, .terminal"), dialog = document.getElementById("expand");
+      if (!panel || !dialog || !dialog.showModal) return;
+      var scroller = panel.querySelector(".console, .markdown, .patch");
+      // The position is followed rather than read at each move: a closed dialog is
+      // display:none, so a hidden element reports no scroll and accepts none either.
+      var position = scroller ? scroller.scrollTop : 0;
+      function track() { position = scroller.scrollTop; }
+      // A move gives the element no layout until it is read back, and scrollTop set on an
+      // element that has none is silently clamped to zero -- the top of the log.
+      function place() { void scroller.offsetHeight; scroller.scrollTop = position; }
+      if (scroller) scroller.addEventListener("scroll", track);
+      var slot = document.createComment("expanded");
+      panel.replaceWith(slot);
+      dialog.querySelector(".expand-title").textContent = panel.dataset.title || "";
+      dialog.querySelector(".expand-body").replaceChildren(panel);
+      expanded = panel;
+      dialog.showModal();
+      if (scroller) place();
+      dialog.addEventListener("close", function () {
+        if (slot.isConnected) slot.replaceWith(panel); else panel.remove();
+        if (scroller) {
+          place();
+          scroller.removeEventListener("scroll", track);
+        }
+        expanded = null;
+        button.focus();
+        syncTerminals();
+      }, { once: true });
+    }
+    document.addEventListener("click", function (event) {
+      var dialog = document.getElementById("expand");
+      var button = event.target.closest(".widget");
+      if (button) return openExpanded(button);
+      // The backdrop is the dialog itself: a click that lands on it, rather than on the
+      // panel inside it, closes.
+      if (dialog && (event.target === dialog || event.target.closest(".expand-close"))) dialog.close();
+    });
     // The history only changes when a run or a product starts or finishes; refreshing it on every
     // poll would restart its row animations.
     function syncLogbook() {

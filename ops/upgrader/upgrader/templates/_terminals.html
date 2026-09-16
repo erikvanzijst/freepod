@@ -1,6 +1,11 @@
 {% if run %}{% for p in run.products if not p.finished_at %}
-  <div class="terminal" id="live-{{ p.id }}">
-    <div class="terminal-bar"><i></i><i></i><i></i><span>pi · {{ p.slug }} · {{ run.model or "model" }}</span><span class="live-tag">● live</span></div>
+  <div class="terminal" id="live-{{ p.id }}" data-title="pi · {{ p.slug }} · run {{ run.id }}">
+    <div class="terminal-bar"><i></i><i></i><i></i><span>pi · {{ p.slug }} · {{ run.model or "model" }}</span><span class="live-tag">● live</span>
+      <button type="button" class="widget" aria-label="Expand the session of {{ p.slug }}">
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Expand
+      </button>
+    </div>
     <div class="console" id="console-{{ p.id }}" role="log" aria-live="polite" aria-label="{{ p.slug }} session">
       <p class="waiting">Waiting for the session's first reply…</p>
     </div>

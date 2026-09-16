@@ -110,6 +110,17 @@ length of the transcript. Every step MUST be redacted as stored files are
 (`product-upgrade-history`) and shown as plain text: nothing from the transcript is
 rendered as markup.
 
+The running session's panel MUST also open over the page, as a run's documents do, and
+opening or closing it MUST NOT reload it. A reload would cost the steps already shown: a
+refresh reads only what the session wrote since the previous one, so what a reader has
+been watching cannot be fetched again. The panel MUST keep its steps, its place in the
+log and its following of the session across both.
+
+#### Scenario: Opening a running session over the page
+- **WHEN** the owner opens the running session's panel over the page and closes it again
+- **THEN** the steps already shown are still there, in the same place in the log
+- **AND** no step is fetched a second time, and new steps keep arriving throughout
+
 #### Scenario: Watching a run
 - **WHEN** the owner has the dashboard open while the second of three products runs
 - **THEN** the page names the running product and its elapsed time, and shows the first product's outcome

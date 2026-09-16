@@ -54,6 +54,8 @@
 
 - [x] 6.8 Render the patch as text rather than in a frame, and give each pane a control that opens it over the page — verify tests that the run page carries a patch element fetched from the signed link and one control per pane, and in a browser that a diff's lines are coloured, that expanding and closing a pane fetches nothing again, and that Escape closes it
 
+- [x] 6.9 Give the running session's panel the same expand control, moving the panel itself so its poller and steps travel with it and carrying its scroll position across the move — verify a test that the terminals fragment carries the control, and in a browser that the log keeps its steps and its scroll position when opened and closed, that new steps still arrive while it is open, and that the set of running products is re-synced on close
+
 ## 7. Notifications
 
 - [x] 7.1 Implement the noteworthy rule and compose the email (D14) — verify tests with a fake SMTP server: no email when everything is up to date, one email for a `would_open` product listing its target version, `needs_human` items listed for a draft, and no email when `NOTIFY_EMAIL` is unset or the run was interrupted

@@ -234,6 +234,8 @@ def test_the_console_stays_out_of_the_polled_progress_fragment(Session, schedule
     terminals = c.get("/terminals", auth=AUTH).text
     assert f'id="live-{result_id}"' in terminals
     assert f'hx-get="/live/{result_id}" hx-trigger="load"' in terminals
+    # The console is opened over the page by moving it, so the control travels with it.
+    assert 'class="widget"' in terminals
     assert f'id="console-{result_id}"' in c.get("/", auth=AUTH).text
 
 
