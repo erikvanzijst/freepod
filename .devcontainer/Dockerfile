@@ -8,6 +8,9 @@ FROM d3fk/helm:latest AS helm
 FROM golang:1.25-bookworm AS golang
 FROM mcr.microsoft.com/devcontainers/python:3.13-trixie
 
+# Keep in sync with ops/upgrader/Dockerfile
+ARG PI_VERSION=0.85.1
+
 COPY --from=k9s /bin/k9s /usr/local/bin/k9s
 COPY --from=kubectl /opt/bitnami/kubectl/bin/kubectl /usr/local/bin/kubectl
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
@@ -63,6 +66,7 @@ RUN npm i -g @openai/codex
 RUN npm i -g @qwen-code/qwen-code@latest
 RUN npm i -g @fission-ai/openspec@latest
 RUN npm i -g @google/gemini-cli
+RUN npm i -g "@earendil-works/pi-coding-agent@${PI_VERSION}"
 RUN mkdir -p /workspace/src && chown -R vscode:vscode /workspace
 
 RUN printf 'export PATH=/usr/local/go/bin:$HOME/go/bin:$PATH\n' \

@@ -105,7 +105,7 @@ jobs:
   publish-images:
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    needs: [ui-test, api-test, catalog-lint, cli, ssh-sidecar-test, ssh-auth-test]
+    needs: [ui-test, api-test, catalog-lint, cli, ssh-sidecar-test, ssh-auth-test, upgrader-test]
     permissions:
       contents: read
       packages: write
@@ -170,5 +170,26 @@ jobs:
           push: never
           runCmd: |
             cd api
+            uv sync
+            uv run pytest -s
+
+  upgrader-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CAELUS_SND_DEVICE: /dev/null
+      CAELUS_AUDIO_GROUP: root
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Run the ops/upgrader test suite
+        uses: devcontainers/ci@v0.3
+        with:
+          imageName: ghcr.io/${{ github.repository }}-devcontainer
+          push: never
+          runCmd: |
+            cd ops/upgrader
             uv sync
             uv run pytest -s

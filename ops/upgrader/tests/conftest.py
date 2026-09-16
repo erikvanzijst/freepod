@@ -14,19 +14,30 @@ from upgrader import db
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parents[1]
+_NO_URL = """\
+UPGRADER_TEST_DATABASE_URL is not set.
+
+This test suite requires a reachable PostgreSQL server; it has no
+in-memory mode. Inside the devcontainer the variable is set for you by
+docker-compose.yml. Outside it:
+
+    docker compose up -d postgres
+    export UPGRADER_TEST_DATABASE_URL=postgresql+psycopg://caelus:caelus@postgres:5432/upgrader_test
+
+The connecting user must hold CREATEDB (or be a superuser): the suite
+creates and migrates the test database itself.
+"""
 
 
 def _test_database_url() -> str:
-    url = os.environ.get("UPGRADER_TEST_DATABASE_URL")
-    if url:
-        return url
-    base = os.environ.get("CAELUS_TEST_DATABASE_URL")
-    if not base:
+    raw = os.environ.get("UPGRADER_TEST_DATABASE_URL")
+    if not raw:
+        raise pytest.UsageError(_NO_URL)
+    if not make_url(raw).database:
         raise pytest.UsageError(
-            "Set UPGRADER_TEST_DATABASE_URL to a Postgres database the suite may drop and "
-            "recreate (the connecting user needs CREATEDB)."
+            f"UPGRADER_TEST_DATABASE_URL names no database: {raw!r}"
         )
-    return make_url(base).set(database="upgrader_test").render_as_string(hide_password=False)
+    return raw
 
 
 @pytest.fixture(scope="session")
