@@ -81,6 +81,8 @@ def test_thinking_level_reaches_the_model_as_reasoning_effort(tmp_path, level, e
             ["pi", "--model", "upgrader/qwen", "--thinking", level, "--no-session", "--no-tools",
              "--no-skills", "--no-extensions", "--no-context-files", "--offline", "-p", "--", "hi"],
             cwd=tmp_path, capture_output=True, text=True, timeout=120, check=True,
+            # pi reads stdin even under -p; -s would leave it CI's open pipe. As runner.py does.
+            stdin=subprocess.DEVNULL,
             env={**os.environ, "PI_CODING_AGENT_DIR": str(agent), "PI_TELEMETRY": "0",
                  "INFERENCE_API_KEY": "sk-test"},
         )

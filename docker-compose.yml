@@ -40,7 +40,6 @@ services:
       - "8000:8000" # api
       - "8501:8501" # streamlit
     env_file:
-      # Must declare DEPRUTSER_API_KEY
       - path: ./.env
         required: false
     environment:
