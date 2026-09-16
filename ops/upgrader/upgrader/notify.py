@@ -12,10 +12,25 @@ from .db import Run
 log = logging.getLogger(__name__)
 
 NOTEWORTHY = {"opened", "would_open", "failed", "timed_out"}
+SUBJECT_PRODUCTS = 3
 
 
 def noteworthy(run: Run) -> bool:
     return run.state == "completed" and any(p.outcome in NOTEWORTHY for p in run.products)
+
+
+def headline(run: Run) -> str:
+    """The products the email is about, for scanning in an inbox: each named with its outcome
+    and the version it moves to. The products that need nothing from the owner are left out,
+    since they are not why the email was sent."""
+    parts = []
+    for p in run.products:
+        if p.outcome not in NOTEWORTHY:
+            continue
+        name = f"{p.slug} {p.target_version}" if p.target_version else p.slug
+        parts.append(f"{name} {p.outcome.replace('_', ' ')}")
+    shown, rest = parts[:SUBJECT_PRODUCTS], len(parts) - len(parts[:SUBJECT_PRODUCTS])
+    return ", ".join(shown) + (f" +{rest} more" if rest else "")
 
 
 def compose(run: Run, settings: Settings) -> EmailMessage:
@@ -45,7 +60,7 @@ def compose(run: Run, settings: Settings) -> EmailMessage:
         lines += ["", f"{settings.dashboard_url.rstrip('/')}/runs/{run.id}"]
 
     message = EmailMessage()
-    message["Subject"] = f"[upgrader] {mode} {run.id}: {summary}"
+    message["Subject"] = f"[upgrader] {mode} {run.id}: {headline(run) or summary}"
     message["From"] = settings.notify_from
     message["To"] = settings.notify_email
     message.set_content("\n".join(lines) + "\n")

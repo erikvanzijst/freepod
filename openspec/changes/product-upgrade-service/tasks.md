@@ -65,6 +65,8 @@
 - [x] 7.1 Implement the noteworthy rule and compose the email (D14) — verify tests with a fake SMTP server: no email when everything is up to date, one email for a `would_open` product listing its target version, `needs_human` items listed for a draft, and no email when `NOTIFY_EMAIL` is unset or the run was interrupted
 - [x] 7.2 Log a failed send, and leave all outcomes unchanged — verify a test where the fake SMTP server refuses the message
 
+- [x] 7.3 Name the noteworthy products in the email subject, each with its outcome and the version it moves to, capped with a count of the rest — verify tests: a single `would_open` product and its target version in the subject, several noteworthy products named while an up-to-date one is not, and a run with more noteworthy products than the subject carries
+
 ## 8. Local end-to-end
 
 - [ ] 8.1 Run the built image locally against a local Postgres, a local S3 and an SMTP sink, in dry-run mode against the real inference endpoint. Request "Run one product" for `vaultwarden` — verify the dashboard shows the outcome and the transcript link opens, the email arrives when the outcome is noteworthy, and no stored object contains a minted token or the key

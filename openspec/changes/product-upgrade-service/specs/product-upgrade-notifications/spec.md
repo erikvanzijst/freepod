@@ -12,6 +12,12 @@ lists every product's outcome and versions. It names each pull request, or would
 request, with the decisions it leaves to a human, and gives each failure's error. When
 `DASHBOARD_URL` is set, it links to the run's dashboard page.
 
+The subject MUST name the products that made the run noteworthy, each with its outcome and,
+where it has one, the version it moves to, so that the owner can tell from an inbox which
+product needs them without opening the email. A product that needs nothing from the owner
+MUST NOT be named in the subject. When more products are noteworthy than the subject
+carries, it MUST name the first few and say how many more there are.
+
 A run whose products all ended as `up_to_date`, `skipped` or `would_skip` MUST NOT send
 an email. Neither does a run that did not complete — one interrupted by a restart, or one
 the owner canceled — nor any run while `NOTIFY_EMAIL` is unset.
@@ -23,6 +29,14 @@ the owner canceled — nor any run while `NOTIFY_EMAIL` is unset.
 #### Scenario: A dry run would open a pull request
 - **WHEN** a dry run completes with `vaultwarden` as `would_open` and the others up to date
 - **THEN** one email is sent to `NOTIFY_EMAIL`, naming the would-be `vaultwarden` pull request and its target version
+
+#### Scenario: The subject names the product
+- **WHEN** a dry run completes with `vaultwarden` as `would_open` at 1.37.3 and every other product up to date
+- **THEN** the subject names `vaultwarden` and 1.37.3, and names no up-to-date product
+
+#### Scenario: More products than the subject carries
+- **WHEN** a run completes with five products that need the owner
+- **THEN** the subject names the first few and says how many more there are
 
 #### Scenario: A draft that needs decisions
 - **WHEN** a real run opens a draft pull request whose result lists decisions needing a human

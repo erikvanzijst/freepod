@@ -72,6 +72,33 @@ def test_one_email_for_a_would_open_product():
     assert "https://upgrader.freepod.eu/runs/7" in body
 
 
+def test_the_subject_names_the_product_and_the_version_it_moves_to():
+    r = run(product("immich", "up_to_date"),
+            product("vaultwarden", "would_open", target_version="1.37.3", branch="upgrade/x"))
+    assert notify.send(r, settings(), smtp=FakeSMTP)
+    assert FakeSMTP.sent[0][1]["Subject"] == "[upgrader] Dry run 7: vaultwarden 1.37.3 would open"
+
+
+def test_the_subject_names_every_product_that_needs_the_owner():
+    r = run(product("immich", "opened", target_version="v4.0.0",
+                    pr_url="https://github.com/erikvanzijst/freepod/pull/130"),
+            product("nextcloud", "timed_out"),
+            product("vaultwarden", "up_to_date"),
+            dry_run=False)
+    assert notify.send(r, settings(), smtp=FakeSMTP)
+    subject = FakeSMTP.sent[0][1]["Subject"]
+    assert subject == "[upgrader] Run 7: immich v4.0.0 opened, nextcloud timed out"
+    # A product that needs nothing from the owner is not why the email was sent.
+    assert "vaultwarden" not in subject
+
+
+def test_a_subject_with_more_products_than_it_can_carry_says_how_many_more():
+    r = run(*[product(f"p{i}", "failed", error="x") for i in range(5)])
+    assert notify.send(r, settings(), smtp=FakeSMTP)
+    assert FakeSMTP.sent[0][1]["Subject"] == \
+        "[upgrader] Dry run 7: p0 failed, p1 failed, p2 failed +2 more"
+
+
 def test_a_draft_lists_its_decisions():
     r = run(product("immich", "opened", target_version="v4.0.0", draft=True,
                     pr_url="https://github.com/erikvanzijst/freepod/pull/130",
