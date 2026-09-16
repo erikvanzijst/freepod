@@ -19,5 +19,5 @@
   {% include "_progress.html" %}
   <div id="terminals" data-running="{{ running_ids }}">{% include "_terminals.html" %}</div>
 
-  <div id="logbook" data-state="{{ 'true' if run or active else 'false' }}|{{ running_ids }}">{% include "_logbook.html" %}</div>
+  <div id="logbook" data-state="{{ run.id if run else '' }}|{{ 'true' if run or active else 'false' }}|{{ running_ids }}">{% include "_logbook.html" %}</div>
 {% endblock %}

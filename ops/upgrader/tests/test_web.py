@@ -266,6 +266,29 @@ def test_canceling_what_is_not_running_changes_nothing(Session, scheduler, githu
     assert cancel.asked() is False
 
 
+def test_the_logbook_follows_a_run_that_ends_after_its_last_product(Session, scheduler, github):
+    """The runner records a product's finish before the run's own, so when the run ends nothing
+    is running any more. Only the run's id tells that apart from the moment before it."""
+    running_row = product("nextcloud", "running", finished=False)
+    run = add_run(Session, running_row, finished=False)
+    c = client(Session, scheduler, github)
+    assert f'data-run="{run.id}"' in c.get("/progress", auth=AUTH).text
+    assert f'data-state="{run.id}|true|{running_row.id}"' in c.get("/", auth=AUTH).text
+
+    with Session.begin() as s:
+        row = s.get(db.ProductResult, running_row.id)
+        row.outcome, row.finished_at = "canceled", db.now()
+    window = c.get("/progress", auth=AUTH).text
+    assert f'data-run="{run.id}"' in window and 'data-running=""' in window
+
+    with Session.begin() as s:
+        stored = s.get(db.Run, run.id)
+        stored.state, stored.finished_at = "canceled", db.now()
+    ended = c.get("/progress", auth=AUTH).text
+    assert 'data-run=""' in ended and 'data-running=""' in ended
+    assert ">canceled</td>" in c.get("/logbook", auth=AUTH).text
+
+
 def test_the_logbook_refreshes_on_its_own(Session, scheduler, github):
     add_run(Session, product("immich", "would_open"))
     c = client(Session, scheduler, github)

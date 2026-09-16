@@ -28,9 +28,17 @@ refused.
 The dashboard MUST list runs newest first. Each entry shows the run's trigger, scope,
 mode, start time, duration, state, and how many products ended in each outcome.
 
+The history MUST keep up with the run in progress without a page reload: when a run ends,
+however it ends, its entry MUST show the state it ended in rather than the state it held
+while it was running.
+
 #### Scenario: Listing runs
 - **WHEN** the owner opens the dashboard
 - **THEN** the most recent run is listed first, marked as a dry run or a real run
+
+#### Scenario: A run ends while the history is on screen
+- **WHEN** the owner is watching the dashboard and the active run ends, whether it completed or was canceled
+- **THEN** that run's entry shows the state it ended in, without the page being reloaded
 
 ### Requirement: A run's results show everything recorded about each product
 A run's page MUST show, for each product:

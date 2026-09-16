@@ -1,4 +1,4 @@
-<section id="progress" class="watch{% if run %} is-active{% endif %}" data-active="{{ 'true' if run or active else 'false' }}" data-running="{% if run %}{{ run.products | rejectattr('finished_at') | map(attribute='id') | join(',') }}{% endif %}" hx-get="/progress" hx-trigger="every 5s" hx-swap="outerHTML">
+<section id="progress" class="watch{% if run %} is-active{% endif %}" data-run="{{ run.id if run else '' }}" data-active="{{ 'true' if run or active else 'false' }}" data-running="{% if run %}{{ run.products | rejectattr('finished_at') | map(attribute='id') | join(',') }}{% endif %}" hx-get="/progress" hx-trigger="every 5s" hx-swap="outerHTML">
   {% if run %}
     <header class="watch-head">
       <span class="pulse" aria-hidden="true"></span>

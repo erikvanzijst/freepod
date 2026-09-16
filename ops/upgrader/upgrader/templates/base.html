@@ -429,7 +429,11 @@
     function syncLogbook() {
       var progress = document.getElementById("progress"), box = document.getElementById("logbook");
       if (!progress || !box) return;
-      var state = progress.dataset.active + "|" + progress.dataset.running;
+      // The run's id belongs in the key. A run's last product is recorded as finished before
+      // the run itself is, so by the time the run ends nothing is running and the panel has
+      // already been refetched: neither of the other two changes, and the run's row would go
+      // on saying "running" until the page was reloaded.
+      var state = progress.dataset.run + "|" + progress.dataset.active + "|" + progress.dataset.running;
       if (box.dataset.state === state) return;
       box.dataset.state = state;
       htmx.ajax("GET", "/logbook", { target: "#logbook", swap: "innerHTML" });

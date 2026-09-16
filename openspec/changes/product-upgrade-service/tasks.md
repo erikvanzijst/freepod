@@ -60,6 +60,8 @@
 
 - [x] 6.10 Add the cancel control to the active run's panel, behind a confirmation — verify tests: the progress fragment carries the control while a run is active and carries none otherwise, a cancel of the active run redirects with a message and marks the run, and a cancel naming a finished or unknown run is refused
 
+- [x] 6.11 Key the history's refresh on the active run's id as well as on what is running, so that a run ending refreshes its row: its last product is recorded as finished before the run is, so neither the running products nor the active flag need change when it ends — verify a test that the progress fragment carries the run's id while it runs, still carries it in the window where the product has finished and the run has not, and empties it once the run has finished
+
 ## 7. Notifications
 
 - [x] 7.1 Implement the noteworthy rule and compose the email (D14) — verify tests with a fake SMTP server: no email when everything is up to date, one email for a `would_open` product listing its target version, `needs_human` items listed for a draft, and no email when `NOTIFY_EMAIL` is unset or the run was interrupted
