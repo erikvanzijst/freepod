@@ -106,6 +106,9 @@ start a new agent session, in a new workspace, holding a new clone of `master`, 
 - `UPGRADE_PRODUCT` set to the product's slug;
 - `UPGRADE_DRY_RUN` set to `1` in dry-run mode and `0` otherwise;
 - `UPGRADE_OUT_DIR` pointing into that workspace;
+- `UPGRADE_RUN_URL` naming the product's place on its run's page, so that the session can
+  send a reviewer back to it (`product-upgrade-skill`), and empty when the deployment has
+  no public URL configured;
 - the skill loaded from `products/UPGRADING/SKILL.md` in that clone.
 
 The workspace MUST be deleted when the product finishes, whatever its outcome. A product
@@ -119,6 +122,10 @@ that fails MUST NOT stop the run's remaining products.
 #### Scenario: One product fails
 - **WHEN** the first product of a run ends as `failed`
 - **THEN** the run's next product still runs
+
+#### Scenario: The session is told where its run is published
+- **WHEN** a product's session starts while the deployment has a public dashboard URL
+- **THEN** `UPGRADE_RUN_URL` names that run's page and the product within it
 
 ### Requirement: Each product is bounded by a timeout
 If a product's session has not ended after `PRODUCT_TIMEOUT_MINUTES`, the service MUST

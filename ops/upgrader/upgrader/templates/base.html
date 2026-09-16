@@ -236,9 +236,44 @@
     .file.primary { border-color: rgba(240, 164, 58, 0.5); color: var(--amber); }
     .papers { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; margin-top: 20px; }
     .paper { margin: 0; border-radius: 10px; overflow: hidden; background: #f4efe4; box-shadow: 0 24px 48px -26px rgba(0, 0, 0, 0.9); }
-    .paper figcaption { padding: 9px 14px; background: #e6dfd0; color: #5b5346; font: 500 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
-    .paper iframe { display: block; width: 100%; height: 30rem; border: 0; background: #f4efe4; }
+    .paper figcaption {
+      display: flex; align-items: center; gap: 12px; padding: 6px 7px 6px 14px; background: #e6dfd0;
+      color: #5b5346; font: 500 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .widget {
+      margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px;
+      border-radius: 7px; border: 1px solid rgba(91, 83, 70, 0.3); background: transparent;
+      color: #5b5346; font: 500 9.5px var(--mono); letter-spacing: 0.09em; text-transform: uppercase;
+    }
+    .widget:hover:not(:disabled) { border-color: #9a5a10; color: #9a5a10; background: rgba(240, 164, 58, 0.16); }
     .markdown { height: 30rem; overflow: auto; padding: 18px 22px; color: #2b261f; font: 400 13.5px/1.6 var(--sans); }
+    .patch {
+      margin: 0; height: 30rem; overflow: auto; padding: 14px 0; background: #f4efe4; color: #2b261f;
+      font: 400 12px/1.6 var(--mono); white-space: pre;
+    }
+    .patch .line { display: block; padding: 0 16px; }
+    .patch .meta { color: #857b6a; }
+    .patch .hunk { color: #3c6e8f; background: #e7edf2; }
+    .patch .add { color: #2f6b34; background: #e6efe0; }
+    .patch .del { color: #8d3a2b; background: #f4e3de; }
+    .patch .loading { color: #8a8070; font-size: 11px; padding: 0 16px; }
+
+    /* A pane is read at the width its document wants, without the page giving up the
+       side-by-side view that shows the description and the patch answer each other. */
+    dialog.expand {
+      width: min(1500px, 94vw); max-width: none; max-height: 92vh; padding: 0; overflow: hidden;
+      border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--ink-2);
+      color: var(--fog); box-shadow: 0 60px 120px -40px rgba(0, 0, 0, 0.95);
+    }
+    dialog.expand::backdrop { background: rgba(8, 7, 6, 0.74); }
+    .expand-bar { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+    .expand-title { color: var(--fog-3); font: 500 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+    .expand-close { margin-left: auto; padding: 7px 12px; font: 500 11px var(--mono); }
+    .expand-close kbd { color: var(--fog-3); font: inherit; }
+    .expand-body { padding: 14px; }
+    .expand-body .paper { box-shadow: none; }
+    .expand-body .paper figcaption, .expand-body .widget { display: none; }
+    .expand-body .markdown, .expand-body .patch { height: min(78vh, 980px); }
     .markdown > :first-child { margin-top: 0; }
     .markdown h1, .markdown h2, .markdown h3, .markdown h4 { font-family: var(--display); text-transform: none; letter-spacing: 0.01em; color: #1c1813; margin: 1.2em 0 0.4em; line-height: 1.1; }
     .markdown h1 { font-size: 26px; } .markdown h2 { font-size: 21px; } .markdown h3 { font-size: 17px; }

@@ -87,6 +87,12 @@ When a pull request is opened, or would be, the same directory MUST also hold it
 description as `body.md` and its commits as `change.patch`, in real runs as well as dry
 runs.
 
+When `UPGRADE_RUN_URL` is set, `body.md` MUST end with a link to it, so that a reviewer
+reading the pull request reaches the session that wrote it: its transcript, its result
+files and its patch. It MUST be that link and not one to a stored file, because a signed
+file link expires within the hour while a pull request is read long after. When the
+variable is empty the description MUST carry no such link.
+
 The prose run report stays in the session's final message for a human to read. A runner
 MUST NOT depend on it.
 
@@ -104,6 +110,10 @@ MUST NOT depend on it.
 #### Scenario: A dry run would open a pull request
 - **WHEN** a dry run finds a newer release and no duplicate check applies
 - **THEN** `result.json` has `status` `would_open`, the would-be branch in `branch`, and no `pr_url`
+
+#### Scenario: The description leads back to the run
+- **WHEN** a session writes `body.md` while `UPGRADE_RUN_URL` is set
+- **THEN** the description ends with a link to that URL
 
 #### Scenario: A real run skips the product
 - **WHEN** a real run finds that an image the chart needs does not exist at the target tag

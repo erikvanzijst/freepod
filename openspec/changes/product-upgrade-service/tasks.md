@@ -5,6 +5,8 @@
 - [x] 1.3 Write the `result.json` contract from `product-upgrade-skill` as a JSON Schema at `products/UPGRADING/result.schema.json` — verify a test accepts one example per status, and rejects a `failed` result without `error`, a `skipped` result without `skip_reason`, and an `opened` result without `pr_url`
 - [x] 1.4 Check the skill's `result.json` instructions (D4), which the `var/` copy already carries into the repository through 1.1 — verify each `status` value is named at the step that produces it, and that the dry-run output rules in step 2.5 are unchanged
 
+- [x] 1.5 End the pull request description with a link to the run when `UPGRADE_RUN_URL` is set, and with none when it is empty — verify the skill names the run page rather than a stored file, whose signed link expires within the hour
+
 ## 2. Service skeleton (`ops/upgrader/`)
 
 - [x] 2.1 Create the uv project (`pyproject.toml`, lockfile, package layout, pytest configuration) — verify `cd ops/upgrader && uv run pytest` runs green
@@ -32,6 +34,8 @@
 - [x] 4.5 Extract session statistics from the transcript: input and output token totals, and peak context (the largest input plus cache read) — verify against a trimmed fixture transcript from the experiment with known totals
 - [x] 4.6 Implement the scheduler (D5): the interrupted-run `UPDATE` on start; the run lock, taken without waiting by a request and with waiting by the nightly trigger, and released in a `finally`; the run thread; and a missing required var failing the run's products — verify tests: a restart marks unfinished rows `interrupted` (Postgres-backed), a request while a run holds the lock is refused, a scheduled time during a run starts after it, an exception in a run releases the lock, a run of one ineligible product records it `failed`, and dashboard pages answer while a run is in progress
 
+- [x] 4.7 Pass `UPGRADE_RUN_URL` into each product's session, naming the run's page and the product within it — verify tests that the composed URL reaches the session's environment, and that a deployment with no public URL passes an empty value
+
 ## 5. History
 
 - [x] 5.1 Implement redaction (D10) — verify tests covering each secret, every token minted during the run, the decoded key and a single line of its body, repeated occurrences, a value inside a JSON string, and an unset or empty secret changing nothing
@@ -47,6 +51,8 @@
 - [x] 6.5 Show PR state from GitHub with a five-minute in-memory cache — verify tests with a fake GitHub: a merged PR shows as merged, a cached state is reused within five minutes, and an unreachable GitHub renders the page with the state unknown
 - [x] 6.6 Stream the running session in the progress panel (D13): a byte-offset reader of pi's transcript, redacted steps in a terminal-style layout, and a console kept across refreshes that fetches only new steps — verify tests: opening returns the latest steps and the end offset, a refresh returns only new steps, a partial line waits, an oversized line is skipped with a note, a rewritten file restarts from its end, a minted token is redacted, and a `<script>` in a step arrives escaped
 - [x] 6.7 Render the pull request description as sanitized Markdown in the browser (D13) — verify in a browser that its headings, tables and `<details>` sections render, and that no `<script>` element survives
+
+- [x] 6.8 Render the patch as text rather than in a frame, and give each pane a control that opens it over the page — verify tests that the run page carries a patch element fetched from the signed link and one control per pane, and in a browser that a diff's lines are coloured, that expanding and closing a pane fetches nothing again, and that Escape closes it
 
 ## 7. Notifications
 

@@ -46,7 +46,12 @@ A run's page MUST show, for each product:
 The links to stored files MUST be signed URLs from the object store that expire within
 one hour. The file contents MUST NOT pass through the dashboard. The pull request
 description MUST be shown rendered from its Markdown, sanitized so that nothing in it can
-run as script.
+run as script. The patch MUST be shown as text, with nothing in it rendered as markup.
+
+Both documents are read beside each other, at a width neither is written for. Each MUST
+therefore offer a control that opens it over the page, and closing it MUST return it to
+the page as it was, without fetching the file again: by then its signed link may have
+expired, and a reader would be shown an error in place of what they had just read.
 
 #### Scenario: A dry-run result
 - **WHEN** the owner opens a dry run in which `immich` ended as `would_open`
@@ -55,6 +60,14 @@ run as script.
 #### Scenario: Markup in a description
 - **WHEN** a would-be pull request's description contains a `<script>` element
 - **THEN** the page shows the description rendered, without the script
+
+#### Scenario: Reading a document at full width
+- **WHEN** the owner opens a product's patch from its pane
+- **THEN** it is shown over the page, and closing it returns the pane without requesting the file again
+
+#### Scenario: Markup in a patch
+- **WHEN** a patch holds a line that reads as an HTML element
+- **THEN** the page shows that line as text
 
 #### Scenario: Reading a transcript
 - **WHEN** the owner follows a product's transcript link
