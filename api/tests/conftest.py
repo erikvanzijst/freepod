@@ -448,14 +448,34 @@ def create_paid_plan_template(
     return ptv.id
 
 
+def subject_for(email: str) -> str:
+    """A stable, opaque Keycloak subject for a given email.
+
+    Every authenticated fixture derives its subject this way, so the same email
+    always presents the same subject and the ladder's subject-match branch is
+    the default path the suite exercises. A subject-less request (email only)
+    is built explicitly where the subject-less path is under test.
+    """
+    return f"sub-{email.strip().lower()}"
+
+
 ADMIN_EMAIL = "test@example.com"
-AUTH_HEADER = {"X-Auth-Request-Email": ADMIN_EMAIL}
+AUTH_HEADER = {
+    "X-Auth-Request-Email": ADMIN_EMAIL,
+    "X-Auth-Request-User": subject_for(ADMIN_EMAIL),
+}
 
 USER_EMAIL = "regular@example.com"
-USER_AUTH_HEADER = {"X-Auth-Request-Email": USER_EMAIL}
+USER_AUTH_HEADER = {
+    "X-Auth-Request-Email": USER_EMAIL,
+    "X-Auth-Request-User": subject_for(USER_EMAIL),
+}
 
 OTHER_EMAIL = "other@example.com"
-OTHER_AUTH_HEADER = {"X-Auth-Request-Email": OTHER_EMAIL}
+OTHER_AUTH_HEADER = {
+    "X-Auth-Request-Email": OTHER_EMAIL,
+    "X-Auth-Request-User": subject_for(OTHER_EMAIL),
+}
 
 
 def create_user(
@@ -469,24 +489,27 @@ def create_user(
     ``POST /api/users`` endpoint for test setup.
 
     Both user-level preconditions for deploying are settled by default: the
-    current Terms of Service are accepted, and a subdomain is claimed. Pass
-    ``accept_tos=False`` or ``claim_subdomain=False`` to leave one unsettled,
-    for tests of the flows that settle them.
+    current Terms of Service are accepted, and a subdomain is claimed. The
+    request carries the email's subject (see ``subject_for``), so the record
+    is bound from its first request. Pass ``accept_tos=False`` or
+    ``claim_subdomain=False`` to leave one unsettled, for tests of the flows
+    that settle them.
     """
-    resp = client.get("/api/me", headers={"X-Auth-Request-Email": email})
+    headers = {"X-Auth-Request-Email": email, "X-Auth-Request-User": subject_for(email)}
+    resp = client.get("/api/me", headers=headers)
     assert resp.status_code == 200, f"provisioning {email}: {resp.status_code}"
     if accept_tos:
         acc = client.post(
             "/api/me/tos-acceptance",
             json={"version": CURRENT_TOS_VERSION},
-            headers={"X-Auth-Request-Email": email},
+            headers=headers,
         )
         assert acc.status_code == 200, f"accepting tos for {email}: {acc.status_code}"
     if claim_subdomain:
         claim = client.post(
             "/api/me/subdomain",
             json={"subdomain": subdomain_for(email)},
-            headers={"X-Auth-Request-Email": email},
+            headers=headers,
         )
         assert claim.status_code == 200, f"claiming subdomain for {email}: {claim.text}"
     return resp.json()

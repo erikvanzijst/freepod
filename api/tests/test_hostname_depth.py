@@ -12,7 +12,7 @@ from app.services.hostnames import (
     require_valid_hostname_for_deployment,
     require_valid_subdomain,
 )
-from tests.conftest import OTHER_EMAIL, USER_EMAIL, create_user
+from tests.conftest import OTHER_EMAIL, USER_EMAIL, create_user, subject_for
 
 SETTINGS = CaelusSettings(
     domain="",
@@ -153,7 +153,7 @@ def test_a_single_label_is_answered_as_a_subdomain(client, wildcard_settings):
     create_user(client, USER_EMAIL)
 
     resp = client.get(
-        "/api/hostnames/alice.freepod.eu", headers={"X-Auth-Request-Email": USER_EMAIL}
+        "/api/hostnames/alice.freepod.eu", headers={"X-Auth-Request-Email": USER_EMAIL, "X-Auth-Request-User": subject_for(USER_EMAIL)}
     )
 
     assert resp.json() == {"fqdn": "alice.freepod.eu", "usable": True, "reason": None}
@@ -165,7 +165,7 @@ def test_a_claimed_label_reports_claimed(client, db_session, wildcard_settings):
     create_user(client, USER_EMAIL)
 
     resp = client.get(
-        "/api/hostnames/alice.freepod.eu", headers={"X-Auth-Request-Email": USER_EMAIL}
+        "/api/hostnames/alice.freepod.eu", headers={"X-Auth-Request-Email": USER_EMAIL, "X-Auth-Request-User": subject_for(USER_EMAIL)}
     )
 
     assert resp.json()["reason"] == "claimed"
@@ -182,7 +182,7 @@ def test_an_application_under_the_callers_own_subdomain_is_usable(
 
     resp = client.get(
         "/api/hostnames/photos.alice.freepod.eu",
-        headers={"X-Auth-Request-Email": USER_EMAIL},
+        headers={"X-Auth-Request-Email": USER_EMAIL, "X-Auth-Request-User": subject_for(USER_EMAIL)},
     )
 
     assert resp.json()["usable"] is True
@@ -197,7 +197,7 @@ def test_an_application_under_another_account_reports_claimed(
 
     resp = client.get(
         "/api/hostnames/photos.alice.freepod.eu",
-        headers={"X-Auth-Request-Email": OTHER_EMAIL},
+        headers={"X-Auth-Request-Email": OTHER_EMAIL, "X-Auth-Request-User": subject_for(OTHER_EMAIL)},
     )
 
     assert resp.json() == {

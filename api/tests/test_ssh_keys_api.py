@@ -18,9 +18,13 @@ from tests.conftest import (
     USER_AUTH_HEADER,
     USER_EMAIL,
     create_user,
+    subject_for,
 )
 
-AUTH_ADMIN = {"X-Auth-Request-Email": ADMIN_EMAIL}
+AUTH_ADMIN = {
+    "X-Auth-Request-Email": ADMIN_EMAIL,
+    "X-Auth-Request-User": subject_for(ADMIN_EMAIL),
+}
 _counter = itertools.count()
 
 
