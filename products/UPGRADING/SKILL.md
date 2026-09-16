@@ -438,6 +438,11 @@ Do this with a script, never by hand. Then check the result.
 - Before submitting, run
   `grep -n '@' body.md` (every hit must be inside backticks) and
   `grep -nE 'github\.com/[^ ]+/(pull|issues)/[0-9]+' body.md` (must be empty).
+- End the description with the run's footer whenever `$UPGRADE_RUN_URL` is
+  set: a `---` rule, then one line reading
+  `[Upgrade run](<url>) — transcript, result files and this patch.` with
+  `<url>` replaced by the variable's value. It is the reviewer's way back to
+  the session that wrote the PR. Write no footer when the variable is empty.
 - A PR body can be at most 65,536 characters; aim for under 60,000. Put each
   release's entries inside a `<details>` block. If it's still too long, keep
   only the main repository's entries for each release and link the release page

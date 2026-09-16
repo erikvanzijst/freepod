@@ -16,7 +16,7 @@
   </header>
 
   {% for item in products %}{% set p = item.row %}
-    <article class="report {{ tone(p.outcome) }}" style="--i: {{ loop.index0 }}">
+    <article class="report {{ tone(p.outcome) }}" id="{{ p.slug }}" style="--i: {{ loop.index0 }}">
       <header>
         <h2>{{ p.slug }}</h2>
         <span class="badge">{{ label(p.outcome) }}</span>
@@ -53,15 +53,27 @@
       {% if "body.md" in item.links or "change.patch" in item.links %}
         <div class="papers">
           {% if "body.md" in item.links %}
-            <figure class="paper">
-              <figcaption>Pull request description · body.md</figcaption>
+            <figure class="paper" data-title="{{ p.slug }} · pull request description">
+              <figcaption>
+                <span>Pull request description · body.md</span>
+                <button type="button" class="widget" aria-label="Expand the description of {{ p.slug }}">
+                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  Expand
+                </button>
+              </figcaption>
               <div class="markdown" data-src="{{ item.links['body.md'] }}"><p class="loading">Rendering…</p></div>
             </figure>
           {% endif %}
           {% if "change.patch" in item.links %}
-            <figure class="paper">
-              <figcaption>Patch · change.patch</figcaption>
-              <iframe src="{{ item.links['change.patch'] }}" title="{{ p.slug }} change.patch" sandbox loading="lazy"></iframe>
+            <figure class="paper" data-title="{{ p.slug }} · change.patch">
+              <figcaption>
+                <span>Patch · change.patch</span>
+                <button type="button" class="widget" aria-label="Expand the patch of {{ p.slug }}">
+                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  Expand
+                </button>
+              </figcaption>
+              <pre class="patch" data-src="{{ item.links['change.patch'] }}" tabindex="0"><span class="loading">Loading…</span></pre>
             </figure>
           {% endif %}
         </div>
@@ -70,6 +82,16 @@
   {% else %}
     <p class="empty">No products recorded.</p>
   {% endfor %}
+
+  {# One dialog for every pane: the figure itself moves in and back out, so nothing is
+     fetched twice and a signed link that has since expired is never requested again. #}
+  <dialog class="expand" id="expand">
+    <div class="expand-bar">
+      <span class="expand-title"></span>
+      <button type="button" class="expand-close" autofocus>Close <kbd>Esc</kbd></button>
+    </div>
+    <div class="expand-body"></div>
+  </dialog>
 {% endblock %}
 {% block scripts %}
   <script src="https://cdn.jsdelivr.net/npm/marked@18.0.13/lib/marked.umd.js"
@@ -88,5 +110,63 @@
         el.textContent = "Could not load the description: " + error.message;
       }
     });
+
+    // The patch is a document, not markup: every line is inserted as text and coloured by
+    // its first character, so nothing a diff carries can run or lay itself out.
+    function patchClass(line) {
+      if (line.startsWith("@@")) return "hunk";
+      if (line.startsWith("+++") || line.startsWith("---")) return "meta";
+      if (line.startsWith("diff ") || line.startsWith("index ")) return "meta";
+      if (line.startsWith("+")) return "add";
+      if (line.startsWith("-")) return "del";
+      return "";
+    }
+
+    document.querySelectorAll("pre.patch[data-src]").forEach(async function (el) {
+      try {
+        var response = await fetch(new URL(el.dataset.src, location.origin));
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        var lines = (await response.text()).split("\n");
+        var fragment = document.createDocumentFragment();
+        lines.forEach(function (line) {
+          var row = document.createElement("span");
+          row.className = "line " + patchClass(line);
+          row.textContent = line + "\n";
+          fragment.append(row);
+        });
+        el.replaceChildren(fragment);
+      } catch (error) {
+        el.textContent = "Could not load the patch: " + error.message;
+      }
+    });
+
+    (function () {
+      var dialog = document.getElementById("expand");
+      if (!dialog || !dialog.showModal) return;
+      var title = dialog.querySelector(".expand-title");
+      var body = dialog.querySelector(".expand-body");
+
+      document.querySelectorAll(".paper .widget").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var figure = button.closest(".paper");
+          var slot = document.createComment("expanded");
+          figure.replaceWith(slot);
+          title.textContent = figure.dataset.title || "";
+          body.replaceChildren(figure);
+          dialog.showModal();
+          dialog.addEventListener("close", function () {
+            slot.replaceWith(figure);
+            button.focus();
+          }, { once: true });
+        });
+      });
+
+      dialog.querySelector(".expand-close").addEventListener("click", function () { dialog.close(); });
+      // The backdrop is the dialog itself: a click that lands on it, rather than on the
+      // panel inside it, closes.
+      dialog.addEventListener("click", function (event) {
+        if (event.target === dialog) dialog.close();
+      });
+    })();
   </script>
 {% endblock %}

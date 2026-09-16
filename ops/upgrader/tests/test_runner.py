@@ -116,12 +116,14 @@ def test_would_open_stores_every_file_and_redacts(deps, monkeypatch, github):
 
 
 def test_the_session_environment(deps, monkeypatch, tmp_path):
+    deps.env["DASHBOARD_URL"] = "https://upgrader.test/"
     monkeypatch.setenv("FAKE_PI", "result:up_to_date")
     monkeypatch.setenv("FAKE_PI_ENV", str(tmp_path / "env.json"))
-    runner.execute_run(deps, "manual", "immich")
+    run_id = runner.execute_run(deps, "manual", "immich")
     env = json.loads((tmp_path / "env.json").read_text())
     assert env["UPGRADE_PRODUCT"] == "immich"
     assert env["UPGRADE_DRY_RUN"] == "1"
+    assert env["UPGRADE_RUN_URL"] == f"https://upgrader.test/runs/{run_id}#immich"
     assert env["UPGRADE_OUT_DIR"].startswith(str(deps.workdir))
     assert env["PATH"].split(os.pathsep)[0] == str(runner.HERE / "bin")
     assert env["PI_CODING_AGENT_DIR"] == str(deps.state_dir / "pi-agent")
@@ -129,6 +131,14 @@ def test_the_session_environment(deps, monkeypatch, tmp_path):
     for private in ("GITHUB_APP_PRIVATE_KEY", "DATABASE_URL", "AWS_SECRET_ACCESS_KEY", "GH_TOKEN"):
         assert private not in env
     assert KEY_B64 not in json.dumps(env)
+
+
+def test_a_deployment_with_no_public_url_names_no_run(deps, monkeypatch, tmp_path):
+    """The description then carries no link, rather than one nobody can open."""
+    monkeypatch.setenv("FAKE_PI", "result:up_to_date")
+    monkeypatch.setenv("FAKE_PI_ENV", str(tmp_path / "env.json"))
+    runner.execute_run(deps, "manual", "immich")
+    assert json.loads((tmp_path / "env.json").read_text())["UPGRADE_RUN_URL"] == ""
 
 
 def test_a_real_run_records_every_field_redacted(deps, monkeypatch, github):

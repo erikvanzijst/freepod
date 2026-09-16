@@ -116,7 +116,9 @@ def test_a_would_open_product_shows_its_description_and_patch(Session, scheduler
     page = client(Session, scheduler, github, store=store).get(f"/runs/{run.id}", auth=AUTH).text
     prefix = f"https://blob.test/bucket/runs/{run.id}/immich/"
     assert f'<div class="markdown" data-src="{prefix}body.md?' in page
-    assert f'<iframe src="{prefix}change.patch?' in page
+    assert f'<pre class="patch" data-src="{prefix}change.patch?' in page
+    # Both documents can be opened at a width the column layout cannot give them.
+    assert page.count('class="widget"') == 2
     assert f'href="{prefix}session.html?' in page
     assert "Would open a draft from <code>upgrade/immich-v3.2.1</code>" in page
     assert "Confirm x86-64-v2" in page

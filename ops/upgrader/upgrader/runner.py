@@ -75,8 +75,18 @@ def _update(deps: Deps, row_id: int, **values) -> None:
             setattr(row, key, value)
 
 
+def run_url(settings: Settings, run_id: int, slug: str) -> str:
+    """The product's place on the dashboard, which the session links to from the pull request.
+    The run page rather than a stored file, because a signed file link expires within the hour
+    and a reviewer reads the pull request long after the run wrote it. Empty when the
+    deployment has no public URL configured, and then the description carries no link."""
+    if not settings.dashboard_url:
+        return ""
+    return f"{settings.dashboard_url.rstrip('/')}/runs/{run_id}#{slug}"
+
+
 def session_env(deps: Deps, settings: Settings, slug: str, workspace: Path, token_file: Path,
-                agent_dir: Path) -> dict[str, str]:
+                agent_dir: Path, url: str = "") -> dict[str, str]:
     env = {k: v for k, v in os.environ.items()
            if k not in PRIVATE_ENV and not k.startswith(PRIVATE_PREFIXES)}
     env.update(deps.extra_env)
@@ -88,6 +98,7 @@ def session_env(deps: Deps, settings: Settings, slug: str, workspace: Path, toke
         UPGRADE_PRODUCT=slug,
         UPGRADE_DRY_RUN="1" if settings.dry_run else "0",
         UPGRADE_OUT_DIR=str(workspace / "out"),
+        UPGRADE_RUN_URL=url,
         UPGRADER_TOKEN_FILE=str(token_file),
         GH_REPO=REPO,
         GIT_CONFIG_SYSTEM=str(deps.git_config),
@@ -196,7 +207,8 @@ def execute_product(deps: Deps, settings: Settings, run: Run, slug: str, app: Ap
             commit = _clone(deps, settings, workspace / "freepod")
             _update(deps, row.id, commit=commit)
             tokens.refresh()
-            env = session_env(deps, settings, slug, workspace, tokens.path, agent_dir)
+            env = session_env(deps, settings, slug, workspace, tokens.path, agent_dir,
+                              url=run_url(settings, run.id, slug))
             started = True
             deps.live.start(LiveSession(row.id, workspace / "session", redact))
             try:
