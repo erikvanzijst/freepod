@@ -1,0 +1,27 @@
+<div class="section-head"><h2>Logbook</h2><span class="count">{{ runs|length }} run{{ "" if runs|length == 1 else "s" }}</span></div>
+{% if runs %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Run</th><th>Started</th><th>What</th><th>Mode</th><th>Took</th><th>State</th><th>Outcomes</th></tr></thead>
+      <tbody>
+        {% for run in runs %}
+          <tr style="--i: {{ loop.index0 }}">
+            <td class="num"><a href="/runs/{{ run.id }}">{{ run.id }}</a></td>
+            <td class="when"><span>{{ run.started_at.strftime("%d %b %H:%M") }} UTC</span><small>{{ ago(run.started_at) }}</small></td>
+            <td class="what">{{ run.trigger }} · {{ run.scope or "catalog" }}</td>
+            <td><span class="chip {{ 'chip-amber' if run.dry_run else 'chip-moss' }}">{{ "dry run" if run.dry_run else "real" }}</span></td>
+            <td class="dur">{{ duration(run.started_at, run.finished_at) }}</td>
+            <td class="state {{ run.state }}">{{ run.state }}</td>
+            <td>
+              {% set counts = {} %}
+              {% for p in run.products %}{% set _ = counts.update({p.outcome: counts.get(p.outcome, 0) + 1}) %}{% endfor %}
+              <div class="pills">{% for outcome, n in counts | dictsort %}<span class="pill {{ tone(outcome) }}">{{ n }} {{ label(outcome) }}</span>{% endfor %}</div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="table-wrap"><p class="empty">No runs yet. The first nightly watch starts at the time in the header, or press Run now.</p></div>
+{% endif %}

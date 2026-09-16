@@ -8,6 +8,9 @@ from fastapi.testclient import TestClient
 
 from upgrader import db
 from upgrader.github import PullRequests
+from upgrader.live import Live
+from upgrader.live import Session as LiveSession
+from upgrader.redact import Redactor
 from upgrader.scheduler import Scheduler
 from upgrader.store import S3Store
 from upgrader.web import create_app
@@ -43,9 +46,12 @@ def scheduler(calls, release):
     release.set()
 
 
-def client(Session, scheduler, github, password="correct horse", store=None):
+CATALOG = ("immich", "nextcloud", "vaultwarden")
+
+
+def client(Session, scheduler, github, password="correct horse", store=None, choices=CATALOG, live=None):
     app = create_app(Session, store or MemoryStore(), scheduler,
-                     PullRequests(None, http=github.client()), password)
+                     PullRequests(None, http=github.client()), password, lambda: list(choices), live=live)
     return TestClient(app)
 
 
@@ -109,7 +115,7 @@ def test_a_would_open_product_shows_its_description_and_patch(Session, scheduler
         files=["session.jsonl", "session.html", "stdout.txt", "result.json", "body.md", "change.patch"]))
     page = client(Session, scheduler, github, store=store).get(f"/runs/{run.id}", auth=AUTH).text
     prefix = f"https://blob.test/bucket/runs/{run.id}/immich/"
-    assert f'<iframe src="{prefix}body.md?' in page
+    assert f'<div class="markdown" data-src="{prefix}body.md?' in page
     assert f'<iframe src="{prefix}change.patch?' in page
     assert f'href="{prefix}session.html?' in page
     assert "Would open a draft from <code>upgrade/immich-v3.2.1</code>" in page
@@ -132,7 +138,7 @@ def test_pr_state_from_github(Session, scheduler, github):
     run = add_run(Session, product("vaultwarden", "opened", draft=False,
                                    pr_url="https://github.com/erikvanzijst/freepod/pull/12"))
     page = client(Session, scheduler, github).get(f"/runs/{run.id}", auth=AUTH).text
-    assert "(merged)" in page
+    assert ">merged</span>" in page
 
 
 def test_unreachable_github_still_renders(Session, scheduler, github):
@@ -140,16 +146,13 @@ def test_unreachable_github_still_renders(Session, scheduler, github):
     run = add_run(Session, product("vaultwarden", "opened", draft=False,
                                    pr_url="https://github.com/erikvanzijst/freepod/pull/13"))
     response = client(Session, scheduler, github).get(f"/runs/{run.id}", auth=AUTH)
-    assert response.status_code == 200 and "(unknown)" in response.text
+    assert response.status_code == 200 and ">unknown</span>" in response.text
 
 
-def test_product_choices_come_from_the_latest_catalog_run(Session, scheduler, github):
-    add_run(Session, product("immich"), product("nextcloud"))
-    add_run(Session, product("immich"), product("nextcloud"), product("vaultwarden"))
-    add_run(Session, product("immich"), scope="immich")
+def test_every_eligible_product_can_be_run_before_any_run(Session, scheduler, github):
     page = client(Session, scheduler, github).get("/", auth=AUTH).text
-    assert [s for s in ("immich", "nextcloud", "vaultwarden") if f'<option value="{s}">' in page] == [
-        "immich", "nextcloud", "vaultwarden"]
+    assert [s for s in CATALOG if f'<option value="{s}">' in page] == list(CATALOG)
+    assert "disabled>Run one product" not in page
 
 
 def test_run_now_and_run_one_product(Session, scheduler, github, calls, release):
@@ -161,11 +164,14 @@ def test_run_now_and_run_one_product(Session, scheduler, github, calls, release)
     for request in ({}, {"product": "immich"}):
         refused = c.post("/runs", data=request, auth=AUTH)
         assert refused.status_code == 409 and "already in progress" in refused.text
-    assert "disabled" in c.get("/", auth=AUTH).text
+    page = c.get("/", auth=AUTH).text
+    assert "disabled" in page and 'data-busy="true"' in page
+    assert 'data-active="true"' in c.get("/progress", auth=AUTH).text
     release.set()
     deadline = time.monotonic() + 5
     while scheduler.active() and time.monotonic() < deadline:
         time.sleep(0.01)
+    assert 'data-active="false"' in c.get("/progress", auth=AUTH).text
     assert c.post("/runs", data={}, auth=AUTH, follow_redirects=False).status_code == 303
     assert calls[:2] == [("manual", "nextcloud"), ("manual", None)]
 
@@ -181,9 +187,9 @@ def test_progress_names_the_running_product_and_finished_outcomes(Session, sched
     running.started_at = db.now() - timedelta(minutes=12, seconds=5)
     add_run(Session, product("immich", "would_open", branch="upgrade/x"), running, finished=False)
     fragment = client(Session, scheduler, github).get("/progress", auth=AUTH).text
-    assert 'hx-trigger="every 5s"' in fragment
-    assert "nextcloud: running for 12m0" in fragment
-    assert "immich:" in fragment and "would open" in fragment
+    assert 'hx-trigger="every 5s"' in fragment and 'data-active="true"' in fragment
+    assert ">nextcloud</span>" in fragment and "running for 12m0" in fragment
+    assert ">immich</span>" in fragment and "would open" in fragment
 
 
 def test_pages_answer_while_a_run_is_in_progress(Session, scheduler, github, calls):
@@ -197,3 +203,91 @@ def test_pages_answer_while_a_run_is_in_progress(Session, scheduler, github, cal
     assert c.get("/healthz").status_code == 200
     assert time.monotonic() - started < 2
     assert scheduler.active()
+
+
+def transcript_line(text):
+    import json
+    return json.dumps({"type": "message", "message": {"role": "assistant",
+                                                      "content": [{"type": "text", "text": text}]}}) + "\n"
+
+
+def running(Session, tmp_path, *texts):
+    running_product = product("nextcloud", "running", finished=False)
+    add_run(Session, running_product, finished=False)
+    directory = tmp_path / "session"
+    directory.mkdir()
+    (directory / "s.jsonl").write_text("".join(transcript_line(t) for t in texts))
+    registry = Live()
+    registry.start(LiveSession(running_product.id, directory, Redactor({"INFERENCE_API_KEY": "sk-live"})))
+    return running_product.id, directory / "s.jsonl", registry
+
+
+def test_the_console_stays_out_of_the_polled_progress_fragment(Session, scheduler, github, tmp_path):
+    """Re-inserting a console resets its scroll and restarts its animations, so polling must not carry it."""
+    result_id, _, registry = running(Session, tmp_path, "hello")
+    c = client(Session, scheduler, github, live=registry)
+    fragment = c.get("/progress", auth=AUTH).text
+    assert f'data-running="{result_id}"' in fragment
+    assert "console-" not in fragment and "/live/" not in fragment
+    terminals = c.get("/terminals", auth=AUTH).text
+    assert f'id="live-{result_id}"' in terminals
+    assert f'hx-get="/live/{result_id}" hx-trigger="load"' in terminals
+    assert f'id="console-{result_id}"' in c.get("/", auth=AUTH).text
+
+
+def test_the_logbook_refreshes_on_its_own(Session, scheduler, github):
+    add_run(Session, product("immich", "would_open"))
+    c = client(Session, scheduler, github)
+    assert 'id="logbook"' in c.get("/", auth=AUTH).text
+    fragment = c.get("/logbook", auth=AUTH).text
+    assert "Logbook" in fragment and 'href="/runs/' in fragment and "would open" in fragment
+    assert c.get("/logbook").status_code == 401
+
+
+def test_terminals_are_empty_when_no_run_is_active(Session, scheduler, github):
+    c = client(Session, scheduler, github, live=Live())
+    assert c.get("/terminals", auth=AUTH).text.strip() == ""
+    assert c.get("/terminals").status_code == 401
+
+
+def test_live_steps_open_on_the_latest_and_then_return_only_what_is_new(Session, scheduler, github, tmp_path):
+    result_id, path, registry = running(Session, tmp_path, "reading the skill", "cloning <script>alert(1)</script>")
+    c = client(Session, scheduler, github, live=registry)
+    first = c.get(f"/live/{result_id}", auth=AUTH).text
+    assert "reading the skill" in first
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in first and "<script>alert" not in first
+    size = path.stat().st_size
+    assert f'hx-get="/live/{result_id}?offset={size}" hx-trigger="every 3s"' in first
+    with path.open("a") as f:
+        f.write(transcript_line("key sk-live and then some"))
+    second = c.get(f"/live/{result_id}?offset={size}", auth=AUTH).text
+    assert "reading the skill" not in second
+    assert "key [redacted:INFERENCE_API_KEY] and then some" in second
+
+
+def test_live_steps_keep_polling_until_the_session_is_registered(Session, scheduler, github):
+    """A product is polled from the moment it starts, which is before its session is registered."""
+    row = product("nextcloud", "running", finished=False)
+    add_run(Session, row, finished=False)
+    text = client(Session, scheduler, github, live=Live()).get(f"/live/{row.id}", auth=AUTH).text
+    assert "session ended" not in text
+    assert f'hx-get="/live/{row.id}" hx-trigger="every 3s"' in text
+    assert "offset=None" not in text
+
+
+def test_live_steps_stop_when_the_product_has_finished(Session, scheduler, github):
+    row = product("nextcloud", "would_open")
+    add_run(Session, row)
+    text = client(Session, scheduler, github, live=Live()).get(f"/live/{row.id}", auth=AUTH).text
+    assert "session ended" in text and "hx-trigger" not in text
+
+
+def test_live_steps_stop_when_the_session_has_ended(Session, scheduler, github):
+    response = client(Session, scheduler, github, live=Live()).get("/live/99?offset=10", auth=AUTH)
+    assert response.status_code == 200
+    assert "session ended" in response.text
+    assert 'id="poller-99" hx-swap-oob="true">' in response.text
+
+
+def test_live_steps_need_the_password(Session, scheduler, github):
+    assert client(Session, scheduler, github).get("/live/1").status_code == 401

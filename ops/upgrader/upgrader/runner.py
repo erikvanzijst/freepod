@@ -18,10 +18,12 @@ from pathlib import Path
 from sqlalchemy.orm import sessionmaker
 
 from . import notify, pi
-from .catalog import eligible
+from .catalog import fetch
 from .config import REPO, Settings
 from .db import ProductResult, Run, now
 from .github import READ_ONLY, READ_WRITE, App, TokenFile
+from .live import Live
+from .live import Session as LiveSession
 from .redact import Redactor
 from .result import ResultError, parse_result
 from .store import CONTENT_TYPES, product_prefix
@@ -51,6 +53,7 @@ class Deps:
     smtp: Callable = smtplib.SMTP
     poll_seconds: float = 15
     extra_env: dict[str, str] = field(default_factory=dict)
+    live: Live = field(default_factory=Live)
 
 
 def _git(deps: Deps, *args: str, cwd: Path | None = None) -> str:
@@ -195,7 +198,11 @@ def execute_product(deps: Deps, settings: Settings, run: Run, slug: str, app: Ap
             tokens.refresh()
             env = session_env(deps, settings, slug, workspace, tokens.path, agent_dir)
             started = True
-            timed_out = _run_session(deps, settings, workspace, env, tokens, slug)
+            deps.live.start(LiveSession(row.id, workspace / "session", redact))
+            try:
+                timed_out = _run_session(deps, settings, workspace, env, tokens, slug)
+            finally:
+                deps.live.stop(row.id)
         except Exception as exc:
             log.exception("product %s failed before its session ended", slug)
             fields = {"outcome": "failed", "error": redact(f"{exc}")}
@@ -235,15 +242,11 @@ def execute_product(deps: Deps, settings: Settings, run: Run, slug: str, app: Ap
 
 
 def _discover(deps: Deps, settings: Settings) -> list[str] | None:
-    scratch = Path(tempfile.mkdtemp(prefix="catalog-", dir=deps.workdir))
     try:
-        _clone(deps, settings, scratch / "freepod")
-        return eligible(scratch / "freepod")
+        return fetch(settings.repo_url, git=deps.git, workdir=deps.workdir)
     except Exception:
         log.exception("could not read the catalog from master")
         return None
-    finally:
-        shutil.rmtree(scratch, ignore_errors=True)
 
 
 def _record_failed(deps: Deps, run: Run, slug: str, error: str) -> None:

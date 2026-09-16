@@ -1,40 +1,92 @@
 {% extends "base.html" %}
 {% block title %}Run {{ run.id }} · Upgrader{% endblock %}
 {% block content %}
-  <h2>Run {{ run.id }} <span class="muted">{{ "dry run" if run.dry_run else "real run" }}, {{ run.trigger }}, {{ run.scope or "whole catalog" }}</span></h2>
-  <p class="muted">
-    {{ run.state }} · started {{ run.started_at.strftime("%Y-%m-%d %H:%M UTC") }} · {{ duration(run.started_at, run.finished_at) }}
-    · pi {{ run.pi_version or "?" }} · {{ run.model or "?" }} · thinking {{ run.thinking_level or "?" }}
-  </p>
+  <a class="back" href="/">← Logbook</a>
+  <header class="run-head">
+    <p class="eyebrow">{{ "Dry run" if run.dry_run else "Real run" }} · {{ run.trigger }} · {{ run.scope or "whole catalog" }}</p>
+    <h1><small>Run</small>{{ run.id }}</h1>
+    <dl class="specs">
+      <div><dt>State</dt><dd>{{ run.state }}</dd></div>
+      <div><dt>Started</dt><dd>{{ run.started_at.strftime("%d %b %Y %H:%M") }} UTC</dd></div>
+      <div><dt>Took</dt><dd>{{ duration(run.started_at, run.finished_at) }}</dd></div>
+      <div><dt>Model</dt><dd>{{ run.model or "?" }}</dd></div>
+      <div><dt>Thinking</dt><dd>{{ run.thinking_level or "?" }}</dd></div>
+      <div><dt>pi</dt><dd>{{ run.pi_version or "?" }}</dd></div>
+    </dl>
+  </header>
+
   {% for item in products %}{% set p = item.row %}
-    <div class="card">
-      <h3>{{ p.slug }}: <span class="outcome {{ p.outcome }}">{{ p.outcome.replace("_", " ") }}</span>
-        <span class="muted">{{ p.current_version or "?" }}{% if p.target_version %} → {{ p.target_version }}{% endif %}</span></h3>
-      <p class="muted">
-        {{ duration(p.started_at, p.finished_at) }}
-        {% if p.input_tokens is not none %}· {{ "{:,}".format(p.input_tokens) }} in, {{ "{:,}".format(p.output_tokens) }} out, peak context {{ "{:,}".format(p.peak_context) }}{% endif %}
-        {% if p.commit %}· skill from <code>{{ p.commit[:12] }}</code>{% endif %}
+    <article class="report {{ tone(p.outcome) }}" style="--i: {{ loop.index0 }}">
+      <header>
+        <h2>{{ p.slug }}</h2>
+        <span class="badge">{{ label(p.outcome) }}</span>
+      </header>
+      <p class="versions">
+        <span>{{ p.current_version or "?" }}</span>
+        {% if p.target_version %}<span class="arrow" aria-label="to">──→</span><span class="to">{{ p.target_version }}</span>{% endif %}
       </p>
+      <dl class="specs">
+        <div><dt>Took</dt><dd>{{ duration(p.started_at, p.finished_at) }}</dd></div>
+        {% if p.input_tokens is not none %}
+          <div><dt>Tokens in</dt><dd>{{ "{:,}".format(p.input_tokens) }}</dd></div>
+          <div><dt>Tokens out</dt><dd>{{ "{:,}".format(p.output_tokens) }}</dd></div>
+          <div><dt>Peak context</dt><dd>{{ "{:,}".format(p.peak_context) }}</dd></div>
+        {% endif %}
+        {% if p.commit %}<div><dt>Skill from</dt><dd>{{ p.commit[:12] }}</dd></div>{% endif %}
+      </dl>
       {% if p.pr_url %}
-        <p>{{ "Draft pull request" if p.draft else "Pull request" }}: <a href="{{ p.pr_url }}">{{ p.pr_url }}</a>
-          <span class="outcome">({{ item.pr_state }})</span></p>
+        <p class="pr"><a href="{{ p.pr_url }}">{{ "Draft pull request" if p.draft else "Pull request" }} #{{ p.pr_url.rsplit("/", 1)[-1] }}</a>
+          <span class="pill {{ 'good' if item.pr_state in ('open', 'merged') else ('bad' if item.pr_state == 'closed' else '') }}">{{ item.pr_state }}</span></p>
       {% elif p.branch %}
-        <p>{{ "Would open a draft" if p.draft else "Would open a pull request" }} from <code>{{ p.branch }}</code></p>
+        <p class="pr">{{ "Would open a draft" if p.draft else "Would open a pull request" }} from <code>{{ p.branch }}</code></p>
       {% endif %}
-      {% if p.skip_reason %}<p>Skip reason: {{ p.skip_reason }}</p>{% endif %}
-      {% if p.needs_human %}<p>Needs a human:</p><ul>{% for d in p.needs_human %}<li>{{ d }}</li>{% endfor %}</ul>{% endif %}
-      {% if p.error %}<p class="failed">Error: {{ p.error }}</p>{% endif %}
+      {% if p.needs_human %}
+        <div class="callout amber"><h3>Needs a human</h3><ul>{% for d in p.needs_human %}<li>{{ d }}</li>{% endfor %}</ul></div>
+      {% endif %}
+      {% if p.skip_reason %}<div class="callout cool"><h3>Skipped because</h3><p>{{ p.skip_reason }}</p></div>{% endif %}
+      {% if p.error %}<div class="callout bad"><h3>Error</h3><p>{{ p.error }}</p></div>{% endif %}
       {% if item.links %}
-        <p>Files:
-          {% for name, url in item.links.items() %}<a href="{{ url }}" target="_blank" rel="noopener">{{ "transcript" if name == "session.html" else name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
-        </p>
+        <nav class="files" aria-label="{{ p.slug }} files">
+          {% for name, url in item.links.items() %}<a class="file{% if name == 'session.html' %} primary{% endif %}" href="{{ url }}" target="_blank" rel="noopener">{{ file_label(name) }}</a>{% endfor %}
+        </nav>
       {% endif %}
-      {% for name, url in item.iframes.items() %}
-        <p class="muted">{{ "Pull request description" if name == "body.md" else "Patch" }}</p>
-        <iframe src="{{ url }}" title="{{ p.slug }} {{ name }}" sandbox></iframe>
-      {% endfor %}
-    </div>
+      {% if "body.md" in item.links or "change.patch" in item.links %}
+        <div class="papers">
+          {% if "body.md" in item.links %}
+            <figure class="paper">
+              <figcaption>Pull request description · body.md</figcaption>
+              <div class="markdown" data-src="{{ item.links['body.md'] }}"><p class="loading">Rendering…</p></div>
+            </figure>
+          {% endif %}
+          {% if "change.patch" in item.links %}
+            <figure class="paper">
+              <figcaption>Patch · change.patch</figcaption>
+              <iframe src="{{ item.links['change.patch'] }}" title="{{ p.slug }} change.patch" sandbox loading="lazy"></iframe>
+            </figure>
+          {% endif %}
+        </div>
+      {% endif %}
+    </article>
   {% else %}
-    <p class="muted">No products recorded.</p>
+    <p class="empty">No products recorded.</p>
   {% endfor %}
+{% endblock %}
+{% block scripts %}
+  <script src="https://cdn.jsdelivr.net/npm/marked@18.0.13/lib/marked.umd.js"
+          integrity="sha384-Jy8qDMspJASzATgFngF2ompIKy0StbCcvuTE65mxDm/E0/YSIF6Ndc+5V7bbwRcw"
+          crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.15/dist/purify.min.js"
+          integrity="sha384-uUMu9JDY09vBzRf9SPcK2VgUj+W/70J6Soc+Dded5P474ElQ63iv9j5N3DE7Kp3N"
+          crossorigin="anonymous"></script>
+  <script>
+    document.querySelectorAll(".markdown[data-src]").forEach(async function (el) {
+      try {
+        var response = await fetch(new URL(el.dataset.src, location.origin));
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        el.innerHTML = DOMPurify.sanitize(marked.parse(await response.text()));
+      } catch (error) {
+        el.textContent = "Could not load the description: " + error.message;
+      }
+    });
+  </script>
 {% endblock %}

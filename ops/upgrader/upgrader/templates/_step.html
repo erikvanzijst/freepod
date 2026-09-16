@@ -1,0 +1,1 @@
+<div class="step {{ step.kind }}"><span class="g" aria-hidden="true">{{ {"user": "›", "text": "●", "tool": "●", "result": "└", "error": "└", "thinking": "✻", "note": "·"}.get(step.kind, "·") }}</span><span class="t">{% if step.kind == "tool" %}<b>{{ step.label | capitalize }}</b>(<span class="arg">{{ step.text }}</span>){% else %}{{ step.text }}{% endif %}</span></div>

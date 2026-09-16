@@ -1,20 +1,22 @@
-<div id="progress" class="card" hx-get="/progress" hx-trigger="every 5s" hx-swap="outerHTML">
+<section id="progress" class="watch{% if run %} is-active{% endif %}" data-active="{{ 'true' if run or active else 'false' }}" data-running="{% if run %}{{ run.products | rejectattr('finished_at') | map(attribute='id') | join(',') }}{% endif %}" hx-get="/progress" hx-trigger="every 5s" hx-swap="outerHTML">
   {% if run %}
-    <strong>Run <a href="/runs/{{ run.id }}">{{ run.id }}</a> is active</strong>
-    <span class="muted">({{ "dry" if run.dry_run else "real" }}, {{ run.trigger }}, {{ duration(run.started_at, None) }})</span>
-    <ul>
+    <header class="watch-head">
+      <span class="pulse" aria-hidden="true"></span>
+      <h2>Run {{ run.id }} <span>in progress</span></h2>
+      <span class="meta">{{ "dry run" if run.dry_run else "real run" }} · {{ run.trigger }} · {{ run.scope or "whole catalog" }} · {{ duration(run.started_at, None) }}</span>
+    </header>
+    <ol class="tracks">
       {% for p in run.products %}
-        {% if p.finished_at %}
-          <li>{{ p.slug }}: <span class="outcome {{ p.outcome }}">{{ p.outcome.replace("_", " ") }}</span>
-            <span class="muted">{{ duration(p.started_at, p.finished_at) }}</span></li>
-        {% else %}
-          <li>{{ p.slug }}: running for {{ duration(p.started_at, None) }}</li>
-        {% endif %}
+        <li class="track {{ tone(p.outcome) }}{% if not p.finished_at %} is-running{% endif %}">
+          <span class="slug">{{ p.slug }}</span>
+          <span class="time">{{ duration(p.started_at, p.finished_at) }}</span>
+          <span class="state">{% if p.finished_at %}{{ label(p.outcome) }}{% else %}running for {{ duration(p.started_at, None) }}{% endif %}</span>
+        </li>
       {% endfor %}
-    </ul>
+    </ol>
   {% elif active %}
-    <strong>A run is starting.</strong>
+    <p class="standby">A run is starting…</p>
   {% else %}
-    <span class="muted">No run in progress.</span>
+    <p class="standby">Standing by. No run in progress.</p>
   {% endif %}
-</div>
+</section>

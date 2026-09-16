@@ -1,0 +1,3 @@
+{% for step in steps %}{% include "_step.html" %}{% endfor %}
+{% if ended %}<div class="step note"><span class="g" aria-hidden="true">·</span><span>session ended; its transcript is on the run's page</span></div>{% endif %}
+<div id="poller-{{ result_id }}" hx-swap-oob="true"{% if not ended %} hx-get="/live/{{ result_id }}{% if offset is not none %}?offset={{ offset }}{% endif %}" hx-trigger="every 3s" hx-target="#console-{{ result_id }}" hx-swap="beforeend"{% endif %}></div>

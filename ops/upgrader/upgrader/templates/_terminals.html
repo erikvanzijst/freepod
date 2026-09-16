@@ -1,0 +1,10 @@
+{% if run %}{% for p in run.products if not p.finished_at %}
+  <div class="terminal" id="live-{{ p.id }}">
+    <div class="terminal-bar"><i></i><i></i><i></i><span>pi · {{ p.slug }} · {{ run.model or "model" }}</span><span class="live-tag">● live</span></div>
+    <div class="console" id="console-{{ p.id }}" role="log" aria-live="polite" aria-label="{{ p.slug }} session">
+      <p class="waiting">Waiting for the session's first reply…</p>
+    </div>
+    <div id="poller-{{ p.id }}" hx-get="/live/{{ p.id }}" hx-trigger="load" hx-target="#console-{{ p.id }}" hx-swap="beforeend"></div>
+    <div class="prompt-line" aria-hidden="true"><span>›</span><span class="cursor"></span></div>
+  </div>
+{% endfor %}{% endif %}
