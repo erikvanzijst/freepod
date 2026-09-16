@@ -18,6 +18,7 @@ from pathlib import Path
 from sqlalchemy.orm import sessionmaker
 
 from . import notify, pi
+from .cancel import Cancellation
 from .catalog import fetch
 from .config import REPO, Settings
 from .db import ProductResult, Run, now
@@ -54,6 +55,7 @@ class Deps:
     poll_seconds: float = 15
     extra_env: dict[str, str] = field(default_factory=dict)
     live: Live = field(default_factory=Live)
+    cancel: Cancellation = field(default_factory=Cancellation)
 
 
 def _git(deps: Deps, *args: str, cwd: Path | None = None) -> str:
@@ -107,7 +109,7 @@ def session_env(deps: Deps, settings: Settings, slug: str, workspace: Path, toke
 
 
 def _terminate(process: subprocess.Popen) -> None:
-    """End the session's whole process group: pi and everything it spawned (D12)."""
+    """End the session's whole process group: pi and everything it spawned (D12, D16)."""
     try:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -128,8 +130,9 @@ def _terminate(process: subprocess.Popen) -> None:
 
 
 def _run_session(deps: Deps, settings: Settings, workspace: Path, env: dict[str, str],
-                 tokens: TokenFile, slug: str) -> bool:
-    """Run pi until it exits or times out. True when it timed out."""
+                 tokens: TokenFile, slug: str) -> str:
+    """Run pi until it exits, times out, or the run is canceled. Returns the outcome the service
+    assigns itself, or "" when the session ended on its own."""
     clone = workspace / "freepod"
     cmd = pi.command(settings, clone / "products" / "UPGRADING" / "SKILL.md", workspace / "session",
                      slug, pi=deps.pi)
@@ -137,23 +140,30 @@ def _run_session(deps: Deps, settings: Settings, workspace: Path, env: dict[str,
     with (workspace / "stdout.txt").open("wb") as stdout:
         process = subprocess.Popen(cmd, cwd=workspace, env=env, stdin=subprocess.DEVNULL,
                                    stdout=stdout, stderr=subprocess.STDOUT, start_new_session=True)
-        timed_out = False
+        ended = "" if deps.cancel.watch(process) else "canceled"
         try:
-            while True:
+            while not ended:
                 try:
                     process.wait(timeout=max(0.01, min(deps.poll_seconds, deadline - time.monotonic())))
                     break
                 except subprocess.TimeoutExpired:
-                    if time.monotonic() >= deadline:
-                        timed_out = True
-                        break
-                    try:
-                        tokens.refresh()
-                    except Exception:
-                        log.exception("could not refresh the installation token for %s", slug)
+                    if deps.cancel.asked():
+                        ended = "canceled"
+                    elif time.monotonic() >= deadline:
+                        ended = "timed_out"
+                    else:
+                        try:
+                            tokens.refresh()
+                        except Exception:
+                            log.exception("could not refresh the installation token for %s", slug)
+            # A cancel ends the session itself, so the wait above returns rather than timing
+            # out: without this the product would be read as one that wrote no result.
+            if not ended and deps.cancel.asked():
+                ended = "canceled"
         finally:
+            deps.cancel.watch(None)
             _terminate(process)
-    return timed_out
+    return ended
 
 
 def _store_files(deps: Deps, run_id: int, slug: str, workspace: Path,
@@ -212,17 +222,19 @@ def execute_product(deps: Deps, settings: Settings, run: Run, slug: str, app: Ap
             started = True
             deps.live.start(LiveSession(row.id, workspace / "session", redact))
             try:
-                timed_out = _run_session(deps, settings, workspace, env, tokens, slug)
+                ended = _run_session(deps, settings, workspace, env, tokens, slug)
             finally:
                 deps.live.stop(row.id)
         except Exception as exc:
             log.exception("product %s failed before its session ended", slug)
             fields = {"outcome": "failed", "error": redact(f"{exc}")}
-            timed_out = False
+            ended = ""
         files, stats, raw = _store_files(deps, run.id, slug, workspace, redact) if started else ([], None, None)
-        if timed_out:
+        if ended == "timed_out":
             fields = {"outcome": "timed_out",
                       "error": f"no result after {settings.product_timeout_minutes} minutes"}
+        elif ended == "canceled":
+            fields = {"outcome": "canceled", "error": "the run was canceled"}
         elif not fields:
             try:
                 doc = parse_result(raw, workspace / "freepod" / "products" / "UPGRADING" /
@@ -280,6 +292,7 @@ def execute_run(deps: Deps, trigger: str, scope: str | None) -> int:
         run = Run(trigger=trigger, scope=scope, dry_run=settings.dry_run, pi_version=pi.version(deps.pi),
                   model=settings.inference_model, thinking_level=settings.thinking_level)
         session.add(run)
+    deps.cancel.start(run.id)
     try:
         catalog = _discover(deps, settings)
         targets = [scope] if scope else (catalog or [])
@@ -295,6 +308,8 @@ def execute_run(deps: Deps, trigger: str, scope: str | None) -> int:
                 problems = [redact(f"setting up GitHub access failed: {exc}")]
         agent_dir = pi.write_agent_dir(deps.state_dir / "pi-agent", settings) if not problems else None
         for slug in targets:
+            if deps.cancel.asked():
+                break
             if catalog is not None and slug not in catalog:
                 _record_failed(deps, run, slug, f"{slug} is not an eligible product on master")
             elif problems:
@@ -302,9 +317,11 @@ def execute_run(deps: Deps, trigger: str, scope: str | None) -> int:
             else:
                 execute_product(deps, settings, run, slug, app, redact, agent_dir)
     finally:
+        canceled = deps.cancel.stop()
         with deps.Session.begin() as session:
             stored = session.get(Run, run.id)
-            stored.state, stored.finished_at = "completed", now()
+            stored.state = "canceled" if canceled else "completed"
+            stored.finished_at = now()
     with deps.Session() as session:
         notify.send(session.get(Run, run.id), settings, smtp=deps.smtp)
     return run.id

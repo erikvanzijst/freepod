@@ -66,6 +66,36 @@ NOT be queued behind the active run.
 - **WHEN** a run of one product starts and that product is not among the eligible products on `master`
 - **THEN** the run records that product as `failed`, with an error saying it is not eligible
 
+### Requirement: An active run can be canceled
+The owner MUST be able to abort the run executing now. The service MUST then end the
+running session and every process it started, record that product as `canceled`, and
+record the run as `canceled` without starting any of its remaining products.
+
+A session that does not end when it is asked to MUST be killed, so that a cancel always
+takes effect. The product's files MUST still be stored, as they are for any other outcome
+(`product-upgrade-history`), so that the session that was aborted can still be read.
+
+A cancel MUST apply only to the run it names: one naming a run that is no longer active
+MUST change nothing, and MUST NOT affect the run that follows.
+
+#### Scenario: Canceling a doomed session
+- **WHEN** the owner cancels a run whose first of three products is running
+- **THEN** that session and its child processes are terminated
+- **AND** the first product is recorded as `canceled`, with its transcript stored
+- **AND** the other two never start, and the run is recorded as `canceled`
+
+#### Scenario: A session that ignores the ask
+- **WHEN** the running session does not exit after being asked to end
+- **THEN** it is killed, and the run still finishes as `canceled`
+
+#### Scenario: Canceling a run that is no longer active
+- **WHEN** a cancel names a run that has already finished
+- **THEN** nothing is canceled, and the request reports that the run is no longer active
+
+#### Scenario: The next run is unaffected
+- **WHEN** a run is requested after one was canceled
+- **THEN** it starts normally and runs every product it covers
+
 ### Requirement: At most one run is active
 A run MUST count as active from its start until its finish time is recorded. The service
 MUST NOT start a run while another run is active, and it MUST NOT execute two products at
@@ -148,7 +178,7 @@ instead when:
 - its `product` is not the slug the session was started for; or
 - its `dry_run` disagrees with the mode the service ran the session in.
 
-Outcomes the service assigns itself are `timed_out` and `interrupted`.
+Outcomes the service assigns itself are `timed_out`, `canceled` and `interrupted`.
 
 #### Scenario: No result file
 - **WHEN** a session exits without writing `result.json`

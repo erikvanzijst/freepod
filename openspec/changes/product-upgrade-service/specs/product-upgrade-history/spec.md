@@ -11,7 +11,8 @@ For every run, the service MUST record in the deployment's database:
 - its trigger (scheduled or manual);
 - its scope (the whole catalog, or the product requested);
 - its mode (dry or real);
-- its start and finish times, and its state (`running`, `completed` or `interrupted`);
+- its start and finish times, and its state (`running`, `completed`, `canceled` or
+  `interrupted`);
 - the pi version, the model id and the thinking level it ran with.
 
 For every product in a run, the service MUST record:
@@ -43,7 +44,7 @@ deployment's bucket, under a key prefix unique to that run and product:
 - `body.md` and `change.patch`, when the session produced them.
 
 The files MUST be stored when the product ends, whatever the outcome, including
-`timed_out` and `failed`.
+`timed_out`, `canceled` and `failed`.
 
 #### Scenario: A dry run that would open a pull request
 - **WHEN** a product ends as `would_open`

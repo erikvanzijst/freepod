@@ -5,6 +5,8 @@ import json
 import os
 import shutil
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -191,6 +193,50 @@ def test_a_timeout_terminates_the_session_and_its_children(deps, monkeypatch, tm
     state = Path(f"/proc/{child}/stat")
     assert not state.exists() or state.read_text().split(")")[1].split()[0] in ("Z", "X")
     assert list(deps.workdir.iterdir()) == []
+
+
+def test_canceling_a_run_ends_its_session_and_stops_the_run(deps, monkeypatch, tmp_path):
+    """The owner aborts a doomed session: its process group goes with it, and the run's
+    remaining products never start."""
+    monkeypatch.setenv("FAKE_PI", "sleep")
+    monkeypatch.setenv("FAKE_PI_CHILD", str(tmp_path / "child"))
+    child_file = tmp_path / "child"
+    asked = []
+
+    def abort():
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not child_file.exists():
+            time.sleep(0.02)
+        with deps.Session() as s:
+            run = s.scalars(select(db.Run)).one()
+        asked.append(deps.cancel.request(run.id))
+
+    thread = threading.Thread(target=abort)
+    thread.start()
+    runner.execute_run(deps, "scheduled", None)
+    thread.join(10)
+    assert asked == [True]
+    with deps.Session() as s:
+        run = s.scalars(select(db.Run)).one()
+        assert run.state == "canceled" and run.finished_at
+        # The catalog holds three products; the two after the canceled one never start.
+        assert [(p.slug, p.outcome) for p in run.products] == [("immich", "canceled")]
+        assert run.products[0].error == "the run was canceled"
+        assert {"session.jsonl", "stdout.txt"} <= set(run.products[0].files)
+    child = int(child_file.read_text())
+    state = Path(f"/proc/{child}/stat")
+    assert not state.exists() or state.read_text().split(")")[1].split()[0] in ("Z", "X")
+    assert list(deps.workdir.iterdir()) == []
+
+
+def test_a_run_after_a_canceled_one_runs_normally(deps, monkeypatch):
+    """The cancel is forgotten with the run it belonged to."""
+    monkeypatch.setenv("FAKE_PI", "result:up_to_date")
+    deps.cancel.start(-1)
+    assert deps.cancel.request(-1) is True
+    runner.execute_run(deps, "manual", "immich")
+    run, [p] = only_product(deps.Session)
+    assert (run.state, p.outcome) == ("completed", "up_to_date")
 
 
 def test_a_failed_product_does_not_stop_the_run(deps, monkeypatch):

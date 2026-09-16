@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from upgrader import db
+from upgrader.cancel import Cancellation
 from upgrader.github import PullRequests
 from upgrader.live import Live
 from upgrader.live import Session as LiveSession
@@ -49,9 +50,11 @@ def scheduler(calls, release):
 CATALOG = ("immich", "nextcloud", "vaultwarden")
 
 
-def client(Session, scheduler, github, password="correct horse", store=None, choices=CATALOG, live=None):
+def client(Session, scheduler, github, password="correct horse", store=None, choices=CATALOG, live=None,
+           cancel=None):
     app = create_app(Session, store or MemoryStore(), scheduler,
-                     PullRequests(None, http=github.client()), password, lambda: list(choices), live=live)
+                     PullRequests(None, http=github.client()), password, lambda: list(choices), live=live,
+                     cancel=cancel)
     return TestClient(app)
 
 
@@ -237,6 +240,30 @@ def test_the_console_stays_out_of_the_polled_progress_fragment(Session, schedule
     # The console is opened over the page by moving it, so the control travels with it.
     assert 'class="widget"' in terminals
     assert f'id="console-{result_id}"' in c.get("/", auth=AUTH).text
+
+
+def test_an_active_run_can_be_canceled(Session, scheduler, github):
+    cancel = Cancellation()
+    run = add_run(Session, product("immich", "running", finished=False), finished=False)
+    cancel.start(run.id)
+    c = client(Session, scheduler, github, cancel=cancel)
+    fragment = c.get("/progress", auth=AUTH).text
+    assert f'action="/runs/{run.id}/cancel"' in fragment and "data-confirm=" in fragment
+    response = c.post(f"/runs/{run.id}/cancel", auth=AUTH, follow_redirects=False)
+    assert response.status_code == 303
+    assert f"Canceling run {run.id}" in c.get(response.headers["location"], auth=AUTH).text
+    assert cancel.asked() is True
+
+
+def test_canceling_what_is_not_running_changes_nothing(Session, scheduler, github):
+    cancel = Cancellation()
+    finished = add_run(Session, product("immich"))
+    c = client(Session, scheduler, github, cancel=cancel)
+    assert "/cancel" not in c.get("/progress", auth=AUTH).text
+    assert c.post(f"/runs/{finished.id}/cancel", auth=AUTH).status_code == 409
+    assert c.post("/runs/9999/cancel", auth=AUTH).status_code == 404
+    assert c.post(f"/runs/{finished.id}/cancel").status_code == 401
+    assert cancel.asked() is False
 
 
 def test_the_logbook_refreshes_on_its_own(Session, scheduler, github):

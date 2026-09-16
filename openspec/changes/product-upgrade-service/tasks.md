@@ -36,6 +36,8 @@
 
 - [x] 4.7 Pass `UPGRADE_RUN_URL` into each product's session, naming the run's page and the product within it — verify tests that the composed URL reaches the session's environment, and that a deployment with no public URL passes an empty value
 
+- [x] 4.8 Implement cancellation of the active run (D16): a registry of the run executing now and of the session it is waiting on, a request that ends that session's process group and stops the run before its next product, and the `canceled` product outcome and run state — verify tests with a fake pi that sleeps: the session and its child process are gone, the product and the run are recorded `canceled` with the transcript still stored, the run's later products never start, and a run requested after a canceled one runs normally
+
 ## 5. History
 
 - [x] 5.1 Implement redaction (D10) — verify tests covering each secret, every token minted during the run, the decoded key and a single line of its body, repeated occurrences, a value inside a JSON string, and an unset or empty secret changing nothing
@@ -55,6 +57,8 @@
 - [x] 6.8 Render the patch as text rather than in a frame, and give each pane a control that opens it over the page — verify tests that the run page carries a patch element fetched from the signed link and one control per pane, and in a browser that a diff's lines are coloured, that expanding and closing a pane fetches nothing again, and that Escape closes it
 
 - [x] 6.9 Give the running session's panel the same expand control, moving the panel itself so its poller and steps travel with it and carrying its scroll position across the move — verify a test that the terminals fragment carries the control, and in a browser that the log keeps its steps and its scroll position when opened and closed, that new steps still arrive while it is open, and that the set of running products is re-synced on close
+
+- [x] 6.10 Add the cancel control to the active run's panel, behind a confirmation — verify tests: the progress fragment carries the control while a run is active and carries none otherwise, a cancel of the active run redirects with a message and marks the run, and a cancel naming a finished or unknown run is refused
 
 ## 7. Notifications
 

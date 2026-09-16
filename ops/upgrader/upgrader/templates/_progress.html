@@ -4,6 +4,10 @@
       <span class="pulse" aria-hidden="true"></span>
       <h2>Run {{ run.id }} <span>in progress</span></h2>
       <span class="meta">{{ "dry run" if run.dry_run else "real run" }} · {{ run.trigger }} · {{ run.scope or "whole catalog" }} · {{ duration(run.started_at, None) }}</span>
+      <form class="abort" method="post" action="/runs/{{ run.id }}/cancel"
+            data-confirm="Cancel run {{ run.id }}? The running session is killed and the run's remaining products do not start.">
+        <button type="submit" class="danger">Cancel run</button>
+      </form>
     </header>
     <ol class="tracks">
       {% for p in run.products %}

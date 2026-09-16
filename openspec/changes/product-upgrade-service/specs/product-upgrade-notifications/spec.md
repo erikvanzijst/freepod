@@ -13,7 +13,8 @@ request, with the decisions it leaves to a human, and gives each failure's error
 `DASHBOARD_URL` is set, it links to the run's dashboard page.
 
 A run whose products all ended as `up_to_date`, `skipped` or `would_skip` MUST NOT send
-an email. Neither does an interrupted run, nor any run while `NOTIFY_EMAIL` is unset.
+an email. Neither does a run that did not complete — one interrupted by a restart, or one
+the owner canceled — nor any run while `NOTIFY_EMAIL` is unset.
 
 #### Scenario: Everything is up to date
 - **WHEN** a run completes with every product `up_to_date`
@@ -30,6 +31,10 @@ an email. Neither does an interrupted run, nor any run while `NOTIFY_EMAIL` is u
 #### Scenario: A product fails
 - **WHEN** a run completes with one product `timed_out`
 - **THEN** one email is sent naming that product and its outcome
+
+#### Scenario: A canceled run
+- **WHEN** the owner cancels a run whose running product had already been recorded `would_open`
+- **THEN** no email is sent, because the run did not complete
 
 #### Scenario: No recipient
 - **WHEN** a noteworthy run completes while `NOTIFY_EMAIL` is unset

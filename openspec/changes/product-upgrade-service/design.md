@@ -525,6 +525,28 @@ test, writes a session file and a `result.json`, writes no result, or sleeps pas
 timeout. Tests that touch the database run against a real Postgres, as `api/`'s do,
 because the behavior under test there (the interrupted-run update) is Postgres behavior.
 
+### D16: A cancel reuses the timeout's termination path, and stops the run at its next product
+
+**Decision.** The dashboard can abort the run executing now. A cancel marks that run and
+asks the running session's process group to end; the runner's existing termination path
+(D12) escalates to a kill if it does not go. The product is recorded as `canceled`, its
+files are stored as for any other outcome, and the run ends as `canceled` without starting
+its remaining products. A cancel names the run it means, so one arriving for a run that has
+already finished changes nothing.
+
+**Why.** The session already runs in its own process group so that a timeout takes its
+children with it (D12). A cancel is that same need arriving from a person rather than from
+a clock, so it reuses that path instead of adding a second one. The flag is read between
+products as well as during the wait, because the reason to cancel is usually the whole run,
+not only the session that happens to be running.
+
+**Alternatives.** Killing the run's thread: Python cannot, and it would orphan the
+session's children. Letting the current product finish and skipping only the rest: it
+leaves the doomed session running, which is the one the owner wants gone.
+
+**Consequence.** A canceled run sends no email: D14 notifies only for runs that completed,
+and the owner who canceled the run already knows how it ended.
+
 ## Risks / Trade-offs
 
 - [A rollout interrupts an active run] → Deploy and change vars away from the nightly

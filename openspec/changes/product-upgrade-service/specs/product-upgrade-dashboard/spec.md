@@ -98,6 +98,25 @@ be refused with a message saying why.
 - **WHEN** a request is submitted while a run is active
 - **THEN** the dashboard shows that a run is already in progress, and no run starts
 
+### Requirement: An active run can be canceled from the dashboard
+While a run is active, the dashboard MUST offer a control that cancels it, as
+`product-upgrade-runs` defines. Because the running session's work is lost, the control
+MUST ask for confirmation, and MUST cancel nothing until that confirmation is given.
+
+When no run is active, no such control is offered.
+
+#### Scenario: Canceling from the dashboard
+- **WHEN** the owner uses the cancel control while a run is active and confirms
+- **THEN** the run is canceled, and the dashboard says so
+
+#### Scenario: Declining the confirmation
+- **WHEN** the owner uses the cancel control and declines the confirmation
+- **THEN** the run is not canceled and continues
+
+#### Scenario: Nothing to cancel
+- **WHEN** the owner opens the dashboard while no run is active
+- **THEN** no cancel control is shown
+
 ### Requirement: Progress is shown while a run is active
 While a run is active, the dashboard MUST show which product is running and for how long,
 and the outcomes of the products that have finished. The display MUST refresh itself at

@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
+from .cancel import Cancellation
 from .config import Settings
 from .db import ProductResult, Run, make_sessionmaker, now
 from .github import App, PullRequests
@@ -29,6 +30,7 @@ templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 TONES = {
     "opened": "good", "would_open": "good", "up_to_date": "calm", "skipped": "cool",
     "would_skip": "cool", "failed": "bad", "timed_out": "bad", "interrupted": "bad", "running": "live",
+    "canceled": "cool",
 }
 FILE_LABELS = {
     "session.html": "Transcript", "session.jsonl": "Transcript (JSONL)", "stdout.txt": "Output",
@@ -71,10 +73,12 @@ templates.env.globals.update(
 
 def create_app(Session: sessionmaker, store, scheduler: Scheduler, prs: PullRequests,
                password: str | None, choices: Callable[[], list[str]], live: Live | None = None,
+               cancel: Cancellation | None = None,
                settings: Callable[[], Settings] = Settings.from_env, lifespan=None) -> FastAPI:
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     basic = HTTPBasic(auto_error=False)
     live = live or Live()
+    cancel = cancel or Cancellation()
 
     def authenticated(credentials: HTTPBasicCredentials | None = Depends(basic)) -> None:
         if not (password and credentials
@@ -146,6 +150,18 @@ def create_app(Session: sessionmaker, store, scheduler: Scheduler, prs: PullRequ
         what = f"a run of {scope}" if scope else "a run of the whole catalog"
         return RedirectResponse(f"/?message=Started {what}.", status_code=303)
 
+    @app.post("/runs/{run_id}/cancel", dependencies=[Depends(authenticated)])
+    def cancel_run(request: Request, run_id: int):
+        with Session() as session:
+            run = session.get(Run, run_id)
+        if not run:
+            raise HTTPException(404)
+        # The run may have finished between the page being rendered and the button being pressed.
+        if run.finished_at or not cancel.request(run_id):
+            return index_page(request, f"Run {run_id} is no longer active, so nothing was canceled.",
+                              status_code=409)
+        return RedirectResponse(f"/?message=Canceling run {run_id}.", status_code=303)
+
     @app.get("/runs/{run_id}", response_class=HTMLResponse, dependencies=[Depends(authenticated)])
     def run_page(request: Request, run_id: int):
         with Session() as session:
@@ -196,4 +212,4 @@ def build() -> FastAPI:
 
     choices = Choices(lambda: fetch(settings.repo_url, git=deps.git, workdir=deps.workdir))
     return create_app(Session, store, scheduler, PullRequests(app_client), settings.dashboard_password,
-                      choices, live=deps.live, lifespan=lifespan)
+                      choices, live=deps.live, cancel=deps.cancel, lifespan=lifespan)

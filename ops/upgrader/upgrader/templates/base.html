@@ -108,6 +108,8 @@
     button.primary { background: var(--amber); border-color: var(--amber); color: #1b1305; box-shadow: 0 10px 24px -12px rgba(240, 164, 58, 0.8); }
     button.primary:hover:not(:disabled) { background: #ffb652; }
     button:disabled, select:disabled { opacity: 0.38; cursor: not-allowed; box-shadow: none; }
+    button.danger { border-color: rgba(230, 106, 80, 0.45); background: var(--brick-dim); color: var(--brick); }
+    button.danger:hover:not(:disabled) { background: rgba(230, 106, 80, 0.24); border-color: var(--brick); }
 
     .watch { margin-top: 18px; border-radius: var(--radius); }
     .watch.is-active {
@@ -120,6 +122,7 @@
     .watch-head h2 { font-size: 30px; font-weight: 800; }
     .watch-head h2 span { color: var(--amber); font-weight: 500; }
     .watch-head .meta { color: var(--fog-3); font: 400 11px var(--mono); letter-spacing: 0.03em; }
+    .watch-head .abort { margin: 0 0 0 auto; }
     .pulse { width: 11px; height: 11px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 0 rgba(240, 164, 58, 0.6); animation: pulse 1.8s ease-out infinite; }
     .tracks { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 18px; padding: 0; }
     .track {
@@ -185,6 +188,7 @@
     td.what { color: var(--fog-2); }
     td.state { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--fog-3); }
     td.state.running { color: var(--amber); } td.state.interrupted { color: var(--brick); }
+    td.state.canceled { color: var(--sky); }
     .pills { display: flex; flex-wrap: wrap; gap: 6px; }
     .pill { padding: 3px 9px; border-radius: 999px; font: 500 11px/1.4 var(--mono); white-space: nowrap; background: rgba(236, 226, 208, 0.06); color: var(--fog-2); }
     .pill.good { background: var(--moss-dim); color: var(--moss); }
@@ -413,6 +417,12 @@
       // The backdrop is the dialog itself: a click that lands on it, rather than on the
       // panel inside it, closes.
       if (dialog && (event.target === dialog || event.target.closest(".expand-close"))) dialog.close();
+    });
+    // Canceling kills the session that is running and loses its work, so it is asked about
+    // first. The form is rendered by the polled progress fragment, hence the delegation.
+    document.addEventListener("submit", function (event) {
+      var form = event.target.closest("form[data-confirm]");
+      if (form && !confirm(form.dataset.confirm)) event.preventDefault();
     });
     // The history only changes when a run or a product starts or finishes; refreshing it on every
     // poll would restart its row animations.
