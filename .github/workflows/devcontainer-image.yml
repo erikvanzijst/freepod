@@ -1,0 +1,37 @@
+# Publishes the dev container image that `ci.yml`'s api-test, ssh-auth-test and
+# upgrader-test already ask for: devcontainers/ci turns `imageName` into a
+# `--cache-from`, and the compose build it generates exports inline cache
+# metadata.
+name: Devcontainer image
+
+on:
+  push:
+    branches: ["master"]
+    paths:
+      - ".devcontainer/**"
+      - "docker-compose.yml"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      CAELUS_SND_DEVICE: /dev/null
+      CAELUS_AUDIO_GROUP: root
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      # No runCmd: the image is the artifact, so the container is never started.
+      - name: Build and publish the dev container image
+        uses: devcontainers/ci@v0.3
+        with:
+          imageName: ghcr.io/${{ github.repository }}-devcontainer
+          cacheFrom: ghcr.io/${{ github.repository }}-devcontainer
+          push: always

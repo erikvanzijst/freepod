@@ -165,7 +165,7 @@ jobs:
       - name: Build and run dev container tests
         uses: devcontainers/ci@v0.3
         with:
-          # Image name for caching; not pushed
+          # Never pushed from here. `devcontainer-image.yml` publishes this tag;
           imageName: ghcr.io/${{ github.repository }}-devcontainer
           push: never
           runCmd: |
