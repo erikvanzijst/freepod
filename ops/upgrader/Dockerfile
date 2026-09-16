@@ -16,6 +16,8 @@ RUN apt-get update \
       git=1:2.39.5-0+deb12u3 \
       jq=1.6-2.1+deb12u2 \
       tini=0.19.0-1+b3 \
+      htop \
+      procps \
  && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL -o /tmp/gh.tar.gz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
