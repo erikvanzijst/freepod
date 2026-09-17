@@ -9,12 +9,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .cancel import Cancellation
 from .config import Settings
@@ -72,6 +74,9 @@ templates.env.globals.update(
 )
 
 
+UNAUTHORIZED = "<!doctype html><meta charset=utf-8><title>Upgrader</title><h1>401 Unauthorized</h1>"
+
+
 class _HeadAllowed(APIRoute):
     """FastAPI, unlike Starlette's own Route, does not answer HEAD on a GET route."""
 
@@ -88,6 +93,16 @@ def create_app(Session: sessionmaker, store, scheduler: Scheduler, prs: PullRequ
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.router.route_class = _HeadAllowed
     basic = HTTPBasic(auto_error=False)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def errors(request: Request, exc: StarletteHTTPException):
+        # The challenge answers in HTML because Firefox for Android hands an application/json
+        # document to its download handler, which strands the credentials it just prompted for.
+        if exc.status_code != 401:
+            return await http_exception_handler(request, exc)
+        return HTMLResponse(UNAUTHORIZED, status_code=401,
+                            headers={**(exc.headers or {}), "Cache-Control": "no-store"})
+
     live = live or Live()
     cancel = cancel or Cancellation()
 
