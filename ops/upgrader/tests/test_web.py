@@ -80,6 +80,17 @@ def test_healthz_needs_no_credentials(Session, scheduler, github):
     assert client(Session, scheduler, github).get("/healthz").status_code == 200
 
 
+def test_the_challenge_is_html_and_uncacheable(Session, scheduler, github):
+    c = client(Session, scheduler, github)
+    response = c.get("/")
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith("text/html")
+    assert response.headers["www-authenticate"].startswith("Basic")
+    assert response.headers["cache-control"] == "no-store"
+    # Every other error keeps the JSON body.
+    assert c.get("/runs/999999", auth=AUTH).headers["content-type"].startswith("application/json")
+
+
 def test_head_is_answered_wherever_get_is(Session, scheduler, github):
     run = add_run(Session, product("immich"))
     c = client(Session, scheduler, github)
