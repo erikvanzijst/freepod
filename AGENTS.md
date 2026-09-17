@@ -146,6 +146,22 @@ This repository is a monorepo with:
   [curated-product-governance](openspec/specs/curated-product-governance/spec.md) ·
   Rationale:
   [curated-product-catalog](openspec/changes/archive/2026-08-03-curated-product-catalog/design.md)
+- **Curated products are kept current by an agent the platform hosts.**
+  `ops/upgrader/` runs the upgrade skill (`products/UPGRADING/SKILL.md`) once per
+  curated product each night, each in a fresh session and a fresh clone of
+  `master`, and opens one reviewed pull request per product. It is an ordinary
+  Freepod `custom` deployment on the owner's account rather than a platform
+  component, and it imports nothing from `api/`. Spec:
+  [product-upgrade-service](openspec/specs/product-upgrade-service/spec.md),
+  [product-upgrade-runs](openspec/specs/product-upgrade-runs/spec.md),
+  [product-upgrade-history](openspec/specs/product-upgrade-history/spec.md),
+  [product-upgrade-dashboard](openspec/specs/product-upgrade-dashboard/spec.md),
+  [product-upgrade-guardrails](openspec/specs/product-upgrade-guardrails/spec.md),
+  [product-upgrade-notifications](openspec/specs/product-upgrade-notifications/spec.md),
+  [product-upgrade-skill](openspec/specs/product-upgrade-skill/spec.md) ·
+  Rationale:
+  [product-upgrade-service](openspec/changes/archive/2026-09-17-product-upgrade-service/design.md),
+  [ops/upgrader/README.md](ops/upgrader/README.md)
 - Authentication: all API endpoints require the `X-Auth-Request-Email` header
   (injected by oauth2-proxy in production, set by the frontend in local dev);
   `GET /api/me` is the session initialization endpoint. The CLI uses

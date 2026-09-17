@@ -71,7 +71,7 @@
 
 ## 8. Local end-to-end
 
-- [ ] 8.1 Run the built image locally against a local Postgres, a local S3 and an SMTP sink, in dry-run mode against the real inference endpoint. Request "Run one product" for `vaultwarden` — verify the dashboard shows the outcome and the transcript link opens, the email arrives when the outcome is noteworthy, and no stored object contains a minted token or the key
+- [x] 8.1 Run the built image locally against a local Postgres, a local S3 and an SMTP sink, in dry-run mode against the real inference endpoint. Request "Run one product" for `vaultwarden` — verify the dashboard shows the outcome and the transcript link opens, the email arrives when the outcome is noteworthy, and no stored object contains a minted token or the key
 
 ## 9. Operator tasks (manual)
 
@@ -83,10 +83,10 @@
 - [x] 9.6 Stage the vars. Type the three secrets at the prompt (`freepod var set GITHUB_APP_PRIVATE_KEY --secret --stage`, pasting `base64 -w0` of the key file, and the same for `INFERENCE_API_KEY` and `DASHBOARD_PASSWORD`), never on the command line. Stage the plain vars, including `GITHUB_APP_ID`, in one command, leaving `UPGRADE_DRY_RUN` at its dry-run default — verify `freepod var list` shows every var, with the three secrets hidden
 - [x] 9.7 Run `freepod deploy` from `ops/upgrader/` — verify `/healthz` answers 200 on the live URL, and `freepod log` shows the migrations applied and the server started, and the first run's products get past GitHub setup (none fails with "setting up GitHub access failed"), which shows the App's installation was found
 - [x] 9.8 Probe the guards in the deployed container, calling the guard binaries directly with `freepod shell`: `gh pr merge 1`, `gh auth token`, and a path-less `git grep` in a scratch clone — verify all three are refused
-- [ ] 9.9 Request "Run one product" from the dashboard, then let the first nightly dry run complete — verify each product's result and transcript are in the dashboard, and an email arrives if any product would open a PR
-- [ ] 9.10 Once the dry runs are trusted, switch to real PRs with `freepod var set UPGRADE_DRY_RUN=0`, outside the nightly window — verify the next run that finds a release opens a PR authored by the App's bot user and labeled `product-upgrade`, and that CI runs on it
+- [x] 9.9 Request "Run one product" from the dashboard, then let the first nightly dry run complete — verify each product's result and transcript are in the dashboard, and an email arrives if any product would open a PR
+- [x] 9.10 Once the dry runs are trusted, switch to real PRs with `freepod var set UPGRADE_DRY_RUN=0`, outside the nightly window — verify the next run that finds a release opens a PR authored by the App's bot user and labeled `product-upgrade`, and that CI runs on it
 
 ## 10. Documentation
 
-- [ ] 10.1 Write `ops/upgrader/README.md`: running locally (the local runner and the tests), building and deploying, the vars, and operations (switching modes, rotating the App's key, releasing a product blocked by a leftover `upgrade/*` branch, reading a run) — verify it links the specs and this change's design rather than restating them
-- [ ] 10.2 Add the service's entry to `AGENTS.md` per § Documentation Layering — verify it is a terse orientation plus links to the seven specs and the design
+- [x] 10.1 Write `ops/upgrader/README.md`: running locally (the local runner and the tests), building and deploying, the vars, and operations (switching modes, rotating the App's key, releasing a product blocked by a leftover `upgrade/*` branch, reading a run) — verify it links the specs and this change's design rather than restating them
+- [x] 10.2 Add the service's entry to `AGENTS.md` per § Documentation Layering — verify it is a terse orientation plus links to the seven specs and the design

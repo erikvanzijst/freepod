@@ -12,6 +12,7 @@ This a monorepo with three packages:
 - [ui/](./ui/README.md) -- the React app
 - [cli/](./cli/README.md) -- cli for end devs deploying their own projects to freepod 
 - [tf/](./tf/README.md) -- the Terraform project to deploy Caelus itself
+- [ops/upgrader/](./ops/upgrader/README.md) -- automated service keeping the product catalog up to date
 
 
 ## Devcontainer
