@@ -80,6 +80,19 @@ def test_healthz_needs_no_credentials(Session, scheduler, github):
     assert client(Session, scheduler, github).get("/healthz").status_code == 200
 
 
+def test_head_is_answered_wherever_get_is(Session, scheduler, github):
+    run = add_run(Session, product("immich"))
+    c = client(Session, scheduler, github)
+    paths = ("/healthz", "/", "/progress", "/logbook", "/terminals", f"/runs/{run.id}", "/live/1")
+    for path in paths:
+        response = c.request("HEAD", path, auth=AUTH)
+        assert response.status_code == 200, path
+        assert response.content == b""
+    assert c.request("HEAD", "/").status_code == 401
+    # A HEAD is not invented for a route that has no GET.
+    assert c.request("HEAD", "/runs", auth=AUTH).status_code == 405
+
+
 @pytest.mark.parametrize("auth", [None, ("owner", "wrong"), ("", "")])
 def test_pages_need_the_password(Session, scheduler, github, auth):
     c = client(Session, scheduler, github)

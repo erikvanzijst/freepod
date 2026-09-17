@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.routing import APIRoute
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -71,11 +72,21 @@ templates.env.globals.update(
 )
 
 
+class _HeadAllowed(APIRoute):
+    """FastAPI, unlike Starlette's own Route, does not answer HEAD on a GET route."""
+
+    def __init__(self, path, endpoint, *, methods=None, **kwargs):
+        if methods and "GET" in methods:
+            methods = [*methods, "HEAD"]
+        super().__init__(path, endpoint, methods=methods, **kwargs)
+
+
 def create_app(Session: sessionmaker, store, scheduler: Scheduler, prs: PullRequests,
                password: str | None, choices: Callable[[], list[str]], live: Live | None = None,
                cancel: Cancellation | None = None,
                settings: Callable[[], Settings] = Settings.from_env, lifespan=None) -> FastAPI:
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    app.router.route_class = _HeadAllowed
     basic = HTTPBasic(auto_error=False)
     live = live or Live()
     cancel = cancel or Cancellation()
