@@ -23,11 +23,10 @@ exactly what a human has to decide (see *Escalation*).
 
 ## Tooling
 
-These are required, and the `gh` CLI comes already authenticated: `git`, `gh`,
-`curl`, `python3`. Use `python3` or `gh`'s built-in `--jq`/`-q` for JSON; don't
-assume `jq` is installed. `uv` and `helm` are optional: use them when present
-(see *Validate*), and rely on the repository's CI when they aren't. You have no
-access to the Kubernetes cluster and don't need any.
+All of these are installed, and the `gh` CLI comes already authenticated:
+`git`, `gh`, `curl`, `jq`, `python3`, `uv`, `helm`. Use `jq` or `gh`'s built-in
+`--jq`/`-q` for JSON. You have no access to the Kubernetes cluster and don't
+need any.
 
 ## Dry run
 
@@ -193,7 +192,7 @@ Work in this one clone (the `/workspace/trees` worktree convention in
    - `github-release`: `gh api --paginate repos/<repo>/releases -q '.[] | select(.draft|not) | .tag_name'`.
    - `docker-tag`: get the complete list from the registry in one request
      (official images use the `library/` namespace):
-     `tok=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:<ns>/<repo>:pull" | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')`
+     `tok=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:<ns>/<repo>:pull" | jq -r .token)`
      then `curl -s -H "Authorization: Bearer $tok" "https://registry-1.docker.io/v2/<ns>/<repo>/tags/list?n=100000"`.
      Other registries (ghcr.io, …) work the same way with their own token URL.
    - `helm-chart`: the chart repository's `index.yaml`, or OCI tags for an
@@ -230,13 +229,14 @@ learning) on one shared tag. Confirm each one exists at the target tag with a
 ```bash
 # Docker Hub: list the platforms a tag was built for
 curl -sf "https://hub.docker.com/v2/repositories/<ns>/<repo>/tags/<tag>" \
-  | python3 -c 'import sys,json; print(sorted({i["os"]+"/"+i["architecture"] for i in json.load(sys.stdin)["images"]}))'
+  | jq -r '[.images[] | .os + "/" + .architecture] | unique | join(" ")'
 # ghcr.io (public): list the platforms a tag was built for, or NOT FOUND
-tok=$(curl -s "https://ghcr.io/token?scope=repository:<owner>/<name>:pull" | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')
+tok=$(curl -s "https://ghcr.io/token?scope=repository:<owner>/<name>:pull" | jq -r .token)
 curl -s -H "Authorization: Bearer $tok" \
   -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
   "https://ghcr.io/v2/<owner>/<name>/manifests/<tag>" \
-  | python3 -c 'import sys,json; print(sorted({m["platform"]["os"]+"/"+m["platform"]["architecture"] for m in json.load(sys.stdin).get("manifests",[])}) or "NOT FOUND")'
+  | jq -r '[.manifests[]? | .platform.os + "/" + .platform.architecture] | unique
+      | if length == 0 then "NOT FOUND" else join(" ") end'
 ```
 
 A missing image means you don't open a PR: write `result.json` as `skipped`,
@@ -300,14 +300,14 @@ commits that bumped the version and diff between those.
 Upstream usually describes its deployment in Docker terms, and our chart says
 the same things in Kubernetes terms. Translate before you compare:
 
-| Compose / Dockerfile | Our chart |
-|---|---|
-| `healthcheck` / `HEALTHCHECK` | `livenessProbe`, `readinessProbe`, `startupProbe` |
-| `environment`, `env_file` / `ENV` | container `env`, `envFrom`, ConfigMaps |
-| `volumes` / `VOLUME` | `volumes` and `volumeMounts` |
-| `command`, `entrypoint` / `CMD`, `ENTRYPOINT` | `command`, `args` |
-| `ports` / `EXPOSE` | `containerPort`, Service ports |
-| `user` / `USER` | `securityContext` |
+| Compose / Dockerfile                          | Our chart                                         |
+|-----------------------------------------------|---------------------------------------------------|
+| `healthcheck` / `HEALTHCHECK`                 | `livenessProbe`, `readinessProbe`, `startupProbe` |
+| `environment`, `env_file` / `ENV`             | container `env`, `envFrom`, ConfigMaps            |
+| `volumes` / `VOLUME`                          | `volumes` and `volumeMounts`                      |
+| `command`, `entrypoint` / `CMD`, `ENTRYPOINT` | `command`, `args`                                 |
+| `ports` / `EXPOSE`                            | `containerPort`, Service ports                    |
+| `user` / `USER`                               | `securityContext`                                 |
 
 Then read our chart (`products/<slug>/chart/templates/*`, `values.yaml`): the
 whole template for each affected component, not a grep for the upstream word.
@@ -350,9 +350,8 @@ Branch from a fresh `origin/master`: `upgrade/<slug>-<target-version>`.
 
 ### 7. Validate
 
-- If `uv` is available: `cd api && uv sync && uv run caelus catalog lint`.
-  The lint needs no database.
-- If you changed a chart and `helm` is available: `helm lint` and
+- `cd api && uv sync && uv run caelus catalog lint`. The lint needs no database.
+- If you changed a chart: `helm lint` and
   `helm template t products/<slug>/chart --set host=example.test`, and read the
   rendered output for the change you made.
 - Except in a dry run: push, open the PR (step 8), and wait for CI with
@@ -386,13 +385,13 @@ releases: <list with dates>). <One sentence on what the diff changes.>
 ## Verification
 - <each image> at <tag> exists with a linux/amd64 build.
 - <companion images: unchanged, or what changed>
-- `caelus catalog lint` passes (or: "CI's catalog-lint job validates this").
+- `caelus catalog lint` passes.
 - <helm lint/template results, if the chart changed>
 
 ## Upstream deployment review
-| Upstream change (<artifact>, <old>…<new>) | Ours (file: current value) | Class | Notes |
-|---|---|---|---|
-| … | … | Already handled / Not applicable / Mirrored in this PR | … |
+| Upstream change (<artifact>, <old>…<new>) | Ours (file: current value) | Class                                                  | Notes |
+|-------------------------------------------|----------------------------|--------------------------------------------------------|-------|
+| …                                         | …                          | Already handled / Not applicable / Mirrored in this PR | …     |
 <"No deployment-relevant changes" if the diffs were build-only, and name what you diffed.>
 
 ## Upgrade notes
