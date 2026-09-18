@@ -1120,7 +1120,8 @@ def key() -> None:
 def key_list(context: Context) -> None:
     """List the keys registered on your account.
 
-    The key this machine holds is marked with `*`.
+    The key this machine can offer is marked with `*` — a record naming a file
+    that is gone is not one, so it is not marked.
     """
     session = context.session()
     session.authenticate(interactive=False)
@@ -1133,13 +1134,8 @@ def key_list(context: Context) -> None:
         context.say("Add one with `freepod key add`.")
         return
 
-    recorded = keys_module.local_key(context.env.name)
-    here = recorded["fingerprint"] if recorded else None
-    if here is None:
-        matches = keys_module.recover(registered)
-        if len(matches) == 1:
-            here = keys_module.fingerprint_for_file(matches[0])
-            keys_module.remember(context.env.name, here, matches[0])
+    held = keys_module.select_local_key(context.env.name, registered)
+    here = keys_module.fingerprint_for_file(held) if held is not None else None
     click.echo(keys_module.render_table(registered, here))
 
 
@@ -1153,6 +1149,9 @@ def key_add(context: Context, path: Optional[Path], label: Optional[str]) -> Non
     With no argument, generates an Ed25519 key in this client's own
     configuration directory — not in `~/.ssh` — and registers it. With a path,
     registers that **public** key file and records it as this machine's.
+
+    Naming a key the account already holds records it as this machine's rather
+    than failing: that is how an ambiguous machine is pointed at one key.
     """
     env_name = context.env.name
     session = context.session()
@@ -1181,7 +1180,18 @@ def key_add(context: Context, path: Optional[Path], label: Optional[str]) -> Non
             material = keys_module.read_public_key(path)
             source = path
 
-        stored = keys_module.add_key(api, user_id, material, label)
+        try:
+            stored = keys_module.add_key(api, user_id, material, label)
+        except keys_module.DuplicateKey as duplicate:
+            fingerprint = keys_module.fingerprint_for_line(material)
+            keys_module.remember(env_name, fingerprint, source)
+            context.say(str(duplicate))
+            click.echo(fingerprint)
+            context.say(
+                f"This machine now offers it on {env_name} for shell, db shell, "
+                "and db proxy."
+            )
+            return
 
     keys_module.remember(env_name, stored["fingerprint"], source)
     context.say(f"Registered {stored['label']!r} on {env_name}.")

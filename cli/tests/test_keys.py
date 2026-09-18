@@ -162,6 +162,20 @@ def test_list_marks_the_key_this_machine_holds(run_key, tmp_path, isolated_home,
     assert len(marked) == 1
 
 
+def test_list_does_not_mark_a_key_this_machine_cannot_offer(
+    run_key, tmp_path, isolated_home, capsys
+):
+    """A record naming a file that is gone points at a key `shell` would refuse;
+    marking it would tell the user the opposite."""
+    pub = generate(tmp_path / "gone")
+    platform = Platform([registered(pub)])
+    keys_module.remember("prod", keys_module.fingerprint_for_file(pub), pub)
+    pub.unlink()
+
+    assert run_key(platform, ["key", "list"]) == EXIT_OK
+    assert not [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("*")]
+
+
 # --- add -------------------------------------------------------------------
 
 
@@ -222,9 +236,26 @@ def test_add_refuses_a_private_key_path(run_key, tmp_path, capsys):
 def test_add_surfaces_the_platforms_refusal(run_key, tmp_path, capsys):
     pub = generate(tmp_path / "mine")
     platform = Platform([])
-    platform.refuse = (409, "This key is already registered as 'other'.", "duplicate_key")
+    platform.refuse = (400, "RSA keys must be at least 2048 bits.", "key_too_short")
     assert run_key(platform, ["key", "add", str(pub)]) == EXIT_ERROR
-    assert "already registered" in capsys.readouterr().err
+    assert "2048 bits" in capsys.readouterr().err
+
+
+def test_add_rebinds_a_key_the_account_already_holds(run_key, tmp_path, isolated_home, capsys):
+    """Naming an already-registered key is how an ambiguous machine is pointed
+    at one; a duplicate must bind the record, not end the run."""
+    pub = generate(tmp_path / "mine", comment="alice@laptop")
+    platform = Platform([registered(pub)])
+    platform.refuse = (409, "This key is already registered as 'alice@laptop'.", "duplicate_key")
+
+    assert run_key(platform, ["key", "add", str(pub)]) == EXIT_OK
+
+    recorded = keys_module.local_key("prod")
+    assert recorded["path"] == str(pub)
+    assert recorded["fingerprint"] == keys_module.fingerprint_for_file(pub)
+    out = capsys.readouterr()
+    assert "already registered" in out.err
+    assert keys_module.fingerprint_for_file(pub) in out.out
 
 
 def test_add_accepts_a_label(run_key, tmp_path):
@@ -293,6 +324,18 @@ def test_recovery_reports_when_nothing_matches(tmp_path, isolated_home):
     with pytest.raises(Exception) as exc:
         keys_module.resolve_local_key("prod", [registered(other)])
     assert "freepod key add" in str(exc.value)
+
+
+def test_recovery_prefers_the_generated_key(tmp_path, isolated_home):
+    """A tie between the client's own key and the user's is not a real
+    question: both authenticate, and only one of them is this client's to bind."""
+    generated = generate(keys_module.config_dir(), "id_ed25519")
+    mine = generate(isolated_home / ".ssh", "id_rsa")
+
+    chosen = keys_module.resolve_local_key("prod", [registered(generated), registered(mine)])
+
+    assert chosen == generated
+    assert keys_module.local_key("prod")["path"] == str(generated)
 
 
 def test_recovery_asks_when_several_match(tmp_path, isolated_home):
