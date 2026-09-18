@@ -5,7 +5,7 @@ description: >-
   Rust backend, the SSR frontend, pict-rs media storage, and a bundled
   PostgreSQL StatefulSet. No upstream chart dependency.
 type: application
-version: 0.5.2
+version: 0.5.3
 appVersion: "0.19.20"
 keywords:
   - lemmy

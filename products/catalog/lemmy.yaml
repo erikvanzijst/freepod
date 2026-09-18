@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=./catalog.schema.json
+schema_version: 1
+product:
+  slug: lemmy
+  name: Lemmy
+  description: Your own federated link aggregator and discussion forum
+  category: Forums & communities
+  replaces: Reddit
+  icon: icons/lemmy.png
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/dessalines/lemmy
+  match: ^(?P<version>\d+\.\d+\.\d+)$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/lemmy
+  chart_version: 0.5.3
+  system_values:
+    image:
+      tag: 0.19.20
+    admin:
+      username: admin
+    smtp:
+      host: smtp.mailer.svc.cluster.local
+      port: 25
+      fromAddress: lemmy@freepod.eu
+      tlsType: none
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      host:
+        type: string
+        title: Hostname
+        minLength: 1
+        maxLength: 253
+        description: The fully qualified domain name for your instance (e.g. lemmy.user.freepod.eu). Federation
+          bakes this into every user and community address, so it cannot be changed later without losing
+          your identity on the network.
+      siteName:
+        type: string
+        title: Instance name
+        minLength: 1
+        maxLength: 20
+        description: The name shown in the header and to other instances. Maximum 20 characters. You can
+          change this later from the admin settings.
+        pattern: ^[^\u0000-\u001f\u007f]+$
+      LEMMY_ADMIN_PASSWORD:
+        type: string
+        title: Admin password
+        minLength: 10
+        maxLength: 60
+        pattern: ^[^\u0000-\u001f\u007f]+$
+        x-caelus-target: runtime
+        x-caelus-sensitive: true
+        description: 'Password for the initial admin account (username ''admin''). Between 10 and 60 characters.
+          Store it somewhere safe: it won''t be shown again. It seeds the account on first start only;
+          to change it later, use Lemmy''s own settings page.'
+    required:
+    - host
+    - siteName
+    - LEMMY_ADMIN_PASSWORD

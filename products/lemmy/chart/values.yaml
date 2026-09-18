@@ -29,7 +29,7 @@ lemmy:
 ui:
   image:
     repository: docker.io/dessalines/lemmy-ui
-    # Tag defaults to the chart appVersion; keep it in lockstep with the backend.
+    # Tag defaults to the backend's resolved tag; set it only to override that.
     tag: ""
     pullPolicy: IfNotPresent
   resources: {}

@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy import select
 
 from upgrader import db, runner
+from upgrader.catalog import eligible
 from upgrader.config import Settings
 from upgrader.github import App
 
@@ -23,6 +24,7 @@ from .test_config import FULL
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[2]
+ELIGIBLE = eligible(REPO_ROOT)
 GIT = shutil.which("git", path="/usr/local/bin:/usr/bin")
 KEY_B64 = base64.b64encode(
     rsa.generate_private_key(public_exponent=65537, key_size=2048).private_bytes(
@@ -92,7 +94,7 @@ def test_a_catalog_run_covers_the_eligible_products_in_order(deps, monkeypatch):
     run_id = runner.execute_run(deps, "scheduled", None)
     with deps.Session() as s:
         run = s.get(db.Run, run_id)
-        assert [p.slug for p in run.products] == ["immich", "nextcloud", "vaultwarden"]
+        assert [p.slug for p in run.products] == ELIGIBLE
         assert {p.outcome for p in run.products} == {"up_to_date"}
         assert (run.state, run.trigger, run.dry_run, run.pi_version) == ("completed", "scheduled", True, "0.85.1")
         assert all(p.commit and len(p.commit) == 40 for p in run.products)
@@ -244,7 +246,7 @@ def test_a_failed_product_does_not_stop_the_run(deps, monkeypatch):
     runner.execute_run(deps, "scheduled", None)
     with deps.Session() as s:
         outcomes = [p.outcome for p in s.scalars(select(db.ProductResult).order_by(db.ProductResult.id))]
-    assert outcomes == ["failed", "failed", "failed"]
+    assert outcomes == ["failed"] * len(ELIGIBLE)
 
 
 def test_one_ineligible_product_is_recorded_failed(deps):
@@ -260,7 +262,7 @@ def test_a_missing_required_var_fails_the_runs_products(deps):
     with deps.Session() as s:
         run = s.scalars(select(db.Run)).one()
         assert run.state == "completed"
-        assert [(p.outcome, p.error) for p in run.products] == [("failed", "INFERENCE_BASE_URL is not set")] * 3
+        assert [(p.outcome, p.error) for p in run.products] == [("failed", "INFERENCE_BASE_URL is not set")] * len(ELIGIBLE)
 
 
 def test_interrupted_rows_are_closed_at_the_next_start(Session):

@@ -18,12 +18,12 @@ app.kubernetes.io/instance: {{ .root.Release.Name }}
 {{- end -}}
 
 {{/*
-Resolved frontend image tag. Falls back to the same appVersion as the backend:
-lemmy-ui speaks a versioned API and is only supported against its matching
-backend release, so the two must never float apart.
+Resolved frontend image tag. Falls back to the backend's resolved tag: lemmy-ui
+speaks a versioned API and is only supported against its matching backend
+release, so the two must never float apart. The catalog pins `image.tag` alone.
 */}}
 {{- define "lemmy.uiImageTag" -}}
-{{- .Values.ui.image.tag | default .Chart.AppVersion -}}
+{{- .Values.ui.image.tag | default (include "lemmy.imageTag" .) -}}
 {{- end -}}
 
 {{/*
