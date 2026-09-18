@@ -762,8 +762,15 @@ key>` with `IdentitiesOnly=yes` is the documented way to select such an
 identity. Operating on `.pub` files is what keeps those keys working.
 
 Exactly one match is adopted and recorded. None reports that fact and names
-`freepod key add`. Several **asks** rather than choosing — it never adopts on a
-near match.
+`freepod key add`. Among several, the client's **own generated key wins** if it
+is one of them: every registered key authenticates equally, because the edge
+resolves a connection against the whole account, so that tie has an answer
+rather than a question. A tie among the user's own keys is still theirs to
+settle, and `freepod key add <path>` settles it — naming a key the account
+already holds rebinds the record instead of failing on the duplicate.
+
+`select_local_key` is the half that returns `None` rather than raising, so
+`key list` can mark what this machine can offer without a listing that fails.
 
 Candidates are the client's own generated key first, then `~/.ssh/*.pub`.
 `ssh_dir()` resolves per call rather than at import, like `config_dir()`;

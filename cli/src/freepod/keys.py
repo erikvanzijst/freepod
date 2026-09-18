@@ -17,7 +17,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from . import FreepodError, UsageError
+from . import DuplicateKey, FreepodError, UsageError
 from .api import ApiClient
 from .config import config_dir, ensure_config_dir
 from .table import BLANK, format_time, render
@@ -48,6 +48,10 @@ def record_path() -> Path:
 
 def generated_key_path() -> Path:
     return config_dir() / GENERATED_KEY_NAME
+
+
+def generated_public_key() -> Path:
+    return Path(str(generated_key_path()) + ".pub")
 
 
 def fingerprint_for_line(line: str) -> Optional[str]:
@@ -207,7 +211,7 @@ def candidate_public_keys() -> List[Path]:
     `IdentitiesOnly=yes` is the documented way to select such an identity.
     """
     candidates: List[Path] = []
-    generated = Path(str(generated_key_path()) + ".pub")
+    generated = generated_public_key()
     if generated.is_file():
         candidates.append(generated)
     user_keys = ssh_dir()
@@ -222,24 +226,62 @@ def recover(registered: List[dict]) -> List[Path]:
     return [p for p in candidate_public_keys() if fingerprint_for_file(p) in known]
 
 
-def resolve_local_key(env: str, registered: List[dict]) -> Path:
-    """The key this machine should offer, adopting one by fingerprint if needed.
+def _recorded_key(env: str, registered: List[dict]) -> Optional[Path]:
+    """This machine's recorded key, if the record still resolves.
 
-    Never adopts on a near match: exactly one candidate, or the caller is asked.
+    Both halves are checked. A record whose file has since been replaced or
+    removed names a key this machine can no longer offer, and one the account
+    no longer lists names a key the edge will refuse.
     """
     recorded = local_key(env)
-    if recorded:
-        path = Path(recorded["path"])
-        if fingerprint_for_file(path) == recorded["fingerprint"] and any(
-            key.get("fingerprint") == recorded["fingerprint"] for key in registered
-        ):
-            return path
+    if not recorded:
+        return None
+    path = Path(recorded["path"])
+    if fingerprint_for_file(path) != recorded["fingerprint"]:
+        return None
+    if not any(key.get("fingerprint") == recorded["fingerprint"] for key in registered):
+        return None
+    return path
+
+
+def select_local_key(env: str, registered: List[dict]) -> Optional[Path]:
+    """The key this machine should offer, or None when it cannot be chosen.
+
+    Adopting is persistent, so it is done only where the choice is not a guess:
+    a single match, or the client's own generated key among several. Every
+    registered key authenticates equally — the edge resolves a connection
+    against the whole account (`ssh-auth/resolve.go`) — so a tie including the
+    generated key has an answer rather than a question, and picking it binds
+    the machine to the key this client owns instead of one the user curates
+    for other hosts. A tie among the user's own keys is still theirs to settle.
+    """
+    path = _recorded_key(env, registered)
+    if path is not None:
+        return path
 
     matches = recover(registered)
+    generated = generated_public_key()
     if len(matches) == 1:
-        fingerprint = fingerprint_for_file(matches[0])
-        remember(env, fingerprint, matches[0])
-        return matches[0]
+        chosen = matches[0]
+    elif generated in matches:
+        chosen = generated
+    else:
+        return None
+    remember(env, fingerprint_for_file(chosen), chosen)
+    return chosen
+
+
+def resolve_local_key(env: str, registered: List[dict]) -> Path:
+    """The key this machine should offer, or an error naming how to settle it.
+
+    Exactly one key may be offered, so a choice this client cannot make is
+    refused here rather than handed to ssh to try in turn.
+    """
+    chosen = select_local_key(env, registered)
+    if chosen is not None:
+        return chosen
+
+    matches = recover(registered)
     if not matches:
         raise FreepodError(
             "no registered SSH key is available on this machine. "
@@ -287,15 +329,25 @@ def remove_key(api: ApiClient, user_id: int, fingerprint: str) -> None:
 
 
 def _refusal(response) -> FreepodError:
-    """The platform's own words, which already name the failing check."""
+    """The platform's own words, which already name the failing check.
+
+    A duplicate is given its own class: the account already holding the key is
+    the state the caller wanted, so it is the one refusal a caller can act on
+    rather than report.
+    """
     detail = ""
+    code = ""
     try:
         body = response.json()
         if isinstance(body, dict):
             detail = body.get("detail") or ""
+            code = body.get("code") or ""
     except ValueError:
         detail = response.text.strip()[:300]
-    return FreepodError(detail or f"the platform refused the request: HTTP {response.status_code}")
+    message = detail or f"the platform refused the request: HTTP {response.status_code}"
+    if response.status_code == 409 and code == "duplicate_key":
+        return DuplicateKey(message)
+    return FreepodError(message)
 
 
 # --------------------------------------------------------------------------

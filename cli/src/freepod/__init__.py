@@ -14,6 +14,7 @@ from __future__ import annotations
 __all__ = [
     "FreepodError",
     "UsageError",
+    "DuplicateKey",
     "AuthenticationError",
     "PermissionError_",
     "BuildFailed",
@@ -27,7 +28,7 @@ __all__ = [
     "EXIT_ROLLOUT_FAILED",
 ]
 
-__version__ = "0.13.3"
+__version__ = "0.14.0"
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -51,6 +52,15 @@ class UsageError(FreepodError):
     """The command was invoked wrongly. Nothing was attempted."""
 
     exit_code = EXIT_USAGE
+
+
+class DuplicateKey(FreepodError):
+    """The account already holds this SSH key.
+
+    Its own class because it is the one platform refusal that reports the
+    state the caller was asking for, and so can be acted on rather than
+    surfaced.
+    """
 
 
 class AuthenticationError(FreepodError):
