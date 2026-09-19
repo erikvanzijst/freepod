@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=./catalog.schema.json
+schema_version: 1
+product:
+  slug: mattermost
+  name: Mattermost
+  description: A secure communications platform with full data sovereignty
+  category: Team collaboration
+  replaces: Slack · Microsoft Teams
+  icon: icons/mattermost.png
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/mattermost/mattermost-team-edition
+  match: ^(?P<version>\d+\.\d+\.\d+)$
+  version_path: template.system_values.mattermost.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/mattermost
+  chart_version: 1.1.2
+  system_values:
+    mattermost:
+      image:
+        tag: 11.4.2
+    smtp:
+      host: smtp.mailer.svc.cluster.local
+      port: 25
+      from: mattermost@freepod.eu
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      host:
+        type: string
+        title: hostname
+        description: The public hostname where Mattermost will be accessible.
+      mattermost:
+        type: object
+        additionalProperties: false
+        properties:
+          siteName:
+            type: string
+            title: Site name
+            description: Name shown in the Mattermost UI and login screen.
+            maxLength: 30
+          siteDescription:
+            type: string
+            title: Site description
+            description: Text displayed above the login form.
+            maxLength: 500
+          extraEnv:
+            type: object
+            additionalProperties: false
+            properties:
+              TZ:
+                type: string
+                title: Timezone
+                description: IANA timezone for Mattermost (e.g. Europe/Amsterdam, America/New_York).
+                default: Europe/Amsterdam
+    required:
+    - host

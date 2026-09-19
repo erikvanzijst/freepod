@@ -204,7 +204,7 @@ helm upgrade --install mattermost ./products/mattermost/chart \
 
 ```bash
 helm upgrade --install mattermost oci://ghcr.io/erikvanzijst/freepod/charts/mattermost \
-  --version 1.1.1 \
+  --version 1.1.2 \
   --namespace mattermost \
   --create-namespace \
   --set host=mattermost.prutser.freepod.eu
@@ -225,9 +225,7 @@ helm upgrade --install mattermost ./products/mattermost/chart \
   -f values.yaml
 ```
 
-## Adding to Caelus
-
-### 1. Package and Publish
+## Build and publish
 
 Published to `oci://ghcr.io/erikvanzijst/freepod/charts/mattermost` by
 [`scripts/publish-charts.sh`](../../scripts/publish-charts.sh), which CI runs on
@@ -238,96 +236,55 @@ is published. To publish by hand, from the repository root:
 ./scripts/publish-charts.sh mattermost
 ```
 
-### 2. Register as a Product Template
+## Product definition
 
-In the Caelus Admin UI, create a new product (or add a
-template version to an existing one) with:
+Curated: the chart reference, the pinned Mattermost version, the operator-wide
+values (SMTP) and the tenant-facing values schema are all declared in
+[`products/catalog/mattermost.yaml`](../catalog/mattermost.yaml). The UI renders
+`host` with its `HostnameField` component because that property's `title` is
+`hostname`. Format:
+[product-catalog-format](../../openspec/specs/product-catalog-format/spec.md).
 
-| Field               | Value                                                  |
-|---------------------|--------------------------------------------------------|
-| Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/mattermost` |
-| Chart version       | `1.1.2`                                                |
-| User values schema  | See [values schema](#values-schema) below              |
-| Default Helm values | See [system values](#system-values) below              |
+At deploy time Caelus deep-merges the schema defaults, the tenant's values and
+the system values, then passes the result to `helm upgrade --install`.
 
-The schema declares the values that end users configure
-when deploying Mattermost through Caelus:
+## Upstream references
 
-- **host** (required) -- rendered as the special
-  `HostnameField` component because its `title` is
-  `"hostname"`.
-- **mattermost.siteName** (optional) -- overrides the
-  name shown in the Mattermost UI and login screen
-  (maps to `MM_TEAMSETTINGS_SITENAME`).
-- **mattermost.siteDescription** (optional) -- text
-  displayed above the login form (maps to
-  `MM_TEAMSETTINGS_CUSTOMDESCRIPTIONTEXT`).
-- **mattermost.extraEnv.TZ** (optional, default
-  `Europe/Amsterdam`) -- rendered as a regular text field
-  for the IANA timezone.
+What a version upgrade has to review beyond the tag in
+[`products/catalog/mattermost.yaml`](../catalog/mattermost.yaml), whose
+`upstream` block detects new releases on the Team Edition image.
 
-At deploy time, Caelus deep-merges the schema defaults
-with the user-provided values and any system overrides,
-then passes the result as Helm values to
-`helm upgrade --install`.
+- **Release notes:** the changelogs in Mattermost's documentation, one page per
+  major (`docs.mattermost.com/product-overview/mattermost-v11-changelog.html`).
+  The `mattermost/mattermost` GitHub releases carry the same versions as
+  `vX.Y.Z` tags, but little detail.
+- **Release lifecycle:** monthly feature releases, plus an Extended Support
+  Release every nine months that is supported for twelve. v11.7 is the current
+  ESR, supported until 2027-05-15. This catalog tracks the latest stable release
+  rather than the ESR line, so a new major arrives as its own pull request.
+- **Reference deployment:** `mattermost/docker` —
+  `docker-compose.without-nginx.yml` (the closest to ours: no bundled proxy),
+  `docker-compose.yml` and `env.example`. Two deliberate differences from it: it
+  defaults to `mattermost-enterprise-edition` where this chart runs
+  `mattermost-team-edition`, and its `MATTERMOST_IMAGE_TAG` follows the ESR.
+- **Official chart:** `mattermost/mattermost-helm`,
+  `charts/mattermost-team-edition`. Not used as a dependency; the reasons are in
+  *Why Not Wrap the Official Chart?* above, and they are worth re-checking
+  before reconsidering.
+- **Images:** `docker.io/mattermost/mattermost-team-edition`. Tags are bare
+  semver, and the `match` regex excludes the `-rc` prereleases, the `release-*`
+  branch tags and `latest` that share the repository.
 
-### Values Schema
+Pitfalls:
 
-```json
-{
-  "type": "object",
-  "properties": {
-    "host": {
-      "type": "string",
-      "title": "hostname",
-      "description": "The public hostname where Mattermost will be accessible."
-    },
-    "mattermost": {
-      "type": "object",
-      "properties": {
-        "siteName": {
-          "type": "string",
-          "title": "Site name",
-          "description": "Name shown in the Mattermost UI and login screen.",
-          "maxLength": 30
-        },
-        "siteDescription": {
-          "type": "string",
-          "title": "Site description",
-          "description": "Text displayed above the login form.",
-          "maxLength": 500
-        },
-        "extraEnv": {
-          "type": "object",
-          "properties": {
-            "TZ": {
-              "type": "string",
-              "title": "Timezone",
-              "description": "IANA timezone for Mattermost (e.g. Europe/Amsterdam, America/New_York).",
-              "default": "Europe/Amsterdam"
-            }
-          }
-        }
-      }
-    }
-  },
-  "required": [
-    "host"
-  ]
-}
-```
-
-### System Values
-
-```json
-{
-  "smtp": {
-    "host": "smtp.mailer.svc.cluster.local",
-    "port": 25,
-    "from": "mattermost@deprutser.be"
-  }
-}
-```
+- `MM_CONFIG` carries the PostgreSQL DSN, so Mattermost keeps its configuration
+  in the database rather than in a file. A change to how upstream assembles that
+  DSN lands in `secret-db.yaml`, not in an env var on the deployment.
+- PostgreSQL is pinned by major (`postgresql.imageTag: 18`) while upstream's
+  compose uses `18-alpine`. A new major upstream needs a database migration
+  here, not just a tag bump.
+- The bundled PostgreSQL uses fixed credentials and is reachable only within the
+  release's own namespace; it is not the platform's tenant database.
 
 ## Values Reference
 
