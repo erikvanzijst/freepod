@@ -32,14 +32,18 @@ allowance.
 
 ## How it runs
 
-The application container runs as uid 1000, which is what upstream's own chart
-does. The image's entrypoint runs as root when it can, chowns
-`/photoprism/storage`, and then drops to `PHOTOPRISM_UID`; starting as 1000
-skips that path entirely, so the volumes are made writable with `fsGroup` and
-the pod needs no capability that Pod Security `baseline` would refuse. Note
-that `runAsNonRoot` is set on the *container*, never the pod: the SSH sidecar
-beside it runs as root, and a pod-level setting would stop the kubelet from
-starting that container at all.
+The container starts as **root**, and that is required rather than preferred:
+the image's PID 1 is s6-overlay (`ENTRYPOINT ["/init"]`), which prepares `/run`
+before handing off and exits when it cannot. A pod-level `runAsUser: 1000`
+produces a container that fails to start, not one that runs unprivileged.
+
+Unprivileged operation is configured through the image instead.
+`PHOTOPRISM_UID`/`PHOTOPRISM_GID` are set to 1000, so the entrypoint performs
+the setup that needs root, chowns `/photoprism/storage`, and then `setpriv`s
+the application down to that uid. Capabilities are deliberately not dropped:
+that chown and that uid switch need CHOWN, SETUID and SETGID, which are in the
+default set and so ask nothing of Pod Security `baseline`. `fsGroup: 1000`
+covers `originals`, which the entrypoint does not chown.
 
 Probes use PhotoPrism's own endpoints. `/readyz` reports whether the server
 finished initializing — it does not bind its port until schema migrations are
@@ -103,7 +107,7 @@ The published chart is then referenced from a Caelus product template:
 | Field               | Value                                                       |
 |---------------------|-------------------------------------------------------------|
 | Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/photoprism`      |
-| Chart version       | `0.1.0`                                                     |
+| Chart version       | `0.1.2`                                                     |
 | User values schema  | see [`products/catalog/photoprism.yaml`](../catalog/photoprism.yaml) |
 | Default Helm values | see [`products/catalog/photoprism.yaml`](../catalog/photoprism.yaml) |
 
@@ -136,6 +140,12 @@ What a version upgrade has to review beyond the tag in
 
 Pitfalls:
 
+- **Never set `runAsUser` on the application container, and do not drop its
+  capabilities.** PID 1 is s6-overlay, which needs root to prepare `/run`;
+  starting as a non-root uid fails with `/run belongs to uid 0 instead of
+  <uid> … we're lacking the privileges to fix it`, and dropping CHOWN/SETUID/
+  SETGID breaks the same startup path. The uid the application ends up running
+  as is `PHOTOPRISM_UID`, never the pod security context.
 - **Keep the image tag quoted.** Upstream versions are six-digit dates, so an
   unquoted `tag: 260919` parses as an integer and the chart's values schema
   rejects it. This applies to the catalog file the upgrade tooling edits.

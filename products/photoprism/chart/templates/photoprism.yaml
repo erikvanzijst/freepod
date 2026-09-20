@@ -3,11 +3,16 @@ PhotoPrism itself: the web/API front end and the only pod that mounts the
 pictures. The read-only SSH sidecar rides here (RWO volumes can only be shared
 inside one pod).
 
-The pod runs as uid 1000 rather than root, which is also what upstream's own
-chart does. The image's entrypoint runs as root when it can, chowns
-/photoprism/storage and then drops to PHOTOPRISM_UID; starting as 1000 skips
-that path entirely, so the volumes are made writable by `fsGroup` instead and
-the pod needs no capability that Pod Security `baseline` would refuse.
+The container starts as root and drops itself, which is not a preference: its
+PID 1 is s6-overlay, which prepares /run before handing off and exits when it
+cannot. A pod-level `runAsUser: 1000` therefore produces a container that
+fails to start rather than one running unprivileged.
+
+PHOTOPRISM_UID/PHOTOPRISM_GID below are the supported mechanism instead: the
+entrypoint initializes as root, chowns /photoprism/storage, then `setpriv`s to
+that uid. Dropping capabilities breaks the same path, because the chown and
+the uid switch need CHOWN, SETUID and SETGID -- all in the default set, so
+keeping them asks for nothing Pod Security `baseline` refuses.
 */}}
 apiVersion: v1
 kind: Service
@@ -45,40 +50,35 @@ spec:
     spec:
       automountServiceAccountToken: false
       securityContext:
-        # What makes the mounted volumes writable by a non-root application,
-        # now that the image's own chown step is not running. OnRootMismatch
-        # keeps this from walking a large picture library on every start.
+        # The entrypoint chowns /photoprism/storage itself, but nothing else:
+        # `originals` is left to this. OnRootMismatch keeps it from walking a
+        # large picture library on every start.
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
       initContainers:
         # PhotoPrism retries the database itself, but it logs the failures as
         # its own errors. Waiting here keeps a deployment's first log lines
         # about the deployment rather than about a database that is still
-        # initializing. `ping` reports success for an authentication error too,
-        # which is what makes it a liveness check rather than a credential one.
+        # initializing.
+        #
+        # The ping authenticates, and must. An unauthenticated one connects and
+        # drops the handshake, which this client reports as failure however
+        # healthy the server is -- so the wait never ends and the application
+        # container never starts, which is exactly what happened.
         - name: wait-for-mariadb
           image: {{ .Values.mariadb.image.repository }}:{{ .Values.mariadb.image.tag }}
           imagePullPolicy: {{ .Values.mariadb.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
           command:
             - sh
             - -c
-            - until mariadb-admin ping -h {{ .Release.Name }}-mariadb --silent; do sleep 2; done
+            - until MYSQL_PWD="$MARIADB_PASSWORD" mariadb-admin ping -h {{ .Release.Name }}-mariadb -u "$MARIADB_USER" --silent; do sleep 2; done
       containers:
         - name: photoprism
           image: {{ .Values.image.repository }}:{{ include "photoprism.appTag" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          securityContext:
-            runAsUser: 1000
-            runAsGroup: 1000
-            # Deliberately on the container and not on the pod: the SSH sidecar
-            # beside it runs as root, and a pod-level runAsNonRoot would make
-            # the kubelet refuse to start that container at all.
-            runAsNonRoot: true
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: [ALL]
-            seccompProfile:
-              type: RuntimeDefault
           ports:
             - containerPort: 2342
               name: http
@@ -101,6 +101,13 @@ spec:
             - secretRef:
                 name: {{ .Release.Name }}-db
           env:
+            # The uid the application ends up running as, once the entrypoint
+            # has finished the setup that needs root. See the note above: this
+            # is how this image is run unprivileged, not `runAsUser`.
+            - name: PHOTOPRISM_UID
+              value: "1000"
+            - name: PHOTOPRISM_GID
+              value: "1000"
             - name: PHOTOPRISM_SITE_URL
               value: {{ printf "https://%s/" .Values.host | quote }}
             - name: PHOTOPRISM_HTTP_HOST

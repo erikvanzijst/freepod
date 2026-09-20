@@ -89,16 +89,23 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
+          # The image's own healthcheck, which connects over the unix socket as
+          # the mysql user (unix_socket auth). A bare `mariadb-admin ping` runs
+          # as root with no password, which this server refuses: it logs
+          # "Access denied" on every probe and reports health by accident
+          # rather than by checking anything.
           livenessProbe:
             exec:
-              command: ["mariadb-admin", "ping", "--silent"]
+              command: ["healthcheck.sh", "--su-mysql", "--connect"]
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 6
+          # Readiness additionally waits for InnoDB, so the Service admits the
+          # server only once it can actually answer a query.
           readinessProbe:
             exec:
-              command: ["mariadb-admin", "ping", "--silent"]
+              command: ["healthcheck.sh", "--su-mysql", "--connect", "--innodb_initialized"]
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
