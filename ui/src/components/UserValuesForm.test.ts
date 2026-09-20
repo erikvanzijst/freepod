@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { flattenSchema, flattenValues, unflatten, validateUserValues } from '../components/UserValuesForm'
+import {
+  flattenSchema,
+  flattenValues,
+  formatFieldError,
+  unflatten,
+  validateUserValues,
+} from '../components/UserValuesForm'
 
 describe('flattenSchema', () => {
   it('flattens simple schema with single field', () => {
@@ -268,5 +274,51 @@ describe('schema flattening integration', () => {
     expect(fields).toHaveLength(2)
     expect(flatDefaults['ingress.host']).toBe('example.com')
     expect(flatDefaults['user.message']).toBe('Hello')
+  })
+})
+
+describe('formatFieldError', () => {
+  const field = {
+    path: 'PHOTOPRISM_ADMIN_PASSWORD',
+    name: 'Password',
+    type: 'string',
+    title: 'Password',
+    minLength: 8,
+    maxLength: 72,
+    required: true,
+    target: 'runtime' as const,
+    sensitive: true,
+  }
+
+  it('drops the property prefix and restates minLength', () => {
+    const message = 'vars.PHOTOPRISM_ADMIN_PASSWORD: failed constraint "minLength"'
+    expect(formatFieldError(message, field)).toBe('Must be at least 8 characters')
+  })
+
+  it('restates maxLength against the schema', () => {
+    const message = 'vars.PHOTOPRISM_ADMIN_PASSWORD: failed constraint "maxLength"'
+    expect(formatFieldError(message, field)).toBe('Must be at most 72 characters')
+  })
+
+  it('reports a rejected pattern without naming the property', () => {
+    const message = 'vars.PHOTOPRISM_ADMIN_PASSWORD: failed constraint "pattern"'
+    const result = formatFieldError(message, field)
+    expect(result).toBe('Contains characters that are not allowed')
+    expect(result).not.toContain('PHOTOPRISM_ADMIN_PASSWORD')
+  })
+
+  it('names the expected type', () => {
+    const boolField = { ...field, type: 'boolean', minLength: undefined }
+    const message = 'vars.SIGNUPS_ALLOWED: failed constraint "type"'
+    expect(formatFieldError(message, boolField)).toBe('Must be a boolean')
+  })
+
+  it('falls back to the server wording for an unrecognised constraint', () => {
+    const message = 'vars.PHOTOPRISM_ADMIN_PASSWORD: failed constraint "uniqueItems"'
+    expect(formatFieldError(message, field)).toBe('failed constraint "uniqueItems"')
+  })
+
+  it('leaves a message without a prefix intact', () => {
+    expect(formatFieldError('Something went wrong', field)).toBe('Something went wrong')
   })
 })

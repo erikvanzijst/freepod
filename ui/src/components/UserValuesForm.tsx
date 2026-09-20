@@ -47,6 +47,49 @@ export interface SchemaField {
   sensitive: boolean
 }
 
+/**
+ * Turn a server validation error into text that reads under a labelled field.
+ *
+ * The server names the property and the violated keyword -- `vars.ADMIN_TOKEN:
+ * failed constraint "minLength"` -- and deliberately never quotes the value
+ * that failed, because that message also reaches the log aggregator and the
+ * value may be a secret (`deployment-vars-api`). That wire format is a
+ * contract and is left alone.
+ *
+ * It is rendered as helper text directly beneath a control already labelled
+ * with the field's title, so the property prefix is noise and the bare keyword
+ * is unreadable. The prefix is dropped and the keyword restated against the
+ * constraint the schema declares, which the field already carries. Anything
+ * unrecognised falls back to the server's own wording rather than being
+ * swallowed.
+ */
+export function formatFieldError(error: string, field: SchemaField): string {
+  const colon = error.indexOf(':')
+  const detail = (colon === -1 ? error : error.slice(colon + 1)).trim()
+
+  const constraint = /failed constraint "([^"]+)"/.exec(detail)?.[1]
+  switch (constraint) {
+    case 'minLength':
+      return field.minLength !== undefined
+        ? `Must be at least ${field.minLength} characters`
+        : 'Too short'
+    case 'maxLength':
+      return field.maxLength !== undefined
+        ? `Must be at most ${field.maxLength} characters`
+        : 'Too long'
+    case 'minimum':
+      return field.minimum !== undefined ? `Must be at least ${field.minimum}` : 'Too small'
+    case 'maximum':
+      return field.maximum !== undefined ? `Must be at most ${field.maximum}` : 'Too large'
+    case 'pattern':
+      return 'Contains characters that are not allowed'
+    case 'type':
+      return `Must be a ${field.type}`
+    default:
+      return detail || error
+  }
+}
+
 /** One entry in the vars half of a submission. */
 export interface VarSubmission {
   value: string
@@ -302,11 +345,14 @@ export function UserValuesForm({
   useEffect(() => {
     if (errors.length > 0) {
       const newErrors: Record<string, string> = {}
+      // Longest path first, so `host` cannot claim an error that belongs to
+      // `hostname`: the match is a substring test against what the server
+      // names, and a shorter path is a substring of a longer one.
+      const candidates = [...fields].sort((a, b) => b.path.length - a.path.length)
       for (const error of errors) {
-        // Try to match error to field
-        for (const field of fields) {
+        for (const field of candidates) {
           if (error.toLowerCase().includes(field.path.toLowerCase())) {
-            newErrors[field.path] = error
+            newErrors[field.path] = formatFieldError(error, field)
             break
           }
         }
