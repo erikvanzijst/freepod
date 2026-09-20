@@ -393,11 +393,16 @@ export function UserValuesForm({
       <Typography variant="body2" color="text.secondary">
         Configure application values:
       </Typography>
+      {/* The fallback for an error that matched no field. It is still worth
+          reading, so it gets the same treatment as a field error: the prefix
+          names a property the reader cannot see, and the bare keyword says
+          nothing. Without a field there is no declared constraint to restate,
+          so the keyword's generic wording is used. */}
       {errors.length > 0 && Object.keys(fieldErrors).length === 0 && (
         <Box sx={{ p: 1, bgcolor: 'error.light', borderRadius: 1 }}>
           {errors.map((error, i) => (
             <Typography key={i} variant="body2" color="error.contrastText">
-              {error}
+              {formatFieldError(error, { path: '', name: '', type: 'value', required: false, target: 'chart', sensitive: false })}
             </Typography>
           ))}
         </Box>
