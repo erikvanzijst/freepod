@@ -53,16 +53,30 @@ it cannot be starved by a long indexing or face-recognition pass.
 
 ## The admin password
 
-PhotoPrism applies `PHOTOPRISM_ADMIN_PASSWORD` when the admin account is
-created and ignores it afterwards, and it offers no invite flow, so every
-deployment needs one from the outset.
+PhotoPrism is multi-user, but every account shares one library: roles (admin,
+user, viewer, guest) differ in permissions, not in owning separate collections.
+A deployment therefore has exactly one owner, and the tenant *is* that owner —
+so the deploy dialog asks for their own **Username** and **Password** rather
+than for an "admin password". They can invite others afterwards from
+PhotoPrism's own settings.
 
-The tenant supplies it in the deploy dialog as `PHOTOPRISM_ADMIN_PASSWORD`,
-marked `x-caelus-target: runtime`, `x-caelus-sensitive: true` and `required` in
-the user values schema — the same treatment as Lemmy's admin password. It is
-therefore encrypted at rest, write-only through every API surface, and never
-enters Helm values, which are logged in full and persisted by Helm into an
-object in the tenant's own namespace.
+Both are applied when the account is created on first start and ignored after
+that, and PhotoPrism offers no invite flow, so both are required from the
+outset.
+
+They travel by different channels, which is invisible in the dialog but matters
+here. The username is an ordinary chart value (`admin.username`), because it
+reaches the pod as `PHOTOPRISM_ADMIN_USER` and is not a secret. The password is
+`PHOTOPRISM_ADMIN_PASSWORD`, marked `x-caelus-target: runtime`,
+`x-caelus-sensitive: true` and `required` — the same treatment as Lemmy's admin
+password — so it is encrypted at rest, write-only through every API surface,
+and never enters Helm values, which are logged in full and persisted by Helm
+into an object in the tenant's own namespace.
+
+Neither can be changed by editing the deployment later: the template's
+`system_values` still carry `admin.username: admin` as a fallback, and a
+tenant's value overrides it, but PhotoPrism itself only reads either one when
+it creates the account.
 
 Requiring it is safe on later edits: vars are validated as the deployment's
 **desired** state, so a var the request does not mention is carried forward

@@ -37,17 +37,32 @@ template:
         minLength: 1
         maxLength: 253
         description: The fully qualified domain name for your library (e.g. photos.user.freepod.eu).
+      admin:
+        type: object
+        additionalProperties: false
+        properties:
+          username:
+            type: string
+            title: Username
+            minLength: 2
+            maxLength: 64
+            description: The name you will sign in with. This account owns the library and can invite
+              others later from PhotoPrism's own settings. It is created on first start and cannot be
+              changed afterwards.
+        required:
+        - username
       PHOTOPRISM_ADMIN_PASSWORD:
         type: string
-        title: Admin password
+        title: Password
         minLength: 8
         maxLength: 72
         pattern: ^[^\u0000-\u001f\u007f]+$
         x-caelus-target: runtime
         x-caelus-sensitive: true
-        description: 'Password for the initial admin account (username ''admin''). Between 8 and 72
-          characters. Store it somewhere safe: it won''t be shown again. It seeds the account on first
-          start only; to change it later, use PhotoPrism''s own settings page.'
+        description: 'The password for your account. Between 8 and 72 characters. Store it somewhere
+          safe: it won''t be shown again. It is applied when the account is created on first start; to
+          change it later, use PhotoPrism''s own settings page.'
     required:
     - host
+    - admin
     - PHOTOPRISM_ADMIN_PASSWORD
