@@ -1,0 +1,114 @@
+{{- if .Values.mariadb.enabled }}
+{{- /*
+Bundled MariaDB. PhotoPrism's database drivers are SQLite and MySQL only, so
+the platform's PostgreSQL relational storage cannot serve this product and the
+database ships with the chart.
+
+The server flags mirror upstream's reference compose file, which is where the
+application's expectations about isolation level, character set and lock
+behavior are stated; only the buffer pool is retuned (see values.yaml).
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  # Fixed name (not release-prefixed) so an existing volume in the namespace is
+  # re-adopted on upgrade rather than replaced by a fresh, empty PVC.
+  name: mariadb-data
+  labels:
+    {{- include "photoprism.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.mariadb.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.mariadb.persistence.size }}
+  {{- if .Values.mariadb.persistence.storageClassName }}
+  storageClassName: {{ .Values.mariadb.persistence.storageClassName }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-mariadb
+  labels:
+    {{- include "photoprism.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "photoprism.componentSelector" (dict "root" . "name" "mariadb") | nindent 4 }}
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-mariadb
+  labels:
+    {{- include "photoprism.labels" . | nindent 4 }}
+    {{- include "photoprism.componentSelector" (dict "root" . "name" "mariadb") | nindent 4 }}
+spec:
+  replicas: 1
+  # DB owns a single RWO volume: never run two pods at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "photoprism.componentSelector" (dict "root" . "name" "mariadb") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "photoprism.componentSelector" (dict "root" . "name" "mariadb") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: mariadb
+          image: {{ .Values.mariadb.image.repository }}:{{ .Values.mariadb.image.tag }}
+          imagePullPolicy: {{ .Values.mariadb.image.pullPolicy }}
+          args:
+            - --innodb-buffer-pool-size={{ .Values.mariadb.bufferPoolSize }}
+            - --transaction-isolation=READ-COMMITTED
+            - --character-set-server=utf8mb4
+            - --collation-server=utf8mb4_unicode_ci
+            - --max-connections=512
+            - --innodb-rollback-on-timeout=OFF
+            - --innodb-lock-wait-timeout=120
+          ports:
+            - containerPort: 3306
+              name: mysql
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          env:
+            # Applies the data directory's own upgrade step when the image moves
+            # to a newer server, which is otherwise a manual `mariadb-upgrade`.
+            - name: MARIADB_AUTO_UPGRADE
+              value: "1"
+            - name: MARIADB_INITDB_SKIP_TZINFO
+              value: "1"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+          livenessProbe:
+            exec:
+              command: ["mariadb-admin", "ping", "--silent"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command: ["mariadb-admin", "ping", "--silent"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          {{- with .Values.mariadb.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mariadb-data
+{{- end }}

@@ -1,0 +1,22 @@
+apiVersion: v2
+name: photoprism
+description: >-
+  Self-contained Freepod chart for PhotoPrism. Renders the full deployment
+  (photoprism, mariadb) directly.
+type: application
+version: 0.1.0
+appVersion: "260919"
+keywords:
+  - photoprism
+  - photos
+  - media
+  - mariadb
+maintainers:
+  - name: Caelus Team
+
+# Only dependency is Freepod's own SFTP library chart (renders no resources on
+# its own; provides the sidecar + Service helpers).
+dependencies:
+  - name: ssh-sidecar
+    version: "0.5.0"
+    repository: "file://../../_lib/ssh-sidecar-chart"

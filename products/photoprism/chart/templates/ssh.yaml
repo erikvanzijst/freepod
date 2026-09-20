@@ -1,0 +1,10 @@
+{{- /*
+`selector` targets the photoprism pod specifically: the library's default
+instance-only selector would also match the mariadb pod in this namespace, and
+the Service would round-robin onto a pod with no sshd.
+*/}}
+{{ include "ssh-sidecar.resources" (dict
+     "root" .
+     "selector" (dict
+       "app.kubernetes.io/name" "photoprism"
+       "app.kubernetes.io/instance" .Release.Name)) }}

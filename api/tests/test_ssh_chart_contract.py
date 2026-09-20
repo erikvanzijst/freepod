@@ -27,7 +27,7 @@ check that touches neither the app container, the mounted data, nor any
 credential.
 
 Every consumer is asserted rather than one, because the library chart ships as
-seven independently versioned artifacts: a product that falls behind on the
+eight independently versioned artifacts: a product that falls behind on the
 vendored library is the realistic way this regresses.
 """
 
@@ -76,6 +76,7 @@ SESSION_ROOTS: dict[str, str | None] = {
     "mattermost": "volume:/data",
     "naas": None,
     "nextcloud": "volume:/data",
+    "photoprism": "volume:/originals",
     "vaultwarden": "volume:/data",
 }
 

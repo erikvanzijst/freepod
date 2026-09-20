@@ -1,0 +1,39 @@
+{{- /*
+Two volumes, because upstream requires them to be separate: the storage tree
+must not live inside originals, or PhotoPrism indexes its own thumbnails.
+
+Both use fixed names (not release-prefixed) so an existing volume in the
+namespace is re-adopted on upgrade rather than replaced by a fresh, empty PVC.
+Only `originals` is plan-sized; see values.yaml.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: originals
+  labels:
+    {{- include "photoprism.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.originals.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.caelus.plan.storageSize | default .Values.persistence.originals.size }}
+  {{- if .Values.persistence.originals.storageClassName }}
+  storageClassName: {{ .Values.persistence.originals.storageClassName }}
+  {{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: storage
+  labels:
+    {{- include "photoprism.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.storage.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.storage.size }}
+  {{- if .Values.persistence.storage.storageClassName }}
+  storageClassName: {{ .Values.persistence.storage.storageClassName }}
+  {{- end }}
