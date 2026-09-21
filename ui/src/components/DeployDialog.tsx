@@ -27,6 +27,7 @@ export function DeployDialog({ product, userId, onClose, deployment }: DeployDia
   const [formError, setFormError] = useState<string | null>(null)
   const [userValuesErrors, setUserValuesErrors] = useState<string[]>([])
   const [hostnameValid, setHostnameValid] = useState(true)
+  const [requiredFilled, setRequiredFilled] = useState(true)
   const [selectedPlanTemplateId, setSelectedPlanTemplateId] = useState<number | null>(null)
   const [tosAccepted, setTosAccepted] = useState(false)
 
@@ -248,15 +249,18 @@ export function DeployDialog({ product, userId, onClose, deployment }: DeployDia
           onApplyPendingVars={isEditMode ? handleApplyPendingVars : undefined}
           applyingPendingVars={updateMutation.isPending}
           onHostnameValidationChange={setHostnameValid}
+          onRequiredFilledChange={setRequiredFilled}
           onLaunch={handleLaunch}
           onCancel={onClose}
           launchDisabled={
             activeMutation.isPending ||
             !activeTemplate ||
             !hostnameValid ||
+            !requiredFilled ||
             (!isEditMode && !effectivePlanTemplateId) ||
             (!isEditMode && !hasAcceptedTos && !tosAccepted)
           }
+          launchHint={requiredFilled ? undefined : 'Fill in every field marked * to continue.'}
           launchPending={activeMutation.isPending}
           formError={formError}
           userValuesErrors={userValuesErrors}

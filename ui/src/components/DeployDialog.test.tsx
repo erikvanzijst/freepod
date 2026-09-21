@@ -450,4 +450,41 @@ describe('DeployDialog', () => {
       screen.queryByText('vars.PHOTOPRISM_ADMIN_PASSWORD: failed constraint "minLength"'),
     ).not.toBeInTheDocument()
   })
+
+  it('keeps Launch disabled until every required field holds a value', async () => {
+    listTemplatesMock.mockResolvedValue([varsTemplate])
+    listPlansMock.mockResolvedValue([{ ...freePlan, product_id: 2 }])
+    getMySubdomainMock.mockResolvedValue({
+      subdomain: 'erik',
+      fqdn: 'erik.freepod.eu',
+      domain: 'freepod.eu',
+    })
+    checkHostnameMock.mockResolvedValue({ fqdn: 'p.example.com', usable: true, reason: null })
+    getTosAcceptanceMock.mockResolvedValue({ version: '2026-07-01', accepted_at: '2026-07-01T00:00:00Z' })
+
+    renderWithQuery(<DeployDialog product={varsProduct} userId={1} onClose={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Configure application values:')).toBeInTheDocument()
+    })
+    const hint = 'Fill in every field marked * to continue.'
+
+    fireEvent.change(screen.getByRole('textbox', { name: /hostname/i }), {
+      target: { value: 'p.example.com' },
+    })
+    const password = screen.getByLabelText(/password/i)
+    fireEvent.change(password, { target: { value: 'long-enough' } })
+    // Everything else Launch waits on -- plan, hostname check, ToS -- is settled.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Launch' })).toBeEnabled()
+    })
+    expect(screen.queryByText(hint)).not.toBeInTheDocument()
+
+    // So emptying one required field is the only thing that disables it.
+    fireEvent.change(password, { target: { value: '' } })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Launch' })).toBeDisabled()
+    })
+    expect(screen.getByText(hint)).toBeInTheDocument()
+  })
 })

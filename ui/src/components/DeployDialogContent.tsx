@@ -31,9 +31,12 @@ interface DeployDialogContentProps {
   onApplyPendingVars?: () => void
   applyingPendingVars?: boolean
   onHostnameValidationChange?: (valid: boolean) => void
+  onRequiredFilledChange?: (filled: boolean) => void
   onLaunch?: () => void
   onCancel?: () => void
   launchDisabled?: boolean
+  /** Why Launch is disabled, when the reason is something the user can fix. */
+  launchHint?: string
   launchPending?: boolean
   formError?: string | null
   userValuesErrors?: string[]
@@ -61,9 +64,11 @@ export function DeployDialogContent({
   onApplyPendingVars,
   applyingPendingVars,
   onHostnameValidationChange,
+  onRequiredFilledChange,
   onLaunch,
   onCancel,
   launchDisabled,
+  launchHint,
   launchPending,
   formError,
   userValuesErrors = [],
@@ -188,6 +193,7 @@ export function DeployDialogContent({
             onChange={onChange}
             onVarsChange={onVarsChange}
             onHostnameValidationChange={onHostnameValidationChange}
+            onRequiredFilledChange={onRequiredFilledChange}
             errors={userValuesErrors}
             initialHostname={initialHostname}
             readOnly={readOnly}
@@ -200,7 +206,12 @@ export function DeployDialogContent({
         </Box>
       )}
       {(onCancel || onLaunch) && (
-        <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 3 }}>
+        <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center" sx={{ mt: 3 }}>
+          {launchHint && (
+            <Typography variant="body2" color="text.secondary" sx={{ mr: 'auto' }}>
+              {launchHint}
+            </Typography>
+          )}
           {onCancel && <Button onClick={onCancel} variant="outlined">Cancel</Button>}
           {onLaunch && (
             <Button

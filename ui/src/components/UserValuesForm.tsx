@@ -209,6 +209,8 @@ interface UserValuesFormProps {
    */
   onVarsChange?: (vars: Record<string, VarSubmission>) => void
   onHostnameValidationChange?: (valid: boolean) => void
+  /** Whether every required field holds a value, so the caller can gate submission. */
+  onRequiredFilledChange?: (filled: boolean) => void
   errors?: string[]
   initialHostname?: string
   readOnly?: boolean
@@ -221,6 +223,7 @@ export function UserValuesForm({
   onChange,
   onVarsChange,
   onHostnameValidationChange,
+  onRequiredFilledChange,
   errors = [],
   initialHostname,
   readOnly,
@@ -349,9 +352,12 @@ export function UserValuesForm({
     // Longest path first: `host` would otherwise claim `hostname`'s error.
     const candidates = [...fields].sort((a, b) => b.path.length - a.path.length)
     for (const error of errors) {
-      const field = candidates.find((f) =>
-        error.toLowerCase().includes(f.path.toLowerCase()),
-      )
+      // A required object the user never touched is reported at the object
+      // (`user_values_json.admin`); it belongs to the first field inside it.
+      const location = error.split(':')[0].replace(/^(user_values_json|vars)\./, '').toLowerCase()
+      const field =
+        candidates.find((f) => error.toLowerCase().includes(f.path.toLowerCase())) ??
+        fields.find((f) => f.path.toLowerCase().startsWith(`${location}.`))
       if (field) {
         // First wins: an empty value fails minLength and pattern alike, and
         // "not allowed" is the wrong thing to say about nothing.
@@ -365,6 +371,24 @@ export function UserValuesForm({
     // error, which would otherwise re-raise it in the banner.
     setUnmatchedErrors(stranded)
   }, [errors, fields])
+
+  const requiredFilled = useMemo(
+    () =>
+      fields.every((field) => {
+        if (!field.required || field.type === 'boolean') return true
+        // Untouched, a stored secret is carried forward rather than cleared.
+        if (field.sensitive && initialVars?.[field.path] && !touchedSensitive.has(field.path)) {
+          return true
+        }
+        const value = formData[field.path]
+        return value !== undefined && value !== null && value !== ''
+      }),
+    [fields, formData, initialVars, touchedSensitive],
+  )
+
+  useEffect(() => {
+    onRequiredFilledChange?.(requiredFilled)
+  }, [requiredFilled, onRequiredFilledChange])
 
   const handleChange = (path: string, value: unknown, fieldType: string, sensitive = false) => {
     let processedValue = value

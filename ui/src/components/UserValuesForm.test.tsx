@@ -409,6 +409,49 @@ describe('server validation errors', () => {
     expect(screen.queryByText('Too short')).not.toBeInTheDocument()
   })
 
+  it('puts a missing required object on the first field inside it', () => {
+    // Only the hostname filled in: the form sends no `admin` object at all.
+    const errors = validateUserValues(photoprismSchema, { host: 'p.example.test' })
+    expect(errors).toEqual(['user_values_json.admin: failed constraint "required"'])
+    render(
+      <UserValuesForm
+        valuesSchemaJson={photoprismSchema}
+        initialValuesJson={null}
+        onChange={vi.fn()}
+        onVarsChange={vi.fn()}
+        errors={errors}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const username = screen.getByLabelText(/Username/)
+    expect(username).toHaveAttribute('aria-invalid', 'true')
+    // Once, beneath the field; no banner copy.
+    expect(screen.getByText('Required')).toBeInTheDocument()
+  })
+
+  it('counts an untouched stored secret as filled when editing', async () => {
+    const onRequiredFilledChange = vi.fn()
+    render(
+      <UserValuesForm
+        valuesSchemaJson={photoprismSchema}
+        initialValuesJson={{ host: 'p.example.test', admin: { username: 'erik' } }}
+        initialVars={{ PHOTOPRISM_ADMIN_PASSWORD: { sensitive: true } }}
+        onChange={vi.fn()}
+        onVarsChange={vi.fn()}
+        onRequiredFilledChange={onRequiredFilledChange}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    await waitFor(() => expect(onRequiredFilledChange).toHaveBeenLastCalledWith(true))
+
+    // Clearing it on purpose is not carrying it forward.
+    fireEvent.change(screen.getByLabelText(/Password/), { target: { value: 'x' } })
+    fireEvent.change(screen.getByLabelText(/Password/), { target: { value: '' } })
+    await waitFor(() => expect(onRequiredFilledChange).toHaveBeenLastCalledWith(false))
+  })
+
   it('reports the first constraint an empty value fails, not the last', () => {
     const schema = {
       type: 'object',
