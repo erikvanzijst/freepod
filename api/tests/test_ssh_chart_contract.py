@@ -27,7 +27,7 @@ check that touches neither the app container, the mounted data, nor any
 credential.
 
 Every consumer is asserted rather than one, because the library chart ships as
-eight independently versioned artifacts: a product that falls behind on the
+nine independently versioned artifacts: a product that falls behind on the
 vendored library is the realistic way this regresses.
 """
 
@@ -68,6 +68,7 @@ EXTRA_VALUES: dict[str, dict[str, str]] = {
 # volume: owning one is not a declaration, and the presence of a volume must
 # never be what opts a product into a session.
 SESSION_ROOTS: dict[str, str | None] = {
+    "bookstack": "volume:/uploads",
     "custom": "app-container",
     "helloworld": "volume:/data",
     "immich": "volume:/library",

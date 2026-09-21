@@ -221,8 +221,8 @@ def test_canceling_a_run_ends_its_session_and_stops_the_run(deps, monkeypatch, t
     with deps.Session() as s:
         run = s.scalars(select(db.Run)).one()
         assert run.state == "canceled" and run.finished_at
-        # The catalog holds three products; the two after the canceled one never start.
-        assert [(p.slug, p.outcome) for p in run.products] == [("immich", "canceled")]
+        # The products after the canceled one never start.
+        assert [(p.slug, p.outcome) for p in run.products] == [(ELIGIBLE[0], "canceled")]
         assert run.products[0].error == "the run was canceled"
         assert {"session.jsonl", "stdout.txt"} <= set(run.products[0].files)
     child = int(child_file.read_text())

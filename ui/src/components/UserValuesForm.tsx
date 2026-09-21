@@ -74,6 +74,8 @@ export function formatFieldError(error: string, field: SchemaField): string {
       return 'Contains characters that are not allowed'
     case 'type':
       return `Must be a ${field.type}`
+    case 'required':
+      return 'Required'
     default:
       return detail || error
   }
@@ -351,7 +353,9 @@ export function UserValuesForm({
         error.toLowerCase().includes(f.path.toLowerCase()),
       )
       if (field) {
-        newErrors[field.path] = formatFieldError(error, field)
+        // First wins: an empty value fails minLength and pattern alike, and
+        // "not allowed" is the wrong thing to say about nothing.
+        newErrors[field.path] ??= formatFieldError(error, field)
       } else {
         stranded.push(error)
       }
@@ -542,8 +546,14 @@ export function validateUserValues(
     return []
   }
 
+  // The server's wording (`user_values_json.admin.name: failed constraint
+  // "minLength"`), so field matching and formatFieldError handle both sources
+  // alike. AJV reports `required` against the parent object.
   return (validate.errors || []).map((err) => {
-    const path = err.instancePath || '/'
-    return `${path}: ${err.message}`
+    const segments = err.instancePath.split('/').filter(Boolean)
+    if (err.keyword === 'required') {
+      segments.push(String((err.params as { missingProperty: string }).missingProperty))
+    }
+    return `${['user_values_json', ...segments].join('.')}: failed constraint "${err.keyword}"`
   })
 }

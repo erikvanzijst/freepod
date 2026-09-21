@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=./catalog.schema.json
+schema_version: 1
+product:
+  slug: bookstack
+  name: BookStack
+  description: A simple, organized wiki for your notes and documentation
+  category: Knowledge & wikis
+  replaces: Confluence · Notion
+  icon: icons/bookstack.png
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/solidnerd/bookstack
+  # The image version mirrors BookStack's own (v26.05.5 -> 26.5.5). Rebuild
+  # suffixes such as 26.3.4-1 and the moving 26.5 / latest tags are excluded.
+  match: ^(?P<version>\d+\.\d+\.\d+)$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/bookstack
+  chart_version: 0.1.2
+  system_values:
+    image:
+      tag: 26.5.5
+    smtp:
+      host: smtp.mailer.svc.cluster.local
+      port: 25
+      from: bookstack@freepod.eu
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      host:
+        type: string
+        title: Hostname
+        minLength: 1
+        maxLength: 253
+        description: The fully qualified domain name for your wiki (e.g. wiki.user.freepod.eu).
+      admin:
+        type: object
+        additionalProperties: false
+        properties:
+          name:
+            type: string
+            title: Your name
+            minLength: 2
+            maxLength: 100
+            pattern: ^[^\u0000-\u001f\u007f]+$
+            description: How you appear to others in BookStack. You sign in with the email address of
+              your Freepod account. You can change both later from your BookStack profile.
+        required:
+        - name
+      BOOKSTACK_ADMIN_PASSWORD:
+        type: string
+        title: Password
+        minLength: 8
+        maxLength: 72
+        pattern: ^[^\u0000-\u001f\u007f]+$
+        x-caelus-target: runtime
+        x-caelus-sensitive: true
+        description: 'The password for your account, which owns the wiki and can invite others.
+          Store it somewhere safe: it won''t be shown again. It is set on first start only; to
+          change it later, use BookStack''s own profile page.'
+    required:
+    - host
+    - admin
+    - BOOKSTACK_ADMIN_PASSWORD
