@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FormControl, FormHelperText, IconButton, InputAdornment, TextField, Tooltip } from '@mui/material'
+import { FormControl, IconButton, InputAdornment, TextField, Tooltip } from '@mui/material'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 
@@ -102,8 +102,6 @@ export function SensitiveVarField({
           },
         }}
       />
-      {/* No error helper here: `helper` above already resolves to the error
-          when there is one, and a second one renders the same message twice. */}
     </FormControl>
   )
 }

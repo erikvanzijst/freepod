@@ -404,4 +404,64 @@ describe('server validation errors', () => {
 
     expect(screen.queryByText(/vars\.SOMETHING_ELSE/)).not.toBeInTheDocument()
   })
+
+  it('does not re-raise a field error in the banner when the field is edited', async () => {
+    const schema = {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        host: { type: 'string', title: 'Hostname', minLength: 1 },
+        ADMIN_TOKEN: {
+          type: 'string',
+          title: 'Admin token',
+          minLength: 8,
+          maxLength: 72,
+          'x-caelus-target': 'runtime',
+          'x-caelus-sensitive': true,
+        },
+      },
+      required: ['host', 'ADMIN_TOKEN'],
+    }
+
+    render(
+      <UserValuesForm
+        valuesSchemaJson={schema}
+        initialValuesJson={null}
+        onChange={vi.fn()}
+        onVarsChange={vi.fn()}
+        errors={['vars.ADMIN_TOKEN: failed constraint "maxLength"']}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(screen.getByText('Must be at most 72 characters')).toBeInTheDocument()
+
+    // Typing clears the field's error. The banner must not pick it up: the
+    // message would reappear above the form, detached from its field.
+    fireEvent.change(screen.getByLabelText(/admin token/i), { target: { value: 'x' } })
+
+    await waitFor(() => {
+      expect(screen.queryByText('Must be at most 72 characters')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText('Too long')).not.toBeInTheDocument()
+  })
+
+  it('shows an error naming no field in the banner', () => {
+    const schema = {
+      type: 'object',
+      properties: { host: { type: 'string', title: 'Hostname' } },
+    }
+
+    render(
+      <UserValuesForm
+        valuesSchemaJson={schema}
+        initialValuesJson={null}
+        onChange={vi.fn()}
+        errors={['vars.SOMETHING_ELSE: failed constraint "maxLength"']}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(screen.getByText('Too long')).toBeInTheDocument()
+  })
 })

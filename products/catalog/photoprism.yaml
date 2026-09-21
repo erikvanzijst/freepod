@@ -5,7 +5,7 @@ product:
   name: PhotoPrism
   description: AI-powered photo library that tags and finds your pictures
   category: Photos
-  replaces: Google Photos · Apple Photos
+  replaces: Google Photos · iCloud Photos
   icon: icons/photoprism.png
 upstream:
   source:
@@ -47,7 +47,7 @@ template:
             minLength: 2
             maxLength: 64
             description: The name you will sign in with. This account owns the library and can invite
-              others later from PhotoPrism's own settings. It is created on first start and cannot be
+              others later from PhotoPrism's own settings. It cannot be
               changed afterwards.
         required:
         - username
@@ -59,9 +59,8 @@ template:
         pattern: ^[^\u0000-\u001f\u007f]+$
         x-caelus-target: runtime
         x-caelus-sensitive: true
-        description: 'The password for your account. Between 8 and 72 characters. Store it somewhere
-          safe: it won''t be shown again. It is applied when the account is created on first start; to
-          change it later, use PhotoPrism''s own settings page.'
+        description: 'The password for your account. Store it somewhere safe: 
+          it won''t be shown again. To change it later, use PhotoPrism''s own settings page.'
     required:
     - host
     - admin

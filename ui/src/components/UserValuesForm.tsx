@@ -48,20 +48,9 @@ export interface SchemaField {
 }
 
 /**
- * Turn a server validation error into text that reads under a labelled field.
- *
- * The server names the property and the violated keyword -- `vars.ADMIN_TOKEN:
- * failed constraint "minLength"` -- and deliberately never quotes the value
- * that failed, because that message also reaches the log aggregator and the
- * value may be a secret (`deployment-vars-api`). That wire format is a
- * contract and is left alone.
- *
- * It is rendered as helper text directly beneath a control already labelled
- * with the field's title, so the property prefix is noise and the bare keyword
- * is unreadable. The prefix is dropped and the keyword restated against the
- * constraint the schema declares, which the field already carries. Anything
- * unrecognised falls back to the server's own wording rather than being
- * swallowed.
+ * Rewrite `vars.KEY: failed constraint "minLength"` for display beneath a
+ * labelled field. The wire format is a contract (deployment-vars-api) and is
+ * left alone; an unrecognised keyword keeps the server's wording.
  */
 export function formatFieldError(error: string, field: SchemaField): string {
   const colon = error.indexOf(':')
@@ -251,6 +240,8 @@ export function UserValuesForm({
 
   const [formData, setFormData] = useState<Record<string, unknown>>({})
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  // Errors naming no field this form renders.
+  const [unmatchedErrors, setUnmatchedErrors] = useState<string[]>([])
   // Sensitive fields the user has actually typed into. Everything else is
   // submitted with no `value` at all, which is what "leave it unchanged"
   // means on the wire -- an empty string is a real value and would wipe the
@@ -343,22 +334,32 @@ export function UserValuesForm({
   }, [formData, fields, initialVars, touchedSensitive, onChange, onVarsChange])
 
   useEffect(() => {
-    if (errors.length > 0) {
-      const newErrors: Record<string, string> = {}
-      // Longest path first, so `host` cannot claim an error that belongs to
-      // `hostname`: the match is a substring test against what the server
-      // names, and a shorter path is a substring of a longer one.
-      const candidates = [...fields].sort((a, b) => b.path.length - a.path.length)
-      for (const error of errors) {
-        for (const field of candidates) {
-          if (error.toLowerCase().includes(field.path.toLowerCase())) {
-            newErrors[field.path] = formatFieldError(error, field)
-            break
-          }
-        }
-      }
-      setFieldErrors(newErrors)
+    if (errors.length === 0) {
+      // Returns `prev` when already empty: `errors` defaults to a fresh array,
+      // so an unconditional set would loop.
+      setFieldErrors((prev) => (Object.keys(prev).length > 0 ? {} : prev))
+      setUnmatchedErrors((prev) => (prev.length > 0 ? [] : prev))
+      return
     }
+
+    const newErrors: Record<string, string> = {}
+    const stranded: string[] = []
+    // Longest path first: `host` would otherwise claim `hostname`'s error.
+    const candidates = [...fields].sort((a, b) => b.path.length - a.path.length)
+    for (const error of errors) {
+      const field = candidates.find((f) =>
+        error.toLowerCase().includes(f.path.toLowerCase()),
+      )
+      if (field) {
+        newErrors[field.path] = formatFieldError(error, field)
+      } else {
+        stranded.push(error)
+      }
+    }
+    setFieldErrors(newErrors)
+    // Tracked, not inferred from an empty `fieldErrors`: typing clears a field
+    // error, which would otherwise re-raise it in the banner.
+    setUnmatchedErrors(stranded)
   }, [errors, fields])
 
   const handleChange = (path: string, value: unknown, fieldType: string, sensitive = false) => {
@@ -393,14 +394,9 @@ export function UserValuesForm({
       <Typography variant="body2" color="text.secondary">
         Configure application values:
       </Typography>
-      {/* The fallback for an error that matched no field. It is still worth
-          reading, so it gets the same treatment as a field error: the prefix
-          names a property the reader cannot see, and the bare keyword says
-          nothing. Without a field there is no declared constraint to restate,
-          so the keyword's generic wording is used. */}
-      {errors.length > 0 && Object.keys(fieldErrors).length === 0 && (
+      {unmatchedErrors.length > 0 && (
         <Box sx={{ p: 1, bgcolor: 'error.light', borderRadius: 1 }}>
-          {errors.map((error, i) => (
+          {unmatchedErrors.map((error, i) => (
             <Typography key={i} variant="body2" color="error.contrastText">
               {formatFieldError(error, { path: '', name: '', type: 'value', required: false, target: 'chart', sensitive: false })}
             </Typography>
@@ -457,10 +453,7 @@ export function UserValuesForm({
                   }
                   label={field.title || field.path}
                 />
-                {/* A checkbox has no TextField to carry helper text, so the
-                    error is rendered here. Every other branch puts it in the
-                    control's own helperText, which is why there is no shared
-                    one below: two would show it twice. */}
+                {/* A checkbox has no helperText to carry the error. */}
                 {fieldErrors[field.path] ? (
                   <FormHelperText>{fieldErrors[field.path]}</FormHelperText>
                 ) : (
