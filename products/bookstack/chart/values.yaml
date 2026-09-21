@@ -1,0 +1,103 @@
+# Bespoke BookStack chart values. Flat and explicit: every image, size and env
+# the deployment uses is declared here.
+
+# BookStack publishes no image of its own. This is the community image
+# upstream's docs list that runs unprivileged (uid 33) and takes its
+# configuration from the environment only.
+image:
+  repository: docker.io/solidnerd/bookstack
+  # Defaults to the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Public hostname: the ingress rule host and APP_URL.
+host: "bookstack.local"
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+
+# The owner's account. BookStack signs in by email, which comes from
+# caelus.owner.email under Caelus and from `email` standalone. Applied by
+# `bookstack:create-admin --initial`, which rewrites the seeded
+# admin@admin.com account and does nothing once another admin exists.
+admin:
+  name: Admin
+  email: admin@example.com
+  # Blank generates one on first install; a tenant-supplied
+  # BOOKSTACK_ADMIN_PASSWORD var overrides it.
+  password: ""
+
+# Peers allowed to set X-Forwarded-*: the k3s pod CIDR, where Traefik reaches
+# this pod from.
+trustedProxies: "10.42.0.0/16"
+
+smtp:
+  host: ""
+  port: 25
+  from: bookstack@example.com
+  fromName: BookStack
+
+# The image's php.ini caps uploads at 10M; BookStack's own limit must not
+# promise more than PHP accepts.
+uploadLimitMB: 10
+
+persistence:
+  # public/uploads (images) and storage/uploads (attachments), as the
+  # volume's `public` and `storage` subdirectories. caelus.plan.storageSize
+  # overrides the size.
+  uploads:
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    storageClassName: ""
+
+mysql:
+  image:
+    repository: docker.io/library/mysql
+    tag: "26.7"
+    pullPolicy: IfNotPresent
+  auth:
+    username: bookstack
+    database: bookstack
+    # Blank generates one on first install and reuses it from the <release>-db
+    # Secret thereafter.
+    password: ""
+    rootPassword: ""
+  # Upstream's compose runs the server untuned, which idles at ~490Mi for a
+  # database that is typically a few megabytes. Performance Schema is
+  # monitoring instrumentation nothing here reads (~240Mi); the buffer pool and
+  # redo log buffer are sized for a wiki rather than a general-purpose server.
+  args:
+    - --performance-schema=OFF
+    - --innodb-buffer-pool-size=64M
+    - --innodb-log-buffer-size=8M
+  persistence:
+    accessMode: ReadWriteOnce
+    size: 5Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      memory: 1Gi
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+
+# Escape hatch for BookStack settings this chart does not model.
+extraEnv: {}
+
+# Injected per deployment by the Caelus reconciler.
+caelus:
+  plan: {}
+  owner: {}
+  ingress:
+    enabled: false
+    tls: {}
+  vars: {}
+
+sshSidecarImage: ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2

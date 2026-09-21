@@ -1,0 +1,16 @@
+# Packaged charts. `helm package` writes its output into this directory, so
+# without this line each package sweeps in the previous release's .tgz and the
+# chart accretes a copy of its own history. They are gitignored artifacts
+# (products/.gitignore) and never belong inside a published chart.
+/*.tgz
+
+# VCS and editor noise, none of which the registry should carry.
+.git/
+.gitignore
+.idea/
+*.tmproj
+.vscode/
+.DS_Store
+*.swp
+*.bak
+*.orig

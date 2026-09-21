@@ -1,0 +1,9 @@
+{{- /*
+`selector` targets the bookstack pod: the library's instance-only default would
+also match the mysql pod, which has no sshd.
+*/}}
+{{ include "ssh-sidecar.resources" (dict
+     "root" .
+     "selector" (dict
+       "app.kubernetes.io/name" "bookstack"
+       "app.kubernetes.io/instance" .Release.Name)) }}

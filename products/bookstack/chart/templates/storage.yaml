@@ -1,0 +1,19 @@
+{{- /*
+Fixed name (not release-prefixed) so an existing volume in the namespace is
+re-adopted on upgrade rather than replaced by a fresh, empty PVC.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uploads
+  labels:
+    {{- include "bookstack.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.uploads.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.caelus.plan.storageSize | default .Values.persistence.uploads.size }}
+  {{- if .Values.persistence.uploads.storageClassName }}
+  storageClassName: {{ .Values.persistence.uploads.storageClassName }}
+  {{- end }}

@@ -1,0 +1,198 @@
+{{- /*
+Shared by the setup init container and the application: both boot the same
+Laravel application and must see the same configuration.
+
+The tenant's vars come first and the chart's Secret last, because a later
+envFrom source overrides an earlier one and no var may displace a credential.
+Standalone installs have no vars Secret and read the generated admin password.
+*/}}
+{{- define "bookstack.envFrom" -}}
+{{- with .Values.caelus.vars.secretName }}
+- secretRef:
+    name: {{ . | quote }}
+{{- else }}
+- secretRef:
+    name: {{ $.Release.Name }}-admin
+{{- end }}
+- secretRef:
+    name: {{ .Release.Name }}-db
+{{- end -}}
+
+{{- define "bookstack.env" -}}
+- name: APP_URL
+  value: {{ printf "https://%s" .Values.host | quote }}
+- name: APP_PROXIES
+  value: {{ .Values.trustedProxies | quote }}
+# The image's php.ini has no error_log, so stderr is what reaches the pod log.
+- name: LOG_CHANNEL
+  value: stderr
+# Sessions in the database survive a pod restart; the image's file driver
+# keeps them in the container filesystem.
+- name: SESSION_DRIVER
+  value: database
+- name: SESSION_SECURE_COOKIE
+  value: "true"
+# Set explicitly so the sign-in method is the chart's decision: BookStack has
+# no UI for it, and the external methods would need secrets and endpoints the
+# platform does not provide.
+- name: AUTH_METHOD
+  value: standard
+- name: FILE_UPLOAD_SIZE_LIMIT
+  value: {{ .Values.uploadLimitMB | quote }}
+{{- if .Values.smtp.host }}
+- name: MAIL_DRIVER
+  value: smtp
+- name: MAIL_HOST
+  value: {{ .Values.smtp.host | quote }}
+- name: MAIL_PORT
+  value: {{ .Values.smtp.port | quote }}
+- name: MAIL_ENCRYPTION
+  value: "null"
+- name: MAIL_FROM
+  value: {{ .Values.smtp.from | quote }}
+- name: MAIL_FROM_NAME
+  value: {{ .Values.smtp.fromName | quote }}
+{{- end }}
+{{- range $key, $value := .Values.extraEnv }}
+- name: {{ $key }}
+  value: {{ $value | quote }}
+{{- end }}
+{{- end -}}
+
+{{- define "bookstack.securityContext" -}}
+runAsNonRoot: true
+runAsUser: 33
+runAsGroup: 33
+allowPrivilegeEscalation: false
+capabilities:
+  drop: [ALL]
+{{- end -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-bookstack
+  labels:
+    {{- include "bookstack.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "bookstack.componentSelector" (dict "root" . "name" "bookstack") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-bookstack
+  labels:
+    {{- include "bookstack.labels" . | nindent 4 }}
+    {{- include "bookstack.componentSelector" (dict "root" . "name" "bookstack") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "bookstack.componentSelector" (dict "root" . "name" "bookstack") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bookstack.componentSelector" (dict "root" . "name" "bookstack") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      # Not runAsNonRoot here: the SSH sidecar in this pod runs as root.
+      securityContext:
+        fsGroup: 33
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: wait-for-mysql
+          image: {{ .Values.mysql.image.repository }}:{{ .Values.mysql.image.tag }}
+          imagePullPolicy: {{ .Values.mysql.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          command:
+            - sh
+            - -c
+            - until MYSQL_PWD="$MYSQL_PASSWORD" mysqladmin ping -h {{ .Release.Name }}-mysql -u "$MYSQL_USER" --silent; do sleep 2; done
+        # Migrates before the owner account is written, since the account
+        # lives in the schema. The image's entrypoint migrates again at start,
+        # which is then a no-op.
+        #
+        # create-admin --initial rewrites the seeded admin@admin.com account
+        # and exits 2 once any other admin exists, so after the first start it
+        # changes nothing: the owner's own edits in BookStack stand.
+        - name: setup
+          image: {{ .Values.image.repository }}:{{ include "bookstack.appTag" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- include "bookstack.securityContext" . | nindent 12 }}
+          envFrom:
+            {{- include "bookstack.envFrom" . | nindent 12 }}
+          env:
+            {{- include "bookstack.env" . | nindent 12 }}
+            - name: BOOKSTACK_ADMIN_EMAIL
+              value: {{ .Values.caelus.owner.email | default .Values.admin.email | quote }}
+            - name: BOOKSTACK_ADMIN_NAME
+              value: {{ .Values.admin.name | quote }}
+          command:
+            - bash
+            - -ec
+            - |
+              mkdir -p /uploads/public /uploads/storage
+              php artisan migrate --force
+              rc=0
+              php artisan bookstack:create-admin --initial \
+                --email="$BOOKSTACK_ADMIN_EMAIL" \
+                --name="$BOOKSTACK_ADMIN_NAME" \
+                --password="$BOOKSTACK_ADMIN_PASSWORD" || rc=$?
+              [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]
+          volumeMounts:
+            - name: uploads
+              mountPath: /uploads
+      containers:
+        - name: bookstack
+          image: {{ .Values.image.repository }}:{{ include "bookstack.appTag" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- include "bookstack.securityContext" . | nindent 12 }}
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            {{- include "bookstack.envFrom" . | nindent 12 }}
+          env:
+            {{- include "bookstack.env" . | nindent 12 }}
+          # /status checks the database, cache and session store, which is
+          # right for readiness and wrong for liveness: a slow database would
+          # restart a healthy web server. Liveness asks Apache only.
+          readinessProbe:
+            httpGet: { path: /status, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket: { port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          volumeMounts:
+            - name: uploads
+              mountPath: /var/www/bookstack/public/uploads
+              subPath: public
+            - name: uploads
+              mountPath: /var/www/bookstack/storage/uploads
+              subPath: storage
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage
+             "sessionRoot" "volume:/uploads"
+             "mounts" (list (dict "volume" "uploads" "path" "/uploads"))) | nindent 8 }}
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: uploads

@@ -1,4 +1,4 @@
-"""The eight curated charts are handed the release identity and ignore it.
+"""The nine curated charts are handed the release identity and ignore it.
 
 The reconciler supplies `caelus.releaseId` and `caelus.releaseNumber` to *every*
 product with no per-product condition — rendering them is each chart's decision,
@@ -32,6 +32,7 @@ pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not i
 # The minimum each chart needs to render standalone, unrelated to this change:
 # values a real deployment always has and a bare `helm template` does not.
 CURATED = {
+    "bookstack": {},
     "helloworld": {},
     "immich": {},
     "matrix": {},

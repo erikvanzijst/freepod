@@ -29,6 +29,7 @@ def test_placeholder_and_missing_upstream_are_excluded(tmp_path):
 
 def test_the_repositorys_own_catalog():
     assert eligible(REPO_ROOT) == [
+        "bookstack",
         "immich",
         "lemmy",
         "mattermost",

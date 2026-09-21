@@ -1,0 +1,108 @@
+{{- /*
+Bundled MySQL, at the version upstream's reference compose runs. The image
+starts as root and drops to the mysql user itself, so no security context is
+imposed on it.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  # Fixed name, like `uploads`, so the volume is re-adopted on upgrade.
+  name: mysql-data
+  labels:
+    {{- include "bookstack.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.mysql.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.mysql.persistence.size }}
+  {{- if .Values.mysql.persistence.storageClassName }}
+  storageClassName: {{ .Values.mysql.persistence.storageClassName }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-mysql
+  labels:
+    {{- include "bookstack.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "bookstack.componentSelector" (dict "root" . "name" "mysql") | nindent 4 }}
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-mysql
+  labels:
+    {{- include "bookstack.labels" . | nindent 4 }}
+    {{- include "bookstack.componentSelector" (dict "root" . "name" "mysql") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "bookstack.componentSelector" (dict "root" . "name" "mysql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bookstack.componentSelector" (dict "root" . "name" "mysql") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: mysql
+          image: {{ .Values.mysql.image.repository }}:{{ .Values.mysql.image.tag }}
+          imagePullPolicy: {{ .Values.mysql.image.pullPolicy }}
+          {{- with .Values.mysql.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - containerPort: 3306
+              name: mysql
+          env:
+            {{- range $key := list "MYSQL_DATABASE" "MYSQL_USER" "MYSQL_PASSWORD" "MYSQL_ROOT_PASSWORD" }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Release.Name }}-db
+                  key: {{ $key }}
+            {{- end }}
+          # Over TCP, as the application user: the image's first-boot init runs
+          # a temporary server with networking off, which a socket ping would
+          # report as ready. That init is also why liveness waits on a startup
+          # probe rather than on a fixed delay.
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "MYSQL_PWD=\"$MYSQL_PASSWORD\" mysqladmin ping -h 127.0.0.1 -u \"$MYSQL_USER\" --silent"]
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "MYSQL_PWD=\"$MYSQL_PASSWORD\" mysqladmin ping -h 127.0.0.1 -u \"$MYSQL_USER\" --silent"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "MYSQL_PWD=\"$MYSQL_PASSWORD\" mysql -h 127.0.0.1 -u \"$MYSQL_USER\" -e 'SELECT 1' \"$MYSQL_DATABASE\""]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+          {{- with .Values.mysql.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mysql-data

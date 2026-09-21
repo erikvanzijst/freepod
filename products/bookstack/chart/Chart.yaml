@@ -1,0 +1,20 @@
+apiVersion: v2
+name: bookstack
+description: >-
+  Self-contained Freepod chart for BookStack. Renders the full deployment
+  (bookstack, mysql) directly.
+type: application
+version: 0.1.2
+appVersion: "26.5.5"
+keywords:
+  - bookstack
+  - wiki
+  - documentation
+  - mysql
+maintainers:
+  - name: Caelus Team
+
+dependencies:
+  - name: ssh-sidecar
+    version: "0.5.0"
+    repository: "file://../../_lib/ssh-sidecar-chart"
