@@ -3,7 +3,7 @@ schema_version: 1
 product:
   slug: matrix
   name: Matrix
-  description: Your own Matrix homeserver
+  description: Private, encrypted chat that connects to the whole Matrix network
   category: Chat & messaging
   replaces: WhatsApp · Discord
   icon: icons/matrix.png
