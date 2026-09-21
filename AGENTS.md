@@ -272,6 +272,9 @@ Prose docs point at it; they do not restate it.
 - READMEs and `cli/DEVELOPMENT.md` — **how to work with the code today**: how
   to run, test and operate it, the codebase map, troubleshooting, and
   narrative that spans several capabilities.
+- `.agents/skills/<name>/SKILL.md` — **repo-maintained agent skills**: the
+  procedure an agent follows for a recurring task. Harness-agnostic; check
+  here for a skill before starting such a task.
 
 Capability directories under `openspec/specs/` are not immutable the way
 archive paths are: `openspec sync` can rename or merge them. Renaming or
