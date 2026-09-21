@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
-import { UserValuesForm } from '../components/UserValuesForm'
+import { UserValuesForm, validateUserValues } from '../components/UserValuesForm'
 
 vi.mock('../api/endpoints', () => ({
   getMySubdomain: vi.fn().mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' }),
@@ -388,6 +388,55 @@ describe('server validation errors', () => {
     expect(screen.getByText('Must be at least 8 characters')).toBeInTheDocument()
     expect(screen.queryByText(serverError)).not.toBeInTheDocument()
     expect(screen.queryByText(/PHOTOPRISM_ADMIN_PASSWORD/)).not.toBeInTheDocument()
+  })
+
+  it('puts a client-side error on a nested field under that field', () => {
+    // The dialog validates before submitting; these are the errors it passes.
+    const errors = validateUserValues(photoprismSchema, { host: 'p.example.test', admin: { username: 'd' } })
+    render(
+      <UserValuesForm
+        valuesSchemaJson={photoprismSchema}
+        initialValuesJson={null}
+        onChange={vi.fn()}
+        onVarsChange={vi.fn()}
+        errors={errors}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(screen.getByText('Must be at least 2 characters')).toBeInTheDocument()
+    expect(screen.queryByText(/must NOT/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Too short')).not.toBeInTheDocument()
+  })
+
+  it('reports the first constraint an empty value fails, not the last', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        admin: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', title: 'Your name', minLength: 2, pattern: '^[^\\u0000-\\u001f\\u007f]+$' },
+          },
+          required: ['name'],
+        },
+      },
+      required: ['admin'],
+    }
+    const errors = validateUserValues(schema, { admin: { name: '' } })
+    expect(errors).toHaveLength(2)
+    render(
+      <UserValuesForm
+        valuesSchemaJson={schema}
+        initialValuesJson={null}
+        onChange={vi.fn()}
+        errors={errors}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(screen.getByText('Must be at least 2 characters')).toBeInTheDocument()
+    expect(screen.queryByText('Contains characters that are not allowed')).not.toBeInTheDocument()
   })
 
   it('formats an error that matches no field rather than printing it raw', () => {

@@ -217,7 +217,27 @@ describe('validateUserValues', () => {
 
     expect(validateUserValues(schema, { federation: { enabled: true } })).toEqual([])
     const errors = validateUserValues(schema, { federation: { enabled: 'true' } })
-    expect(errors.some((error) => error.includes('/federation/enabled'))).toBe(true)
+    expect(errors).toEqual(['user_values_json.federation.enabled: failed constraint "type"'])
+  })
+
+  it('reports in the server format, naming the missing property', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        admin: {
+          type: 'object',
+          properties: { name: { type: 'string', minLength: 2 } },
+          required: ['name'],
+        },
+      },
+    }
+
+    expect(validateUserValues(schema, { admin: { name: 'd' } })).toEqual([
+      'user_values_json.admin.name: failed constraint "minLength"',
+    ])
+    expect(validateUserValues(schema, { admin: {} })).toEqual([
+      'user_values_json.admin.name: failed constraint "required"',
+    ])
   })
 })
 
