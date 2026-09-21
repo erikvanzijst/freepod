@@ -28,7 +28,14 @@ def test_placeholder_and_missing_upstream_are_excluded(tmp_path):
 
 
 def test_the_repositorys_own_catalog():
-    assert eligible(REPO_ROOT) == ["immich", "lemmy", "mattermost", "nextcloud", "vaultwarden"]
+    assert eligible(REPO_ROOT) == [
+        "immich",
+        "lemmy",
+        "mattermost",
+        "nextcloud",
+        "photoprism",
+        "vaultwarden",
+    ]
 
 
 def test_fetch_reads_master_from_a_fresh_clone(tmp_path):

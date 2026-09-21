@@ -1,0 +1,116 @@
+# Bespoke PhotoPrism chart values. Flat and explicit: every image, size and env
+# the deployment uses is declared here, not buried under an upstream chart's
+# values.
+
+# PhotoPrism application image. The published image is the community edition
+# build -- its Dockerfile records DOCKER_IMG=ce -- so the plain dated tag is the
+# one to pin; the `-ce` tags are aliases of it.
+image:
+  repository: docker.io/photoprism/photoprism
+  # Defaults to the chart appVersion. Upstream versions are dates (YYMMDD), so
+  # this MUST stay quoted in every values file: unquoted it parses as an
+  # integer and fails this chart's schema.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Public hostname. Used as the ingress rule host and PHOTOPRISM_SITE_URL (so
+# generated links are correct behind the TLS proxy). This is the one value a
+# tenant sets in the deployment dialog.
+host: "photoprism.local"
+
+# Wrapper ingress. TLS is injected per-deployment by the Caelus reconciler via
+# the caelus.ingress.* block below.
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+
+admin:
+  username: admin
+  # PhotoPrism applies this on first start only and offers no invite flow, so
+  # every deployment needs one from the outset. Blank generates a strong
+  # password on first install and reuses it thereafter; a tenant-supplied
+  # PHOTOPRISM_ADMIN_PASSWORD var overrides it (see templates/photoprism.yaml,
+  # where the ordering of the two Secrets is what makes that work).
+  password: ""
+
+# Reverse-proxy coupling. PHOTOPRISM_TRUSTED_PROXY decides which peers may set
+# the client-IP headers PhotoPrism reads for rate limiting and its session log.
+# The default is the k3s pod CIDR, which is where Traefik reaches this pod from.
+trustedProxies: "10.42.0.0/16"
+
+# Indexing workers. Upstream's default is "auto", which derives from the node's
+# core count -- on a shared node that is every core for one tenant. Pinned low
+# instead; raise it for a deployment that is importing a large library.
+workers: 2
+
+persistence:
+  # /photoprism/originals -- the pictures. caelus.plan.storageSize (reconciler)
+  # overrides the size.
+  originals:
+    accessMode: ReadWriteOnce
+    size: 100Gi
+    storageClassName: ""
+  # /photoprism/storage -- thumbnails, sidecar files, database backups and
+  # logs. Sized independently of the plan: it is derived data whose footprint
+  # tracks thumbnail settings rather than the tenant's allowance. Upstream
+  # requires it to live outside `originals`.
+  storage:
+    accessMode: ReadWriteOnce
+    size: 20Gi
+    storageClassName: ""
+
+# Bundled MariaDB. PhotoPrism speaks SQLite or MySQL/MariaDB and no PostgreSQL,
+# so the platform's own relational storage cannot serve it and the database
+# ships with the chart.
+mariadb:
+  enabled: true
+  image:
+    repository: docker.io/library/mariadb
+    tag: "12.3"
+    pullPolicy: IfNotPresent
+  auth:
+    username: photoprism
+    database: photoprism
+    # Blank generates a strong password on first install and reuses it from the
+    # <release>-db Secret thereafter. MARIADB_PASSWORD only seeds the account
+    # when the data directory is first initialized, so a value that changed
+    # between releases would lock the application out of its own database.
+    password: ""
+    rootPassword: ""
+  # Upstream's production compose uses 512M. Halved here for density on a
+  # shared node: the buffer pool is resident memory per deployment, and this is
+  # the single largest term in an idle instance's footprint.
+  bufferPoolSize: "256M"
+  persistence:
+    accessMode: ReadWriteOnce
+    size: 8Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 384Mi
+
+# No memory limit by default. Upstream is explicit that a hard limit causes
+# restarts while indexing RAW images and panoramas, and an OOM kill mid-index
+# leaves work to redo rather than failing cleanly. Requests still size the
+# scheduling decision.
+resources:
+  requests:
+    cpu: 250m
+    memory: 768Mi
+
+# Escape hatch for PhotoPrism settings this chart does not model. Plain string
+# values only; anything needing a secret deserves a real value.
+extraEnv: {}
+
+# Injected per deployment by the Caelus reconciler. The defaults let the chart
+# render standalone (helm template / tests).
+caelus:
+  plan: {}
+  ingress:
+    enabled: false
+    tls: {}
+  vars: {}
+
+sshSidecarImage: ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2

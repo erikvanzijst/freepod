@@ -1,4 +1,4 @@
-"""The seven curated charts are handed the release identity and ignore it.
+"""The eight curated charts are handed the release identity and ignore it.
 
 The reconciler supplies `caelus.releaseId` and `caelus.releaseNumber` to *every*
 product with no per-product condition — rendering them is each chart's decision,
@@ -38,6 +38,7 @@ CURATED = {
     "mattermost": {"caelus.plan.storageSize": "1Gi"},
     "naas": {},
     "nextcloud": {},
+    "photoprism": {},
     "vaultwarden": {"host": "v.example.test", "caelus.owner.email": "owner@example.test"},
 }
 

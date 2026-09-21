@@ -1,0 +1,194 @@
+{{- /*
+PhotoPrism itself: the web/API front end and the only pod that mounts the
+pictures. The read-only SSH sidecar rides here (RWO volumes can only be shared
+inside one pod).
+
+The container starts as root and drops itself, which is not a preference: its
+PID 1 is s6-overlay, which prepares /run before handing off and exits when it
+cannot. A pod-level `runAsUser: 1000` therefore produces a container that
+fails to start rather than one running unprivileged.
+
+PHOTOPRISM_UID/PHOTOPRISM_GID below are the supported mechanism instead: the
+entrypoint initializes as root, chowns /photoprism/storage, then `setpriv`s to
+that uid. Dropping capabilities breaks the same path, because the chown and
+the uid switch need CHOWN, SETUID and SETGID -- all in the default set, so
+keeping them asks for nothing Pod Security `baseline` refuses.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-photoprism
+  labels:
+    {{- include "photoprism.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "photoprism.componentSelector" (dict "root" . "name" "photoprism") | nindent 4 }}
+  ports:
+    - name: http
+      port: 2342
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-photoprism
+  labels:
+    {{- include "photoprism.labels" . | nindent 4 }}
+    {{- include "photoprism.componentSelector" (dict "root" . "name" "photoprism") | nindent 4 }}
+spec:
+  replicas: 1
+  # Both volumes are RWO, so old and new pods cannot hold them at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "photoprism.componentSelector" (dict "root" . "name" "photoprism") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "photoprism.componentSelector" (dict "root" . "name" "photoprism") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        # The entrypoint chowns /photoprism/storage itself, but nothing else:
+        # `originals` is left to this. OnRootMismatch keeps it from walking a
+        # large picture library on every start.
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        # PhotoPrism retries the database itself, but it logs the failures as
+        # its own errors. Waiting here keeps a deployment's first log lines
+        # about the deployment rather than about a database that is still
+        # initializing.
+        #
+        # The ping authenticates, and must. An unauthenticated one connects and
+        # drops the handshake, which this client reports as failure however
+        # healthy the server is -- so the wait never ends and the application
+        # container never starts, which is exactly what happened.
+        - name: wait-for-mariadb
+          image: {{ .Values.mariadb.image.repository }}:{{ .Values.mariadb.image.tag }}
+          imagePullPolicy: {{ .Values.mariadb.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          command:
+            - sh
+            - -c
+            - until MYSQL_PWD="$MARIADB_PASSWORD" mariadb-admin ping -h {{ .Release.Name }}-mariadb -u "$MARIADB_USER" --silent; do sleep 2; done
+      containers:
+        - name: photoprism
+          image: {{ .Values.image.repository }}:{{ include "photoprism.appTag" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 2342
+              name: http
+          {{- /*
+          The tenant's vars carry PHOTOPRISM_ADMIN_PASSWORD, which the catalog
+          declares required; a standalone install has no vars Secret and falls
+          back to the generated one (templates/secrets.yaml renders exactly one
+          of the two). The database credentials come last either way, because a
+          later envFrom source overrides an earlier one and no var may displace
+          them.
+          */}}
+          envFrom:
+            {{- with .Values.caelus.vars.secretName }}
+            - secretRef:
+                name: {{ . | quote }}
+            {{- else }}
+            - secretRef:
+                name: {{ $.Release.Name }}-admin
+            {{- end }}
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          env:
+            # The uid the application ends up running as, once the entrypoint
+            # has finished the setup that needs root. See the note above: this
+            # is how this image is run unprivileged, not `runAsUser`.
+            - name: PHOTOPRISM_UID
+              value: "1000"
+            - name: PHOTOPRISM_GID
+              value: "1000"
+            - name: PHOTOPRISM_SITE_URL
+              value: {{ printf "https://%s/" .Values.host | quote }}
+            - name: PHOTOPRISM_HTTP_HOST
+              value: "0.0.0.0"
+            - name: PHOTOPRISM_HTTP_PORT
+              value: "2342"
+            # Traefik terminates TLS at the edge. DEFAULT_TLS is off as well:
+            # left on, the entrypoint's init step generates a self-signed
+            # certificate this deployment never serves.
+            - name: PHOTOPRISM_DISABLE_TLS
+              value: "true"
+            - name: PHOTOPRISM_DEFAULT_TLS
+              value: "false"
+            # The image ships PHOTOPRISM_INIT="https", which installs packages
+            # over the network at first start. Nothing a pod needs in order to
+            # boot should be fetched at boot.
+            - name: PHOTOPRISM_INIT
+              value: ""
+            - name: PHOTOPRISM_TRUSTED_PROXY
+              value: {{ .Values.trustedProxies | quote }}
+            - name: PHOTOPRISM_AUTH_MODE
+              value: "password"
+            - name: PHOTOPRISM_ADMIN_USER
+              value: {{ .Values.admin.username | quote }}
+            - name: PHOTOPRISM_DATABASE_DRIVER
+              value: "mysql"
+            - name: PHOTOPRISM_DATABASE_SERVER
+              value: {{ printf "%s-mariadb:3306" .Release.Name | quote }}
+            - name: PHOTOPRISM_WORKERS
+              value: {{ .Values.workers | quote }}
+            {{- with .Values.caelus.plan.storageBytes }}
+            # The plan's allowance, enforced by the application as well as by
+            # the volume: PhotoPrism counts indexed files and refuses more,
+            # which is a message to the user rather than a full filesystem.
+            - name: PHOTOPRISM_FILES_QUOTA
+              value: {{ max 1 (div . 1000000000) | quote }}
+            {{- end }}
+            {{- range $key, $value := .Values.extraEnv }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          # /readyz reports whether the server finished initializing; the port
+          # is not even bound until schema migrations are done, so the startup
+          # budget is generous. /healthz answers without touching the database
+          # or the index, which is what makes it safe to restart on: it cannot
+          # be starved by a long indexing or face-recognition pass.
+          startupProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 90
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          volumeMounts:
+            - name: originals
+              mountPath: /photoprism/originals
+            - name: storage
+              mountPath: /photoprism/storage
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        # The SSH sidecar, rooted at a read-only mount of the pictures, which
+        # the session sees as /originals. The storage volume is deliberately
+        # not mounted: it holds the database backups and the thumbnail cache,
+        # neither of which is the user's own data.
+        {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage
+             "sessionRoot" "volume:/originals"
+             "mounts" (list (dict "volume" "originals" "path" "/originals"))) | nindent 8 }}
+      volumes:
+        - name: originals
+          persistentVolumeClaim:
+            claimName: originals
+        - name: storage
+          persistentVolumeClaim:
+            claimName: storage

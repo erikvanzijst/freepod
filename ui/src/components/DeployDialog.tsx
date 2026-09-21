@@ -122,7 +122,12 @@ export function DeployDialog({ product, userId, onClose, deployment }: DeployDia
     },
     onError: (error: Error) => {
       const errorMsg = error.message
-      if (errorMsg.includes('user_values_json') || errorMsg.includes('validation')) {
+      if (errorMsg.startsWith('vars.')) {
+        // A rejected var names the key it rejected, so the form can match it to
+        // a field and say what is wrong beneath it. Re-running the chart-side
+        // validation here would find nothing: a var is not a chart value.
+        setUserValuesErrors([errorMsg])
+      } else if (errorMsg.includes('user_values_json') || errorMsg.includes('validation')) {
         const validationErrors = validateUserValues(
           activeTemplate?.values_schema_json ?? null,
           userValues,
@@ -158,6 +163,9 @@ export function DeployDialog({ product, userId, onClose, deployment }: DeployDia
       const errorMsg = error.message
       if (errorMsg.includes('not in ready state')) {
         setFormError('This deployment cannot be updated right now. It may be provisioning or was modified by another process.')
+      } else if (errorMsg.startsWith('vars.')) {
+        // See the create mutation: a var error belongs beside its field.
+        setUserValuesErrors([errorMsg])
       } else if (errorMsg.includes('user_values_json') || errorMsg.includes('validation')) {
         const validationErrors = validateUserValues(
           activeTemplate?.values_schema_json ?? null,

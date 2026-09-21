@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FormControl, FormHelperText, IconButton, InputAdornment, TextField, Tooltip } from '@mui/material'
+import { FormControl, IconButton, InputAdornment, TextField, Tooltip } from '@mui/material'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 
@@ -102,7 +102,6 @@ export function SensitiveVarField({
           },
         }}
       />
-      {error && <FormHelperText>{error}</FormHelperText>}
     </FormControl>
   )
 }

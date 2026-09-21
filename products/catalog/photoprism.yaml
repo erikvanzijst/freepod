@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=./catalog.schema.json
+schema_version: 1
+product:
+  slug: photoprism
+  name: PhotoPrism
+  description: AI-powered photo library that tags and finds your pictures
+  category: Photos
+  replaces: Google Photos · iCloud Photos
+  icon: icons/photoprism.png
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/photoprism/photoprism
+  # Upstream versions are release dates (YYMMDD). The suffixed tags (-ce,
+  # -legacy, -postgres, -arm64) are aliases or unmaintained variants and are
+  # deliberately excluded.
+  match: ^(?P<version>\d{6})$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/photoprism
+  chart_version: 0.1.2
+  system_values:
+    image:
+      # Keep this quoted: unquoted it parses as an integer and the chart's
+      # values schema rejects it.
+      tag: "260919"
+    admin:
+      username: admin
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      host:
+        type: string
+        title: Hostname
+        minLength: 1
+        maxLength: 253
+        description: The fully qualified domain name for your library (e.g. photos.user.freepod.eu).
+      admin:
+        type: object
+        additionalProperties: false
+        properties:
+          username:
+            type: string
+            title: Username
+            minLength: 2
+            maxLength: 64
+            description: The name you will sign in with. This account owns the library and can invite
+              others later from PhotoPrism's own settings. It cannot be
+              changed afterwards.
+        required:
+        - username
+      PHOTOPRISM_ADMIN_PASSWORD:
+        type: string
+        title: Password
+        minLength: 8
+        maxLength: 72
+        pattern: ^[^\u0000-\u001f\u007f]+$
+        x-caelus-target: runtime
+        x-caelus-sensitive: true
+        description: 'The password for your account. Store it somewhere safe: 
+          it won''t be shown again. To change it later, use PhotoPrism''s own settings page.'
+    required:
+    - host
+    - admin
+    - PHOTOPRISM_ADMIN_PASSWORD

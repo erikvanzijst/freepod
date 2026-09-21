@@ -47,6 +47,38 @@ export interface SchemaField {
   sensitive: boolean
 }
 
+/**
+ * Rewrite `vars.KEY: failed constraint "minLength"` for display beneath a
+ * labelled field. The wire format is a contract (deployment-vars-api) and is
+ * left alone; an unrecognised keyword keeps the server's wording.
+ */
+export function formatFieldError(error: string, field: SchemaField): string {
+  const colon = error.indexOf(':')
+  const detail = (colon === -1 ? error : error.slice(colon + 1)).trim()
+
+  const constraint = /failed constraint "([^"]+)"/.exec(detail)?.[1]
+  switch (constraint) {
+    case 'minLength':
+      return field.minLength !== undefined
+        ? `Must be at least ${field.minLength} characters`
+        : 'Too short'
+    case 'maxLength':
+      return field.maxLength !== undefined
+        ? `Must be at most ${field.maxLength} characters`
+        : 'Too long'
+    case 'minimum':
+      return field.minimum !== undefined ? `Must be at least ${field.minimum}` : 'Too small'
+    case 'maximum':
+      return field.maximum !== undefined ? `Must be at most ${field.maximum}` : 'Too large'
+    case 'pattern':
+      return 'Contains characters that are not allowed'
+    case 'type':
+      return `Must be a ${field.type}`
+    default:
+      return detail || error
+  }
+}
+
 /** One entry in the vars half of a submission. */
 export interface VarSubmission {
   value: string
@@ -208,6 +240,8 @@ export function UserValuesForm({
 
   const [formData, setFormData] = useState<Record<string, unknown>>({})
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  // Errors naming no field this form renders.
+  const [unmatchedErrors, setUnmatchedErrors] = useState<string[]>([])
   // Sensitive fields the user has actually typed into. Everything else is
   // submitted with no `value` at all, which is what "leave it unchanged"
   // means on the wire -- an empty string is a real value and would wipe the
@@ -300,19 +334,32 @@ export function UserValuesForm({
   }, [formData, fields, initialVars, touchedSensitive, onChange, onVarsChange])
 
   useEffect(() => {
-    if (errors.length > 0) {
-      const newErrors: Record<string, string> = {}
-      for (const error of errors) {
-        // Try to match error to field
-        for (const field of fields) {
-          if (error.toLowerCase().includes(field.path.toLowerCase())) {
-            newErrors[field.path] = error
-            break
-          }
-        }
-      }
-      setFieldErrors(newErrors)
+    if (errors.length === 0) {
+      // Returns `prev` when already empty: `errors` defaults to a fresh array,
+      // so an unconditional set would loop.
+      setFieldErrors((prev) => (Object.keys(prev).length > 0 ? {} : prev))
+      setUnmatchedErrors((prev) => (prev.length > 0 ? [] : prev))
+      return
     }
+
+    const newErrors: Record<string, string> = {}
+    const stranded: string[] = []
+    // Longest path first: `host` would otherwise claim `hostname`'s error.
+    const candidates = [...fields].sort((a, b) => b.path.length - a.path.length)
+    for (const error of errors) {
+      const field = candidates.find((f) =>
+        error.toLowerCase().includes(f.path.toLowerCase()),
+      )
+      if (field) {
+        newErrors[field.path] = formatFieldError(error, field)
+      } else {
+        stranded.push(error)
+      }
+    }
+    setFieldErrors(newErrors)
+    // Tracked, not inferred from an empty `fieldErrors`: typing clears a field
+    // error, which would otherwise re-raise it in the banner.
+    setUnmatchedErrors(stranded)
   }, [errors, fields])
 
   const handleChange = (path: string, value: unknown, fieldType: string, sensitive = false) => {
@@ -347,11 +394,11 @@ export function UserValuesForm({
       <Typography variant="body2" color="text.secondary">
         Configure application values:
       </Typography>
-      {errors.length > 0 && Object.keys(fieldErrors).length === 0 && (
+      {unmatchedErrors.length > 0 && (
         <Box sx={{ p: 1, bgcolor: 'error.light', borderRadius: 1 }}>
-          {errors.map((error, i) => (
+          {unmatchedErrors.map((error, i) => (
             <Typography key={i} variant="body2" color="error.contrastText">
-              {error}
+              {formatFieldError(error, { path: '', name: '', type: 'value', required: false, target: 'chart', sensitive: false })}
             </Typography>
           ))}
         </Box>
@@ -406,8 +453,11 @@ export function UserValuesForm({
                   }
                   label={field.title || field.path}
                 />
-                {field.description && !fieldErrors[field.path] && (
-                  <FormHelperText>{field.description}</FormHelperText>
+                {/* A checkbox has no helperText to carry the error. */}
+                {fieldErrors[field.path] ? (
+                  <FormHelperText>{fieldErrors[field.path]}</FormHelperText>
+                ) : (
+                  field.description && <FormHelperText>{field.description}</FormHelperText>
                 )}
               </>
             ) : (
@@ -437,7 +487,6 @@ export function UserValuesForm({
                 slotProps={readOnly ? { input: { readOnly: true } } : undefined}
               />
             )}
-            {fieldErrors[field.path] && <FormHelperText>{fieldErrors[field.path]}</FormHelperText>}
           </FormControl>
         )
       })}

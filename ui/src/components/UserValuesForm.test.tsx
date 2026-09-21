@@ -330,3 +330,138 @@ describe('UserValuesForm', () => {
     expect(screen.getByLabelText('Message')).toBeInTheDocument()
   })
 })
+
+describe('server validation errors', () => {
+  // The real PhotoPrism catalog schema: a chart value, a nested chart value,
+  // and a top-level sensitive var -- the shape that produced the report.
+  const photoprismSchema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      host: {
+        type: 'string',
+        title: 'Hostname',
+        minLength: 1,
+        maxLength: 253,
+      },
+      admin: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          username: {
+            type: 'string',
+            title: 'Username',
+            minLength: 2,
+            maxLength: 64,
+          },
+        },
+        required: ['username'],
+      },
+      PHOTOPRISM_ADMIN_PASSWORD: {
+        type: 'string',
+        title: 'Password',
+        minLength: 8,
+        maxLength: 72,
+        'x-caelus-target': 'runtime',
+        'x-caelus-sensitive': true,
+      },
+    },
+    required: ['host', 'admin', 'PHOTOPRISM_ADMIN_PASSWORD'],
+  }
+
+  const serverError = 'vars.PHOTOPRISM_ADMIN_PASSWORD: failed constraint "minLength"'
+
+  it('shows the constraint under the field and never the raw property path', () => {
+    render(
+      <UserValuesForm
+        valuesSchemaJson={photoprismSchema}
+        initialValuesJson={null}
+        onChange={vi.fn()}
+        onVarsChange={vi.fn()}
+        errors={[serverError]}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    // getByText rather than getAllByText: the message is rendered once, and
+    // this throws if a second copy ever comes back.
+    expect(screen.getByText('Must be at least 8 characters')).toBeInTheDocument()
+    expect(screen.queryByText(serverError)).not.toBeInTheDocument()
+    expect(screen.queryByText(/PHOTOPRISM_ADMIN_PASSWORD/)).not.toBeInTheDocument()
+  })
+
+  it('formats an error that matches no field rather than printing it raw', () => {
+    render(
+      <UserValuesForm
+        valuesSchemaJson={photoprismSchema}
+        initialValuesJson={null}
+        onChange={vi.fn()}
+        onVarsChange={vi.fn()}
+        errors={['vars.SOMETHING_ELSE: failed constraint "minLength"']}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(screen.queryByText(/vars\.SOMETHING_ELSE/)).not.toBeInTheDocument()
+  })
+
+  it('does not re-raise a field error in the banner when the field is edited', async () => {
+    const schema = {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        host: { type: 'string', title: 'Hostname', minLength: 1 },
+        ADMIN_TOKEN: {
+          type: 'string',
+          title: 'Admin token',
+          minLength: 8,
+          maxLength: 72,
+          'x-caelus-target': 'runtime',
+          'x-caelus-sensitive': true,
+        },
+      },
+      required: ['host', 'ADMIN_TOKEN'],
+    }
+
+    render(
+      <UserValuesForm
+        valuesSchemaJson={schema}
+        initialValuesJson={null}
+        onChange={vi.fn()}
+        onVarsChange={vi.fn()}
+        errors={['vars.ADMIN_TOKEN: failed constraint "maxLength"']}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(screen.getByText('Must be at most 72 characters')).toBeInTheDocument()
+
+    // Typing clears the field's error. The banner must not pick it up: the
+    // message would reappear above the form, detached from its field.
+    fireEvent.change(screen.getByLabelText(/admin token/i), { target: { value: 'x' } })
+
+    await waitFor(() => {
+      expect(screen.queryByText('Must be at most 72 characters')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText('Too long')).not.toBeInTheDocument()
+  })
+
+  it('shows an error naming no field in the banner', () => {
+    const schema = {
+      type: 'object',
+      properties: { host: { type: 'string', title: 'Hostname' } },
+    }
+
+    render(
+      <UserValuesForm
+        valuesSchemaJson={schema}
+        initialValuesJson={null}
+        onChange={vi.fn()}
+        errors={['vars.SOMETHING_ELSE: failed constraint "maxLength"']}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(screen.getByText('Too long')).toBeInTheDocument()
+  })
+})
