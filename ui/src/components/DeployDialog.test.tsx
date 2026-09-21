@@ -371,4 +371,83 @@ describe('DeployDialog', () => {
     // Should NOT have fetched templates (not needed in edit mode)
     expect(listTemplatesMock).not.toHaveBeenCalled()
   })
+
+  // A rejected var names its key, so it belongs beside the field it names --
+  // not in the dialog-level alert, where the reader is told a property path
+  // they cannot see failed a constraint they cannot read. The routing is in
+  // DeployDialog's onError; the wording is UserValuesForm's.
+  const varsProduct: Product = {
+    ...helloWorld,
+    id: 2,
+    name: 'PhotoPrism',
+    template_id: 200,
+  }
+
+  const varsTemplate = {
+    id: 200,
+    product_id: 2,
+    chart_ref: 'oci://example/photoprism',
+    chart_version: '0.1.2',
+    chart_digest: null,
+    system_values_json: {},
+    created_at: '2026-01-01T00:00:00Z',
+    values_schema_json: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        host: { type: 'string', title: 'Hostname', minLength: 1 },
+        PHOTOPRISM_ADMIN_PASSWORD: {
+          type: 'string',
+          title: 'Password',
+          minLength: 8,
+          maxLength: 72,
+          'x-caelus-target': 'runtime',
+          'x-caelus-sensitive': true,
+        },
+      },
+      required: ['host', 'PHOTOPRISM_ADMIN_PASSWORD'],
+    },
+  } as unknown as ProductTemplate
+
+  it('puts a rejected var beside its field, not in the dialog alert', async () => {
+    listTemplatesMock.mockResolvedValue([varsTemplate])
+    listPlansMock.mockResolvedValue([{ ...freePlan, product_id: 2 }])
+    getMySubdomainMock.mockResolvedValue({
+      subdomain: 'erik',
+      fqdn: 'erik.freepod.eu',
+      domain: 'freepod.eu',
+    })
+    checkHostnameMock.mockResolvedValue({ fqdn: 'p.example.com', usable: true, reason: null })
+    getTosAcceptanceMock.mockResolvedValue({ version: '2026-07-01', accepted_at: '2026-07-01T00:00:00Z' })
+    createDeploymentMock.mockRejectedValue(
+      new Error('vars.PHOTOPRISM_ADMIN_PASSWORD: failed constraint "minLength"'),
+    )
+
+    renderWithQuery(<DeployDialog product={varsProduct} userId={1} onClose={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Configure application values:')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByRole('textbox', { name: /hostname/i }), {
+      target: { value: 'p.example.com' },
+    })
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'abc' } })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Launch' })).toBeEnabled()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Launch' }))
+
+    // The constraint, restated against the schema, beneath the Password field.
+    // getByText throws on a duplicate, so this also pins the single render.
+    await waitFor(() => {
+      expect(screen.getByText('Must be at least 8 characters')).toBeInTheDocument()
+    })
+
+    // And never the property path the server named.
+    expect(
+      screen.queryByText('vars.PHOTOPRISM_ADMIN_PASSWORD: failed constraint "minLength"'),
+    ).not.toBeInTheDocument()
+  })
 })

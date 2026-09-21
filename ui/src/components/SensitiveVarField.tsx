@@ -102,7 +102,8 @@ export function SensitiveVarField({
           },
         }}
       />
-      {error && <FormHelperText>{error}</FormHelperText>}
+      {/* No error helper here: `helper` above already resolves to the error
+          when there is one, and a second one renders the same message twice. */}
     </FormControl>
   )
 }

@@ -383,10 +383,9 @@ describe('server validation errors', () => {
       { wrapper: Wrapper },
     )
 
-    // The field renders its error twice -- once as the TextField's helperText
-    // and once as a sibling FormHelperText -- which predates this and is why
-    // getAllByText is used rather than getByText.
-    expect(screen.getAllByText('Must be at least 8 characters').length).toBeGreaterThan(0)
+    // getByText rather than getAllByText: the message is rendered once, and
+    // this throws if a second copy ever comes back.
+    expect(screen.getByText('Must be at least 8 characters')).toBeInTheDocument()
     expect(screen.queryByText(serverError)).not.toBeInTheDocument()
     expect(screen.queryByText(/PHOTOPRISM_ADMIN_PASSWORD/)).not.toBeInTheDocument()
   })

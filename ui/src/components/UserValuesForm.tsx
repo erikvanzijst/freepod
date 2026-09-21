@@ -457,8 +457,14 @@ export function UserValuesForm({
                   }
                   label={field.title || field.path}
                 />
-                {field.description && !fieldErrors[field.path] && (
-                  <FormHelperText>{field.description}</FormHelperText>
+                {/* A checkbox has no TextField to carry helper text, so the
+                    error is rendered here. Every other branch puts it in the
+                    control's own helperText, which is why there is no shared
+                    one below: two would show it twice. */}
+                {fieldErrors[field.path] ? (
+                  <FormHelperText>{fieldErrors[field.path]}</FormHelperText>
+                ) : (
+                  field.description && <FormHelperText>{field.description}</FormHelperText>
                 )}
               </>
             ) : (
@@ -488,7 +494,6 @@ export function UserValuesForm({
                 slotProps={readOnly ? { input: { readOnly: true } } : undefined}
               />
             )}
-            {fieldErrors[field.path] && <FormHelperText>{fieldErrors[field.path]}</FormHelperText>}
           </FormControl>
         )
       })}
