@@ -4,7 +4,10 @@
 {{- if and $hasInlineToken $hasSecretRef -}}
 {{- fail "set either registration.token or registration.tokenSecretRef.name, not both" -}}
 {{- end }}
-{{- $registrationEnabled := or $hasInlineToken $hasSecretRef -}}
+{{- /* Under Caelus the token is a sensitive var, read from the release's vars Secret. */ -}}
+{{- $varsSecret := .Values.caelus.vars.secretName | default "" -}}
+{{- $fromVars := and (ne $varsSecret "") (not $hasInlineToken) (not $hasSecretRef) -}}
+{{- $registrationEnabled := or $hasInlineToken $hasSecretRef $fromVars -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -62,8 +65,13 @@ spec:
             - name: TUWUNEL_REGISTRATION_TOKEN
               valueFrom:
                 secretKeyRef:
+                  {{- if $fromVars }}
+                  name: {{ $varsSecret | quote }}
+                  key: TUWUNEL_REGISTRATION_TOKEN
+                  {{- else }}
                   name: {{ if $hasSecretRef }}{{ .Values.registration.tokenSecretRef.name }}{{ else }}{{ include "matrix.registrationSecretName" . }}{{ end }}
                   key: {{ $tokenKey | quote }}
+                  {{- end }}
             {{- end }}
             {{- range .Values.extraEnv }}
             - name: {{ .name | quote }}
@@ -115,8 +123,9 @@ spec:
   volumeClaimTemplates:
     - metadata:
         name: data
+        # volumeClaimTemplates is immutable, so no chart or app version here.
         labels:
-          {{- include "matrix.labels" . | nindent 10 }}
+          {{- include "matrix.selectorLabels" . | nindent 10 }}
       spec:
         accessModes:
           - {{ .Values.persistence.accessMode | quote }}

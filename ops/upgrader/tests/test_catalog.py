@@ -32,6 +32,7 @@ def test_the_repositorys_own_catalog():
         "bookstack",
         "immich",
         "lemmy",
+        "matrix",
         "mattermost",
         "nextcloud",
         "photoprism",

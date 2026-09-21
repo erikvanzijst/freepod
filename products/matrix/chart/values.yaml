@@ -39,6 +39,22 @@ tuwunel:
   queryOverTcpOnly: false
   log: info
 
+# Element Web, served at the hostname's root (everything outside /_matrix,
+# /_tuwunel and /.well-known/matrix) and locked to this homeserver.
+elementWeb:
+  enabled: true
+  image:
+    repository: ghcr.io/element-hq/element-web
+    tag: "v1.12.28"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
 resources:
   requests:
     cpu: 250m
@@ -62,3 +78,4 @@ caelus:
   ingress:
     enabled: false
     tls: {}
+  vars: {}
