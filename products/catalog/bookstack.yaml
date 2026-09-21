@@ -5,7 +5,7 @@ product:
   name: BookStack
   description: A simple, organized wiki for your notes and documentation
   category: Knowledge & wikis
-  replaces: Confluence · Notion
+  replaces: Confluence · SharePoint
   icon: icons/bookstack.png
 upstream:
   source:
