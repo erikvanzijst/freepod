@@ -8,6 +8,7 @@ Custom Helm chart for deploying [Tuwunel](https://matrix-construct.github.io/tuw
 - One domain value (`serverName`) drives both ingress host and Matrix `server_name`.
 - Federation is expected via HTTPS `:443` + `.well-known` endpoints (no explicit `8448` service).
 - Curated config surface with `extraEnv` for advanced overrides.
+- [Element Web](https://github.com/element-hq/element-web) served at the hostname's root, locked to this homeserver.
 
 ## Quick test
 
@@ -35,15 +36,20 @@ helm template matrix ./products/matrix/chart --set serverName=matrix.app.example
 | `federation.enabled`            | Enable federation behavior in Tuwunel   | `true`                             |
 | `trustedServers`                | Notary trusted key servers              | `["matrix.org"]`                   |
 | `extraEnv`                      | Extra container env entries             | `[]`                               |
+| `elementWeb.enabled`            | Serve Element Web at `/`                | `true`                             |
+| `elementWeb.image.tag`          | Element Web image tag                   | `v1.12.28`                         |
 
 ## Registration behavior
 
-Registration is enabled implicitly when either of these is set:
+Registration is enabled implicitly when any of these is set:
 
-1. `registration.token`, or
-2. `registration.tokenSecretRef.name` + `registration.tokenSecretRef.key`
+1. `registration.token`,
+2. `registration.tokenSecretRef.name` + `registration.tokenSecretRef.key`, or
+3. `caelus.vars.secretName`, injected by Caelus. The token is then read from that
+   Secret's `TUWUNEL_REGISTRATION_TOKEN` key, which the catalog declares as a
+   required sensitive var so it never passes through Helm values.
 
-If neither is set, registration remains closed.
+If none is set, registration remains closed.
 
 When `registration.token` is set (and `tokenSecretRef.name` is empty), the chart
 creates a Secret automatically.
@@ -59,6 +65,27 @@ The chart always injects:
 
 This supports federation on a single hostname with TLS termination handled upstream.
 
+## Element Web
+
+Tuwunel has no web UI, so the ingress sends everything outside `/_matrix`,
+`/_tuwunel` and `/.well-known/matrix` to a stateless Element Web Deployment.
+Its `config.json` is rendered from `serverName` and:
+
+- pins the homeserver and hides the server picker (`disable_custom_urls`);
+- opens on the login form instead of Element's welcome page;
+- turns off guest access, email/phone login, the integration manager and bug
+  reports, none of which this deployment provides;
+- turns off voice and video calls (`UIFeature.voip`, `element_call.disable`),
+  since Tuwunel is deployed without TURN or MatrixRTC.
+
+On phones, Element redirects the bare URL to its own mobile guide, which
+recommends Element X and deep-links it to this server. That redirect is built
+into Element and not configurable.
+
+The image's nginx runs as a non-root user and defaults to port 80, so the chart
+sets `ELEMENT_WEB_PORT=8080`. A startup hook in `/docker-entrypoint.d` pins nginx
+to a single worker process, since it only serves static files.
+
 ## Build and publish
 
 Published to `oci://ghcr.io/erikvanzijst/freepod/charts/matrix` by
@@ -72,61 +99,5 @@ is published. To publish by hand, from the repository root:
 
 ## Caelus product template
 
-Use empty default user values:
-
-```json
-{
-}
-```
-
-For the Caelus Admin product template, use the following values schema:
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "matrix values",
-  "type": "object",
-  "properties": {
-    "serverName": {
-      "title": "DomainName",
-      "description": "The hostname of your homeserver, e.g. `matrix.app.deprutser.be`.",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 253,
-      "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
-    },
-    "registration": {
-      "type": "object",
-      "properties": {
-        "token": {
-          "title": "Registration token",
-          "type": "string",
-          "description": "The registration token for your homeserver to allow new signups. When left empty, registration is disabled."
-        }
-      },
-      "required": [
-        "token"
-      ],
-      "additionalProperties": false
-    },
-    "federation": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "enabled"
-      ],
-      "additionalProperties": false
-    }
-  },
-  "required": [
-    "serverName",
-    "registration",
-    "federation"
-  ],
-  "additionalProperties": false
-}
-```
+The product is curated: its template, including the values schema, lives in
+[`products/catalog/matrix.yaml`](../catalog/matrix.yaml).

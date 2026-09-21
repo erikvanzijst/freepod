@@ -2,7 +2,7 @@ Tuwunel has been installed.
 
 Endpoints:
 - Internal service: {{ include "matrix.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
-- Public host: https://{{ .Values.serverName }}
+- Public host: https://{{ .Values.serverName }}{{ if .Values.elementWeb.enabled }} (Element Web){{ end }}
 
 Quick checks:
 - curl https://{{ .Values.serverName }}/_tuwunel/server_version

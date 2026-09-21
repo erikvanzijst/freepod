@@ -35,3 +35,20 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "matrix.registrationSecretName" -}}
 {{- printf "%s-registration" (include "matrix.fullname" .) -}}
 {{- end -}}
+
+{{- define "matrix.elementWeb.fullname" -}}
+{{- printf "%s-element-web" (include "matrix.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "matrix.elementWeb.selectorLabels" -}}
+app.kubernetes.io/name: element-web
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{- define "matrix.elementWeb.labels" -}}
+helm.sh/chart: {{ include "matrix.chart" . }}
+{{ include "matrix.elementWeb.selectorLabels" . }}
+app.kubernetes.io/version: {{ .Values.elementWeb.image.tag | quote }}
+app.kubernetes.io/part-of: {{ include "matrix.name" . }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}

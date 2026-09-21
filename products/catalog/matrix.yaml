@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=./catalog.schema.json
+schema_version: 1
+product:
+  slug: matrix
+  name: Matrix
+  description: Your own Matrix homeserver
+  category: Chat & messaging
+  replaces: WhatsApp · Discord
+  icon: icons/matrix.png
+upstream:
+  source:
+    type: github-release
+    repo: matrix-construct/tuwunel
+  match: ^v(?P<version>\d+\.\d+\.\d+)$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/matrix
+  chart_version: 0.2.3
+  system_values:
+    image:
+      tag: v1.5.0
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    title: matrix values
+    type: object
+    properties:
+      serverName:
+        title: Hostname
+        description: The hostname of your homeserver, e.g. `matrix.me.freepod.eu`.
+        type: string
+        minLength: 1
+        maxLength: 253
+        pattern: ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+      TUWUNEL_REGISTRATION_TOKEN:
+        title: Registration token
+        type: string
+        minLength: 8
+        maxLength: 128
+        pattern: ^[^\u0000-\u001f\u007f]+$
+        x-caelus-target: runtime
+        x-caelus-sensitive: true
+        description: Anyone with this token can create an account on your homeserver, so share it
+          only with people you want to invite. It won't be shown again; you can set a new one by
+          editing your app.
+      federation:
+        type: object
+        properties:
+          enabled:
+            title: Federation
+            type: boolean
+            default: true
+            description: Lets you talk to users and join rooms on other matrix servers.
+        required:
+        - enabled
+        additionalProperties: false
+    required:
+    - serverName
+    - TUWUNEL_REGISTRATION_TOKEN
+    - federation
+    additionalProperties: false
