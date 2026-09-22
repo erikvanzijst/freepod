@@ -29,6 +29,9 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
+      # A first boot after an upgrade may run a database migration that must not
+      # be killed; upstream docs/deploying/kubernetes.md.
+      terminationGracePeriodSeconds: 1800
       containers:
         - name: tuwunel
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -45,6 +48,10 @@ spec:
               value: 0.0.0.0
             - name: TUWUNEL_PORT
               value: {{ .Values.service.targetPort | quote }}
+            # Clients arrive through the ingress, which adds X-Forwarded-For;
+            # upstream's reverse-proxy reference sets this.
+            - name: TUWUNEL_IP_SOURCE
+              value: rightmost_x_forwarded_for
             - name: TUWUNEL_ALLOW_FEDERATION
               value: {{ ternary "true" "false" .Values.federation.enabled | quote }}
             - name: TUWUNEL_ALLOW_REGISTRATION
@@ -82,6 +89,14 @@ spec:
               value: {{ printf "%v" .value | quote }}
               {{- end }}
             {{- end }}
+          # While this fails, kubelet runs neither the liveness nor the
+          # readiness probe, so a first-boot migration cannot be killed; the
+          # 30 minute budget matches the image's health start period.
+          startupProbe:
+            exec:
+              command: ["tuwunel", "--health-check"]
+            periodSeconds: 10
+            failureThreshold: 180
           livenessProbe:
             httpGet:
               path: /_tuwunel/server_version

@@ -15,10 +15,10 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/matrix
-  chart_version: 0.2.3
+  chart_version: 0.3.0
   system_values:
     image:
-      tag: v1.5.0
+      tag: v1.9.2
   values_schema:
     $schema: https://json-schema.org/draft/2020-12/schema
     title: matrix values
