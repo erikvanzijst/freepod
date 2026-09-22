@@ -16,7 +16,7 @@ class FakeProvisioner:
         self.calls.append(("ensure_namespace", {"name": name}))
         return None
 
-    def ensure_tenant_isolation(self, *, namespace: str):
+    def ensure_tenant_isolation(self, *, namespace: str, labels: dict[str, str] | None = None):
         self.calls.append(("ensure_tenant_isolation", {"namespace": namespace}))
         return None
 

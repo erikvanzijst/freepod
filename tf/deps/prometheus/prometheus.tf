@@ -51,6 +51,15 @@ resource "helm_release" "prometheus" {
         enabled = false
       }
 
+      kube-state-metrics = {
+        # KSM emits no `*_labels` metric at all unless the keys are allowlisted
+        # (opt-in since KSM 2.0). The reconciler sets these; see
+        # app/network_policy.py. One series per namespace.
+        metricLabelsAllowlist = [
+          "namespaces=[caelus.dev/tenant,caelus.dev/owner-id,caelus.dev/product,caelus.dev/environment]"
+        ]
+      }
+
       prometheus-node-exporter = {
         enabled = true
         # https://github.com/rfmoz/grafana-dashboards?tab=readme-ov-file#node-exporter-full

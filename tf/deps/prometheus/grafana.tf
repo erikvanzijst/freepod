@@ -168,6 +168,12 @@ resource "helm_release" "grafana" {
             revision   = 9
             datasource = "Prometheus"
           }
+          # Ours, not from grafana.com: actual CPU/memory consumption against
+          # what workloads reserve, per deployment namespace. Built for the
+          # resource-accounting work.
+          "tenant-usage" = {
+            json = file("${path.module}/dashboards/tenant-usage.json")
+          }
         }
       }
     })

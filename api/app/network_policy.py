@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.config import CaelusSettings
@@ -15,6 +16,37 @@ TENANT_NAMESPACE_LABELS: dict[str, str] = {
     "pod-security.kubernetes.io/enforce": "baseline",
     "pod-security.kubernetes.io/enforce-version": "latest",
 }
+
+
+def _label_value(raw: str | None) -> str | None:
+    """``raw`` as a valid Kubernetes label value, or ``None`` if nothing survives."""
+    if raw is None:
+        return None
+    value = re.sub(r"[^a-z0-9._-]", "-", str(raw).strip().lower())[:63]
+    value = value.strip("-_.")
+    return value or None
+
+
+def deployment_namespace_labels(
+    *, owner_id: int | None, product: str | None, environment: str | None
+) -> dict[str, str]:
+    """``TENANT_NAMESPACE_LABELS`` plus the identity metrics aggregate on.
+
+    kube-state-metrics exposes these as ``kube_namespace_labels`` dimensions, so
+    dashboards can group by owner or product. ``environment`` belongs here
+    because both environments share a cluster while ``user.id`` is per-database:
+    without it, owner 5 in dev and owner 5 in prod sum together.
+    """
+    labels = dict(TENANT_NAMESPACE_LABELS)
+    for key, raw in (
+        ("caelus.dev/owner-id", owner_id),
+        ("caelus.dev/product", product),
+        ("caelus.dev/environment", environment),
+    ):
+        value = _label_value(raw)
+        if value is not None:
+            labels[key] = value
+    return labels
 
 
 def build_tenant_baseline_policy(*, namespace: str, settings: CaelusSettings) -> dict[str, Any]:

@@ -28,6 +28,7 @@ from app.models import (
     UserORM,
     DeploymentUpdate,
 )
+from app.network_policy import deployment_namespace_labels
 from app.services.jobs import JobService
 from app.services import relational_storage
 from app.services import ssh_keys as ssh_keys_service
@@ -65,6 +66,17 @@ class DeploymentCreateResult:
 
 logger = logging.getLogger(__name__)
 
+
+
+def namespace_labels(deployment: DeploymentORM) -> dict[str, str]:
+    """The tenant jail's labels plus this deployment's owner, product and environment."""
+    template = deployment.desired_template or deployment.applied_template
+    product = template.product if template is not None else None
+    return deployment_namespace_labels(
+        owner_id=deployment.user_id,
+        product=(product.slug or product.name) if product is not None else None,
+        environment=get_settings().environment,
+    )
 
 def _enqueue_reconcile_job(session: Session, *, deployment_id: UUID, reason: str) -> None:
     logger.debug("Queueing reconcile job deployment_id=%s reason=%s", deployment_id, reason)

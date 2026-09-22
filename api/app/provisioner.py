@@ -484,16 +484,19 @@ class Provisioner:
         """Render (without applying) the baseline NetworkPolicy for a namespace."""
         return build_tenant_baseline_policy(namespace=namespace, settings=get_settings())
 
-    def ensure_tenant_isolation(self, *, namespace: str) -> None:
+    def ensure_tenant_isolation(
+        self, *, namespace: str, labels: dict[str, str] | None = None
+    ) -> None:
         """Apply the platform-owned isolation guardrails to a tenant namespace.
 
         Idempotent and decoupled from the Helm release: labels the namespace for
         Pod Security Admission + tenant selection, then applies the baseline
-        NetworkPolicy. Called before Helm installs anything so no workload ever
+        NetworkPolicy. ``labels`` replaces the static set and must
+        still carry every key in ``TENANT_NAMESPACE_LABELS``. Called before Helm installs anything so no workload ever
         runs un-jailed, and re-run cheaply for drift/fleet updates without
         touching Helm.
         """
-        self.kube.label_namespace(namespace, TENANT_NAMESPACE_LABELS)
+        self.kube.label_namespace(namespace, labels or TENANT_NAMESPACE_LABELS)
         self.kube.apply_manifest(
             self.build_tenant_policy(namespace=namespace),
             error_message=f"Failed to apply baseline NetworkPolicy in namespace {namespace}",

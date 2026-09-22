@@ -1000,6 +1000,8 @@ def sync_network_policies(
 ) -> None:
     """Re-apply the baseline NetworkPolicy + tenant labels across running deployments.
 
+    Also the backfill path for the owner/product/environment namespace labels.
+
     Use this to roll out a change to the baseline policy after editing the
     template/settings. NetworkPolicy updates reprogram the CNI dataplane without
     restarting pods, so a fleet-wide sync is non-disruptive; individual failures
@@ -1011,6 +1013,12 @@ def sync_network_policies(
     only = {n.strip() for n in namespaces.split(",") if n.strip()} if namespaces else None
     with session_scope() as session:
         deployments = deployment_service.list_deployments(session)
+        # Resolved in-session, while the relationships are still attached.
+        labels_by_ns = {
+            deployment.namespace: deployment_service.namespace_labels(deployment)
+            for deployment in deployments
+            if deployment.namespace
+        }
 
     target_ns = sorted(
             deployment.namespace
@@ -1028,7 +1036,10 @@ def sync_network_policies(
 
     failures: list[str] = []
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
-        futures = {pool.submit(prov.ensure_tenant_isolation, namespace=ns): ns for ns in target_ns}
+        futures = {
+            pool.submit(prov.ensure_tenant_isolation, namespace=ns, labels=labels_by_ns.get(ns)): ns
+            for ns in target_ns
+        }
         for future in as_completed(futures):
             ns = futures[future]
             try:

@@ -18,6 +18,7 @@ from app.services import (
     template_values,
     var_crypto,
 )
+from app.services import deployments as deployment_service
 from app.services import registry_tokens
 from app.services import vars as vars_service
 from app.services.loki import DIRECTION_BACKWARD, LokiQueryClient
@@ -391,7 +392,10 @@ class DeploymentReconciler:
         certificate = self._provisioner.ensure_account_certificate(fqdn=account)
 
         self._provisioner.ensure_namespace(name=deployment.namespace)
-        self._provisioner.ensure_tenant_isolation(namespace=deployment.namespace)
+        self._provisioner.ensure_tenant_isolation(
+            namespace=deployment.namespace,
+            labels=deployment_service.namespace_labels(deployment),
+        )
 
         # After the namespace exists, because the credentials Secret is written
         # into it; after the isolation jail, which nothing may precede; and

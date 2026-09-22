@@ -1070,7 +1070,7 @@ def test_cli_reconcile_command_reconciles_deployment(cli_runner, monkeypatch):
         def ensure_namespace(self, *, name: str):
             return None
 
-        def ensure_tenant_isolation(self, *, namespace: str):
+        def ensure_tenant_isolation(self, *, namespace: str, labels: dict[str, str] | None = None):
             return None
 
         def ensure_account_certificate(self, *, fqdn: str):
@@ -1119,7 +1119,7 @@ class _FakeProvisioner:
     def ensure_namespace(self, *, name: str):
         return None
 
-    def ensure_tenant_isolation(self, *, namespace: str):
+    def ensure_tenant_isolation(self, *, namespace: str, labels: dict[str, str] | None = None):
         return None
 
     def ensure_account_certificate(self, *, fqdn: str):
@@ -1145,7 +1145,7 @@ class _FailingProvisioner:
     def ensure_namespace(self, *, name: str):
         raise RuntimeError("fail")
 
-    def ensure_tenant_isolation(self, *, namespace: str):
+    def ensure_tenant_isolation(self, *, namespace: str, labels: dict[str, str] | None = None):
         raise RuntimeError("fail")
 
     def helm_upgrade_install(self, **kwargs):
@@ -1169,7 +1169,7 @@ def test_cli_sync_network_policies_dry_run_renders_without_applying(cli_runner, 
     monkeypatch.setattr(
         provisioner_module.provisioner,
         "ensure_tenant_isolation",
-        lambda *, namespace: called.append(namespace),
+        lambda *, namespace, labels=None: called.append(namespace),
     )
 
     result = runner.invoke(app, ["sync-network-policies", "--dry-run"])
@@ -1190,7 +1190,7 @@ def test_cli_sync_network_policies_applies_to_active_namespaces(cli_runner, monk
     monkeypatch.setattr(
         provisioner_module.provisioner,
         "ensure_tenant_isolation",
-        lambda *, namespace: synced.append(namespace),
+        lambda *, namespace, labels=None: synced.append(namespace),
     )
 
     result = runner.invoke(app, ["sync-network-policies", "--concurrency", "1"])
