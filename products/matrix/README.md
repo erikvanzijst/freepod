@@ -111,6 +111,9 @@ Pitfalls:
   database that no admin command repairs. New Freepod deployments start with
   an empty database, so this only bites if an existing deployment ever moves
   to a newer template.
+- The reconciler's atomic Helm upgrade times out after 300s, so upstream's
+  30-minute startup probe and stop grace don't fit: the chart caps them to
+  that budget, and a longer migration rolls back to the old image.
 - Since v1.9.0 the server will not start without a CA bundle; the published
   image includes one at `/etc/ssl/certs/ca-certificates.crt`.
 - The database pool defaults to 2048 workers; on a node whose

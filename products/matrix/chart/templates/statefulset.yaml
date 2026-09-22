@@ -29,9 +29,9 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
-      # A first boot after an upgrade may run a database migration that must not
-      # be killed; upstream docs/deploying/kubernetes.md.
-      terminationGracePeriodSeconds: 1800
+      # Room to stop a first-boot migration at a safe point, kept well inside the
+      # reconciler's 300s Helm timeout and its job lease.
+      terminationGracePeriodSeconds: 120
       containers:
         - name: tuwunel
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -90,13 +90,14 @@ spec:
               {{- end }}
             {{- end }}
           # While this fails, kubelet runs neither the liveness nor the
-          # readiness probe, so a first-boot migration cannot be killed; the
-          # 30 minute budget matches the image's health start period.
+          # readiness probe, so a first-boot migration is not killed. Upstream
+          # budgets 30 minutes, but the reconciler's atomic Helm upgrade rolls
+          # back after 300s regardless, so a longer budget would never be used.
           startupProbe:
             exec:
               command: ["tuwunel", "--health-check"]
             periodSeconds: 10
-            failureThreshold: 180
+            failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /_tuwunel/server_version
