@@ -1,7 +1,9 @@
 resource "helm_release" "opencost" {
   name      = "opencost"
   namespace = var.namespace
-  # latest: https://github.com/opencost/opencost-helm-chart/releases)
+  # Direct .tgz URL rather than `repository` + bare chart name, for the reason
+  # spelled out in ../prometheus/prometheus.tf. Bump the version in the URL on
+  # upgrade (latest: https://github.com/opencost/opencost-helm-chart/releases).
   chart = "https://github.com/opencost/opencost-helm-chart/releases/download/opencost-2.5.32/opencost-2.5.32.tgz"
 
   # https://github.com/opencost/opencost-helm-chart/blob/main/charts/opencost/values.yaml
@@ -20,13 +22,36 @@ resource "helm_release" "opencost" {
           }
         }
 
-        # Chart defaults are GCP us-central1 list prices, so every cost field is
-        # fiction on this hardware. The resource fields the allocation API
-        # returns -- cpuCoreHours, ramByteHours, the usage/request/limit
-        # averages -- are independent of pricing, and are the ones we care about
-        # for usage accounting.
+        # Priced as if Freepod ran on Hetzner rather than on the aging NUC it
+        # actually runs on, so the numbers model what scaling out would cost.
+        # Basis: CCX33 (8 dedicated vCPU, 32 GiB, EUR 138.49/mo ex VAT, Hetzner
+        # price list of 15 June 2026). CCX33 is where EUR/vCPU bottoms out at
+        # 17.31, down from 21.50 on CCX13/23 and flat above it.
+        #
+        # Hetzner sells bundles and their line-up scales RAM with vCPU exactly,
+        # so list prices cannot be decomposed into per-CPU and per-RAM rates.
+        # These keep OpenCost's own CPU:RAM weighting and rescale it to the
+        # CCX33 price level: rate = opencost_default * 138.49 / (730 * (0.031611
+        # * 8 + 0.004237 * 32)).
+        #
+        # UNITS: CPU per vCPU-hour, RAM per GiB-hour, storage per GB-hour
+        # (Hetzner Volumes at EUR 0.0572/GB/month). Egress is 0 because EU plans
+        # include 20 TB and we are nowhere near it.
+        #
+        # OpenCost has no notion of currency: the dashboard renders these as
+        # dollars, and they are euros.
         customPricing = {
-          enabled = false
+          enabled = true
+          costModel = {
+            description           = "Hetzner CCX33 equivalent, EUR ex VAT, June 2026"
+            CPU                   = "0.015437"
+            RAM                   = "0.002069"
+            storage               = "0.00007836"
+            GPU                   = "0"
+            zoneNetworkEgress     = "0"
+            regionNetworkEgress   = "0"
+            internetNetworkEgress = "0"
+          }
         }
       }
     })
