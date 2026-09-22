@@ -116,3 +116,10 @@ module "prometheus" {
   # Alertmanager delivers via the in-cluster mailer relay.
   depends_on = [module.mailer]
 }
+
+module "opencost" {
+  source    = "./opencost"
+  namespace = kubernetes_namespace.monitoring.metadata[0].name
+
+  depends_on = [module.prometheus]
+}
