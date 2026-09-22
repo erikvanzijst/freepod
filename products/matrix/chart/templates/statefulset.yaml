@@ -29,6 +29,9 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
+      # Room to stop a first-boot migration at a safe point, kept well inside the
+      # reconciler's 300s Helm timeout and its job lease.
+      terminationGracePeriodSeconds: 120
       containers:
         - name: tuwunel
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -45,6 +48,10 @@ spec:
               value: 0.0.0.0
             - name: TUWUNEL_PORT
               value: {{ .Values.service.targetPort | quote }}
+            # Clients arrive through the ingress, which adds X-Forwarded-For;
+            # upstream's reverse-proxy reference sets this.
+            - name: TUWUNEL_IP_SOURCE
+              value: rightmost_x_forwarded_for
             - name: TUWUNEL_ALLOW_FEDERATION
               value: {{ ternary "true" "false" .Values.federation.enabled | quote }}
             - name: TUWUNEL_ALLOW_REGISTRATION
@@ -82,6 +89,15 @@ spec:
               value: {{ printf "%v" .value | quote }}
               {{- end }}
             {{- end }}
+          # While this fails, kubelet runs neither the liveness nor the
+          # readiness probe, so a first-boot migration is not killed. Upstream
+          # budgets 30 minutes, but the reconciler's atomic Helm upgrade rolls
+          # back after 300s regardless, so a longer budget would never be used.
+          startupProbe:
+            exec:
+              command: ["tuwunel", "--health-check"]
+            periodSeconds: 10
+            failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /_tuwunel/server_version

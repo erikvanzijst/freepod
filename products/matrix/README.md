@@ -86,6 +86,39 @@ The image's nginx runs as a non-root user and defaults to port 80, so the chart
 sets `ELEMENT_WEB_PORT=8080`. A startup hook in `/docker-entrypoint.d` pins nginx
 to a single worker process, since it only serves static files.
 
+## Upstream references
+
+What a version upgrade has to review beyond the tag in
+[`products/catalog/matrix.yaml`](../catalog/matrix.yaml), whose `upstream` block
+detects new releases.
+
+- **Release notes:** GitHub releases of `matrix-construct/tuwunel`.
+- **Reference deployment:** `matrix-construct/tuwunel` at the release tags:
+  the `docker` target in `docker/bake.hcl` (the published image: `FROM
+  scratch`, `EXPOSE 8008 8448`, `ENTRYPOINT ["tuwunel"]`, `HEALTHCHECK`),
+  `docs/deploying/docker-compose.yml` and its `with-caddy`/`with-traefik`
+  variants (env vars behind a reverse proxy), `docs/deploying/docker.md`
+  (health check, stopping during a migration),
+  `docs/deploying/kubernetes.md` (probes, `terminationGracePeriodSeconds`),
+  and `docs/deploying/container-security.md` (task limits, io_uring seccomp).
+- **Images:** `ghcr.io/matrix-construct/tuwunel`; the catalog tag is the only
+  Tuwunel image. Element Web is Freepod's own companion, pinned in the chart.
+
+Pitfalls:
+
+- The first boot after an upgrade runs a one-time database migration before
+  the listener opens, and a kill part way through leaves a half-migrated
+  database that no admin command repairs. New Freepod deployments start with
+  an empty database, so this only bites if an existing deployment ever moves
+  to a newer template.
+- The reconciler's atomic Helm upgrade times out after 300s, so upstream's
+  30-minute startup probe and stop grace don't fit: the chart caps them to
+  that budget, and a longer migration rolls back to the old image.
+- Since v1.9.0 the server will not start without a CA bundle; the published
+  image includes one at `/etc/ssl/certs/ca-certificates.crt`.
+- The database pool defaults to 2048 workers; on a node whose
+  `podPidsLimit` is at or below that, startup fails with `EAGAIN`.
+
 ## Build and publish
 
 Published to `oci://ghcr.io/erikvanzijst/freepod/charts/matrix` by

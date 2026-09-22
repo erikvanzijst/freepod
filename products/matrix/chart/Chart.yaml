@@ -2,5 +2,5 @@ apiVersion: v2
 name: matrix
 description: Tuwunel Matrix homeserver chart for Caelus
 type: application
-version: 0.2.3
+version: 0.3.0
 appVersion: "1.5.0"
