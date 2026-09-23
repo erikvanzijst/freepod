@@ -80,7 +80,7 @@
 
 ## 6. Scope
 
-- [ ] 6.1 Skip tenant allocations belonging to another environment, keeping platform
+- [x] 6.1 Skip tenant allocations belonging to another environment, keeping platform
       ones, and verify with tests covering an own-environment tenant, a foreign
       tenant, a platform workload and a tenant with no environment label
 

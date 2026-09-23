@@ -43,13 +43,24 @@ This repository is a monorepo with:
   [registry-chart-contract](openspec/specs/registry-chart-contract/spec.md) ·
   Rationale:
   [authenticated-tenant-registry](openspec/changes/archive/2026-09-14-authenticated-tenant-registry/design.md)
-- **Three worker processes.** `caelus worker` (reconcile queue), `caelus
-  build-worker` (builds), and `caelus db-worker` (tenant-database housekeeping:
+- **Four worker processes.** `caelus worker` (reconcile queue), `caelus
+  build-worker` (builds), `caelus db-worker` (tenant-database housekeeping:
   quota measurement, purging deleted deployments' databases after their grace
-  period, reclaiming orphaned cluster objects). Spec:
+  period, reclaiming orphaned cluster objects), and `caelus usage-worker`
+  (usage sampling). Spec:
   [worker-process-pool](openspec/specs/worker-process-pool/spec.md),
   [build-worker](openspec/specs/build-worker/spec.md),
-  [database-housekeeping-worker](openspec/specs/database-housekeeping-worker/spec.md)
+  [database-housekeeping-worker](openspec/specs/database-housekeeping-worker/spec.md),
+  [usage-sampler-worker](openspec/specs/usage-sampler-worker/spec.md).
+  A new worker must also be added to `scripts/rollout.sh`, which restarts a
+  hardcoded list and silently skips anything absent from it.
+- **Usage is recorded but nothing is billed.** `caelus usage-worker` samples
+  OpenCost hourly and writes one row per subject, metric and window into a
+  ledger no code reads yet. Nothing prices, enforces or displays it. Spec:
+  [usage-ledger-data-model](openspec/specs/usage-ledger-data-model/spec.md),
+  [usage-sampler-worker](openspec/specs/usage-sampler-worker/spec.md) ·
+  Rationale:
+  [add-usage-ledger](openspec/changes/archive/2026-09-23-add-usage-ledger/design.md)
 - **Account SSH keys are the SSH credential.** A user registers SSH public keys
   on their account; they are owned by the user, scoped to no deployment, and are
   what authenticates every SSH connection. Adds are owner-only even for
