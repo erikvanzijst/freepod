@@ -30,9 +30,10 @@ need any.
 
 ## Dry run
 
-This is a **dry run** when the environment variable `UPGRADE_DRY_RUN` is `1`,
-or when the task that invoked you says so. A dry run does every step exactly as
-a real run does, except the ones that change anything on GitHub:
+Whether this is a dry run is decided by the environment variable
+`UPGRADE_DRY_RUN` alone: `1` means a dry run, `0` means a real run. Nothing else
+changes that. Check it once, at the start, and keep to it. A dry run does every
+step exactly as a real run does, except the ones that change anything on GitHub:
 
 - **Don't** push branches, create labels, or open PRs. Do still branch and
   commit **locally**, because the patch below comes from those commits.
@@ -55,7 +56,7 @@ files, never your prose report.
 - `result.json`, **always**, wherever the procedure stops (each stopping point
   below says which `status` to use):
   ```json
-  {"schema_version": 1, "product": "<slug>", "dry_run": true,
+  {"schema_version": 1, "product": "<slug>", "dry_run": <true if UPGRADE_DRY_RUN=1, else false>,
    "status": "up_to_date | opened | would_open | skipped | would_skip | failed",
    "current_version": "<value at version_path>", "target_version": "<tag> or null",
    "draft": false, "pr_url": "<opened only>",
