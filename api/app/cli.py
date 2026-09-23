@@ -918,6 +918,46 @@ def build_worker(
     run_build_worker(settings=settings, emit=_echo_yaml_stream_item)
 
 
+@app.command("usage-worker")
+def usage_worker(
+    interval_seconds: float | None = typer.Option(
+        None, "--interval-seconds", help="Seconds between sampling passes"
+    ),
+    once: bool = typer.Option(
+        False, "--once", help="Run a single pass and exit, rather than looping"
+    ),
+) -> None:
+    """Run the usage sampling worker: record completed windows from OpenCost.
+
+    Deliberately does not verify the var keyring, like `db-worker` and unlike
+    `worker`: nothing here decrypts a tenant secret.
+    """
+    from app.usage_worker import run_usage_worker
+
+    settings = get_settings()
+    if not settings.opencost_base_url or not settings.prometheus_base_url:
+        typer.echo(
+            "Error: CAELUS_OPENCOST_BASE_URL and CAELUS_PROMETHEUS_BASE_URL must "
+            "both be set; the sampler refuses to run rather than silently "
+            "recording nothing.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if interval_seconds is not None:
+        if interval_seconds <= 0:
+            typer.echo("Error: --interval-seconds must be > 0", err=True)
+            raise typer.Exit(code=1)
+        settings = CaelusSettings(
+            **{**settings.model_dump(), "usage_worker_interval_seconds": interval_seconds}
+        )
+
+    run_usage_worker(
+        settings=settings,
+        emit=_echo_yaml_stream_item,
+        max_passes=1 if once else None,
+    )
+
+
 @app.command("keyring-rotate")
 def keyring_rotate(
     batch_size: int = typer.Option(

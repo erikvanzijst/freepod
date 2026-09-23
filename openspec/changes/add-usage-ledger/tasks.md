@@ -64,11 +64,17 @@
 
 ## 5. Worker process and deployment
 
-- [ ] 5.1 Add the `caelus usage-worker` command running the loop on its configured
+- [x] 5.1 Add the `caelus usage-worker` command running the loop on its configured
       tick, and verify it starts against a local database and records a window
-- [ ] 5.2 Add the worker Deployment to `tf/app/caelus`, reusing the API image and
+- [x] 5.2 Add the worker Deployment to `tf/app/caelus`, reusing the API image and
       service account, and verify `terraform plan` shows only the new Deployment
-- [ ] 5.3 Add configuration for the tick interval, window length, settling
+      *(two deviations, both deliberate: the Deployment does **not** take the API
+      service account, which grants `*/*` cluster-wide — this worker reaches no
+      Kubernetes API, and `db-worker`, the same shape, omits it too. And the plan
+      necessarily shows 5 more changes than the new Deployment: the two settings
+      land in the shared `caelus-api-config`, whose `checksum/config` annotation
+      rolls every pod mounting it. Verified those four change on nothing else.)*
+- [x] 5.3 Add configuration for the tick interval, window length, settling
       allowance, first-run lookback and OpenCost endpoint, and verify defaults
       produce hourly windows without configuration
 

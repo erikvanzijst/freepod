@@ -58,6 +58,12 @@ resource "kubernetes_config_map" "api" {
     # Without this the API answers every log request with "log store is not
     # configured" -- the setting defaults to empty so that migrations, tests
     # and the operator CLI still construct settings without it.
+    # The usage sampler's two sources. Prometheus is not a second measurement
+    # source: it answers only whether OpenCost's exporter published over a
+    # window, which /allocation cannot say for itself.
+    CAELUS_OPENCOST_BASE_URL   = var.opencost_base_url
+    CAELUS_PROMETHEUS_BASE_URL = var.prometheus_base_url
+
     CAELUS_LOKI_BASE_URL = var.loki_base_url
     # Below the shortest connection timeout in the path, which is not a
     # property of this repository: client -> homelab HAProxy -> Traefik -> API,
