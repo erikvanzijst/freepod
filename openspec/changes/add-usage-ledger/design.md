@@ -42,6 +42,11 @@ look simple are the ones that silently mis-handle restarts and short-lived pods.
 *Consequence:* the ledger depends on OpenCost's contract and its scrape loop. Mitigated
 by recording the components, below.
 
+*Consequence, measured:* OpenCost's answer for a closed window is not stable on re-read
+when a controller's pods were replaced inside it. Verifying a window whose workload
+changed mid-window will not reproduce the recorded numbers; verifying a quiet window
+reproduces them exactly. This bounds what auditing a past bill can prove.
+
 ### Record `cpuCoreHours` and `ramByteHours` as the billable quantities
 
 OpenCost applies `max(request, usage)` **per container per minute**. Summing
@@ -107,10 +112,21 @@ and no separate retry machinery is needed because the loop is idempotent.
 
 ### Postgres, with TimescaleDB as a known exit
 
-Measured at ~250 MB/year at current scale with these indexes. A benchmark of one year
-of synthetic samples gave 251 MB on Postgres 16 and 36 MB on a compressed TimescaleDB
-hypertable; the natural primary key keeps that exit open, since hypertables require the
-time column in every unique index.
+A benchmark of one year of synthetic samples gave 251 MB on Postgres 16 and 36 MB on a
+compressed TimescaleDB hypertable; the natural primary key keeps that exit open, since
+hypertables require the time column in every unique index.
+
+**That 251 MB was wrong by 7.5x, and the error is instructive.** Measured on dev after
+the sampler had run: 1744 KB for 12732 samples over 8 windows — 140.3 bytes per sample
+including indexes, at 1592 samples per window, which projects to **1865 MB/year**. The
+per-sample figure was right; the subject count was not. The benchmark counted tenant
+containers alone (~18), while the ledger records 137: 18 dev tenants, 59 platform
+namespaces, and 60 tenant namespaces belonging to *prod*, which shares this cluster.
+Recording platform overhead was this change's own decision, and the estimate was never
+resized to match it.
+
+Still comfortably inside the node's disk, and it strengthens rather than weakens the
+TimescaleDB exit.
 
 *Alternative considered:* a time-series database as the store of record. Rejected: this
 data is a ledger, and metrics stores are built to lose precision gracefully — retention,
@@ -316,11 +332,18 @@ Notes on the mapping:
   is a separate decision from where the record of truth lives.
 - **OpenCost semantics can change across versions without the API changing.** → The
   chart version is pinned; a provenance table is the fuller answer and is deferred.
-- **Request floors are nominal today**, so the billable quantity is effectively
-  usage-only. Setting real floors is separate work, and is bounded by node headroom:
-  4 cores allocatable against 2.59 already requested.
-- **Both environments record shared platform namespaces**, double-counting overhead if
-  the two ledgers are ever summed together. → Accepted: dev is never billed, and dev
+- **Request floors are no longer nominal, and the billable quantity is now dominated
+  by them.** This was true when written; #132 gave every product container a request on
+  2026-09-23. Measured over 15:00-17:00 that day, billable CPU core-hours exceed
+  consumed ones by 4.6x for platform namespaces, 8.8x for one owner and 2.6x for
+  another. Anything reasoning about what a bill would look like has to start from the
+  request, not from usage.
+- **Each environment records the other's tenants, not just shared platform
+  namespaces.** Measured on dev: of 137 subjects, 59 are platform and 60 are *prod*
+  tenant namespaces, recorded unattributed because prod's deployment rows live in
+  prod's database. Attribution is exactly right for the 18 that are dev's own. So the
+  same physical container will appear in both ledgers once prod samples too — attributed
+  in one, unattributed in the other. → Accepted: dev is never billed, and dev
   moves to its own cluster eventually, at which point it should count its own platform
   services.
 

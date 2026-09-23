@@ -80,10 +80,25 @@
 
 ## 6. Verification
 
-- [ ] 6.1 Run the sampler against the live cluster for several hours and verify
+- [x] 6.1 Run the sampler against the live cluster for several hours and verify
       recorded quantities for a window agree with the same window read directly
       from the OpenCost API
-- [ ] 6.2 Verify recorded totals per owner agree with the `tenant-usage` dashboard
+      *(dev, 2026-09-23. Windows 15:00 and 16:00: 135/136 subjects each, 1620 and
+      1632 values compared, zero mismatches. Window 14:00 straddled the chart
+      rollout and shows 5 of 1632 differing — all on containers whose pods were
+      replaced inside it. Recorded there: OpenCost's answer for a closed window
+      containing a controller-level pod replacement is not stable on re-read.)*
+- [x] 6.2 Verify recorded totals per owner agree with the `tenant-usage` dashboard
       for the same period
-- [ ] 6.3 Confirm table and index growth is consistent with the ~250 MB/year
+      *(dev, 15:00-17:00. Per owner: erik 0.0857 vs 0.0856 core-hours, fred 0.0580
+      vs 0.0580. Across 45 namespaces, 41 agree within 1%; exactly one diverges by
+      more than 0.001 core-hours absolute — `caelus-dev` at 9.2%, whose pods were
+      restarted during the period, where `increase()` over a reset counter and
+      OpenCost's per-minute aggregation legitimately differ.)*
+- [x] 6.3 Confirm table and index growth is consistent with the ~250 MB/year
       estimate, and record the measured figure
+      *(it is NOT: measured 1865 MB/year, 7.5x the estimate. 1744 KB for 12732
+      samples over 8 windows = 140.3 bytes per sample including indexes, at 1592
+      samples per window. The estimate was sized to tenant subjects alone (~18);
+      the ledger records 137, being 18 dev tenants, 59 platform namespaces and 60
+      prod tenant namespaces that share this cluster. See design.md.)*
