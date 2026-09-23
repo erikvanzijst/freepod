@@ -24,6 +24,13 @@ mattermost:
     TZ: Europe/Amsterdam
     MM_CALLS_GROUP_CALLS_ALLOWED: "true"
     MM_PLUGINSETTINGS_ENABLEUPLOADS: "true"
+  # Requests only, no limits: a floor that makes the pod Burstable rather than
+  # BestEffort. Estimated from the other bundled applications — Mattermost has
+  # no live deployment to measure.
+  resources:
+    requests:
+      cpu: 25m
+      memory: 512Mi
 
 # PostgreSQL configuration
 postgresql:
@@ -33,6 +40,13 @@ postgresql:
   password: postgres
   database: postgres
   size: 10Gi
+  resources:
+    requests:
+      cpu: 15m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
 
 # TLS is injected per-deployment by the Caelus reconciler (caelus.ingress.tls). This
 # default lets the chart render standalone (helm template / tests) with TLS off.

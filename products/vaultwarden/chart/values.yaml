@@ -102,9 +102,12 @@ storage:
     accessMode: ReadWriteOnce
     storageClassName: ""
 
-# Empty by default: vaultwarden is small, and a wrong limit OOM-kills a password
-# vault. Set requests/limits per plan once real usage is measured.
-resources: {}
+# Requests only: vaultwarden is small, and a wrong limit OOM-kills a password
+# vault. These are floors measured over 24h (0.5m CPU, 16Mi), not an allowance.
+resources:
+  requests:
+    cpu: 5m
+    memory: 64Mi
 
 # Escape hatch for vaultwarden settings this chart does not model yet. Plain
 # string values only; anything needing a secret deserves a real value.

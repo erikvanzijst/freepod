@@ -18,7 +18,7 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/photoprism
-  chart_version: 0.1.2
+  chart_version: 0.1.3
   system_values:
     image:
       # Keep this quoted: unquoted it parses as an integer and the chart's

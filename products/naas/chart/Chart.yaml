@@ -2,5 +2,5 @@ apiVersion: v2
 name: naas
 description: No As A Service — serves a random NO meme on every request
 type: application
-version: 0.1.7
+version: 0.1.8
 appVersion: "1.0.1"

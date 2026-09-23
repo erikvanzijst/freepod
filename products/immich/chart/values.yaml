@@ -37,6 +37,21 @@ storage:
     size: 100Gi
     storageClassName: ""
 
+# Per-component resources. Requests only, no limits: they reserve a share and
+# make the pods Burstable, while a memory limit would OOM-kill the server
+# mid-import and the machine-learning worker mid-inference.
+server:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 768Mi
+
+machineLearning:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 256Mi
+
 # Bundled PostgreSQL (immich's pgvecto.rs/vectorchord image -- NOT stock postgres).
 postgresql:
   enabled: true
@@ -55,6 +70,10 @@ postgresql:
     accessMode: ReadWriteOnce
     size: 20Gi
     storageClassName: ""
+  resources:
+    requests:
+      cpu: 25m
+      memory: 256Mi
 
 # Bundled Valkey (Redis-compatible) for the job queue.
 valkey:
@@ -66,6 +85,10 @@ valkey:
     accessMode: ReadWriteOnce
     size: 5Gi
     storageClassName: ""
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
 
 # TLS is injected per-deployment by the Caelus reconciler (caelus.ingress.tls).
 # These defaults let the chart render standalone (helm template / tests).

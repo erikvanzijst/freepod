@@ -61,6 +61,18 @@ postgresql:
     accessMode: ReadWriteOnce
     size: 8Gi
     storageClassName: ""
+  resources:
+    requests:
+      cpu: 15m
+      memory: 128Mi
+
+# Requests only, no limits: a floor that makes the pods Burstable rather than
+# BestEffort. Nextcloud's cron and `occ upgrade` runs spike well above the
+# steady state, which a limit would turn into an OOM kill mid-migration.
+resources:
+  requests:
+    cpu: 15m
+    memory: 256Mi
 
 # Plan- and TLS-related values are injected per-deployment by the Caelus reconciler
 # (caelus.plan.*, caelus.ingress.tls). These defaults let the chart render standalone

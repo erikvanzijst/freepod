@@ -59,9 +59,14 @@ service:
 
 replicas: 1
 
-# Empty by default; per-plan requests/limits belong here once real usage of
-# tenant-built images is measured.
-resources: {}
+# Requests only, and deliberately a floor rather than an allowance: a
+# tenant-built image is the least predictable workload on the node, so a limit
+# would turn an ordinary spike into an OOM kill. Per-plan sizing belongs here
+# once usage is measured per plan rather than per fleet.
+resources:
+  requests:
+    cpu: 10m
+    memory: 128Mi
 
 # Whether this chart wires up object storage — an S3 bucket, NOT a volume. Named
 # `objectStorage` rather than `storage` to stay distinct from

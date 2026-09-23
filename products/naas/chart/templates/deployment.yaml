@@ -45,6 +45,10 @@ spec:
               mountPath: /app
             - name: images
               mountPath: /images
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
       volumes:
         - name: server-script
           configMap:

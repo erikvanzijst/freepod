@@ -153,6 +153,10 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 30
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
         {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage
              "sessionRoot" "volume:/data"
              "mounts" (list (dict "volume" "data" "path" "/data" "subPath" "data"))) | nindent 8 }}

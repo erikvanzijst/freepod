@@ -75,6 +75,10 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+          {{- with .Values.valkey.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
       volumes:
         - name: data
           persistentVolumeClaim:

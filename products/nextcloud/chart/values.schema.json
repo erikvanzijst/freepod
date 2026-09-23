@@ -226,6 +226,9 @@
             "storageClassName"
           ],
           "additionalProperties": false
+        },
+        "resources": {
+          "type": "object"
         }
       },
       "required": [
@@ -235,6 +238,9 @@
         "persistence"
       ],
       "additionalProperties": false
+    },
+    "resources": {
+      "type": "object"
     },
     "caelus": {
       "type": "object",

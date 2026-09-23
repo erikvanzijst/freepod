@@ -4,7 +4,7 @@ description: >-
   Self-contained Freepod chart for Vaultwarden. Renders the deployment, service,
   data PVC, and per-app TLS ingress directly (no upstream dependency).
 type: application
-version: 3.4.2
+version: 3.4.3
 appVersion: "1.37.1"
 keywords:
   - vaultwarden

@@ -22,6 +22,13 @@ storage:
 user:
   message: "Hello from Caelus"
 
+# Requests only, no limits: a floor that makes the pod Burstable rather than
+# BestEffort.
+resources:
+  requests:
+    cpu: 5m
+    memory: 16Mi
+
 # Plan- and TLS-related values are injected per-deployment by the Caelus reconciler
 # (caelus.plan.*, caelus.ingress.tls). These defaults let the chart render standalone
 # (helm template / lint / tests): plan is empty so the PVC falls back to storage.size,
