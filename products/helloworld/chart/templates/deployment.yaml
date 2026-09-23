@@ -39,6 +39,10 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /usr/share/nginx/html
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
         # The SSH sidecar, rooted at a read-only mount of the data PVC, which
         # the session sees as /data. Never mount a DB or state volume here.
         {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage

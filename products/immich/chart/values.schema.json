@@ -117,6 +117,24 @@
       ],
       "additionalProperties": false
     },
+    "server": {
+      "type": "object",
+      "properties": {
+        "resources": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "machineLearning": {
+      "type": "object",
+      "properties": {
+        "resources": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
     "postgresql": {
       "type": "object",
       "properties": {
@@ -200,6 +218,9 @@
             "storageClassName"
           ],
           "additionalProperties": false
+        },
+        "resources": {
+          "type": "object"
         }
       },
       "required": [
@@ -266,6 +287,9 @@
             "storageClassName"
           ],
           "additionalProperties": false
+        },
+        "resources": {
+          "type": "object"
         }
       },
       "required": [

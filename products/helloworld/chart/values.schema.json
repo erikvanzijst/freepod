@@ -104,6 +104,9 @@
       ],
       "additionalProperties": false
     },
+    "resources": {
+      "type": "object"
+    },
     "caelus": {
       "type": "object",
       "description": "Reconciler-injected values. Open by design (additionalProperties: true throughout): this namespace is written by the platform, never by a tenant, so new reconciler fields can land without a schema bump in every chart.",

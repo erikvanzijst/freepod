@@ -49,16 +49,16 @@ elementWeb:
     pullPolicy: IfNotPresent
   resources:
     requests:
-      cpu: 10m
-      memory: 32Mi
+      cpu: 5m
+      memory: 16Mi
     limits:
       cpu: 250m
       memory: 128Mi
 
 resources:
   requests:
-    cpu: 250m
-    memory: 512Mi
+    cpu: 5m
+    memory: 32Mi
   limits:
     cpu: "2"
     memory: 2Gi

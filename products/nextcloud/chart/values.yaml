@@ -61,6 +61,15 @@ postgresql:
     accessMode: ReadWriteOnce
     size: 8Gi
     storageClassName: ""
+  resources:
+    requests:
+      cpu: 15m
+      memory: 128Mi
+
+resources:
+  requests:
+    cpu: 15m
+    memory: 256Mi
 
 # Plan- and TLS-related values are injected per-deployment by the Caelus reconciler
 # (caelus.plan.*, caelus.ingress.tls). These defaults let the chart render standalone

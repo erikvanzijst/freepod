@@ -15,7 +15,7 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/lemmy
-  chart_version: 0.5.3
+  chart_version: 0.5.4
   system_values:
     image:
       tag: 0.19.20

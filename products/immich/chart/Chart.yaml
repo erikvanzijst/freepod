@@ -4,7 +4,7 @@ description: >-
   Self-contained Freepod chart for Immich. Renders the full deployment (server,
   machine-learning, valkey, postgres) directly.
 type: application
-version: 0.2.2
+version: 0.2.3
 appVersion: "v2.7.0"
 keywords:
   - immich

@@ -87,6 +87,10 @@ spec:
             - name: config
               mountPath: /config
               readOnly: true
+          {{- with .Values.server.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
         # The SSH sidecar, rooted at a read-only mount of the photo library,
         # which the session sees as /library.
         {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage

@@ -59,9 +59,10 @@ service:
 
 replicas: 1
 
-# Empty by default; per-plan requests/limits belong here once real usage of
-# tenant-built images is measured.
-resources: {}
+resources:
+  requests:
+    cpu: 10m
+    memory: 128Mi
 
 # Whether this chart wires up object storage — an S3 bucket, NOT a volume. Named
 # `objectStorage` rather than `storage` to stay distinct from

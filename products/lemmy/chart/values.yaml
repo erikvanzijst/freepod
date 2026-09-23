@@ -23,7 +23,10 @@ lemmy:
   # Concurrent outgoing federation requests per target instance. Upstream advises
   # raising this above 1 only for instances doing >10 activities/second.
   concurrentSendsPerInstance: 1
-  resources: {}
+  resources:
+    requests:
+      cpu: 5m
+      memory: 16Mi
 
 # Server-side-rendered frontend.
 ui:
@@ -32,7 +35,10 @@ ui:
     # Tag defaults to the backend's resolved tag; set it only to override that.
     tag: ""
     pullPolicy: IfNotPresent
-  resources: {}
+  resources:
+    requests:
+      cpu: 5m
+      memory: 192Mi
 
 # Admin account seeded on first start only (Lemmy's `setup` block). Changing
 # these after the instance is initialised has no effect.
@@ -68,7 +74,10 @@ pictrs:
     accessMode: ReadWriteOnce
     size: 20Gi
     storageClassName: ""
-  resources: {}
+  resources:
+    requests:
+      cpu: 5m
+      memory: 8Mi
 
 # nginx routing proxy. Mandatory: Lemmy splits a single hostname across two
 # backends by HTTP verb and Accept header, which a plain Ingress cannot express.
@@ -82,7 +91,10 @@ proxy:
   # Source ranges whose X-Forwarded-For is trusted (the cluster pod CIDR).
   trustedProxies:
     - "10.42.0.0/16"
-  resources: {}
+  resources:
+    requests:
+      cpu: 5m
+      memory: 16Mi
 
 # Wrapper ingress. TLS injected per-deployment by the Caelus reconciler.
 ingress:
@@ -126,7 +138,10 @@ postgresql:
     accessMode: ReadWriteOnce
     size: 16Gi
     storageClassName: ""
-  resources: {}
+  resources:
+    requests:
+      cpu: 15m
+      memory: 112Mi
 
 # Plan- and TLS-related values are injected per-deployment by the Caelus reconciler
 # (caelus.plan.*, caelus.ingress.tls). These defaults let the chart render standalone

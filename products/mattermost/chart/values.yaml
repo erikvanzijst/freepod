@@ -24,6 +24,10 @@ mattermost:
     TZ: Europe/Amsterdam
     MM_CALLS_GROUP_CALLS_ALLOWED: "true"
     MM_PLUGINSETTINGS_ENABLEUPLOADS: "true"
+  resources:
+    requests:
+      cpu: 5m
+      memory: 128Mi
 
 # PostgreSQL configuration
 postgresql:
@@ -33,6 +37,13 @@ postgresql:
   password: postgres
   database: postgres
   size: 10Gi
+  resources:
+    requests:
+      cpu: 5m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
 
 # TLS is injected per-deployment by the Caelus reconciler (caelus.ingress.tls). This
 # default lets the chart render standalone (helm template / tests) with TLS off.

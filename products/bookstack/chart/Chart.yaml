@@ -4,7 +4,7 @@ description: >-
   Self-contained Freepod chart for BookStack. Renders the full deployment
   (bookstack, mysql) directly.
 type: application
-version: 0.1.2
+version: 0.1.3
 appVersion: "26.5.5"
 keywords:
   - bookstack

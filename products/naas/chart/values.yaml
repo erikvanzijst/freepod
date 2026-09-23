@@ -16,6 +16,11 @@ ingress:
 server:
   port: 8080
 
+resources:
+  requests:
+    cpu: 5m
+    memory: 32Mi
+
 # TLS is injected per-deployment by the Caelus reconciler (caelus.ingress.tls). This
 # default lets the chart render standalone (helm template / tests) with TLS off.
 caelus:

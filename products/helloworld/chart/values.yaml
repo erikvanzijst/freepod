@@ -22,6 +22,11 @@ storage:
 user:
   message: "Hello from Caelus"
 
+resources:
+  requests:
+    cpu: 5m
+    memory: 16Mi
+
 # Plan- and TLS-related values are injected per-deployment by the Caelus reconciler
 # (caelus.plan.*, caelus.ingress.tls). These defaults let the chart render standalone
 # (helm template / lint / tests): plan is empty so the PVC falls back to storage.size,

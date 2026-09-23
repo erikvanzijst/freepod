@@ -95,6 +95,10 @@ spec:
               mountPath: /mattermost/config
             - name: mattermost-plugins
               mountPath: /mattermost/plugins
+          {{- with .Values.mattermost.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
         # The SSH sidecar, rooted at a read-only mount of the data PVC (uploads
         # and attachments), which the session sees as /data. Not the postgres or
         # plugins PVCs.
