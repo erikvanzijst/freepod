@@ -9,8 +9,7 @@ resource "helm_release" "opencost" {
   # https://github.com/opencost/opencost-helm-chart/blob/main/charts/opencost/values.yaml
   values = [
     yamlencode({
-      # Top-level chart value, not part of the `opencost` map. OpenCost's cost
-      # model is a two-stage pipeline: it publishes its own
+      # OpenCost's cost model is a two-stage pipeline: it publishes its own
       # `container_cpu_allocation` / `container_memory_allocation_bytes`
       # (max(request, usage) per container per minute) and its /allocation API
       # reads those back out of Prometheus. Unscraped, cpuCoreHours silently
