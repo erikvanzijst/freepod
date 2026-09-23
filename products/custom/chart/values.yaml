@@ -59,10 +59,6 @@ service:
 
 replicas: 1
 
-# Requests only, and deliberately a floor rather than an allowance: a
-# tenant-built image is the least predictable workload on the node, so a limit
-# would turn an ordinary spike into an OOM kill. Per-plan sizing belongs here
-# once usage is measured per plan rather than per fleet.
 resources:
   requests:
     cpu: 10m

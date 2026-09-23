@@ -22,8 +22,6 @@ storage:
 user:
   message: "Hello from Caelus"
 
-# Requests only, no limits: a floor that makes the pod Burstable rather than
-# BestEffort.
 resources:
   requests:
     cpu: 5m

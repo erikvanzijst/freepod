@@ -37,14 +37,11 @@ storage:
     size: 100Gi
     storageClassName: ""
 
-# Per-component resources. Requests only, no limits: they reserve a share and
-# make the pods Burstable, while a memory limit would OOM-kill the server
-# mid-import and the machine-learning worker mid-inference.
 server:
   resources:
     requests:
-      cpu: 25m
-      memory: 768Mi
+      cpu: 5m
+      memory: 672Mi
 
 machineLearning:
   resources:

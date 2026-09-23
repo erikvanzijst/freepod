@@ -16,8 +16,6 @@ ingress:
 server:
   port: 8080
 
-# Requests only, no limits: a floor that makes the pod Burstable rather than
-# BestEffort.
 resources:
   requests:
     cpu: 5m

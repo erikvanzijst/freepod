@@ -102,8 +102,6 @@ storage:
     accessMode: ReadWriteOnce
     storageClassName: ""
 
-# Requests only: vaultwarden is small, and a wrong limit OOM-kills a password
-# vault. These are floors measured over 24h (0.5m CPU, 16Mi), not an allowance.
 resources:
   requests:
     cpu: 5m

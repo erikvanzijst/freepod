@@ -79,14 +79,14 @@ mysql:
   resources:
     requests:
       cpu: 25m
-      memory: 256Mi
+      memory: 160Mi
     limits:
       memory: 1Gi
 
 resources:
   requests:
     cpu: 10m
-    memory: 192Mi
+    memory: 112Mi
 
 # Escape hatch for BookStack settings this chart does not model.
 extraEnv: {}

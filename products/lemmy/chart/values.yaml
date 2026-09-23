@@ -25,8 +25,8 @@ lemmy:
   concurrentSendsPerInstance: 1
   resources:
     requests:
-      cpu: 15m
-      memory: 256Mi
+      cpu: 5m
+      memory: 16Mi
 
 # Server-side-rendered frontend.
 ui:
@@ -37,8 +37,8 @@ ui:
     pullPolicy: IfNotPresent
   resources:
     requests:
-      cpu: 10m
-      memory: 128Mi
+      cpu: 5m
+      memory: 192Mi
 
 # Admin account seeded on first start only (Lemmy's `setup` block). Changing
 # these after the instance is initialised has no effect.
@@ -76,8 +76,8 @@ pictrs:
     storageClassName: ""
   resources:
     requests:
-      cpu: 10m
-      memory: 128Mi
+      cpu: 5m
+      memory: 8Mi
 
 # nginx routing proxy. Mandatory: Lemmy splits a single hostname across two
 # backends by HTTP verb and Accept header, which a plain Ingress cannot express.
@@ -94,7 +94,7 @@ proxy:
   resources:
     requests:
       cpu: 5m
-      memory: 32Mi
+      memory: 16Mi
 
 # Wrapper ingress. TLS injected per-deployment by the Caelus reconciler.
 ingress:
@@ -141,7 +141,7 @@ postgresql:
   resources:
     requests:
       cpu: 15m
-      memory: 128Mi
+      memory: 112Mi
 
 # Plan- and TLS-related values are injected per-deployment by the Caelus reconciler
 # (caelus.plan.*, caelus.ingress.tls). These defaults let the chart render standalone
