@@ -116,6 +116,65 @@ time column in every unique index.
 data is a ledger, and metrics stores are built to lose precision gracefully — retention,
 downsampling, no transactional upserts.
 
+### Unattributable is not unavailable
+
+A window where the source answers fully but cannot identify the workload is recorded
+against its namespace, marked unresolved, and the cursor advances past it.
+
+A source that answers but cannot identify the workload has not failed to answer —
+retrying cannot improve it, because the limitation is in the response rather than in
+availability. Treating it as an outage is what turns it into a permanent stall: the
+resume position is derived from the ledger, so a window that is never recorded is
+retried forever.
+
+Nothing is lost by recording it. Where the controller is unresolved OpenCost has
+already merged that namespace's containers before the sampler sees them — immich's
+`server` and `machine-learning` pods arrive as a single `main` row — so the degraded
+subject records what arrived, rather than discarding detail we still had. The
+namespace is what attribution actually needs, and it survives.
+
+*Alternative considered:* bounded retries, then skip. Rejected: the attempt counter is
+a second piece of state beside the cursor, which is what deriving the position from the
+ledger exists to avoid, and `max(window_start)` cannot express "gave up on 06:00 but
+recorded 07:00" anyway.
+
+*Alternative considered:* a `usage_gap` table. Rejected: it is the provenance table
+deferred above, arriving by another name, and it records that the sampler gave up
+without answering when it should stop.
+
+### A window whose measurements are untrustworthy is not recorded
+
+Distinct from the above, and the reason the two are separate decisions: a window can be
+fully attributable and still carry wrong numbers.
+
+When OpenCost's own metrics are not being scraped, `/allocation` still answers, but
+`cpuCoreHours` silently falls through to the request — the `max(request, usage)` floor
+loses its first operand. So before recording a window the sampler asks Prometheus
+whether `container_cpu_allocation` has any samples covering it, and records nothing if
+it does not. Measured across the boundary: the pre-scrape hour returns no series at
+all, the next healthy hour returns 126.
+
+**This is a health check, not a measurement.** It computes no quantity, reads no
+allocation and touches none of the label-drift and pod-lifetime handling that
+"Source the OpenCost API, not Prometheus directly" exists to stay out of. It asks only
+whether the pipeline's first stage ran. The cost is that the sampler needs a Prometheus
+endpoint alongside OpenCost's.
+
+*Alternative considered:* infer it from the numbers — reject a window where every entry
+reports `cpuCoreHours == cpuCoreRequestAverage x hours`. Rejected because it is a
+coincidence test that stops holding. Its safety rests on most containers declaring no
+CPU request, so that the equality implies billing zero against real usage; once every
+product container has a request (#132), a quiet night hour satisfies it legitimately
+for every entry and a healthy window is discarded as unmeasured.
+
+*Alternative considered:* reject a window where any entry reports `cpuCoreHours == 0`
+while usage is non-zero. Sharper — billing zero against measured usage is impossible
+when the operand is present, so it detects rather than infers — and it separates
+cleanly today (55 pre-scrape, 0 in every healthy window). Rejected for the same reason:
+post-#132, a missing operand yields `request x hours` rather than zero for every
+container, so nothing trips it. It fails open where the other fails closed, and neither
+survives requests becoming universal.
+
 ### A btree on the window, not BRIN
 
 BRIN would be a tenth the size and adequate for range scans, but cannot answer the
@@ -142,17 +201,17 @@ CREATE TABLE usage_subject (
     ref           text NOT NULL,
     namespace     text,
     deployment_id uuid REFERENCES deployment (id),   -- NULL for platform namespaces
-    first_seen_at timestamptz NOT NULL DEFAULT now(),
-    last_seen_at  timestamptz NOT NULL DEFAULT now(),
+    first_seen_at timestamp NOT NULL DEFAULT now(),
+    last_seen_at  timestamp NOT NULL DEFAULT now(),
     UNIQUE (kind, ref)
 );
 
 CREATE TABLE usage_sample (
     subject_id       integer     NOT NULL REFERENCES usage_subject (id),
     metric_id        smallint    NOT NULL REFERENCES usage_metric (id),
-    window_start     timestamptz NOT NULL,
+    window_start     timestamp   NOT NULL,
     interval_seconds integer     NOT NULL,
-    observed_at      timestamptz NOT NULL,
+    observed_at      timestamp   NOT NULL,
     value            numeric     NOT NULL,
     PRIMARY KEY (subject_id, metric_id, window_start)
 );
@@ -181,8 +240,14 @@ idempotent upsert — which is why no further index on `usage_sample` is needed.
 
 ## Ledger to OpenCost mapping
 
-One `GET /allocation?window=<from>,<to>&step=1h&aggregate=container` per run. Each
-allocation in the response becomes one `container` subject and the rows below.
+One `GET /allocation?window=<from>,<to>&step=1h&aggregate=namespace,controllerKind,controller,container`
+per run. Each allocation in the response becomes one `container` subject and the rows
+below.
+
+**The aggregation must name all four fields.** `aggregate=container` groups by container
+name across every namespace and drops any property the group does not share, so a
+container named `ssh` returns one row for the whole cluster with no `namespace` at all.
+It looks correct for uniquely-named containers, which is exactly how it survived review.
 
 | Ledger metric | OpenCost field | unit | kind | role |
 |---|---|---|---|---|
@@ -206,17 +271,27 @@ Notes on the mapping:
   `container_memory_allocation_bytes`, whose `used` input is that same working set —
   so `ramByteHours = max(request, working set)`, integrated.
 - Subject identity comes from `properties`: `namespace`, `controllerKind`,
-  `controller`, `container`. `namespaceLabels` also returns the owner, product and
+  `controller`, `container` — which carry the controller fields only under the
+  four-field aggregation above. Read them from `properties`, never from the response
+  key: the key prefixes the controller with its kind (`deployment:immich-uqjcqc-server`)
+  and `properties` does not. `namespaceLabels` also returns the owner, product and
   environment labels, which are useful for cross-checking but are **not** the source
   of attribution; the platform database is, because labels vanish with the namespace.
+- Resolved controllers carry no pod-template hash — `immich-uqjcqc-server`,
+  `bookstack-8d56q1-mysql` — because OpenCost collapses ReplicaSet to Deployment
+  itself via `kube_replicaset_owner`. Reading `kube_pod_owner` directly would instead
+  yield the ReplicaSet name, whose hash changes on every rollout and would fragment a
+  subject per release.
 - `running_seconds` is what distinguishes a quiet hour from a short one: a container
   that lived 11 of 60 minutes reports `minutes: 11.43584`, and
   `cpuCoreHours = cpuCores x minutes/60`.
 - `pv_byte_hours` carries `role = allocation` because it is requested capacity, not
   consumption — PVC usage is not available from OpenCost. It is recorded because it
-  arrives free in the same response. Volumes not mounted by a running pod are
-  attributed to a synthetic `__unmounted__` allocation with no namespace, so they
-  reach no tenant.
+  arrives free in the same response. Volumes not mounted by a running pod arrive as a
+  synthetic allocation whose `container` is `__unmounted__` — and under the four-field
+  aggregation it **does** carry the tenant's namespace, so it is not self-excluding.
+  The sampler skips it on `container == "__unmounted__"`, leaving orphaned PVCs
+  unbilled: undercharging, never over, and storage is a non-goal of this change.
 - No cost field is consumed. `cpuCost`, `ramCost`, `totalCost` and the idle and
   adjustment fields are deliberately ignored.
 
@@ -227,6 +302,12 @@ Notes on the mapping:
   replay falls back to the request — no error, no obvious symptom. → Both components are
   recorded, so a window can be audited after the fact by comparing the billable value
   against the higher of usage and request; undercharging, never over.
+- **This failure has already happened once, and its window is unrecoverable.** Prometheus
+  only began scraping OpenCost's own series at 2026-09-23T08:56:33Z. Every hour before
+  that reports `cpuCoreHours` equal to the request for all 118 entries, bills zero CPU
+  for 12 containers with measured usage, and resolves no controller for 111 workloads.
+  Restarting OpenCost and discarding its ETL store changes nothing, because the inputs
+  do not exist for that time. Both rules above were derived from measuring it.
 - **A Prometheus outage is unrecoverable after ten days.** → Lag must be observable
   while recovery is still possible; raising retention as a recovery buffer is cheap and
   is a separate decision from where the record of truth lives.

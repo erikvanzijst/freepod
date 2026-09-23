@@ -200,6 +200,34 @@ class CaelusSettings(BaseSettings):
     # the fleet's databases in one pass.
     db_worker_max_purges_per_run: int = 20
 
+    # ── Usage ledger (OpenCost) ───────────────────────────────────────────
+    # Empty means unconfigured, which is what the test suite runs with; the
+    # sampler refuses to start rather than recording nothing silently.
+    opencost_base_url: str = ""
+    # Not a second measurement source. The sampler asks Prometheus only whether
+    # OpenCost's own exporter published over a window, because `/allocation`
+    # answers 200 with request-only numbers when it did not.
+    prometheus_base_url: str = ""
+    opencost_timeout_seconds: float = 30.0
+
+    # Hourly windows, which is the granularity OpenCost's `step` supports and the
+    # resolution the ledger records at. Changing it does not invalidate history:
+    # every sample carries its own `interval_seconds`.
+    usage_window_seconds: int = 3600
+    # OpenCost's per-minute series land slightly after the minute they describe, so a
+    # window is not read the instant it closes.
+    usage_settle_seconds: int = 300
+    # How far back the very first run reaches when the ledger is empty. Bounded well
+    # inside Prometheus's ten-day retention: reaching further back cannot find data,
+    # and one enormous request is how a first run fails.
+    usage_first_run_lookback_seconds: int = 6 * 3600
+    # A ceiling per pass, so a long gap is recovered incrementally with progress
+    # committed as it goes rather than in one transaction that can be lost whole.
+    usage_max_windows_per_pass: int = 24
+    # The retry cadence, not the resolution. Only one pass an hour finds work; the
+    # rest return immediately, and a failed pass recovers in minutes.
+    usage_worker_interval_seconds: float = 600.0
+
     # The shared SMTP relay, for the quota ladder's threshold mails. Empty host
     # means no mail is sent, which is what dev and the test suite run with.
     smtp_host: str = ""
