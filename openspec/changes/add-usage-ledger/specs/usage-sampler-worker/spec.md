@@ -165,15 +165,3 @@ measure.
 - **WHEN** the measurement source cannot be reached
 - **THEN** no samples are written, the resume position is unchanged, and the window is
   recorded on a later run
-
-### Requirement: Falling behind is observable
-
-Because measurements become unrecoverable once the upstream retention window passes,
-the platform SHALL make the sampler's lag observable, and MUST surface it while
-recovery is still possible.
-
-#### Scenario: Lag is surfaced before data is lost
-
-- **WHEN** the sampler's most recent recorded window falls behind the present by more
-  than the configured threshold
-- **THEN** the condition is reported while the missed windows are still recoverable

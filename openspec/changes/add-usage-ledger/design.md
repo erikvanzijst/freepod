@@ -308,8 +308,11 @@ Notes on the mapping:
   for 12 containers with measured usage, and resolves no controller for 111 workloads.
   Restarting OpenCost and discarding its ETL store changes nothing, because the inputs
   do not exist for that time. Both rules above were derived from measuring it.
-- **A Prometheus outage is unrecoverable after ten days.** → Lag must be observable
-  while recovery is still possible; raising retention as a recovery buffer is cheap and
+- **A Prometheus outage is unrecoverable after ten days, and nothing yet reports that
+  the sampler has stalled.** Monitoring is deliberately deferred: this change has grown
+  well past its estimate and the sampler is being watched by hand for its first days
+  instead. Until something reports lag, a silent stall loses history permanently once
+  it passes retention. → Raising Prometheus retention as a recovery buffer is cheap and
   is a separate decision from where the record of truth lives.
 - **OpenCost semantics can change across versions without the API changing.** → The
   chart version is pinned; a provenance table is the fuller answer and is deferred.
@@ -341,5 +344,5 @@ dropping them loses only the collected history.
 - Retention of the ledger itself, and its privacy implications, since usage tied to a
   user is personal data. Does not affect the schema.
 - Whether to raise Prometheus retention purely as a recovery buffer.
-- The bounded lookback for a first run, and the lag threshold at which the sampler is
-  reported as behind. Both are configuration, resolvable during implementation.
+- The bounded lookback for a first run is settled (six hours). The lag threshold at
+  which the sampler is reported as behind is deferred with the rest of monitoring.

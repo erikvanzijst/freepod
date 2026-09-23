@@ -78,22 +78,12 @@
       allowance, first-run lookback and OpenCost endpoint, and verify defaults
       produce hourly windows without configuration
 
-## 6. Observability
+## 6. Verification
 
-- [ ] 6.1 Expose the sampler's lag as the age of the most recent recorded window,
-      and verify it is queryable
-- [ ] 6.2 Add an alert that fires while missed windows are still within upstream
-      retention, and verify the rule evaluates against a deliberately stale ledger
-- [ ] 6.3 Add a check comparing the recorded billable quantity against the higher
-      of the recorded usage and request components, and verify it flags a window
-      collected while the OpenCost exporter was unavailable
-
-## 7. Verification
-
-- [ ] 7.1 Run the sampler against the live cluster for several hours and verify
+- [ ] 6.1 Run the sampler against the live cluster for several hours and verify
       recorded quantities for a window agree with the same window read directly
       from the OpenCost API
-- [ ] 7.2 Verify recorded totals per owner agree with the `tenant-usage` dashboard
+- [ ] 6.2 Verify recorded totals per owner agree with the `tenant-usage` dashboard
       for the same period
-- [ ] 7.3 Confirm table and index growth is consistent with the ~250 MB/year
+- [ ] 6.3 Confirm table and index growth is consistent with the ~250 MB/year
       estimate, and record the measured figure
