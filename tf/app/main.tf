@@ -118,6 +118,8 @@ module "caelus" {
 
   # Loki, like Garage above, is a tf/deps singleton shared by both workspaces.
   loki_base_url         = var.loki_base_url
+  opencost_base_url     = var.opencost_base_url
+  prometheus_base_url   = var.prometheus_base_url
   log_keepalive_seconds = var.log_keepalive_seconds
 
   depends_on = [kubernetes_namespace.caelus, kubernetes_namespace.builds]

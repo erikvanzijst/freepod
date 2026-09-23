@@ -156,6 +156,16 @@ variable "garage_admin_token" {
 
 # --- Deployment logs --------------------------------------------------------
 
+variable "opencost_base_url" {
+  description = "In-cluster OpenCost allocation API URL, read by the usage sampler."
+  type        = string
+}
+
+variable "prometheus_base_url" {
+  description = "In-cluster Prometheus URL. The sampler asks it whether OpenCost's exporter covered a window; /allocation answers 200 with request-only numbers when it did not."
+  type        = string
+}
+
 variable "loki_base_url" {
   description = "In-cluster Loki query API URL. Never routed by an Ingress: Loki runs auth_enabled=false over a single tenancy holding every tenant's logs and the platform's own, so only the API may reach it."
   type        = string

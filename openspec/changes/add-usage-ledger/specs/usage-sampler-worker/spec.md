@@ -117,11 +117,45 @@ left unresolved and able to be completed later.
 - **WHEN** a namespace is observed that does not correspond to a known deployment
 - **THEN** its usage is recorded with no deployment attributed
 
+### Requirement: Usage that cannot be attributed to a workload is still recorded
+
+The sampler SHALL record usage it cannot attribute to a specific workload against the
+namespace it was observed in, marked as unresolved, and such a window MUST NOT block
+progress. Usage that cannot be attributed to a namespace SHALL be skipped, since
+nothing can be billed from it. An unresolved attribution MUST be distinguishable from a
+resolved one, so the proportion of a period collected in a degraded state is queryable.
+
+A source that answers but cannot identify the workload has not failed to answer.
+Retrying cannot improve it, because the limitation is in the response rather than in
+availability. Nothing is lost by recording it: where the workload is unresolved the
+measurement source has already merged that namespace's containers before the sampler
+sees them.
+
+#### Scenario: Usage with an unidentifiable workload is still billed to its owner
+
+- **WHEN** the source returns usage for a namespace but cannot identify the workload
+- **THEN** the usage is recorded against that namespace marked unresolved, attributed
+  to the owning deployment, and the sampler advances past that window
+
+#### Scenario: Usage belonging to no namespace is discarded
+
+- **WHEN** usage arrives that is attributable to no namespace
+- **THEN** it is not recorded
+
+#### Scenario: Degraded collection is measurable after the fact
+
+- **WHEN** a period contains both resolved and unresolved samples
+- **THEN** the proportion collected in a degraded state can be determined from the
+  ledger alone
+
 ### Requirement: Unavailable measurements do not advance progress
 
-When the measurement source is unavailable, returns no data, or returns data the
-sampler cannot trust for a window, the sampler MUST NOT record samples for that window
-and MUST NOT advance its position past it.
+This governs the source being unable to answer, not an answer that is unusable for
+attribution — which the preceding requirement covers, and which does advance progress.
+
+When the measurement source is unavailable, returns no data, or returns data whose
+measured quantities the sampler cannot trust for a window, the sampler MUST NOT record
+samples for that window and MUST NOT advance its position past it.
 
 The sampler MUST record nothing rather than record zero for a window it could not
 measure.
@@ -131,15 +165,3 @@ measure.
 - **WHEN** the measurement source cannot be reached
 - **THEN** no samples are written, the resume position is unchanged, and the window is
   recorded on a later run
-
-### Requirement: Falling behind is observable
-
-Because measurements become unrecoverable once the upstream retention window passes,
-the platform SHALL make the sampler's lag observable, and MUST surface it while
-recovery is still possible.
-
-#### Scenario: Lag is surfaced before data is lost
-
-- **WHEN** the sampler's most recent recorded window falls behind the present by more
-  than the configured threshold
-- **THEN** the condition is reported while the missed windows are still recoverable

@@ -353,6 +353,18 @@ variable "garage_admin_token" {
   sensitive   = true
 }
 
+variable "opencost_base_url" {
+  description = "In-cluster OpenCost allocation API URL. Read only by the usage sampler; never Ingress-routed."
+  type        = string
+  default     = "http://opencost.monitoring.svc.cluster.local:9003"
+}
+
+variable "prometheus_base_url" {
+  description = "In-cluster Prometheus URL. The sampler queries it for one thing only: whether OpenCost's own exporter published over a window, which /allocation cannot report -- it answers 200 with request-only numbers when the scrape is missing."
+  type        = string
+  default     = "http://prometheus-server.monitoring.svc.cluster.local"
+}
+
 variable "loki_base_url" {
   description = "In-cluster Loki query API URL. Never Ingress-routed; only the API may reach it."
   type        = string
