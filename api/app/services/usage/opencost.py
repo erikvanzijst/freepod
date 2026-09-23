@@ -15,7 +15,7 @@ measurements are untrustworthy is not recorded".
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 import json
@@ -36,6 +36,11 @@ AGGREGATE_BY = "namespace,controllerKind,controller,container"
 # ledger's identities.
 UNALLOCATED = "__unallocated__"
 UNMOUNTED = "__unmounted__"
+
+# OpenCost exposes namespace labels with `.` and `/` flattened to `_`. Derived from
+# the reconciler's own keys rather than spelled out, so a rename there reaches here.
+_TENANT_LABEL = "caelus.dev/tenant".replace(".", "_").replace("/", "_")
+_ENVIRONMENT_LABEL = "caelus.dev/environment".replace(".", "_").replace("/", "_")
 
 ALLOCATION_SERIES = "container_cpu_allocation"
 
@@ -60,6 +65,7 @@ class Allocation:
     window_end: datetime
     minutes: Decimal
     fields: dict[str, Decimal]
+    namespace_labels: dict[str, str] = field(default_factory=dict)
 
     @property
     def is_unmounted(self) -> bool:
@@ -72,6 +78,20 @@ class Allocation:
     @property
     def is_resolved(self) -> bool:
         return self.controller is not None and self.controller_kind is not None
+
+    @property
+    def is_tenant(self) -> bool:
+        """Whether the namespace belongs to a tenant rather than the platform."""
+        return self.namespace_labels.get(_TENANT_LABEL) == "true"
+
+    @property
+    def tenant_environment(self) -> str | None:
+        """Which environment owns this tenant, when it says.
+
+        Both environments share one cluster, so a tenant namespace carries the
+        environment whose database holds its deployment row.
+        """
+        return self.namespace_labels.get(_ENVIRONMENT_LABEL)
 
 
 def _parse_window(value: str) -> datetime:
@@ -127,6 +147,7 @@ def parse_allocations(payload: dict[str, Any]) -> list[list[Allocation]]:
                         if isinstance(value, (int, float, Decimal))
                         and not isinstance(value, bool)
                     },
+                    namespace_labels=properties.get("namespaceLabels") or {},
                 )
             )
         windows.append(allocations)

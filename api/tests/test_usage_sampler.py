@@ -381,6 +381,7 @@ def test_two_simultaneous_runs_leave_one_sample_per_series(
             window_start,
             window_seconds=HOUR,
             observed_at=now,
+            environment="dev",
         )
     db_session.commit()
 
@@ -406,13 +407,15 @@ def test_two_concurrent_sessions_leave_one_sample_per_series(
     # concurrent samplers serialize rather than race. The committed conflict is the
     # one worth testing.
     sampler.record_window(
-        db_session, _client(), window_start, window_seconds=HOUR, observed_at=now
+        db_session, _client(), window_start, window_seconds=HOUR, observed_at=now,
+        environment="dev",
     )
     db_session.commit()
 
     with Session(test_database.engine) as other:
         sampler.record_window(
-            other, _client(), window_start, window_seconds=HOUR, observed_at=now
+            other, _client(), window_start, window_seconds=HOUR, observed_at=now,
+            environment="dev",
         )
         other.commit()
 
@@ -440,6 +443,7 @@ def test_a_replayed_window_is_left_unchanged(
         datetime(2026, 9, 23, 8),
         window_seconds=HOUR,
         observed_at=datetime(2026, 9, 24, 9),
+        environment="dev",
     )
     db_session.commit()
 

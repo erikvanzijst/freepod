@@ -124,12 +124,12 @@ def test_a_refused_window_offers_no_quantities_to_write(healthy_body):
     result = read_window(_client(cover=False, allocation_body=healthy_body), START, END)
     assert result.allocations is None
     with pytest.raises(TypeError):
-        billable(result.allocations)
+        billable(result.allocations, environment="dev")
 
 
 def test_unmounted_buckets_are_dropped_before_recording(healthy_body):
     result = read_window(_client(cover=True, allocation_body=healthy_body), START, END)
-    kept = billable(result.allocations)
+    kept = billable(result.allocations, environment="dev")
     assert kept
     assert not any(a.is_unmounted for a in kept)
     assert any(a.is_unmounted for a in result.allocations)
@@ -159,3 +159,54 @@ def test_values_survive_the_read_as_exact_decimals(healthy_body):
     values = [v for a in result.allocations for v in a.fields.values()]
     assert values
     assert all(isinstance(v, Decimal) for v in values)
+
+
+def _allocations(body):
+    return read_window(_client(cover=True, allocation_body=body), START, END).allocations
+
+
+def test_a_foreign_environments_tenant_is_skipped(healthy_body):
+    """The same container would otherwise land in two ledgers, attributed in one."""
+    kept = billable(_allocations(healthy_body), environment="dev")
+    assert not [a for a in kept if a.tenant_environment == "prod"]
+    assert [a for a in _allocations(healthy_body) if a.tenant_environment == "prod"]
+
+
+def test_our_own_tenants_are_kept(healthy_body):
+    kept = billable(_allocations(healthy_body), environment="dev")
+    ours = [a for a in kept if a.is_tenant]
+    assert ours
+    assert {a.tenant_environment for a in ours} == {"dev"}
+
+
+def test_platform_workloads_are_kept_by_every_environment(healthy_body):
+    """No single environment owns them, so each records them."""
+    platform = [a for a in billable(_allocations(healthy_body), environment="dev")
+                if not a.is_tenant]
+    assert platform
+    for environment in ("dev", "prod"):
+        kept = billable(_allocations(healthy_body), environment=environment)
+        assert {a.namespace for a in kept if not a.is_tenant} == {
+            a.namespace for a in platform
+        }
+
+
+def test_a_tenant_with_no_environment_label_is_kept(healthy_body):
+    """A missing label must not silently drop real usage."""
+    from dataclasses import replace
+
+    tenant = next(a for a in _allocations(healthy_body) if a.is_tenant)
+    unlabelled = replace(
+        tenant,
+        namespace_labels={k: v for k, v in tenant.namespace_labels.items()
+                          if not k.endswith("_environment")},
+    )
+    assert unlabelled.tenant_environment is None
+    assert billable([unlabelled], environment="dev") == [unlabelled]
+
+
+def test_the_filter_is_symmetric(healthy_body):
+    """Run as prod, the dev tenants are what gets skipped."""
+    kept = billable(_allocations(healthy_body), environment="prod")
+    assert not [a for a in kept if a.tenant_environment == "dev"]
+    assert [a for a in kept if a.tenant_environment == "prod"]

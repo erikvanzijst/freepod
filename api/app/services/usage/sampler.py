@@ -104,6 +104,7 @@ def record_window(
     *,
     window_seconds: int,
     observed_at: datetime,
+    environment: str,
     catalog: dict[str, int] | None = None,
 ) -> int | None:
     """Record one window. Returns samples written, or None if it was not usable.
@@ -116,7 +117,7 @@ def record_window(
     if not reading.is_usable:
         return None
 
-    allocations = billable(reading.allocations)
+    allocations = billable(reading.allocations, environment=environment)
     if not allocations:
         return None
 
@@ -179,6 +180,7 @@ def sample_once(
             window_start,
             window_seconds=settings.usage_window_seconds,
             observed_at=now,
+            environment=settings.environment,
             catalog=catalog,
         )
         if written is None:

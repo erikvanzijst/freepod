@@ -66,10 +66,16 @@ def read_window(
     return WindowReading(start=start, end=end, allocations=allocations)
 
 
-def billable(allocations: list[Allocation]) -> list[Allocation]:
-    """Everything but the unmounted-PV buckets.
+def billable(allocations: list[Allocation], *, environment: str) -> list[Allocation]:
+    """The allocations this environment should record.
 
-    They carry a tenant namespace under this aggregation, so they are recognized by
-    container name rather than by a missing one.
+    Drops the unmounted-PV buckets, which carry a tenant namespace here and so are
+    recognized by container name, and tenants belonging to another environment. See
+    the design's "Each environment records only its own tenants".
     """
-    return [a for a in allocations if not a.is_unmounted]
+    return [
+        a
+        for a in allocations
+        if not a.is_unmounted
+        and not (a.is_tenant and a.tenant_environment not in (None, environment))
+    ]

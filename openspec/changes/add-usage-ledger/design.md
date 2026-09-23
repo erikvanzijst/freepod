@@ -158,6 +158,31 @@ recorded 07:00" anyway.
 deferred above, arriving by another name, and it records that the sampler gave up
 without answering when it should stop.
 
+### Each environment records only its own tenants
+
+Dev and prod share one cluster but not one database, so every prod namespace is
+unresolvable to dev's sampler and would be recorded as unattributed usage — the same
+physical container in two ledgers, attributed in one and anonymous in the other.
+Measured before the filter: 60 of dev's 137 subjects were prod tenants.
+
+The sampler therefore skips a tenant workload whose namespace label names another
+environment. Platform namespaces carry no tenant label and are still recorded by both,
+which is the double-count below that the shared cluster makes unavoidable.
+
+**This does not contradict attribution coming from the platform database.** That rule
+exists because labels vanish with the namespace and a past period must stay
+attributable long afterwards. Deciding whether to *sample* is a different question,
+asked while the namespace exists by definition. The label chooses what to look at; it
+never decides who owns what.
+
+*Alternative considered:* record them unattributed and let whoever sums the ledgers
+exclude them. Rejected — it needs a reader to know which namespaces were foreign at
+the time, which is exactly the knowledge that decays.
+
+*Consequence:* a tenant namespace with no environment label is recorded rather than
+skipped, so a missing label cannot silently drop real usage. On a shared cluster that
+means such a namespace is double-counted until it is labelled.
+
 ### A window whose measurements are untrustworthy is not recorded
 
 Distinct from the above, and the reason the two are separate decisions: a window can be
@@ -338,12 +363,10 @@ Notes on the mapping:
   consumed ones by 4.6x for platform namespaces, 8.8x for one owner and 2.6x for
   another. Anything reasoning about what a bill would look like has to start from the
   request, not from usage.
-- **Each environment records the other's tenants, not just shared platform
-  namespaces.** Measured on dev: of 137 subjects, 59 are platform and 60 are *prod*
-  tenant namespaces, recorded unattributed because prod's deployment rows live in
-  prod's database. Attribution is exactly right for the 18 that are dev's own. So the
-  same physical container will appear in both ledgers once prod samples too — attributed
-  in one, unattributed in the other. → Accepted: dev is never billed, and dev
+- **Both environments record shared platform namespaces**, double-counting overhead if
+  the two ledgers are ever summed together. Tenant namespaces no longer double-count —
+  see the decision above — but platform ones have no owner to filter on. → Accepted:
+  dev is never billed, and dev
   moves to its own cluster eventually, at which point it should count its own platform
   services.
 

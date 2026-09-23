@@ -148,6 +148,33 @@ sees them.
 - **THEN** the proportion collected in a degraded state can be determined from the
   ledger alone
 
+### Requirement: Each environment records only its own tenants
+
+Where several environments share one cluster, the sampler SHALL record only the tenant
+workloads belonging to its own environment, and MUST skip those belonging to another.
+Workloads that belong to no tenant — the platform's own — SHALL be recorded by each
+environment, since no single environment owns them.
+
+The sampler MAY use metadata supplied by the measurement source to decide whether a
+workload is in scope. This does not conflict with attribution coming from the platform's
+own records: what is sampled is decided while the workload exists, whereas who owns it
+must remain answerable long after.
+
+#### Scenario: Another environment's tenant is not recorded
+
+- **WHEN** a tenant workload belonging to a different environment is observed
+- **THEN** it is not recorded, rather than recorded with no deployment attributed
+
+#### Scenario: Platform workloads are recorded regardless
+
+- **WHEN** a workload belongs to the platform rather than to any tenant
+- **THEN** it is recorded, even though every environment sharing the cluster records it
+
+#### Scenario: A tenant that declares no environment is still recorded
+
+- **WHEN** a tenant workload is observed that does not say which environment owns it
+- **THEN** it is recorded, so that a missing label cannot silently drop real usage
+
 ### Requirement: Unavailable measurements do not advance progress
 
 This governs the source being unable to answer, not an answer that is unusable for
