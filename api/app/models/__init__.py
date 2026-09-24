@@ -14,8 +14,8 @@ The models are split across three modules:
   - ssh_key.py: SshKey (and its Create/Read variants). Owned by a user and
                 scoped to no deployment.
   - usage.py:   UsageMetric, UsageSubject, UsageSample -- the usage ledger, plus
-                the enums naming its catalog dimensions. Written only by
-                `caelus usage-worker`; nothing reads them yet.
+                the enums naming its catalog dimensions, and UsageReport, the
+                priced read-back. Written only by `caelus usage-worker`.
 """
 
 from app.models.core import (  # noqa: F401
@@ -85,7 +85,10 @@ from app.models.usage import (  # noqa: F401
     MetricRole,
     MetricUnit,
     SubjectKind,
+    UsageBucket,
+    UsageDimension,
     UsageMetricORM,
+    UsageReport,
     UsageSampleORM,
     UsageSubjectORM,
 )

@@ -1,5 +1,5 @@
-import { requestJson, requestMultipart } from './client'
-import type { Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Subdomain, TosAcceptance, User, VarWrite } from './types'
+import { requestBlob, requestJson, requestMultipart } from './client'
+import type { Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Subdomain, TosAcceptance, UsageQuery, UsageReport, User, VarWrite } from './types'
 
 export function getMe() {
   return requestJson<User>('/me')
@@ -239,4 +239,22 @@ export function deleteSshKey(userId: number, fingerprint: string) {
     `/users/${userId}/ssh-keys/${encodeURIComponent(fingerprint)}`,
     { method: 'DELETE' },
   )
+}
+
+function usageParams(query: UsageQuery) {
+  return new URLSearchParams({
+    start: query.start.toISOString(),
+    end: query.end.toISOString(),
+    bucket: query.bucket,
+    group_by: query.groupBy.join(','),
+  })
+}
+
+export function getUsage(userId: number, query: UsageQuery) {
+  return requestJson<UsageReport>(`/users/${userId}/usage?${usageParams(query)}`)
+}
+
+/** The same report as CSV, for opening in a spreadsheet. */
+export function getUsageCsv(userId: number, query: UsageQuery) {
+  return requestBlob(`/users/${userId}/usage?${usageParams(query)}`, 'text/csv')
 }

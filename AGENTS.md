@@ -54,9 +54,11 @@ This repository is a monorepo with:
   [usage-sampler-worker](openspec/specs/usage-sampler-worker/spec.md).
   A new worker must also be added to `scripts/rollout.sh`, which restarts a
   hardcoded list and silently skips anything absent from it.
-- **Usage is recorded but nothing is billed.** `caelus usage-worker` samples
-  OpenCost hourly and writes one row per subject, metric and window into a
-  ledger no code reads yet. Nothing prices, enforces or displays it. Spec:
+- **Usage is recorded and priced for display, but nothing is billed.** `caelus
+  usage-worker` samples OpenCost hourly and writes one row per subject, metric
+  and window into a ledger. `app/services/usage/report.py` reads it back,
+  bucketed and priced at read time (`GET /api/users/{id}/usage`, `caelus
+  get-usage`, the Settings → Usage pane); nothing invoices or enforces it. Spec:
   [usage-ledger-data-model](openspec/specs/usage-ledger-data-model/spec.md),
   [usage-sampler-worker](openspec/specs/usage-sampler-worker/spec.md) ·
   Rationale:

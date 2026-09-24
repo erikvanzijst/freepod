@@ -171,3 +171,31 @@ class UsageSampleORM(SQLModel, table=True):
     interval_seconds: int = Field(sa_column=Column(Integer(), nullable=False))
     observed_at: datetime = Field(sa_column=Column(DateTime(), nullable=False))
     value: Decimal = Field(sa_column=Column(Numeric(), nullable=False))
+
+
+class UsageBucket(StrEnum):
+    HOUR = "hour"
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+
+
+class UsageDimension(StrEnum):
+    DEPLOYMENT = "deployment"
+    METRIC = "metric"
+
+
+class UsageReport(SQLModel):
+    """Usage over a period as a table: ``columns`` names each position in ``rows``.
+
+    Quantities and costs are decimal strings, exact and unrounded.
+    """
+
+    user_id: int
+    start: datetime
+    end: datetime
+    bucket: UsageBucket
+    currency: str
+    recorded_through: Optional[datetime] = None
+    columns: list[str]
+    rows: list[list[datetime | UUID | str | None]]
