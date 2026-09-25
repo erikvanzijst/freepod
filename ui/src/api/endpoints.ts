@@ -1,5 +1,5 @@
-import { requestJson, requestMultipart } from './client'
-import type { Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Subdomain, TosAcceptance, User, VarWrite } from './types'
+import { requestBlob, requestJson, requestMultipart } from './client'
+import type { Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Subdomain, TosAcceptance, UsageQuery, UsageReport, User, VarWrite } from './types'
 
 export function getMe() {
   return requestJson<User>('/me')
@@ -239,4 +239,37 @@ export function deleteSshKey(userId: number, fingerprint: string) {
     `/users/${userId}/ssh-keys/${encodeURIComponent(fingerprint)}`,
     { method: 'DELETE' },
   )
+}
+
+function usageParams(query: UsageQuery) {
+  const params = new URLSearchParams({
+    start: query.start.toISOString(),
+    end: query.end.toISOString(),
+    bucket: query.bucket,
+    group_by: query.groupBy.join(','),
+  })
+  if (query.deploymentId) params.set('deployment_id', query.deploymentId)
+  return params
+}
+
+export function getUsage(userId: number, query: UsageQuery) {
+  return requestJson<UsageReport>(`/users/${userId}/usage?${usageParams(query)}`)
+}
+
+/** The same report as CSV, for opening in a spreadsheet. */
+export function getUsageCsv(userId: number, query: UsageQuery) {
+  return requestBlob(`/users/${userId}/usage?${usageParams(query)}`, 'text/csv')
+}
+
+/** Usage across every account, or one when `userId` is given. Admin only. */
+export function getAllUsage(query: UsageQuery, userId?: number) {
+  const params = usageParams(query)
+  if (userId != null) params.set('user_id', String(userId))
+  return requestJson<UsageReport>(`/usage?${params}`)
+}
+
+export function getAllUsageCsv(query: UsageQuery, userId?: number) {
+  const params = usageParams(query)
+  if (userId != null) params.set('user_id', String(userId))
+  return requestBlob(`/usage?${params}`, 'text/csv')
 }

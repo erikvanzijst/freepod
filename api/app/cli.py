@@ -6,6 +6,7 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -30,6 +31,8 @@ from app.models import (
     PlanUpdate,
     PlanTemplateVersionCreate,
     BillingInterval,
+    UsageBucket,
+    UsageDimension,
 )
 from app.services import (
     templates as template_service,
@@ -44,6 +47,7 @@ from app.services import (
     var_crypto,
 )
 from app.services.errors import CaelusException, DeploymentInProgressException
+from app.services.usage import report as usage_report
 from app.services.reconcile_constants import (
     JOB_REASON_UPDATE,
     JOB_STATUS_QUEUED,
@@ -716,6 +720,61 @@ def get_deployment_database(user_id: int, deployment_id: UUID) -> None:
         except CaelusException as e:
             _exit_for_domain_error(e)
         _echo_yaml_entity(details)
+
+
+@app.command("get-usage")
+def get_usage(
+    user_id: int | None = typer.Argument(None, help="The account; omit with --all."),
+    all_users: bool = typer.Option(False, "--all", help="Every account (admin only)."),
+    start: datetime | None = typer.Option(
+        None, help="Inclusive start, UTC. Defaults to the start of the current month."
+    ),
+    end: datetime | None = typer.Option(
+        None, help="Exclusive end, UTC. Defaults to the start of the next month."
+    ),
+    bucket: UsageBucket = typer.Option(UsageBucket.DAY, help="Width of each row's window."),
+    group_by: list[UsageDimension] | None = typer.Option(
+        None,
+        help="Dimension to keep apart (product, deployment, metric); repeat for several. "
+        "Others are summed together. Defaults to deployment and metric for one "
+        "account, product and metric with --all.",
+    ),
+    deployment_id: UUID | None = typer.Option(None, help="Only this deployment."),
+    metric: list[str] | None = typer.Option(None, help="Only this metric; repeatable."),
+    as_csv: bool = typer.Option(False, "--csv", help="Print the table as CSV."),
+) -> None:
+    """Resource usage and its cost, per bucket, as the API reports it."""
+    if (user_id is None) == (not all_users):
+        typer.echo("Error: give either a user ID or --all", err=True)
+        raise typer.Exit(code=1)
+    with session_scope() as session:
+        operator = _require_cli_user(session)
+        if all_users and not operator.is_admin:
+            typer.echo("Error: --all requires admin privileges", err=True)
+            raise typer.Exit(code=1)
+        default_start, default_end = usage_report.current_month()
+        try:
+            report = usage_report.query_usage(
+                session,
+                user_id=user_id,
+                start=start or default_start,
+                end=end or default_end,
+                bucket=bucket,
+                group_by=set(group_by)
+                if group_by
+                else {
+                    UsageDimension.PRODUCT if all_users else UsageDimension.DEPLOYMENT,
+                    UsageDimension.METRIC,
+                },
+                deployment_id=deployment_id,
+                metrics=set(metric) if metric else None,
+            )
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        if as_csv:
+            typer.echo(usage_report.report_csv(report), nl=False)
+        else:
+            _echo_yaml_entity(report)
 
 
 @app.command("delete-deployment")

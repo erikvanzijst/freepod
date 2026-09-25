@@ -11,7 +11,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.models import UsageMetricORM, UsageSubjectORM
+from datetime import datetime
+from decimal import Decimal
+
+from sqlmodel import select
+
+from app.models import UsageMetricORM, UsageRateORM, UsageSubjectORM
 
 # (name, axis, unit, kind, role) -- mirrors METRICS in the migration.
 CATALOG = [
@@ -50,3 +55,41 @@ def subject(db_session) -> UsageSubjectORM:
     db_session.commit()
     db_session.refresh(row)
     return row
+
+
+GIB = Decimal(2**30)
+
+# Round numbers rather than the migration's real rates, so expected costs are
+# legible in the assertions. (metric, effective_from, unit_price, per_quantity)
+TEST_RATES = [
+    ("cpu_core_hours", datetime(2026, 1, 1), Decimal("0.01"), Decimal(1)),
+    ("ram_byte_hours", datetime(2026, 1, 1), Decimal("0.002"), GIB),
+]
+
+
+def add_rate(
+    session,
+    metric: str,
+    effective_from: datetime,
+    unit_price: Decimal,
+    per_quantity: Decimal = Decimal(1),
+) -> None:
+    metric_id = session.exec(
+        select(UsageMetricORM.id).where(UsageMetricORM.name == metric)
+    ).one()
+    session.add(
+        UsageRateORM(
+            metric_id=metric_id,
+            effective_from=effective_from,
+            unit_price=unit_price,
+            per_quantity=per_quantity,
+        )
+    )
+    session.commit()
+
+
+@pytest.fixture
+def seeded_rates(db_session, seeded_catalog):
+    for rate in TEST_RATES:
+        add_rate(db_session, *rate)
+    return TEST_RATES

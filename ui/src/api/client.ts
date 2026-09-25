@@ -84,6 +84,26 @@ export async function requestJson<T>(
   return data as T
 }
 
+/** A non-JSON representation of a resource, negotiated with `Accept`. */
+export async function requestBlob(path: string, accept: string): Promise<Blob> {
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: { Accept: accept, ...getStoredAuthHeaders() },
+  })
+  if (!response.ok) {
+    let detail: unknown
+    try {
+      detail = ((await response.json()) as { detail?: unknown }).detail
+    } catch {
+      detail = undefined
+    }
+    throw new ApiError(
+      toErrorMessage(detail, response.statusText || 'Request failed'),
+      response.status,
+    )
+  }
+  return response.blob()
+}
+
 export async function requestMultipart<T>(
   path: string,
   payload: object,

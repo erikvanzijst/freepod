@@ -27,6 +27,12 @@ const PlansPanel = lazy(() =>
 const SubdomainPanel = lazy(() =>
   import('./components/subdomain/SubdomainPanel').then((m) => ({ default: m.SubdomainPanel })),
 )
+const AdminUsagePanel = lazy(() =>
+  import('./components/AdminUsagePanel').then((m) => ({ default: m.AdminUsagePanel })),
+)
+const UsagePanel = lazy(() =>
+  import('./components/UsagePanel').then((m) => ({ default: m.UsagePanel })),
+)
 const SshKeysPanel = lazy(() =>
   import('./components/SshKeysPanel').then((m) => ({ default: m.SshKeysPanel })),
 )
@@ -68,6 +74,7 @@ function AuthedApp() {
             <Route index element={<Navigate to="domain" replace />} />
             <Route path="domain" element={<SubdomainPanel />} />
             <Route path="ssh-keys" element={<SshKeysPanel />} />
+            <Route path="usage" element={<UsagePanel />} />
           </Route>
           <Route path="/admin" element={<Admin />}>
             <Route index element={<Navigate to="products" replace />} />
@@ -75,6 +82,7 @@ function AuthedApp() {
             <Route path="deployments" element={<DeploymentsPanel />} />
             <Route path="users" element={<UsersPanel />} />
             <Route path="plans" element={<PlansPanel />} />
+            <Route path="usage" element={<AdminUsagePanel />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
