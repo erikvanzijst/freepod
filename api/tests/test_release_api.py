@@ -63,9 +63,9 @@ def _deployment(client, db_session, *, user_id, template_id, name="dep"):
     return deployment
 
 
-def _build(db_session, *, user_id, image="reg/app@sha256:" + "a" * 64):
+def _build(db_session, *, deployment_id, image="reg/app@sha256:" + "a" * 64):
     build = BuildORM(
-        user_id=user_id,
+        deployment_id=deployment_id,
         artifact_id="f" * 32,
         status=BUILD_STATUS_SUCCEEDED,
         image=image,
@@ -114,7 +114,7 @@ def scenario(client, db_session):
     db_session.add(first)
     db_session.commit()
 
-    build = _build(db_session, user_id=user["id"])
+    build = _build(db_session, deployment_id=deployment.id)
     _release(
         db_session,
         deployment,
@@ -298,7 +298,9 @@ def test_listing_many_releases_does_not_multiply_queries(client, db_session, sce
 
     for number in range(4, 14):
         build = _build(
-            db_session, user_id=user_id, image=f"reg/app@sha256:{number:064d}"
+            db_session,
+            deployment_id=scenario["deployment"].id,
+            image=f"reg/app@sha256:{number:064d}",
         )
         _release(db_session, scenario["deployment"], number, build_id=build.id)
 

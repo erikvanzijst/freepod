@@ -307,10 +307,12 @@ every other product.
 
 ## No image yet: the placeholder
 
-`freepod init` creates the deployment — and claims and routes its hostname —
-*before* anything has been built. With `image` unset the chart renders and
-installs cleanly, running `placeholderImage` rather than scaling to zero, so a
-freshly claimed domain serves a real page instead of a Traefik 503.
+A first `freepod deploy` creates the deployment — and claims and routes its
+hostname — *before* anything has been built, because a build belongs to a
+deployment and so needs one to exist first. With `image` unset the chart renders
+and installs cleanly, running `placeholderImage` rather than scaling to zero, so
+a freshly claimed domain serves a real page instead of a Traefik 503 until the
+first build is released.
 
 The placeholder is built from [`placeholder/`](placeholder/): nginx serving one
 self-contained landing page (no external CSS, fonts, or images — it has to render

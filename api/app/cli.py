@@ -1309,12 +1309,19 @@ _ARCHIVE_EXCLUDES = frozenset(
 )
 
 
-def _build_or_exit(session: Session, build_id: UUID, user: UserORM):
+def _require_self_or_admin(user: UserORM, user_id: int) -> None:
+    """The REST API's self-or-administrator guard, for the build commands."""
+    if user_id != user.id and not user.is_admin:
+        typer.echo("Error: acting on another user's builds requires admin privileges", err=True)
+        raise typer.Exit(code=1)
+
+
+def _build_or_exit(session: Session, user_id: int, deployment_id: UUID, build_id: UUID):
     from app.services import builds as build_service
 
     try:
         return build_service.get_build(
-            session, build_id=build_id, user_id=None if user.is_admin else user.id
+            session, user_id=user_id, deployment_id=deployment_id, build_id=build_id
         )
     except CaelusException as e:
         _exit_for_domain_error(e)
@@ -1355,30 +1362,35 @@ def _archive_directory(source: Path, *, max_bytes: int) -> bytes:
 
 
 @build_app.command("list")
-def build_list(
-    user_id: int | None = typer.Argument(None, help="Whose builds to list (admin only)"),
-) -> None:
-    """List builds, most recent first."""
+def build_list(user_id: int, deployment_id: UUID) -> None:
+    """List a deployment's builds, most recent first."""
     from app.services import builds as build_service
 
     with session_scope() as session:
         user = _require_cli_user(session)
-        if user_id is not None and user_id != user.id and not user.is_admin:
-            typer.echo("Error: listing another user's builds requires admin privileges", err=True)
-            raise typer.Exit(code=1)
-        _echo_yaml_entity(build_service.list_builds(session, user_id=user_id or user.id))
+        _require_self_or_admin(user, user_id)
+        try:
+            builds = build_service.list_builds(
+                session, user_id=user_id, deployment_id=deployment_id
+            )
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        _echo_yaml_entity(builds)
 
 
 @build_app.command("show")
-def build_show(build_id: UUID) -> None:
+def build_show(user_id: int, deployment_id: UUID, build_id: UUID) -> None:
     """Show one build's status, timestamps, and resulting image."""
     with session_scope() as session:
         user = _require_cli_user(session)
-        _echo_yaml_entity(_build_or_exit(session, build_id, user))
+        _require_self_or_admin(user, user_id)
+        _echo_yaml_entity(_build_or_exit(session, user_id, deployment_id, build_id))
 
 
 @build_app.command("log")
 def build_log(
+    user_id: int,
+    deployment_id: UUID,
     build_id: UUID,
     follow: bool = typer.Option(False, "--follow", "-f", help="Poll until the build finishes"),
 ) -> None:
@@ -1392,13 +1404,17 @@ def build_log(
 
     with session_scope() as session:
         user = _require_cli_user(session)
-        scope = None if user.is_admin else user.id
-        _build_or_exit(session, build_id, user)  # 404s before printing anything
+        _require_self_or_admin(user, user_id)
+        _build_or_exit(session, user_id, deployment_id, build_id)  # 404s before printing anything
 
         offset = 0
         while True:
             slice_ = build_service.get_build_log(
-                session, build_id=build_id, user_id=scope, start=offset
+                session,
+                user_id=user_id,
+                deployment_id=deployment_id,
+                build_id=build_id,
+                start=offset,
             )
             if slice_.data:
                 _echo_bytes(slice_.data)
@@ -1411,21 +1427,22 @@ def build_log(
 
 @build_app.command("submit")
 def build_submit(
+    deployment_id: UUID = typer.Argument(..., help="Your deployment the build is for"),
     directory: Path = typer.Argument(Path("."), help="Project directory to build"),
     wait: bool = typer.Option(True, "--wait/--no-wait", help="Wait for the build to finish"),
     timeout_seconds: float = typer.Option(
         3900.0, "--timeout", help="How long to wait before giving up on a build"
     ),
 ) -> None:
-    """Build a project directory into an image: upload, then build.
+    """Build a project directory into an image for one of your deployments.
 
     Performs all three phases the REST API exposes — mint an upload slot,
     upload the archive straight to object storage, create the build — so the
-    whole flow is exercisable without a separate client.
+    whole flow is exercisable without a separate client. The deployment must
+    be your own, because the uploaded archive is.
 
     On success the resulting `image` is printed. That value is what you submit
-    as a deployment's `image` user value; nothing here deploys it for you, by
-    design: a deployment may consume several images and most consume none.
+    as the deployment's `image` user value; nothing here deploys it for you.
     """
     import httpx
 
@@ -1439,7 +1456,6 @@ def build_submit(
 
     with session_scope() as session:
         user = _require_cli_user(session)
-        scope = None if user.is_admin else user.id
 
         try:
             slot = artifact_service.mint_upload_slot(user.id)
@@ -1459,7 +1475,10 @@ def build_submit(
 
         try:
             result = build_service.create_build(
-                session, user_id=user.id, payload=BuildCreate(artifact_id=slot.artifact_id)
+                session,
+                user_id=user.id,
+                deployment_id=deployment_id,
+                payload=BuildCreate(artifact_id=slot.artifact_id),
             )
         except CaelusException as e:
             _exit_for_domain_error(e)
@@ -1474,7 +1493,11 @@ def build_submit(
         deadline = time.monotonic() + timeout_seconds
         while True:
             slice_ = build_service.get_build_log(
-                session, build_id=build.id, user_id=scope, start=offset
+                session,
+                user_id=user.id,
+                deployment_id=deployment_id,
+                build_id=build.id,
+                start=offset,
             )
             if slice_.data:
                 _echo_bytes(slice_.data)
@@ -1487,7 +1510,9 @@ def build_submit(
             session.commit()
             time.sleep(settings.build_worker_interval_seconds)
 
-        final = build_service.get_build(session, build_id=build.id, user_id=scope)
+        final = build_service.get_build(
+            session, user_id=user.id, deployment_id=deployment_id, build_id=build.id
+        )
         if final.status != BUILD_STATUS_SUCCEEDED:
             typer.echo(f"Error: build {final.id} {final.status}", err=True)
             raise typer.Exit(code=1)

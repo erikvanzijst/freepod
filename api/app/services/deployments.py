@@ -97,24 +97,31 @@ def _get_deployment_orm(
     return deployment
 
 
-def _validate_build_reference(session: Session, *, user_id: int, build_id: UUID | None) -> None:
-    """Reject a build the caller does not own, at the write.
+def _validate_build_reference(
+    session: Session, *, deployment_id: UUID | None, build_id: UUID | None
+) -> None:
+    """Reject a build that is not the deployment's own, at the write.
 
-    Ownership is the *only* condition. Nothing here compares the build against
-    the deployment's user values: `image` is a value of the `custom` chart
-    rather than a platform concept, most products build nothing, and a build or
-    release may come to carry more than one image. Tying the ledger to one
-    chart's value key would make the release record an artifact of that chart's
-    schema. See design § D4.
+    Belonging is the *only* condition, and it is stricter than ownership: a
+    build made for another of the same user's deployments is refused too. An
+    image may still be released anywhere by submitting it without a build.
+    On creation there is no deployment yet, so no build can belong to it and
+    naming one is refused.
 
-    "Not yours" and "does not exist" answer identically, so the endpoint cannot
-    be used to probe for other users' builds -- the same rule `builds.py`'s
+    Nothing here compares the build against the deployment's user values:
+    `image` is a value of the `custom` chart rather than a platform concept,
+    most products build nothing, and a build or release may come to carry more
+    than one image. Tying the ledger to one chart's value key would make the
+    release record an artifact of that chart's schema.
+
+    "Not this deployment's" and "does not exist" answer identically, so the
+    endpoint cannot be used to probe for builds -- the same rule `builds.py`'s
     `_get_build_orm` applies.
     """
     if build_id is None:
         return
     build = session.get(BuildORM, build_id)
-    if build is None or build.user_id != user_id:
+    if build is None or deployment_id is None or build.deployment_id != deployment_id:
         raise ValidationException("Unknown build")
 
 
@@ -292,9 +299,9 @@ def create_deployment(
     if user.tos_accepted_version is None:
         raise ValidationException("Terms of Service must be accepted before deploying")
 
-    # A named build must be the caller's. Ownership only -- see
+    # No deployment exists yet, so any named build is refused -- see
     # `_validate_build_reference`.
-    _validate_build_reference(session, user_id=payload.user_id, build_id=payload.build_id)
+    _validate_build_reference(session, deployment_id=None, build_id=payload.build_id)
 
     # Determine if this is a paid plan requiring payment.
     is_paid = payment_provider is not None and plan_template.price_cents > 0
@@ -651,9 +658,9 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
             session, derived_hostname, exclude_deployment_id=deployment.id,
         )
 
-    # A named build must be the caller's. Ownership only -- see
+    # A named build must be this deployment's own -- see
     # `_validate_build_reference`.
-    _validate_build_reference(session, user_id=deployment.user_id, build_id=update.build_id)
+    _validate_build_reference(session, deployment_id=deployment.id, build_id=update.build_id)
 
     # Minted before the guarded UPDATE so the pointer can move in the same
     # statement; the row itself is only inserted once the guard has passed.

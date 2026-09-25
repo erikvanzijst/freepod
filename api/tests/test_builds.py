@@ -7,12 +7,13 @@ the database constraints.
 """
 
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlmodel import select
 
-from app.models import BuildCreate, BuildORM
+from app.models import BuildCreate, BuildORM, DeploymentORM
+from app.models.core import _utcnow
 from app.services import artifacts as artifact_service
 from app.services import builds as build_service
 from app.services.build_constants import (
@@ -22,7 +23,12 @@ from app.services.build_constants import (
     BUILD_STATUS_SUCCEEDED,
     BUILD_STATUSES_TERMINAL,
 )
-from app.services.errors import NotFoundException, ValidationException
+from app.services.errors import IntegrityException, NotFoundException, ValidationException
+from app.services.reconcile_constants import (
+    DEPLOYMENT_STATUS_DELETED,
+    DEPLOYMENT_STATUS_DELETING,
+    DEPLOYMENT_STATUS_READY,
+)
 from tests.conftest import (  # noqa: F401
     ADMIN_EMAIL,
     AUTH_HEADER,
@@ -33,15 +39,40 @@ from tests.conftest import (  # noqa: F401
     client,
     create_user,
     db_session,
+    make_bare_deployment,
 )
 
 ARTIFACT = "a" * 32
 OTHER_ARTIFACT = "b" * 32
 
 
-def _builds(user_id, *suffix):
-    """The builds URL for one account, which is the only way in."""
-    return "/".join((f"/api/users/{user_id}/builds", *(str(p) for p in suffix)))
+# Each owner's deployment in the current test, so most tests can keep naming
+# builds by owner. Cleared per test: ids are reused once the database resets.
+_DEPLOYMENTS: dict[int, UUID] = {}
+
+
+@pytest.fixture(autouse=True)
+def _fresh_deployments():
+    _DEPLOYMENTS.clear()
+
+
+def new_deployment(session, user_id: int, *, status: str = DEPLOYMENT_STATUS_READY):
+    return make_bare_deployment(session, user_id, status=status)
+
+
+def deployment_for(session, user_id: int) -> UUID:
+    """The owner's deployment for this test, created on first use."""
+    if user_id not in _DEPLOYMENTS:
+        _DEPLOYMENTS[user_id] = new_deployment(session, user_id).id
+    return _DEPLOYMENTS[user_id]
+
+
+def _builds(user_id, *suffix, deployment_id=None):
+    """The builds URL for an owner's deployment, which is the only way in."""
+    deployment_id = deployment_id or _DEPLOYMENTS[user_id]
+    return "/".join(
+        (f"/api/users/{user_id}/deployments/{deployment_id}/builds", *(str(p) for p in suffix))
+    )
 
 
 class _FakeStore:
@@ -69,20 +100,24 @@ def store(monkeypatch):
 
 
 @pytest.fixture
-def user(client):
-    return create_user(client, USER_EMAIL)
+def user(client, db_session):
+    created = create_user(client, USER_EMAIL)
+    deployment_for(db_session, created["id"])
+    return created
 
 
-def _create(client, artifact_id, owner, headers=USER_AUTH_HEADER, **kwargs):
+def _create(client, artifact_id, owner, headers=USER_AUTH_HEADER, deployment_id=None, **kwargs):
     return client.post(
-        _builds(owner), json={"artifact_id": artifact_id, **kwargs}, headers=headers
+        _builds(owner, deployment_id=deployment_id),
+        json={"artifact_id": artifact_id, **kwargs},
+        headers=headers,
     )
 
 
 def _seed(session, *, user_id, artifact_id, status=BUILD_STATUS_QUEUED, log=b"", **kwargs):
-    build = BuildORM(
-        user_id=user_id, artifact_id=artifact_id, status=status, log=log, **kwargs
-    )
+    """A build of the owner's deployment for this test."""
+    kwargs.setdefault("deployment_id", deployment_for(session, user_id))
+    build = BuildORM(artifact_id=artifact_id, status=status, log=log, **kwargs)
     session.add(build)
     session.commit()
     session.refresh(build)
@@ -102,28 +137,30 @@ def test_build_is_created_from_an_uploaded_artifact(client, store, user):
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["status"] == BUILD_STATUS_QUEUED
-    assert body["user_id"] == user["id"]
+    assert body["deployment_id"] == str(_DEPLOYMENTS[user["id"]])
+    assert "user_id" not in body
     assert body["artifact_id"] == ARTIFACT
     assert body["started_at"] is None and body["finished_at"] is None
     assert body["image"] is None
     # The spec asks for the new build's location.
-    assert resp.headers["Location"] == f"/api/users/{user['id']}/builds/{body['id']}"
+    assert resp.headers["Location"] == _builds(user["id"], body["id"])
 
 
-def test_owner_is_the_caller_not_the_request_body(client, store, user):
-    """A user_id in the body is refused, not silently honored or dropped."""
+@pytest.mark.parametrize("field", ["user_id", "deployment_id"])
+def test_owner_is_not_taken_from_the_request_body(client, store, user, field):
+    """An owner or deployment in the body is refused, not silently honored or dropped."""
     store.upload(user["id"], ARTIFACT)
 
-    resp = _create(client, ARTIFACT, user["id"], user_id=99999)
+    resp = _create(client, ARTIFACT, user["id"], **{field: 99999})
 
     assert resp.status_code == 422
-    assert "user_id" in resp.text
+    assert field in resp.text
 
 
 def test_anonymous_creation_is_refused(client, store, db_session):
     del client.headers["X-Auth-Request-Email"]
 
-    resp = _create(client, ARTIFACT, 1, headers={})
+    resp = _create(client, ARTIFACT, 1, headers={}, deployment_id=uuid4())
 
     assert resp.status_code == 404
     assert db_session.exec(select(BuildORM)).all() == []
@@ -144,6 +181,7 @@ def test_another_users_artifact_is_not_reachable(client, store, user):
     store.upload(other["id"], ARTIFACT)
 
     resp = _create(client, ARTIFACT, user["id"], headers=USER_AUTH_HEADER)
+
 
     assert resp.status_code == 400
     assert store.checked == [artifact_service.artifact_key(user["id"], ARTIFACT)]
@@ -207,9 +245,11 @@ def test_rebuild_after_a_terminal_build_creates_a_new_one(
     assert len(db_session.exec(select(BuildORM)).all()) == 2
 
 
-def test_two_users_may_each_build_their_own_artifact(client, store):
+def test_two_users_may_each_build_their_own_artifact(client, store, db_session):
     one = create_user(client, USER_EMAIL)
     two = create_user(client, OTHER_EMAIL)
+    deployment_for(db_session, one["id"])
+    deployment_for(db_session, two["id"])
     store.upload(one["id"], ARTIFACT)
     store.upload(two["id"], OTHER_ARTIFACT)
 
@@ -217,8 +257,8 @@ def test_two_users_may_each_build_their_own_artifact(client, store):
     second = _create(client, OTHER_ARTIFACT, two["id"], headers=OTHER_AUTH_HEADER)
 
     assert first.status_code == 201 and second.status_code == 201
-    assert first.json()["user_id"] == one["id"]
-    assert second.json()["user_id"] == two["id"]
+    assert first.json()["deployment_id"] == str(_DEPLOYMENTS[one["id"]])
+    assert second.json()["deployment_id"] == str(_DEPLOYMENTS[two["id"]])
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +269,7 @@ def test_two_users_may_each_build_their_own_artifact(client, store):
 def test_owner_reads_their_build(client, store, user, db_session):
     build = _seed(db_session, user_id=user["id"], artifact_id=ARTIFACT)
 
-    resp = client.get(f"/api/users/{build.user_id}/builds/{build.id}", headers=USER_AUTH_HEADER)
+    resp = client.get(_builds(user["id"], build.id), headers=USER_AUTH_HEADER)
 
     assert resp.status_code == 200
     body = resp.json()
@@ -245,6 +285,7 @@ def test_another_users_build_is_indistinguishable_from_a_missing_one(client, db_
     owner = create_user(client, USER_EMAIL)
     other = create_user(client, OTHER_EMAIL)
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT)
+    deployment_for(db_session, other["id"])
     missing = "00000000-0000-4000-8000-000000000000"
 
     theirs = client.get(_builds(other["id"], build.id), headers=OTHER_AUTH_HEADER)
@@ -261,10 +302,10 @@ def test_admin_may_read_any_build(client, db_session):
     owner = create_user(client, USER_EMAIL)
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT)
 
-    resp = client.get(f"/api/users/{build.user_id}/builds/{build.id}", headers=AUTH_HEADER)
+    resp = client.get(_builds(owner["id"], build.id), headers=AUTH_HEADER)
 
     assert resp.status_code == 200
-    assert resp.json()["user_id"] == owner["id"]
+    assert resp.json()["deployment_id"] == str(build.deployment_id)
 
 
 def test_succeeded_build_exposes_its_image(client, db_session):
@@ -278,20 +319,55 @@ def test_succeeded_build_exposes_its_image(client, db_session):
         image=image,
     )
 
-    body = client.get(f"/api/users/{build.user_id}/builds/{build.id}", headers=USER_AUTH_HEADER).json()
+    body = client.get(_builds(owner["id"], build.id), headers=USER_AUTH_HEADER).json()
 
     assert body["image"] == image
     assert isinstance(body["image"], str)
 
 
-def test_build_response_carries_no_deployment_reference(client, db_session):
+def test_build_response_names_its_deployment_and_no_owner(client, db_session):
     owner = create_user(client, USER_EMAIL)
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT)
 
-    body = client.get(f"/api/users/{build.user_id}/builds/{build.id}", headers=USER_AUTH_HEADER).json()
+    body = client.get(_builds(owner["id"], build.id), headers=USER_AUTH_HEADER).json()
 
-    assert not [k for k in body if "deployment" in k]
+    assert body["deployment_id"] == str(build.deployment_id)
+    assert "user_id" not in body
     assert "job_id" not in body and "log" not in body
+
+
+def test_a_build_under_another_deployment_is_not_found(client, db_session):
+    owner = create_user(client, USER_EMAIL)
+    build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT)
+    elsewhere = new_deployment(db_session, owner["id"]).id
+
+    resp = client.get(
+        _builds(owner["id"], build.id, deployment_id=elsewhere), headers=USER_AUTH_HEADER
+    )
+    log = client.get(
+        _builds(owner["id"], build.id, "log", deployment_id=elsewhere), headers=USER_AUTH_HEADER
+    )
+
+    assert resp.status_code == log.status_code == 404
+
+
+def test_a_deleted_deployments_builds_stay_readable(client, db_session):
+    """They are the provenance of the releases that shipped them."""
+    owner = create_user(client, USER_EMAIL)
+    build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT, log=LOG)
+    deployment = db_session.get(DeploymentORM, build.deployment_id)
+    deployment.status = DEPLOYMENT_STATUS_DELETED
+    deployment.deleted_at = _utcnow()
+    db_session.add(deployment)
+    db_session.commit()
+
+    listed = client.get(_builds(owner["id"]), headers=USER_AUTH_HEADER)
+    read = client.get(_builds(owner["id"], build.id), headers=USER_AUTH_HEADER)
+    log = client.get(_builds(owner["id"], build.id, "log"), headers=USER_AUTH_HEADER)
+
+    assert [b["id"] for b in listed.json()] == [str(build.id)]
+    assert read.status_code == 200
+    assert log.content == LOG
 
 
 # ---------------------------------------------------------------------------
@@ -330,9 +406,21 @@ def test_listing_excludes_other_users_builds(client, db_session):
     assert [b["id"] for b in body] == [str(mine.id)]
 
 
-def test_listing_is_empty_for_a_user_with_no_builds(client, db_session):
+def test_listing_excludes_the_owners_other_deployments(client, db_session):
+    owner = create_user(client, USER_EMAIL)
+    mine = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT)
+    elsewhere = new_deployment(db_session, owner["id"]).id
+    _seed(db_session, user_id=owner["id"], artifact_id=OTHER_ARTIFACT, deployment_id=elsewhere)
+
+    body = client.get(_builds(owner["id"]), headers=USER_AUTH_HEADER).json()
+
+    assert [b["id"] for b in body] == [str(mine.id)]
+
+
+def test_listing_is_empty_for_a_deployment_with_no_builds(client, db_session):
     owner = create_user(client, USER_EMAIL)
     other = create_user(client, OTHER_EMAIL)
+    deployment_for(db_session, owner["id"])
     _seed(db_session, user_id=other["id"], artifact_id=ARTIFACT)
 
     assert client.get(_builds(owner["id"]), headers=USER_AUTH_HEADER).json() == []
@@ -358,8 +446,22 @@ def test_a_regular_user_cannot_list_another_users_builds(client, db_session):
     assert resp.status_code == 403
 
 
+def test_the_account_level_build_paths_are_gone(client, db_session):
+    """The move under the deployment is a hard cut: nothing answers at the old paths."""
+    owner = create_user(client, USER_EMAIL)
+    build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT)
+    account = f"/api/users/{owner['id']}/builds"
+
+    assert client.get(account, headers=USER_AUTH_HEADER).status_code == 404
+    assert client.get(f"{account}/{build.id}", headers=USER_AUTH_HEADER).status_code == 404
+    assert client.get(f"{account}/{build.id}/log", headers=USER_AUTH_HEADER).status_code == 404
+    assert client.post(
+        account, json={"artifact_id": ARTIFACT}, headers=USER_AUTH_HEADER
+    ).status_code == 404
+
+
 def test_the_root_level_build_paths_are_gone(client, db_session):
-    """The relocation is a hard cut: nothing answers at the old paths."""
+    """The earlier relocation, kept: nothing answers at the root either."""
     owner = create_user(client, USER_EMAIL)
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT)
 
@@ -374,6 +476,7 @@ def test_the_root_level_build_paths_are_gone(client, db_session):
 def test_creating_a_build_under_another_account_is_refused(client, store, db_session):
     owner = create_user(client, USER_EMAIL)
     create_user(client, OTHER_EMAIL)
+    deployment_for(db_session, owner["id"])
     store.upload(owner["id"], ARTIFACT)
 
     resp = client.post(
@@ -382,6 +485,47 @@ def test_creating_a_build_under_another_account_is_refused(client, store, db_ses
 
     assert resp.status_code == 403
     assert db_session.exec(select(BuildORM)).all() == []
+
+
+@pytest.mark.parametrize("status", [DEPLOYMENT_STATUS_DELETING, DEPLOYMENT_STATUS_DELETED])
+def test_a_deleting_or_deleted_deployment_takes_no_builds(client, store, db_session, status):
+    owner = create_user(client, USER_EMAIL)
+    deployment = new_deployment(db_session, owner["id"], status=status)
+    store.upload(owner["id"], ARTIFACT)
+
+    resp = _create(client, ARTIFACT, owner["id"], deployment_id=deployment.id)
+
+    assert resp.status_code == 400
+    assert status in resp.json()["detail"]
+    assert db_session.exec(select(BuildORM)).all() == []
+
+
+def test_a_build_for_another_owners_deployment_is_not_found(client, store, db_session):
+    """The deployment is resolved under the owner in the path."""
+    owner = create_user(client, USER_EMAIL)
+    other = create_user(client, OTHER_EMAIL)
+    theirs = new_deployment(db_session, other["id"]).id
+    store.upload(owner["id"], ARTIFACT)
+
+    resp = _create(client, ARTIFACT, owner["id"], deployment_id=theirs)
+
+    assert resp.status_code == 404
+    assert db_session.exec(select(BuildORM)).all() == []
+
+
+def test_the_same_artifact_for_another_deployment_in_flight_is_a_conflict(
+    client, store, user, db_session
+):
+    """Returning the in-flight build would answer about one deployment with another's."""
+    store.upload(user["id"], ARTIFACT)
+    first = _create(client, ARTIFACT, user["id"])
+    elsewhere = new_deployment(db_session, user["id"]).id
+
+    resp = _create(client, ARTIFACT, user["id"], deployment_id=elsewhere)
+
+    assert first.status_code == 201
+    assert resp.status_code == 409
+    assert len(db_session.exec(select(BuildORM)).all()) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +539,7 @@ def test_log_without_a_range_returns_everything_as_plain_text(client, db_session
     owner = create_user(client, USER_EMAIL)
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT, log=LOG)
 
-    resp = client.get(f"/api/users/{build.user_id}/builds/{build.id}/log", headers=USER_AUTH_HEADER)
+    resp = client.get(_builds(owner["id"], build.id, "log"), headers=USER_AUTH_HEADER)
 
     assert resp.status_code == 200
     assert resp.content == LOG
@@ -409,7 +553,7 @@ def test_range_read_returns_only_output_appended_since(client, db_session):
     read_so_far = len(b"step 1: resolving\n")
 
     resp = client.get(
-        f"/api/users/{build.user_id}/builds/{build.id}/log",
+        _builds(owner["id"], build.id, "log"),
         headers={**USER_AUTH_HEADER, "Range": f"bytes={read_so_far}-"},
     )
 
@@ -426,7 +570,7 @@ def test_a_growing_log_reports_an_unknown_total_length(client, db_session):
     )
 
     resp = client.get(
-        f"/api/users/{build.user_id}/builds/{build.id}/log", headers={**USER_AUTH_HEADER, "Range": "bytes=0-"}
+        _builds(owner["id"], build.id, "log"), headers={**USER_AUTH_HEADER, "Range": "bytes=0-"}
     )
 
     assert resp.headers["content-range"].endswith("/*")
@@ -441,7 +585,7 @@ def test_polling_at_end_of_log_returns_an_empty_partial_response(client, db_sess
     )
 
     resp = client.get(
-        f"/api/users/{build.user_id}/builds/{build.id}/log",
+        _builds(owner["id"], build.id, "log"),
         headers={**USER_AUTH_HEADER, "Range": f"bytes={len(LOG)}-"},
     )
 
@@ -455,7 +599,7 @@ def test_polling_past_the_end_of_log_is_also_empty_rather_than_an_error(client, 
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT, log=LOG)
 
     resp = client.get(
-        f"/api/users/{build.user_id}/builds/{build.id}/log",
+        _builds(owner["id"], build.id, "log"),
         headers={**USER_AUTH_HEADER, "Range": f"bytes={len(LOG) + 5000}-"},
     )
 
@@ -468,7 +612,7 @@ def test_an_empty_log_polls_cleanly_from_zero(client, db_session):
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT)
 
     resp = client.get(
-        f"/api/users/{build.user_id}/builds/{build.id}/log", headers={**USER_AUTH_HEADER, "Range": "bytes=0-"}
+        _builds(owner["id"], build.id, "log"), headers={**USER_AUTH_HEADER, "Range": "bytes=0-"}
     )
 
     assert resp.status_code == 206
@@ -480,7 +624,7 @@ def test_a_closed_range_returns_exactly_that_window(client, db_session):
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT, log=LOG)
 
     resp = client.get(
-        f"/api/users/{build.user_id}/builds/{build.id}/log", headers={**USER_AUTH_HEADER, "Range": "bytes=0-3"}
+        _builds(owner["id"], build.id, "log"), headers={**USER_AUTH_HEADER, "Range": "bytes=0-3"}
     )
 
     assert resp.status_code == 206
@@ -497,7 +641,7 @@ def test_an_unsupported_range_is_ignored_and_served_in_full(client, db_session, 
     owner = create_user(client, USER_EMAIL)
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT, log=LOG)
 
-    resp = client.get(f"/api/users/{build.user_id}/builds/{build.id}/log", headers={**USER_AUTH_HEADER, "Range": header})
+    resp = client.get(_builds(owner["id"], build.id, "log"), headers={**USER_AUTH_HEADER, "Range": header})
 
     assert resp.status_code == 200
     assert resp.content == LOG
@@ -509,7 +653,7 @@ def test_an_unsupported_range_is_ignored_and_served_in_full(client, db_session, 
 def test_every_log_response_carries_the_build_status(client, db_session, status):
     owner = create_user(client, USER_EMAIL)
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT, status=status, log=LOG)
-    url = f"/api/users/{build.user_id}/builds/{build.id}/log"
+    url = _builds(owner["id"], build.id, "log")
 
     full = client.get(url, headers=USER_AUTH_HEADER)
     partial = client.get(url, headers={**USER_AUTH_HEADER, "Range": "bytes=5-"})
@@ -526,9 +670,9 @@ def test_log_offsets_are_bytes_not_characters(client, db_session):
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT, log=log)
     encoded = log
 
-    full = client.get(f"/api/users/{build.user_id}/builds/{build.id}/log", headers=USER_AUTH_HEADER)
+    full = client.get(_builds(owner["id"], build.id, "log"), headers=USER_AUTH_HEADER)
     tail = client.get(
-        f"/api/users/{build.user_id}/builds/{build.id}/log", headers={**USER_AUTH_HEADER, "Range": "bytes=3-"}
+        _builds(owner["id"], build.id, "log"), headers={**USER_AUTH_HEADER, "Range": "bytes=3-"}
     )
 
     assert full.content == encoded
@@ -542,7 +686,7 @@ def test_polling_a_growing_log_reassembles_exactly(client, db_session):
     build = _seed(
         db_session, user_id=owner["id"], artifact_id=ARTIFACT, status=BUILD_STATUS_RUNNING, log=b""
     )
-    url = f"/api/users/{build.user_id}/builds/{build.id}/log"
+    url = _builds(owner["id"], build.id, "log")
     collected = b""
 
     for chunk in ("resolving…\n", "building…\n", "pushing…\n"):
@@ -564,6 +708,7 @@ def test_another_users_log_is_not_readable(client, db_session):
     owner = create_user(client, USER_EMAIL)
     other = create_user(client, OTHER_EMAIL)
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT, log=LOG)
+    deployment_for(db_session, other["id"])
 
     resp = client.get(_builds(other["id"], build.id, "log"), headers=OTHER_AUTH_HEADER)
 
@@ -586,17 +731,11 @@ def test_service_reads_are_scoped_to_the_owner(client, db_session):
     other = create_user(client, OTHER_EMAIL)
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT, log=LOG)
 
-    assert build_service.get_build(db_session, build_id=build.id, user_id=owner["id"]).id == build.id
+    scope = {"deployment_id": build.deployment_id, "build_id": build.id}
+
+    assert build_service.get_build(db_session, user_id=owner["id"], **scope).id == build.id
     with pytest.raises(NotFoundException):
-        build_service.get_build(db_session, build_id=build.id, user_id=other["id"])
-
-
-def test_service_admin_override_reads_across_users(client, db_session):
-    owner = create_user(client, USER_EMAIL)
-    build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT)
-
-    assert build_service.get_build(db_session, build_id=build.id, user_id=None).id == build.id
-    assert [b.id for b in build_service.list_builds(db_session, user_id=None)] == [build.id]
+        build_service.get_build(db_session, user_id=other["id"], **scope)
 
 
 def test_service_rejects_a_malformed_artifact_id_before_touching_the_store(
@@ -604,7 +743,10 @@ def test_service_rejects_a_malformed_artifact_id_before_touching_the_store(
 ):
     with pytest.raises(ValidationException):
         build_service.create_build(
-            db_session, user_id=user["id"], payload=BuildCreate(artifact_id="nope")
+            db_session,
+            user_id=user["id"],
+            deployment_id=_DEPLOYMENTS[user["id"]],
+            payload=BuildCreate(artifact_id="nope"),
         )
     assert store.checked == []
 
@@ -619,17 +761,20 @@ def test_a_creation_race_adopts_the_winners_build(client, db_session, store, use
     store.upload(user["id"], ARTIFACT)
     winner = _seed(db_session, user_id=user["id"], artifact_id=ARTIFACT)
 
-    real = build_service._find_open_build
+    real = build_service._open_build_for
     calls = {"n": 0}
 
     def racy(*args, **kwargs):
         calls["n"] += 1
         return None if calls["n"] == 1 else real(*args, **kwargs)
 
-    monkeypatch.setattr(build_service, "_find_open_build", racy)
+    monkeypatch.setattr(build_service, "_open_build_for", racy)
 
     result = build_service.create_build(
-        db_session, user_id=user["id"], payload=BuildCreate(artifact_id=ARTIFACT)
+        db_session,
+        user_id=user["id"],
+        deployment_id=_DEPLOYMENTS[user["id"]],
+        payload=BuildCreate(artifact_id=ARTIFACT),
     )
 
     assert result.created is False
@@ -640,8 +785,6 @@ def test_a_creation_race_adopts_the_winners_build(client, db_session, store, use
 def test_a_race_lost_to_another_user_is_a_conflict_not_a_crash(client, db_session, store):
     """Artifact ids are uuid4 so this is practically unreachable — but it must
     surface as a 409, never an unhandled IntegrityError."""
-    from app.services.errors import IntegrityException
-
     owner = create_user(client, USER_EMAIL)
     other = create_user(client, OTHER_EMAIL)
     store.upload(other["id"], ARTIFACT)
@@ -649,7 +792,10 @@ def test_a_race_lost_to_another_user_is_a_conflict_not_a_crash(client, db_sessio
 
     with pytest.raises(IntegrityException):
         build_service.create_build(
-            db_session, user_id=other["id"], payload=BuildCreate(artifact_id=ARTIFACT)
+            db_session,
+            user_id=other["id"],
+            deployment_id=deployment_for(db_session, other["id"]),
+            payload=BuildCreate(artifact_id=ARTIFACT),
         )
 
 
@@ -665,9 +811,9 @@ def test_log_survives_bytes_that_are_not_valid_text(client, db_session):
     hostile = b"compiling\x00\xff\xfe raw \x80 bytes\ndone\n"
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT, log=hostile)
 
-    full = client.get(f"/api/users/{build.user_id}/builds/{build.id}/log", headers=USER_AUTH_HEADER)
+    full = client.get(_builds(owner["id"], build.id, "log"), headers=USER_AUTH_HEADER)
     tail = client.get(
-        f"/api/users/{build.user_id}/builds/{build.id}/log", headers={**USER_AUTH_HEADER, "Range": "bytes=9-"}
+        _builds(owner["id"], build.id, "log"), headers={**USER_AUTH_HEADER, "Range": "bytes=9-"}
     )
 
     assert full.content == hostile
@@ -683,7 +829,7 @@ def test_log_length_is_the_byte_length_the_client_polls_with(client, db_session)
     build = _seed(db_session, user_id=owner["id"], artifact_id=ARTIFACT, log=log)
 
     resp = client.get(
-        f"/api/users/{build.user_id}/builds/{build.id}/log", headers={**USER_AUTH_HEADER, "Range": f"bytes={len(log)}-"}
+        _builds(owner["id"], build.id, "log"), headers={**USER_AUTH_HEADER, "Range": f"bytes={len(log)}-"}
     )
 
     assert len(log) > len(log.decode("utf-8"))

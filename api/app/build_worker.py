@@ -37,6 +37,7 @@ from app.config import CaelusSettings, get_settings
 from app.db import session_scope
 from app.models import BuildORM
 from app.services import artifacts as artifact_service
+from app.services import builds as build_service
 from app.services.build_constants import (
     BUILD_STATUS_FAILED,
     BUILD_STATUS_QUEUED,
@@ -163,12 +164,15 @@ def _start_build(
     unambiguous — the Job may or may not exist, but nothing recorded says it
     does — and the next pass fails that build rather than guessing.
     """
+    # The owner is the deployment's: it scopes the artifact key, the image
+    # repository and the push capability alike.
+    owner_id = build_service.build_owner_id(session, build)
     artifact_url = artifact_service.artifact_download_url(
-        build.user_id, build.artifact_id, settings=settings
+        owner_id, build.artifact_id, settings=settings
     )
     manifest = build_job_manifest(
         build_id=build.id,
-        user_id=build.user_id,
+        user_id=owner_id,
         artifact_url=artifact_url,
         settings=settings,
     )

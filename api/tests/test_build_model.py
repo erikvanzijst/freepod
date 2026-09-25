@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from app.models import BuildCreate, BuildORM, BuildRead
+from app.models import BuildCreate, BuildORM, BuildRead, DeploymentORM
 from app.services.build_constants import (
     BUILD_STATUS_CANCELED,
     BUILD_STATUS_FAILED,
@@ -24,7 +24,7 @@ from app.services.build_constants import (
     can_transition,
     is_terminal,
 )
-from tests.conftest import db_session, make_accepted_user  # noqa: F401
+from tests.conftest import db_session, make_accepted_user, make_bare_deployment  # noqa: F401
 
 IMAGE = "5@sha256:" + "a" * 64
 
@@ -33,8 +33,17 @@ def _user(session, email="build-model@example.com"):
     return make_accepted_user(session, email)
 
 
+def _deployment_id(session, user_id):
+    """The user's deployment, created on first use."""
+    existing = session.exec(
+        select(DeploymentORM.id).where(DeploymentORM.user_id == user_id)
+    ).first()
+    return existing or make_bare_deployment(session, user_id).id
+
+
 def _build(session, user_id, artifact_id, **kwargs) -> BuildORM:
-    build = BuildORM(user_id=user_id, artifact_id=artifact_id, **kwargs)
+    kwargs.setdefault("deployment_id", _deployment_id(session, user_id))
+    build = BuildORM(artifact_id=artifact_id, **kwargs)
     session.add(build)
     session.commit()
     session.refresh(build)
@@ -214,7 +223,7 @@ def test_second_non_terminal_build_for_one_artifact_is_refused(db_session, open_
 
 def test_the_constraint_spans_users(db_session):
     """artifact_id is server-generated and globally unique, so the index needs
-    no user_id component — and must not silently gain one."""
+    no owner or deployment component — and must not silently gain one."""
     owner = _user(db_session, "artifact-owner@example.com")
     other = _user(db_session, "artifact-other@example.com")
     _build(db_session, owner.id, "artifact-shared", status=BUILD_STATUS_RUNNING)
@@ -267,13 +276,30 @@ def test_a_user_may_run_several_builds_of_different_artifacts_at_once(db_session
 # ---------------------------------------------------------------------------
 
 
-def test_build_carries_no_deployment_reference(db_session):
+def test_a_build_belongs_to_a_deployment_and_records_no_owner(db_session):
     user = _user(db_session)
-    build = _build(db_session, user.id, "artifact-standalone")
+    build = _build(db_session, user.id, "artifact-owned")
 
-    assert not [f for f in BuildORM.model_fields if "deployment" in f]
-    assert not [f for f in BuildRead.model_fields if "deployment" in f]
-    assert "deployment_id" not in BuildRead.model_validate(build, from_attributes=True).model_dump()
+    dumped = BuildRead.model_validate(build, from_attributes=True).model_dump()
+    assert dumped["deployment_id"] == build.deployment_id
+    assert "user_id" not in BuildORM.model_fields
+    assert "user_id" not in dumped
+
+
+def test_a_build_cannot_be_orphaned(db_session):
+    db_session.add(BuildORM(artifact_id="artifact-orphan"))
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_a_deployment_may_run_two_builds_at_once(db_session):
+    user = _user(db_session)
+    first = _build(db_session, user.id, "artifact-first", status=BUILD_STATUS_RUNNING)
+    second = _build(db_session, user.id, "artifact-second", status=BUILD_STATUS_QUEUED)
+
+    assert first.deployment_id == second.deployment_id
+    assert first.id != second.id
 
 
 def test_build_create_accepts_only_an_artifact_id():
@@ -283,12 +309,13 @@ def test_build_create_accepts_only_an_artifact_id():
     assert payload.artifact_id == "artifact-x"
 
 
-def test_build_create_rejects_a_caller_supplied_owner():
-    """The owner comes from the session; a user_id in the body is refused
-    outright rather than quietly dropped."""
+@pytest.mark.parametrize("field", ["user_id", "deployment_id"])
+def test_build_create_rejects_a_caller_supplied_owner(field):
+    """The deployment comes from the path and the owner from the deployment;
+    either in the body is refused outright rather than quietly dropped."""
     with pytest.raises(Exception) as exc:
-        BuildCreate.model_validate({"artifact_id": "artifact-x", "user_id": 99})
-    assert "user_id" in str(exc.value)
+        BuildCreate.model_validate({"artifact_id": "artifact-x", field: 99})
+    assert field in str(exc.value)
 
 
 def test_build_read_exposes_no_job_id_or_log(db_session):
@@ -299,7 +326,7 @@ def test_build_read_exposes_no_job_id_or_log(db_session):
     dumped = BuildRead.model_validate(build, from_attributes=True).model_dump()
     assert "job_id" not in dumped
     assert "log" not in dumped
-    assert dumped["user_id"] == user.id
+    assert dumped["deployment_id"] == build.deployment_id
     assert dumped["artifact_id"] == "artifact-read"
 
 

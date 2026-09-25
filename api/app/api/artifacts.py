@@ -38,7 +38,8 @@ def create_artifact_upload_slot(
     """Issue credentials to upload one project archive directly to the object store.
 
     Phase one of three: mint a slot, PUT the bytes at the object store with the
-    returned form fields, then `POST /api/users/{user_id}/builds` with the
+    returned form fields, then
+    `POST /api/users/{user_id}/deployments/{deployment_id}/builds` with the
     `artifact_id`.
 
     The endpoint takes **no request body**. The object key is derived entirely

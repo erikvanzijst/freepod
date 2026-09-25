@@ -28,7 +28,7 @@ __all__ = [
     "EXIT_ROLLOUT_FAILED",
 ]
 
-__version__ = "0.14.0"
+__version__ = "0.15.0"
 
 EXIT_OK = 0
 EXIT_ERROR = 1

@@ -1,15 +1,12 @@
-"""The build history: reading an account's builds and rendering them.
+"""The build history: reading a project's builds and rendering them.
 
-A build is owned by a **user**, never by a deployment or a project — the
-platform has no notion of a project at all, and the account's build listing
-answers with
-everything the caller has ever built. So this lists the account's builds and
-annotates the one whose image the current project is actually running, which is
-the closest thing to a project-scoped history the platform can answer.
+A build belongs to a deployment, and a project records exactly one, so the
+history is that deployment's builds. The one whose image the deployment is
+running is marked.
 
-That annotation is why the deployment is read at all: without it the listing
-cannot distinguish the build that is serving traffic from the four newer ones
-that were built and never released.
+That mark is why the deployment is read at all: without it the listing cannot
+distinguish the build that is serving traffic from the four newer ones that
+were built and never released.
 
 The table is the command's **result** and goes to stdout; the legend and the
 counts are diagnostics and go to stderr, so `freepod builds | ...` carries rows
@@ -19,12 +16,11 @@ and nothing else.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from . import FreepodError
 from .api import ApiClient
-from .project import find_project_root, load
+from .build import builds_path
 from .table import (  # noqa: F401  (re-exported for callers of this module)
     BLANK,
     GAP,
@@ -52,40 +48,28 @@ COLUMNS = ("", "BUILD", "STATUS", "CREATED", "DURATION", "IMAGE")
 # --------------------------------------------------------------------------
 
 
-def list_builds(api: ApiClient, user_id: int) -> List[Dict[str, Any]]:
-    """`GET /api/users/{user_id}/builds` — the account's builds, most recent first.
+def list_builds(api: ApiClient, user_id: int, deployment_id: str) -> List[Dict[str, Any]]:
+    """The deployment's builds, most recent first — even once it is deleted.
 
     The order is the platform's, and is kept: re-sorting here would mean
     parsing every timestamp just to reproduce the answer already given, and
     would silently reorder rows the moment a timestamp failed to parse.
     """
-    path = f"/api/users/{user_id}/builds"
+    path = builds_path(user_id, deployment_id)
     body = api.get_json(path)
     if not isinstance(body, list):
         raise FreepodError(f"unexpected {path} response: {body!r}")
     return [entry for entry in body if isinstance(entry, dict)]
 
 
-def deployed_image(
-    api: ApiClient, user_id: int, env_name: str, root: Optional[Path] = None
-) -> Optional[str]:
-    """The image this project's deployment runs, if there is one to read.
+def deployed_image(api: ApiClient, user_id: int, deployment_id: str) -> Optional[str]:
+    """The image the deployment runs, if there is one to read.
 
-    Every way of not knowing answers None: no project file, one belonging to a
-    different environment, no deployment recorded yet, or a deployment the
-    platform no longer has. None of them is a reason to refuse a listing that
-    would otherwise be perfectly good — the annotation is a convenience, and
-    the listing is the result.
+    A deleted deployment, one never applied, or one the platform cannot answer
+    for yields None rather than a refusal: the mark is a convenience, and the
+    listing is the result.
     """
-    found = find_project_root(root)
-    if found is None:
-        return None
-
-    project = load(found)
-    if project.env != env_name or not project.deployment_id:
-        return None
-
-    response = api.get(f"/api/users/{user_id}/deployments/{project.deployment_id}")
+    response = api.get(f"/api/users/{user_id}/deployments/{deployment_id}")
     if not response.is_success:
         return None
 

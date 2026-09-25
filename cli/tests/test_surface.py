@@ -262,7 +262,7 @@ def test_a_build_timeout_says_the_build_continues():
     )
 
     with pytest.raises(FreepodError) as raised:
-        follow_build(api, 7, "b-1", out=io.BytesIO(), timeout=0, poll_active=0, poll_idle=0)
+        follow_build(api, 7, "d-1", "b-1", out=io.BytesIO(), timeout=0, poll_active=0, poll_idle=0)
 
     message = str(raised.value)
     assert "stopped waiting" in message

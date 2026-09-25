@@ -9,8 +9,8 @@ The models are split across three modules:
   - billing.py: Plan, PlanTemplateVersion, Subscription (and their
                 Base/Create/Update/Read variants), plus the BillingInterval,
                 SubscriptionStatus, and PaymentStatus enums.
-  - build.py:   Build (and its Base/Create/Read variants). Standalone: a build
-                references a user and an artifact, never a deployment.
+  - build.py:   Build (and its Base/Create/Read variants). A build belongs to
+                a deployment, whose owner is the build's owner.
   - ssh_key.py: SshKey (and its Create/Read variants). Owned by a user and
                 scoped to no deployment.
   - usage.py:   UsageMetric, UsageSubject, UsageSample -- the usage ledger, plus

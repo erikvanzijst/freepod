@@ -58,16 +58,6 @@ def world(cli_runner):
         session.commit()
         session.refresh(template)
 
-        build = BuildORM(
-            user_id=user.id,
-            artifact_id="a" * 32,
-            status=BUILD_STATUS_SUCCEEDED,
-            image=IMAGE,
-        )
-        session.add(build)
-        session.commit()
-        session.refresh(build)
-
         release_id = uuid4()
         deployment = DeploymentORM(
             user_id=user.id,
@@ -80,15 +70,27 @@ def world(cli_runner):
             namespace="ns",
         )
         session.add(deployment)
-        session.add(
-            DeploymentReleaseORM(
-                id=release_id,
-                number=1,
-                deployment_id=deployment.id,
-                template_id=template.id,
-                build_id=build.id,
-            )
+        first = DeploymentReleaseORM(
+            id=release_id,
+            number=1,
+            deployment_id=deployment.id,
+            template_id=template.id,
         )
+        session.add(first)
+        session.commit()
+
+        # A build belongs to a deployment, so it can only exist once the
+        # deployment does; release 1 is then the one that shipped it.
+        build = BuildORM(
+            deployment_id=deployment.id,
+            artifact_id="a" * 32,
+            status=BUILD_STATUS_SUCCEEDED,
+            image=IMAGE,
+        )
+        session.add(build)
+        session.commit()
+        first.build_id = build.id
+        session.add(first)
         session.commit()
         session.add(
             DeploymentReleaseORM(

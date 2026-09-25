@@ -368,4 +368,5 @@ def test_a_create_refused_for_the_terms_is_not_reported_as_bad_values(
     message = str(raised.value)
     assert "has not accepted its terms" in message
     assert "freepod login" in message
-    assert "build succeeded" in message
+    # Creation precedes the build now, so nothing was built to lose.
+    assert not any("/builds" in path for _method, path in platform.calls)

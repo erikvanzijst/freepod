@@ -38,7 +38,7 @@ from app.services.build_jobs import (
     job_name,
 )
 from app.services.registry_tokens import RegistryKeyException
-from tests.conftest import db_session, make_accepted_user  # noqa: F401
+from tests.conftest import db_session, make_accepted_user, make_bare_deployment  # noqa: F401
 
 IMAGE = "7@sha256:" + "d" * 64
 
@@ -129,12 +129,10 @@ def _user(session, email="build-worker@example.com"):
 
 
 def _queued(session, user_id, artifact_id=None, **kwargs) -> BuildORM:
+    """A build of one of the user's deployments; the owner is the deployment's."""
     kwargs.setdefault("status", BUILD_STATUS_QUEUED)
-    build = BuildORM(
-        user_id=user_id,
-        artifact_id=artifact_id or uuid4().hex,
-        **kwargs,
-    )
+    kwargs.setdefault("deployment_id", make_bare_deployment(session, user_id).id)
+    build = BuildORM(artifact_id=artifact_id or uuid4().hex, **kwargs)
     session.add(build)
     session.commit()
     session.refresh(build)
