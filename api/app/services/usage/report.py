@@ -20,7 +20,15 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlmodel import Session, select
 
-from app.models import UsageBucket, UsageDimension, UsageReport, UsageSampleORM
+from app.models import (
+    MetricKind,
+    UsageBucket,
+    UsageDimension,
+    UsageMetricORM,
+    UsageRateORM,
+    UsageReport,
+    UsageSampleORM,
+)
 from app.services.errors import ValidationException
 
 CURRENCY = "EUR"
@@ -122,15 +130,17 @@ def query_usage(
     select_dims = "".join(f", {expr} AS {name}" for name, expr in dimension_columns)
     group_dims = "".join(f", {expr}" for _, expr in dimension_columns)
 
+    metric_ids = _reportable_metric_ids(session, names=metrics, billable_only=billable_only)
     filters = [
         "s.window_start >= :start",
         "s.window_start < :end",
-        "m.kind = 'delta'",
+        "s.metric_id = ANY(:metric_ids)",
     ]
     params: dict[str, object] = {
         "bucket": bucket.value,
         "start": start,
         "end": end,
+        "metric_ids": metric_ids,
     }
     if user_id is not None:
         filters.append("d.user_id = :user_id")
@@ -140,9 +150,6 @@ def query_usage(
     if deployment_id is not None:
         filters.append("d.id = :deployment_id")
         params["deployment_id"] = deployment_id
-    if metrics:
-        filters.append("m.name = ANY(:metrics)")
-        params["metrics"] = sorted(metrics)
 
     statement = text(
         f"""
@@ -188,6 +195,27 @@ def query_usage(
         columns=["window_start", *(name for name, _ in dimension_columns), *value_columns],
         rows=rows,
     )
+
+
+def _reportable_metric_ids(
+    session: Session, *, names: set[str] | None, billable_only: bool
+) -> list[int]:
+    """The catalog ids a report reads: additive metrics, priced ones if billable.
+
+    Resolved here rather than filtered in the report's SQL. The catalog and rate
+    tables are too small ever to reach autovacuum's analyze threshold, so the
+    planner guesses their selectivity; on prod that guess turned a hash join
+    into a 4.7M-row nested loop. Filtering samples by id leans on
+    ``usage_sample``'s own statistics instead.
+    """
+    statement = select(UsageMetricORM.id).where(UsageMetricORM.kind == MetricKind.DELTA)
+    if names:
+        statement = statement.where(UsageMetricORM.name.in_(sorted(names)))
+    if billable_only:
+        statement = statement.where(
+            UsageMetricORM.id.in_(select(UsageRateORM.metric_id))
+        )
+    return sorted(session.exec(statement).all())
 
 
 def current_month(now: datetime | None = None) -> tuple[datetime, datetime]:
