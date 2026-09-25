@@ -229,7 +229,7 @@ export interface SshKey {
 }
 
 export type UsageBucket = 'hour' | 'day' | 'week' | 'month'
-export type UsageDimension = 'deployment' | 'metric'
+export type UsageDimension = 'product' | 'deployment' | 'metric'
 
 /**
  * Usage over a period as a table: `columns` names each position in `rows`.
@@ -238,7 +238,8 @@ export type UsageDimension = 'deployment' | 'metric'
  * unrounded decimal strings. `window_start` is naive UTC.
  */
 export interface UsageReport {
-  user_id: number
+  /** Null when the report spans every account. */
+  user_id: number | null
   start: IsoDate
   end: IsoDate
   bucket: UsageBucket
@@ -246,7 +247,7 @@ export interface UsageReport {
   /** End of the newest measured window; nothing after it is known yet. */
   recorded_through: IsoDate | null
   columns: string[]
-  rows: (string | null)[][]
+  rows: (string | number | null)[][]
 }
 
 export interface UsageQuery {
@@ -254,4 +255,6 @@ export interface UsageQuery {
   end: Date
   bucket: UsageBucket
   groupBy: UsageDimension[]
+  /** Only this deployment. */
+  deploymentId?: string
 }

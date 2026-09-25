@@ -35,8 +35,8 @@ RATES = (
 BOTH = {UsageDimension.DEPLOYMENT, UsageDimension.METRIC}
 
 
-def _deployment(session, user: UserORM, name: str):
-    product = ProductORM(name=f"p-{uuid4().hex[:8]}", created_at=_utcnow())
+def _template(session, product_name: str) -> int:
+    product = ProductORM(name=product_name, created_at=_utcnow())
     session.add(product)
     session.flush()
     template = ProductTemplateVersionORM(
@@ -44,10 +44,14 @@ def _deployment(session, user: UserORM, name: str):
     )
     session.add(template)
     session.flush()
+    return template.id
+
+
+def _deployment(session, user: UserORM, name: str, template_id: int):
     deployment = make_deployment_with_release(
         session,
         user_id=user.id,
-        desired_template_id=template.id,
+        desired_template_id=template_id,
         name=name,
         hostname=f"{name}.example.test",
         namespace=f"ns-{uuid4().hex[:8]}",
@@ -97,9 +101,11 @@ def ledger_data(db_session):
     db_session.add(other)
     db_session.flush()
 
-    web = _deployment(db_session, user, "web")
-    db = _deployment(db_session, user, "db")
-    foreign = _deployment(db_session, other, "foreign")
+    wiki = _template(db_session, "Wiki")
+    postgres = _template(db_session, "Postgres")
+    web = _deployment(db_session, user, "web", wiki)
+    db = _deployment(db_session, user, "db", postgres)
+    foreign = _deployment(db_session, other, "foreign", wiki)
 
     web_subject = _subject(db_session, web.namespace, web.id)
     for hour in (0, 1):
@@ -316,3 +322,73 @@ def test_the_api_refuses_an_unknown_dimension(user_client, ledger_data):
         f"/api/users/{user.id}/usage", params=_params(group_by="container")
     )
     assert response.status_code == 400
+
+
+def test_every_account_is_reported_when_no_user_is_given(db_session, ledger_data):
+    report = query_usage(
+        db_session,
+        user_id=None,
+        start=DAY,
+        end=DAY + timedelta(days=1),
+        group_by={UsageDimension.PRODUCT},
+        rates=RATES,
+    )
+
+    assert report.user_id is None
+    assert report.columns == ["window_start", "product_id", "product_name", "cost"]
+    costs = {r["product_name"]: r["cost"] for r in _as_dicts(report)}
+    # Both accounts' wikis add up; platform overhead belongs to no product.
+    assert costs == {"Wiki": "1.014", "Postgres": "0.02"}
+
+
+def test_deployments_cannot_be_grouped_across_every_account(db_session, ledger_data):
+    """The response would grow with the customer base."""
+    _, web, _ = ledger_data
+    with pytest.raises(ValidationException):
+        query_usage(
+            db_session,
+            user_id=None,
+            start=DAY,
+            end=DAY + timedelta(days=1),
+            group_by={UsageDimension.DEPLOYMENT},
+        )
+
+    scoped = query_usage(
+        db_session,
+        user_id=None,
+        start=DAY,
+        end=DAY + timedelta(days=1),
+        group_by={UsageDimension.DEPLOYMENT},
+        deployment_id=web.id,
+    )
+    assert [r["deployment_name"] for r in _as_dicts(scoped)] == ["web"]
+
+
+def test_the_admin_api_reports_across_accounts_by_product(client, ledger_data):
+    response = client.get("/api/usage", params=_params())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["columns"][:3] == ["window_start", "product_id", "product_name"]
+    assert {row[2] for row in body["rows"]} == {"Wiki", "Postgres"}
+    assert all(isinstance(row[1], int) for row in body["rows"])
+
+
+def test_the_admin_api_narrows_to_one_account(client, ledger_data):
+    user, _, _ = ledger_data
+    response = client.get(
+        "/api/usage", params=_params(group_by="deployment", user_id=user.id)
+    )
+
+    assert response.status_code == 200
+    assert {row[2] for row in response.json()["rows"]} == {"web", "db"}
+
+
+def test_the_admin_api_refuses_deployments_across_accounts(client, ledger_data):
+    response = client.get("/api/usage", params=_params(group_by="deployment"))
+    assert response.status_code == 400
+
+
+def test_the_admin_api_is_for_administrators(user_client, ledger_data):
+    client, _ = user_client
+    assert client.get("/api/usage", params=_params()).status_code == 403

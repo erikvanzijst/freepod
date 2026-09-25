@@ -181,6 +181,11 @@ class UsageBucket(StrEnum):
 
 
 class UsageDimension(StrEnum):
+    """What a report can be split by. Each must stay small as the customer base
+    grows, which is why the account is a filter rather than a dimension, and a
+    deployment is one only within a single account."""
+
+    PRODUCT = "product"
     DEPLOYMENT = "deployment"
     METRIC = "metric"
 
@@ -191,11 +196,12 @@ class UsageReport(SQLModel):
     Quantities and costs are decimal strings, exact and unrounded.
     """
 
-    user_id: int
+    # Null when the report spans every account.
+    user_id: Optional[int] = None
     start: datetime
     end: datetime
     bucket: UsageBucket
     currency: str
     recorded_through: Optional[datetime] = None
     columns: list[str]
-    rows: list[list[datetime | UUID | str | None]]
+    rows: list[list[datetime | UUID | int | str | None]]

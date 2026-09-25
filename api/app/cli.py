@@ -724,7 +724,8 @@ def get_deployment_database(user_id: int, deployment_id: UUID) -> None:
 
 @app.command("get-usage")
 def get_usage(
-    user_id: int,
+    user_id: int | None = typer.Argument(None, help="The account; omit with --all."),
+    all_users: bool = typer.Option(False, "--all", help="Every account (admin only)."),
     start: datetime | None = typer.Option(
         None, help="Inclusive start, UTC. Defaults to the start of the current month."
     ),
@@ -732,17 +733,25 @@ def get_usage(
         None, help="Exclusive end, UTC. Defaults to the start of the next month."
     ),
     bucket: UsageBucket = typer.Option(UsageBucket.DAY, help="Width of each row's window."),
-    group_by: list[UsageDimension] = typer.Option(
-        [UsageDimension.DEPLOYMENT, UsageDimension.METRIC],
-        help="Dimension to keep apart; repeat for several. Others are summed together.",
+    group_by: list[UsageDimension] | None = typer.Option(
+        None,
+        help="Dimension to keep apart (product, deployment, metric); repeat for several. "
+        "Others are summed together. Defaults to deployment and metric for one "
+        "account, product and metric with --all.",
     ),
     deployment_id: UUID | None = typer.Option(None, help="Only this deployment."),
     metric: list[str] | None = typer.Option(None, help="Only this metric; repeatable."),
     as_csv: bool = typer.Option(False, "--csv", help="Print the table as CSV."),
 ) -> None:
-    """An account's resource usage and its cost, per bucket, as the API reports it."""
+    """Resource usage and its cost, per bucket, as the API reports it."""
+    if (user_id is None) == (not all_users):
+        typer.echo("Error: give either a user ID or --all", err=True)
+        raise typer.Exit(code=1)
     with session_scope() as session:
-        _require_cli_user(session)
+        operator = _require_cli_user(session)
+        if all_users and not operator.is_admin:
+            typer.echo("Error: --all requires admin privileges", err=True)
+            raise typer.Exit(code=1)
         default_start, default_end = usage_report.current_month()
         try:
             report = usage_report.query_usage(
@@ -751,7 +760,12 @@ def get_usage(
                 start=start or default_start,
                 end=end or default_end,
                 bucket=bucket,
-                group_by=set(group_by),
+                group_by=set(group_by)
+                if group_by
+                else {
+                    UsageDimension.PRODUCT if all_users else UsageDimension.DEPLOYMENT,
+                    UsageDimension.METRIC,
+                },
                 deployment_id=deployment_id,
                 metrics=set(metric) if metric else None,
             )

@@ -81,13 +81,24 @@ describe('colorSeries', () => {
     ])
   })
 
-  it('folds what does not fit into Other', () => {
+  it('shares the palette among present series when the ranking outgrows it', () => {
+    const catalog = Array.from({ length: 12 }, (_, i) => `p${i}`)
+    const colored = colorSeries([blank('p11'), blank('p3')], catalog, (k) => k)
+    expect(colored.map((s) => [s.key, s.color])).toEqual([
+      ['p3', CATEGORICAL[0]],
+      ['p11', CATEGORICAL[1]],
+    ])
+  })
+
+  it('folds the smallest into Other, never the heaviest', () => {
     const keys = Array.from({ length: 10 }, (_, i) => `k${i}`)
-    const colored = colorSeries(keys.map(blank), keys, (k) => k)
+    const series = keys.map((key, i) => ({ key, data: [i + 1], total: i + 1 }))
+    const colored = colorSeries(series, keys, (k) => k)
     expect(colored).toHaveLength(CATEGORICAL.length)
+    expect(colored.map((s) => s.key)).toContain('k9')
     const other = colored[colored.length - 1]
     expect(other.key).toBe(OTHER_KEY)
-    expect(other.total).toBe(3)
-    expect(other.data).toEqual([3])
+    expect(other.total).toBe(1 + 2 + 3)
+    expect(other.data).toEqual([6])
   })
 })

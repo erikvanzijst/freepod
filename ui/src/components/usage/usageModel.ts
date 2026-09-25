@@ -148,8 +148,9 @@ export function pivot(report: UsageReport, keyColumn: string, slots: Date[]): Us
 
   for (const row of report.rows) {
     const index = slotAt.get(parseUtc(row[0] as string).getTime())
-    const key = row[keyAt]
-    if (index === undefined || key == null) continue
+    const raw = row[keyAt]
+    if (index === undefined || raw == null) continue
+    const key = String(raw)
     let entry = series.get(key)
     if (!entry) {
       entry = { key, data: slots.map(() => null), total: 0 }
@@ -162,18 +163,24 @@ export function pivot(report: UsageReport, keyColumn: string, slots: Date[]): Us
   return [...series.values()]
 }
 
-/** Labels for a `deployment_id` column value, read off the report itself: hostname, else name. */
-export function deploymentNames(report: UsageReport): Map<string, string> {
-  const idAt = report.columns.indexOf('deployment_id')
-  const nameAt = report.columns.indexOf('deployment_name')
-  const hostAt = report.columns.indexOf('deployment_hostname')
-  const names = new Map<string, string>()
-  if (idAt < 0) return names
+/**
+ * Labels for each value of `keyColumn`, read off the report itself: the first
+ * non-null of `labelColumns`, e.g. a deployment's hostname, else its name.
+ */
+export function columnLabels(
+  report: UsageReport,
+  keyColumn: string,
+  labelColumns: string[],
+): Map<string, string> {
+  const keyAt = report.columns.indexOf(keyColumn)
+  const labelAts = labelColumns.map((c) => report.columns.indexOf(c)).filter((i) => i >= 0)
+  const labels = new Map<string, string>()
+  if (keyAt < 0) return labels
   for (const row of report.rows) {
-    const label = (hostAt >= 0 ? row[hostAt] : null) ?? (nameAt >= 0 ? row[nameAt] : null)
-    if (row[idAt] && label) names.set(row[idAt] as string, label)
+    const label = labelAts.map((i) => row[i]).find((v) => v != null)
+    if (row[keyAt] != null && label != null) labels.set(String(row[keyAt]), String(label))
   }
-  return names
+  return labels
 }
 
 /**

@@ -56,6 +56,10 @@ _APPROX_BUCKET = {
 
 # Output columns per dimension, and the SQL that produces them.
 _DIMENSION_COLUMNS: dict[UsageDimension, tuple[tuple[str, str], ...]] = {
+    UsageDimension.PRODUCT: (
+        ("product_id", "p.id"),
+        ("product_name", "p.name"),
+    ),
     UsageDimension.DEPLOYMENT: (
         ("deployment_id", "d.id"),
         ("deployment_name", "d.name"),
@@ -84,7 +88,7 @@ def _plain(value: Decimal | None) -> str | None:
 def query_usage(
     session: Session,
     *,
-    user_id: int,
+    user_id: int | None,
     start: datetime,
     end: datetime,
     bucket: UsageBucket = UsageBucket.DAY,
@@ -96,7 +100,12 @@ def query_usage(
     billable_only: bool = True,
     rates: tuple[Rate, ...] = RATES,
 ) -> UsageReport:
-    """A user's usage over ``[start, end)``, summed per bucket and per grouped dimension.
+    """Usage over ``[start, end)``, summed per bucket and per grouped dimension.
+
+    ``user_id`` narrows it to one account; ``None`` spans every account. Usage no
+    deployment is attributed to (platform overhead) is never included. Grouping
+    by deployment needs a single account or deployment in scope: across every
+    account it would grow with the customer base.
 
     A sample belongs to the bucket its ``window_start`` falls in, UTC. Dimensions left
     out of ``group_by`` are summed together; without ``metric`` among them only
@@ -115,6 +124,10 @@ def query_usage(
     start, end = _naive_utc(start), _naive_utc(end)
     if end <= start:
         raise ValidationException("end must be after start")
+    if UsageDimension.DEPLOYMENT in group_by and user_id is None and deployment_id is None:
+        raise ValidationException(
+            "grouping by deployment needs a user_id or deployment_id to scope it"
+        )
     if (end - start) / _APPROX_BUCKET[bucket] > MAX_BUCKETS:
         raise ValidationException(
             f"too many {bucket.value} buckets between start and end "
@@ -123,7 +136,7 @@ def query_usage(
 
     dimension_columns = [
         column
-        for dimension in (UsageDimension.DEPLOYMENT, UsageDimension.METRIC)
+        for dimension in UsageDimension
         if dimension in group_by
         for column in _DIMENSION_COLUMNS[dimension]
     ]
@@ -133,19 +146,20 @@ def query_usage(
     filters = [
         "s.window_start >= :start",
         "s.window_start < :end",
-        "d.user_id = :user_id",
         "m.kind = 'delta'",
     ]
     params: dict[str, object] = {
         "bucket": bucket.value,
         "start": start,
         "end": end,
-        "user_id": user_id,
         "rate_metric": [r.metric for r in rates],
         "rate_from": [r.effective_from for r in rates],
         "rate_price": [r.unit_price for r in rates],
         "rate_per": [r.per_quantity for r in rates],
     }
+    if user_id is not None:
+        filters.append("d.user_id = :user_id")
+        params["user_id"] = user_id
     if billable_only:
         filters.append("r.unit_price IS NOT NULL")
     if deployment_id is not None:
@@ -172,6 +186,8 @@ def query_usage(
         JOIN usage_metric m ON m.id = s.metric_id
         JOIN usage_subject sub ON sub.id = s.subject_id
         JOIN deployment d ON d.id = sub.deployment_id
+        JOIN product_template_version t ON t.id = d.desired_template_id
+        JOIN product p ON p.id = t.product_id
         LEFT JOIN LATERAL (
             SELECT rate.unit_price, rate.per_quantity FROM rate
             WHERE rate.metric = m.name AND rate.effective_from <= s.window_start

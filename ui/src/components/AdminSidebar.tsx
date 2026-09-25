@@ -1,5 +1,6 @@
 import {
   GroupOutlined,
+  InsightsOutlined,
   Inventory2Outlined,
   LocalOfferOutlined,
   RocketLaunchOutlined,
@@ -11,6 +12,7 @@ const navItems: SectionNavItem[] = [
   { label: 'Deployments', path: '/admin/deployments', icon: <RocketLaunchOutlined /> },
   { label: 'Users', path: '/admin/users', icon: <GroupOutlined /> },
   { label: 'Plans', path: '/admin/plans', icon: <LocalOfferOutlined /> },
+  { label: 'Usage', path: '/admin/usage', icon: <InsightsOutlined /> },
 ]
 
 export function AdminSidebar() {

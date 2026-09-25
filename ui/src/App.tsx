@@ -27,6 +27,9 @@ const PlansPanel = lazy(() =>
 const SubdomainPanel = lazy(() =>
   import('./components/subdomain/SubdomainPanel').then((m) => ({ default: m.SubdomainPanel })),
 )
+const AdminUsagePanel = lazy(() =>
+  import('./components/AdminUsagePanel').then((m) => ({ default: m.AdminUsagePanel })),
+)
 const UsagePanel = lazy(() =>
   import('./components/UsagePanel').then((m) => ({ default: m.UsagePanel })),
 )
@@ -79,6 +82,7 @@ function AuthedApp() {
             <Route path="deployments" element={<DeploymentsPanel />} />
             <Route path="users" element={<UsersPanel />} />
             <Route path="plans" element={<PlansPanel />} />
+            <Route path="usage" element={<AdminUsagePanel />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

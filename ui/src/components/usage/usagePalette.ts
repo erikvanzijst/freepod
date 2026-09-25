@@ -26,29 +26,47 @@ export interface ColoredSeries extends UsageSeries {
 }
 
 /**
- * Color series by their position in `order`, a ranking that must not depend
- * on the period shown. Keys missing from it rank after, alphabetically. When
- * there are more entities than colors, the last slot becomes "Other".
+ * Color series by their position in `order`, a ranking that must not depend on
+ * the period shown. Keys missing from it rank after, alphabetically.
+ *
+ * When every ranked entity fits the palette, each owns its color for good.
+ * When not, only the series present share it, still in ranked order, and past
+ * the palette the smallest by cost fold into "Other" -- never an arbitrary
+ * tail of the ranking, which could hide the heaviest entity in gray.
  */
 export function colorSeries(
   series: UsageSeries[],
   order: string[],
   label: (key: string) => string,
 ): ColoredSeries[] {
+  const present = new Set(series.map((s) => s.key))
   const known = new Set(order)
-  const ranking = [
-    ...order,
-    ...series.map((s) => s.key).filter((key) => !known.has(key)).sort(),
-  ]
-  const capacity = ranking.length <= CATEGORICAL.length ? CATEGORICAL.length : CATEGORICAL.length - 1
-  const slot = (key: string) => ranking.indexOf(key)
+  const ranking = [...order, ...[...present].filter((key) => !known.has(key)).sort()]
 
-  const colored: ColoredSeries[] = series
-    .filter((s) => slot(s.key) < capacity)
-    .sort((a, b) => slot(a.key) - slot(b.key))
-    .map((s) => ({ ...s, label: label(s.key), color: CATEGORICAL[slot(s.key)] }))
+  let slots: string[]
+  let shown: UsageSeries[]
+  if (ranking.length <= CATEGORICAL.length) {
+    slots = ranking
+    shown = series
+  } else if (present.size <= CATEGORICAL.length) {
+    slots = ranking.filter((key) => present.has(key))
+    shown = series
+  } else {
+    const kept = new Set(
+      [...series]
+        .sort((a, b) => b.total - a.total)
+        .slice(0, CATEGORICAL.length - 1)
+        .map((s) => s.key),
+    )
+    slots = ranking.filter((key) => kept.has(key))
+    shown = series.filter((s) => kept.has(s.key))
+  }
 
-  const overflow = series.filter((s) => slot(s.key) >= capacity)
+  const colored: ColoredSeries[] = shown
+    .map((s) => ({ ...s, label: label(s.key), color: CATEGORICAL[slots.indexOf(s.key)] }))
+    .sort((a, b) => slots.indexOf(a.key) - slots.indexOf(b.key))
+
+  const overflow = series.filter((s) => !shown.includes(s))
   if (overflow.length > 0) {
     colored.push({
       key: OTHER_KEY,

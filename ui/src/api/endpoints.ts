@@ -242,12 +242,14 @@ export function deleteSshKey(userId: number, fingerprint: string) {
 }
 
 function usageParams(query: UsageQuery) {
-  return new URLSearchParams({
+  const params = new URLSearchParams({
     start: query.start.toISOString(),
     end: query.end.toISOString(),
     bucket: query.bucket,
     group_by: query.groupBy.join(','),
   })
+  if (query.deploymentId) params.set('deployment_id', query.deploymentId)
+  return params
 }
 
 export function getUsage(userId: number, query: UsageQuery) {
@@ -257,4 +259,17 @@ export function getUsage(userId: number, query: UsageQuery) {
 /** The same report as CSV, for opening in a spreadsheet. */
 export function getUsageCsv(userId: number, query: UsageQuery) {
   return requestBlob(`/users/${userId}/usage?${usageParams(query)}`, 'text/csv')
+}
+
+/** Usage across every account, or one when `userId` is given. Admin only. */
+export function getAllUsage(query: UsageQuery, userId?: number) {
+  const params = usageParams(query)
+  if (userId != null) params.set('user_id', String(userId))
+  return requestJson<UsageReport>(`/usage?${params}`)
+}
+
+export function getAllUsageCsv(query: UsageQuery, userId?: number) {
+  const params = usageParams(query)
+  if (userId != null) params.set('user_id', String(userId))
+  return requestBlob(`/usage?${params}`, 'text/csv')
 }
