@@ -12,7 +12,10 @@ from app.deps import require_self
 from app.models import BuildCreate, BuildRead, UserORM
 from app.services import builds as build_service
 
-router = APIRouter(prefix="/users/{user_id}/builds", tags=["builds"])
+router = APIRouter(prefix="/users/{user_id}/deployments/{deployment_id}/builds", tags=["builds"])
+
+USER_ID = Path(..., description="ID of the user who owns the deployment.")
+DEPLOYMENT_ID = Path(..., description="ID of the deployment the build belongs to.")
 
 # Only the two forms a polling client produces: `bytes=N-` and `bytes=N-M`.
 # Anything else — a suffix range, multiple ranges, a unit other than bytes — is
@@ -39,9 +42,9 @@ def _parse_range(value: str | None) -> tuple[int, int | None] | None:
     "",
     response_model=BuildRead,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a build from an uploaded artifact",
+    summary="Create a build of a deployment from an uploaded artifact",
     response_description=(
-        "The build, in `queued` status, owned by the authenticated caller. "
+        "The build, in `queued` status, belonging to the deployment. "
         "`Location` carries its URL."
     ),
     responses={
@@ -52,38 +55,57 @@ def _parse_range(value: str | None) -> tuple[int, int | None] | None:
                 "returned unchanged; no second build was created."
             )
         },
-        400: {"description": "The artifact id is malformed, or no such artifact was uploaded."},
+        400: {
+            "description": (
+                "The artifact id is malformed, no such artifact was uploaded, or "
+                "the deployment is being deleted or has been."
+            )
+        },
         403: {"description": "Caller may only create builds under their own account."},
-        404: {"description": "The request carried no authenticated identity."},
-        422: {"description": "The body carried a field other than `artifact_id` (such as `user_id`)."},
+        404: {"description": "No such deployment under this account."},
+        409: {"description": "The artifact is already being built for another deployment."},
+        422: {
+            "description": (
+                "The body carried a field other than `artifact_id` (such as "
+                "`user_id` or `deployment_id`)."
+            )
+        },
     },
 )
 def create_build(
     payload: BuildCreate,
     response: Response,
-    user_id: int = Path(..., description="ID of the user the build is created for."),
-    current_user: UserORM = Depends(require_self),
+    user_id: int = USER_ID,
+    deployment_id: UUID = DEPLOYMENT_ID,
+    _: UserORM = Depends(require_self),
     session: Session = Depends(get_session),
 ) -> BuildRead:
-    """Queue a build of an artifact previously uploaded via `POST /api/artifacts`.
+    """Queue a build of an artifact previously uploaded via `POST /api/artifacts`,
+    for the deployment in the path.
 
-    Phase three of three. The body carries **only** `artifact_id`; the owner
-    comes from the authenticated session, and any other field — `user_id`
-    included — is rejected outright rather than quietly dropped. The path
-    `user_id` says whose account is being acted on and is what authorizes the
-    request; it is not where the owner comes from.
+    Phase three of three. The body carries **only** `artifact_id`; the build
+    belongs to the deployment in the path and its owner is the deployment's.
+    Any other field — `user_id` or `deployment_id` included — is rejected
+    outright rather than quietly dropped.
 
     ## Behavior
     Retrying while the original build is still `queued` or `running` returns
     that build with **200** instead of creating a second one. Once every build
     for the artifact is terminal, a repeat request creates a new build, so a
-    transient failure can be rebuilt without re-uploading the archive.
+    transient failure can be rebuilt without re-uploading the archive. An
+    artifact already being built for a different deployment answers **409**.
+
+    A deployment that is being deleted, or has been, takes no builds.
 
     Nothing here triggers a rollout: on success the client submits the build's
     `image` to the deployment update endpoint itself.
     """
-    result = build_service.create_build(session, user_id=current_user.id, payload=payload)
-    response.headers["Location"] = f"/api/users/{user_id}/builds/{result.build.id}"
+    result = build_service.create_build(
+        session, user_id=user_id, deployment_id=deployment_id, payload=payload
+    )
+    response.headers["Location"] = (
+        f"/api/users/{user_id}/deployments/{deployment_id}/builds/{result.build.id}"
+    )
     if not result.created:
         response.status_code = status.HTTP_200_OK
     return result.build
@@ -92,33 +114,33 @@ def create_build(
 @router.get(
     "",
     response_model=list[BuildRead],
-    summary="List a user's builds",
-    response_description="A JSON array of the user's builds, most recent first.",
+    summary="List a deployment's builds",
+    response_description="A JSON array of the deployment's builds, most recent first.",
     responses={
-        200: {"description": "The user's builds, most recent first."},
+        200: {"description": "The deployment's builds, most recent first."},
         403: {"description": "A non-administrator asked for another user's builds."},
-        404: {"description": "The request carried no authenticated identity."},
+        404: {"description": "No such deployment under this account."},
     },
 )
 def list_builds(
-    user_id: int = Path(..., description="ID of the user whose builds to list."),
-    current_user: UserORM = Depends(require_self),
+    user_id: int = USER_ID,
+    deployment_id: UUID = DEPLOYMENT_ID,
+    _: UserORM = Depends(require_self),
     session: Session = Depends(get_session),
 ) -> list[BuildRead]:
-    """Return the builds owned by `user_id`, most recent first.
+    """Return the deployment's builds, most recent first.
 
     ## Authorization
-    You may only list your own builds; administrators may list any account's.
-    Other requests receive **403 Forbidden**.
+    You may only list your own deployments' builds; administrators may list
+    any. Other requests receive **403 Forbidden**.
 
     ## Behavior
-    Enumeration is what keeps a previously produced image reachable after a
-    client has forgotten its build id, which is what a redeploy or a rollback
-    needs.
+    A deleted deployment's builds are still listed: they are the provenance of
+    the releases that shipped them. Enumeration is what keeps a previously
+    produced image reachable after a client has forgotten its build id, which
+    is what a redeploy or a rollback needs.
     """
-    return build_service.list_builds(
-        session, user_id=None if current_user.is_admin else user_id
-    )
+    return build_service.list_builds(session, user_id=user_id, deployment_id=deployment_id)
 
 
 @router.get(
@@ -134,30 +156,29 @@ def list_builds(
         403: {"description": "Caller may only read their own builds."},
         404: {
             "description": (
-                "No such build, or it belongs to another user — the two are "
+                "No such build, or it belongs to another deployment or user — "
                 "deliberately indistinguishable."
             )
         },
     },
 )
 def get_build(
-    user_id: int = Path(..., description="ID of the user that owns the build."),
+    user_id: int = USER_ID,
+    deployment_id: UUID = DEPLOYMENT_ID,
     build_id: UUID = Path(..., description="ID of the build."),
-    current_user: UserORM = Depends(require_self),
+    _: UserORM = Depends(require_self),
     session: Session = Depends(get_session),
 ) -> BuildRead:
-    """Return one of the user's builds.
+    """Return one of the deployment's builds.
 
     ## Authorization
-    Scoped to your own builds; administrators may read any. Naming another
-    account answers **403**; a build under your own account that belongs to
-    someone else answers **404**, identically to one that does not exist, so
-    the endpoint cannot be used to probe for other users' builds.
+    Scoped to your own deployments; administrators may read any. Naming another
+    account answers **403**; a build that belongs to another deployment or user
+    answers **404**, identically to one that does not exist, so the endpoint
+    cannot be used to probe for builds.
     """
     return build_service.get_build(
-        session,
-        build_id=build_id,
-        user_id=None if current_user.is_admin else user_id,
+        session, user_id=user_id, deployment_id=deployment_id, build_id=build_id
     )
 
 
@@ -181,18 +202,19 @@ def get_build(
             )
         },
         403: {"description": "Caller may only read their own builds' logs."},
-        404: {"description": "No such build, or it belongs to another user."},
+        404: {"description": "No such build, or it belongs to another deployment or user."},
     },
 )
 def get_build_log(
-    user_id: int = Path(..., description="ID of the user that owns the build."),
+    user_id: int = USER_ID,
+    deployment_id: UUID = DEPLOYMENT_ID,
     build_id: UUID = Path(..., description="ID of the build."),
     range_header: str | None = Header(
         None,
         alias="Range",
         description="Byte range to return, as `bytes=N-` or `bytes=N-M`.",
     ),
-    current_user: UserORM = Depends(require_self),
+    _: UserORM = Depends(require_self),
     session: Session = Depends(get_session),
 ) -> Response:
     """Return a build's accumulated output as plain text.
@@ -210,13 +232,15 @@ def get_build_log(
 
     ## Errors
     - **403 Forbidden** — reading another account's build log.
-    - **404 Not Found** — no such build, or it belongs to another user.
+    - **404 Not Found** — no such build, or it belongs to another deployment
+      or user.
     """
     parsed = _parse_range(range_header)
     slice_ = build_service.get_build_log(
         session,
+        user_id=user_id,
+        deployment_id=deployment_id,
         build_id=build_id,
-        user_id=None if current_user.is_admin else user_id,
         start=parsed[0] if parsed else None,
         end=parsed[1] if parsed else None,
     )

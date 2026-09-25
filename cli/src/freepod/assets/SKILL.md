@@ -454,7 +454,7 @@ serialization and error handling before a build is spent on it.
 freepod deploy
 ```
 
-Preflight, pack, upload, build, release. **Allow several minutes** — builds
+Preflight, create the pod, pack, upload, build, release. **Allow several minutes** — builds
 typically run one to three minutes and the client waits up to 1800s for the
 build and 600s for the rollout, so set a generous timeout on whatever runs it.
 The build log streams to stderr. Stdout carries exactly one line, the live
@@ -627,7 +627,7 @@ redeploy.
 | `freepod log`      | Read the application's output. `-f` follows, `-r N` pins one release, `-t` adds timestamps.                                                                          |
 | `freepod shell`    | Run a command in the application container: `freepod shell env`. Always pass one — with no command it is interactive. Needs a registered key and `ssh`.              |
 | `freepod cp`       | Copy a file or directory between here and the deployment: `freepod cp :/app/app.log ./app.log`. Mark the deployment's side with `:`; the direction follows. Needs a registered key and `sftp`. |
-| `freepod builds`   | List this account's builds, most recent first.                                                                                                                       |
+| `freepod builds`   | List this project's builds, most recent first.                                                                                                                       |
 | `freepod releases` | List this project's rollouts, newest first, marking the live one. Where `log -r N` gets its N.                                                                       |
 | `freepod var`      | Read and change the app's environment: `var list`, `var get KEY`, `var set KEY=VALUE`, `var rm KEY`. `--secret` stores write-only; `--stage` defers the rollout.     |
 | `freepod delete`   | Delete the deployment **and everything it stores**. Destructive; confirm with the user first, and note it prompts unless given `-y`.                                 |

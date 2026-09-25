@@ -99,7 +99,7 @@ that locks users out until they upgrade.
 | `build.py`    | Upload slot, presigned POST, build creation, and log streaming.                                                                        |
 | `deploy.py`   | The pipeline: preflight → pack → upload → build → release, plus rollout following.                                                     |
 | `delete.py`   | The teardown: confirming it, requesting it, and following it to gone.                                                                  |
-| `history.py`  | The build history: reading the account's builds and rendering the table.                                                               |
+| `history.py`  | The build history: reading the project's builds and rendering the table.                                                               |
 | `releases.py` | The release history: this project's deployment's rollouts, and the live mark.                                                          |
 | `vars.py`     | `freepod var`: the vars sub-resource, input parsing, and the hidden-value table.                                                       |
 | `table.py`    | Shared listing rendering: timestamps, durations, digest abbreviation, columns. A leaf.                                                 |
@@ -332,9 +332,18 @@ Preflight, cheapest and most fatal first:
 6. Any newly required value, by asking.
 7. The hostname, but only when it is new or changed.
 
-Then the archive is packed, uploaded, and built, and only then is the deployment
-created or updated. Building **before** the deployment is touched collapses a
-first deploy to a single rollout and never shows a placeholder page (design D6).
+Then, on a first deploy or under `--recreate`, the deployment is created with no
+image and recorded in the project file at once. A build belongs to a deployment,
+so it has to exist before anything is built; meanwhile the product serves its
+placeholder page. Only then is the archive packed, uploaded and built against
+that deployment, and the build released into it by an update, after waiting
+for the new deployment to settle. A failed first build leaves the deployment
+recorded, so the next deploy reuses it rather than orphaning it; the client
+names `freepod delete` for anyone who wants it gone.
+
+Rationale: [builds-belong-to-deployments](../openspec/changes/builds-belong-to-deployments/design.md)
+D6, which reverses this client's original build-first ordering (design D6 of
+`add-freepod-cli`).
 
 Things worth knowing about each step:
 
@@ -423,17 +432,18 @@ out the timeout reporting "still deleting". The 409 is the same
 
 ## The build history
 
-`builds` lists what `GET /api/users/{uid}/builds` answers, which is **the
-account's** builds and not a project's.
+`builds` lists what `GET /api/users/{uid}/deployments/{id}/builds` answers
+for the project's recorded deployment: **the project's** builds, and no others.
+It refuses outside a project, before a first deploy, and for a project that
+belongs to another environment than the one targeted. A deleted deployment's
+builds are still listed.
 
 Spec: [cli-build-history](../openspec/specs/cli-build-history/spec.md) ·
 Rationale: [releases-api-and-nested-builds](../openspec/changes/archive/2026-08-22-releases-api-and-nested-builds/design.md)
 
-What makes the listing project-relevant instead is the marker: the build whose
-image the current project's deployment is running is flagged `*`. Every way of
-not knowing answers `None` rather than failing — no project file, one belonging
-to another environment, no deployment recorded yet, or a deployment the
-platform no longer has. The annotation is a convenience; the listing is the
+The build whose image the deployment is running is flagged `*`. A deployment
+that is deleted, never applied, or runs none of the listed images yields no
+mark rather than a failure. The mark is a convenience; the listing is the
 result.
 
 Details worth keeping:
@@ -669,9 +679,9 @@ Three phases (designs D9, D12, D13):
    plain `httpx.Client`, not `ApiClient` — no bearer token, and none of the
    401/403 contract, which describes the platform's edge. A `403` means an
    expired slot or a policy violation: mint one fresh slot and submit once more.
-3. **Create and follow the build** — `POST /api/users/{uid}/builds` with the
-   artifact id alone, then read the log by byte range until `X-Build-Status`
-   is terminal.
+3. **Create and follow the build** — `POST
+   /api/users/{uid}/deployments/{id}/builds` with the artifact id alone, then
+   read the log by byte range until `X-Build-Status` is terminal.
    A **200** rather than 201 means the platform handed back a build already
    queued or running for this artifact instead of creating a second one, which
    is what makes re-running a deploy safe; the client says so rather than

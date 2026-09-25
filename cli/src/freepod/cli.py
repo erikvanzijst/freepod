@@ -343,8 +343,11 @@ def init(context: Context, force: bool) -> None:
 def deploy(context: Context, recreate: bool, no_gitignore: bool, no_build: bool) -> None:
     """Build the current project and release it to its deployment.
 
-    Preflight, pack, upload, build, release — in that order, so that everything
-    a cheap read can refuse is refused before a build is spent.
+    Preflight, then — on a first deploy — create the deployment, then pack,
+    upload, build and release, in that order: everything a cheap read can refuse
+    is refused before anything is created or built, and a build always belongs
+    to a deployment that already exists. Until the first build is released, a
+    new deployment serves the product's placeholder page.
 
     `--no-gitignore` is an `is_flag` option negated here rather than a
     `flag_value=False` one, because click stopped honoring a `True` default
@@ -443,12 +446,11 @@ def delete(context: Context, assume_yes: bool, no_wait: bool) -> None:
 @click.option("--all", "show_all", is_flag=True, help="show every build, ignoring --limit")
 @click.pass_obj
 def builds(context: Context, limit: int, show_all: bool) -> None:
-    """List this account's builds, most recent first.
+    """List this project's builds, most recent first.
 
-    Builds belong to the account rather than to a project — the platform has no
-    notion of one — so every build made from this account is listed, whichever
-    directory produced it. The build the current project's deployment is
-    running is marked.
+    A build belongs to the project's deployment, so these are that
+    deployment's builds and no others — including after the deployment has been
+    deleted. The build the deployment is running is marked.
 
     The table is the result and goes to stdout; `--verbose` prints image
     references in full rather than abbreviating their digests.
@@ -456,18 +458,17 @@ def builds(context: Context, limit: int, show_all: bool) -> None:
     if limit <= 0 and not show_all:
         raise UsageError("--limit must be a positive number of builds")
 
+    project_file = _project_deployment(context, lacks="builds")
     session = context.session()
     session.authenticate(interactive=False)
 
     with context.client(session) as api:
         user_id = api.me()["id"]
-        records = history.list_builds(api, user_id)
-        live = history.deployed_image(api, user_id, context.env.name)
+        records = history.list_builds(api, user_id, project_file.deployment_id)
+        live = history.deployed_image(api, user_id, project_file.deployment_id)
 
     if not records:
-        context.say(
-            f"No builds on '{context.env.name}' yet — `freepod deploy` creates one."
-        )
+        context.say("This project has no builds yet — `freepod deploy` creates one.")
         return
 
     shown = records if show_all else records[:limit]
@@ -571,8 +572,12 @@ def _join(labels: list) -> str:
     return f"{', '.join(labels[:-1])} and {labels[-1]}"
 
 
-def _project_deployment(context: Context) -> project.Project:
-    """The project's recorded deployment, refusing the ways it can be wrong."""
+def _project_deployment(context: Context, *, lacks: str = "vars") -> project.Project:
+    """The project's recorded deployment, refusing the ways it can be wrong.
+
+    `lacks` names what a project without a deployment has none of, for the
+    refusal's wording.
+    """
     project_file = project.require_project()
     if project_file.env != context.env.name and project_file.deployment_id:
         raise UsageError(
@@ -583,7 +588,7 @@ def _project_deployment(context: Context) -> project.Project:
         )
     if not project_file.deployment_id:
         raise UsageError(
-            f"{project_file.path} records no deployment, so it has no vars.\n"
+            f"{project_file.path} records no deployment, so it has no {lacks}.\n"
             f"  Run `freepod deploy` to create one."
         )
     return project_file

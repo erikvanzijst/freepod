@@ -74,6 +74,7 @@ from app.models import (  # noqa: E402
     UserORM,
     PlanORM,
     PlanTemplateVersionORM,
+    ProductORM,
     ProductTemplateVersionORM,
     SubscriptionORM,
     BillingInterval,
@@ -396,6 +397,30 @@ def make_deployment_with_release(session: Session, **kwargs) -> DeploymentORM:
             values_json=deployment.user_values_json,
         )
     )
+    return deployment
+
+
+def make_bare_deployment(session: Session, user_id: int, *, status: str = "ready") -> DeploymentORM:
+    """A deployment of a throwaway product, for tests that need one to hang a
+    build or release off and care nothing about what it deploys. Commits."""
+    product = ProductORM(name=f"p-{uuid4().hex[:8]}", created_at=_utcnow())
+    session.add(product)
+    session.flush()
+    template = ProductTemplateVersionORM(
+        product_id=product.id, chart_ref="oci://example/chart", chart_version="1.0.0"
+    )
+    session.add(template)
+    session.flush()
+    deployment = make_deployment_with_release(
+        session,
+        user_id=user_id,
+        desired_template_id=template.id,
+        name=f"app-{uuid4().hex[:6]}",
+        namespace=f"ns-{uuid4().hex[:8]}",
+        status=status,
+    )
+    session.commit()
+    session.refresh(deployment)
     return deployment
 
 

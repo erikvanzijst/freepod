@@ -23,7 +23,7 @@ from app.models import (
 from app.services.jobs import JobService
 from app.services.reconcile_constants import DEPLOYMENT_STATUS_READY
 from tests.conftest import client, db_session  # noqa: F401
-from tests.conftest import create_free_plan_template, create_user
+from tests.conftest import create_free_plan_template, create_user, make_bare_deployment
 
 
 SCHEMA = {
@@ -96,9 +96,9 @@ def _make_ready(db_session, deployment_id):
     return deployment
 
 
-def _build(db_session, *, user_id, image="7@sha256:" + "a" * 64):
+def _build(db_session, *, deployment_id, image="7@sha256:" + "a" * 64):
     build = BuildORM(
-        user_id=user_id,
+        deployment_id=deployment_id,
         artifact_id=f"artifact-{uuid4().hex[:8]}",
         status="succeeded",
         image=image,
@@ -246,60 +246,128 @@ def test_release_numbers_are_per_deployment(client, db_session):
 # ---------------------------------------------------------------------------
 
 
+def _deployed(client, db_session, user_id, template_id, plan_id, host):
+    """A ready deployment created without a build, as `freepod deploy` now does."""
+    resp = _create(client, user_id, template_id, plan_id, {"host": host})
+    assert resp.status_code == 201, resp.text
+    deployment_id = UUID(resp.json()["deployment"]["id"])
+    _make_ready(db_session, deployment_id)
+    return deployment_id
+
+
+def _release_with(client, user_id, deployment_id, template_id, host, build):
+    return client.put(
+        f"/api/users/{user_id}/deployments/{deployment_id}",
+        json={
+            "desired_template_id": template_id,
+            "user_values_json": {"host": host, "image": build.image},
+            "build_id": str(build.id),
+        },
+    )
+
+
 def test_a_named_build_lands_on_the_release_and_not_on_the_deployment(client, db_session):
     user_id, template_id, plan_id = _setup(client, db_session, "build@example.com")
-    build = _build(db_session, user_id=user_id)
+    deployment_id = _deployed(client, db_session, user_id, template_id, plan_id, "build.example.com")
+    build = _build(db_session, deployment_id=deployment_id)
+
+    resp = _release_with(client, user_id, deployment_id, template_id, "build.example.com", build)
+
+    assert resp.status_code == 200, resp.text
+    assert _releases(db_session, deployment_id)[-1].build_id == build.id
+    # The deployment has no build-shaped state, on the row or in the response.
+    assert not hasattr(db_session.get(DeploymentORM, deployment_id), "build_id")
+    assert "build_id" not in resp.json()
+
+
+def test_a_build_named_on_creation_is_rejected(client, db_session):
+    """No build can belong to a deployment that does not exist yet."""
+    user_id, template_id, plan_id = _setup(client, db_session, "early@example.com")
+    elsewhere = _deployed(client, db_session, user_id, template_id, plan_id, "first.example.com")
+    build = _build(db_session, deployment_id=elsewhere)
 
     resp = _create(
         client, user_id, template_id, plan_id,
-        {"host": "build.example.com", "image": build.image},
+        {"host": "second.example.com", "image": build.image},
         build_id=str(build.id),
     )
-    assert resp.status_code == 201
-    deployment_id = UUID(resp.json()["deployment"]["id"])
 
-    assert _releases(db_session, deployment_id)[0].build_id == build.id
-    # The deployment has no build-shaped state, on the row or in the response.
-    assert not hasattr(db_session.get(DeploymentORM, deployment_id), "build_id")
-    assert "build_id" not in resp.json()["deployment"]
+    assert resp.status_code == 400
+    assert len(db_session.exec(select(DeploymentORM)).all()) == 1
+
+
+def test_another_deployments_build_is_rejected(client, db_session):
+    """Even the same owner's: the release would record another deployment's build."""
+    user_id, template_id, plan_id = _setup(client, db_session, "mine@example.com")
+    mine = _deployed(client, db_session, user_id, template_id, plan_id, "mine.example.com")
+    sibling = _deployed(client, db_session, user_id, template_id, plan_id, "sibling.example.com")
+    build = _build(db_session, deployment_id=sibling)
+
+    resp = _release_with(client, user_id, mine, template_id, "mine.example.com", build)
+
+    assert resp.status_code == 400
+    assert [r.build_id for r in _releases(db_session, mine)] == [None]
 
 
 def test_another_users_build_is_rejected(client, db_session):
-    user_id, template_id, plan_id = _setup(client, db_session, "mine@example.com")
+    user_id, template_id, plan_id = _setup(client, db_session, "owner@example.com")
+    mine = _deployed(client, db_session, user_id, template_id, plan_id, "owner.example.com")
     other_id = create_user(client, "theirs@example.com")["id"]
-    stolen = _build(db_session, user_id=other_id)
+    stolen = _build(db_session, deployment_id=make_bare_deployment(db_session, other_id).id)
 
-    resp = _create(
-        client, user_id, template_id, plan_id,
-        {"host": "mine.example.com", "image": stolen.image},
-        build_id=str(stolen.id),
-    )
+    resp = _release_with(client, user_id, mine, template_id, "owner.example.com", stolen)
+
     assert resp.status_code == 400
-    assert db_session.exec(select(DeploymentReleaseORM)).all() == []
+    assert [r.build_id for r in _releases(db_session, mine)] == [None]
 
 
 def test_an_unknown_build_is_rejected_indistinguishably(client, db_session):
     user_id, template_id, plan_id = _setup(client, db_session, "ghost@example.com")
-    other_id = create_user(client, "ghostother@example.com")["id"]
-    stolen = _build(db_session, user_id=other_id)
+    mine = _deployed(client, db_session, user_id, template_id, plan_id, "ghost.example.com")
+    sibling = _deployed(client, db_session, user_id, template_id, plan_id, "ghost2.example.com")
+    theirs = _build(db_session, deployment_id=sibling)
 
-    missing = _create(
-        client, user_id, template_id, plan_id,
-        {"host": "ghost.example.com"}, build_id=str(uuid4()),
-    )
-    theirs = _create(
-        client, user_id, template_id, plan_id,
-        {"host": "ghost2.example.com"}, build_id=str(stolen.id),
-    )
-    assert missing.status_code == theirs.status_code == 400
+    def put(build_id):
+        return client.put(
+            f"/api/users/{user_id}/deployments/{mine}",
+            json={
+                "desired_template_id": template_id,
+                "user_values_json": {"host": "ghost.example.com"},
+                "build_id": build_id,
+            },
+        )
+
+    missing = put(str(uuid4()))
+    elsewhere = put(str(theirs.id))
+
+    assert missing.status_code == elsewhere.status_code == 400
     # Same answer for both, so the endpoint cannot be used to probe.
-    assert missing.json() == theirs.json()
+    assert missing.json() == elsewhere.json()
+
+
+def test_an_image_reused_without_its_build_is_accepted(client, db_session):
+    """Releasing another deployment's image is still possible, just without provenance."""
+    user_id, template_id, plan_id = _setup(client, db_session, "reuse@example.com")
+    mine = _deployed(client, db_session, user_id, template_id, plan_id, "reuse.example.com")
+    sibling = _deployed(client, db_session, user_id, template_id, plan_id, "reuse2.example.com")
+    build = _build(db_session, deployment_id=sibling)
+
+    resp = client.put(
+        f"/api/users/{user_id}/deployments/{mine}",
+        json={
+            "desired_template_id": template_id,
+            "user_values_json": {"host": "reuse.example.com", "image": build.image},
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert _releases(db_session, mine)[-1].build_id is None
 
 
 def test_no_build_named_is_accepted_whatever_the_values_carry(client, db_session):
     """The admin UI's template-upgrade shape: stored values, image included, no build.
 
-    Ownership is the only condition on a build reference, so a write that names
+    Belonging is the only condition on a build reference, so a write that names
     none is accepted regardless of what the values contain. `image` is one
     chart's value, not a platform concept.
     """
@@ -325,34 +393,29 @@ def test_no_build_named_is_accepted_whatever_the_values_carry(client, db_session
 
 def test_a_build_is_accepted_for_a_deployment_whose_values_carry_no_image(client, db_session):
     user_id, template_id, plan_id = _setup(client, db_session, "curated@example.com")
-    build = _build(db_session, user_id=user_id)
-
-    resp = _create(
-        client, user_id, template_id, plan_id,
-        {"host": "curated.example.com"}, build_id=str(build.id),
-    )
-    assert resp.status_code == 201
-    deployment_id = UUID(resp.json()["deployment"]["id"])
-    assert _releases(db_session, deployment_id)[0].build_id == build.id
-
-
-def test_update_records_the_build_it_was_given(client, db_session):
-    user_id, template_id, plan_id = _setup(client, db_session, "updbuild@example.com")
-    deployment_id = UUID(
-        _create(client, user_id, template_id, plan_id, {"host": "ub.example.com"})
-        .json()["deployment"]["id"]
-    )
-    build = _build(db_session, user_id=user_id)
-    _make_ready(db_session, deployment_id)
+    deployment_id = _deployed(client, db_session, user_id, template_id, plan_id, "curated.example.com")
+    build = _build(db_session, deployment_id=deployment_id)
 
     resp = client.put(
         f"/api/users/{user_id}/deployments/{deployment_id}",
         json={
             "desired_template_id": template_id,
-            "user_values_json": {"host": "ub.example.com", "image": build.image},
+            "user_values_json": {"host": "curated.example.com"},
             "build_id": str(build.id),
         },
     )
+
+    assert resp.status_code == 200, resp.text
+    assert _releases(db_session, deployment_id)[-1].build_id == build.id
+
+
+def test_update_records_the_build_it_was_given(client, db_session):
+    user_id, template_id, plan_id = _setup(client, db_session, "updbuild@example.com")
+    deployment_id = _deployed(client, db_session, user_id, template_id, plan_id, "ub.example.com")
+    build = _build(db_session, deployment_id=deployment_id)
+
+    resp = _release_with(client, user_id, deployment_id, template_id, "ub.example.com", build)
+
     assert resp.status_code == 200
     releases = _releases(db_session, deployment_id)
     assert releases[0].build_id is None

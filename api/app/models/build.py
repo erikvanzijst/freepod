@@ -1,10 +1,10 @@
 """The build record.
 
-A build is a standalone transformation from an uploaded project archive into a
-container image. It is owned by a **user**, never by a deployment: most products
-build nothing, and a single deployment may consume several images, so a build
-carries no deployment reference and implies no rollout. The client submits a
-successful build's ``image`` to the deployment update endpoint itself.
+A build transforms an uploaded project archive into a container image for one
+**deployment**, and its owner is that deployment's owner: the build records no
+owner of its own, so the two can never disagree. A build implies no rollout;
+the client submits a successful build's ``image`` to the deployment update
+endpoint itself.
 
 There is no companion job table. Unlike ``DeploymentReconcileJobORM`` — which
 exists for retry accounting, deduplication, and lease re-claiming — a build
@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 
 from pydantic import ConfigDict
 from sqlmodel import Field, SQLModel
-from sqlalchemy import Column, Index, LargeBinary, String, Uuid
+from sqlalchemy import Column, ForeignKey, Index, LargeBinary, String, Uuid
 
 from app.models.core import _utcnow
 from app.services.build_constants import (
@@ -52,10 +52,15 @@ class BuildORM(BuildBase, table=True):
     )
 
     id: UUID = Field(default_factory=uuid4, sa_column=Column(Uuid, primary_key=True))
-    user_id: int = Field(foreign_key="user.id", index=True, nullable=False)
+    # No cascade: deployments are soft-deleted, and a build outlives its
+    # deployment as the provenance of the releases that shipped it.
+    deployment_id: UUID = Field(
+        sa_column=Column(Uuid, ForeignKey("deployment.id"), nullable=False, index=True)
+    )
     # Issued when the upload slot was minted. The object key is *derived* from
-    # user_id and this value; it is never stored, so there is no URL or path
-    # here whose parsing could be made load-bearing for authorization.
+    # the deployment's owner and this value; it is never stored, so there is no
+    # URL or path here whose parsing could be made load-bearing for
+    # authorization.
     artifact_id: str = Field(sa_column=Column(String(), nullable=False))
     # Indexed: every build worker pass filters on it.
     status: str = Field(default=BUILD_STATUS_QUEUED, nullable=False, index=True)
@@ -69,7 +74,7 @@ class BuildORM(BuildBase, table=True):
     # a `running` build is therefore unambiguous — the Job was never created —
     # rather than a race the worker would have to guess about.
     job_id: Optional[str] = Field(default=None, sa_column=Column(String(), nullable=True))
-    # `{user_id}@{digest}`, with the registry host stripped off. A flat string,
+    # `{owner_id}@{digest}`, with the registry host stripped off. A flat string,
     # never a structured object: it is submitted verbatim by the client as a
     # product's `image` user value, and any client-side reassembly is a place
     # for the two subsystems to drift apart on format.
@@ -133,10 +138,11 @@ class BuildORM(BuildBase, table=True):
 class BuildCreate(BuildBase):
     """The entire client-supplied input to build creation: an artifact id.
 
-    ``extra="forbid"`` is the enforcement of "the owner is never taken from the
-    request body" — a `user_id` in the payload is rejected outright rather than
-    quietly dropped, so a client that believes it is choosing an owner finds
-    out immediately.
+    ``extra="forbid"`` is the enforcement of "neither the owner nor the
+    deployment is taken from the request body" — a `user_id` or
+    `deployment_id` in the payload is rejected outright rather than quietly
+    dropped, so a client that believes it is choosing one finds out
+    immediately.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -144,7 +150,7 @@ class BuildCreate(BuildBase):
 
 class BuildRead(BuildBase):
     id: UUID
-    user_id: int
+    deployment_id: UUID
     status: str
     created_at: datetime
     started_at: Optional[datetime] = None

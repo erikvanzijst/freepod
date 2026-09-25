@@ -9,12 +9,13 @@ import re
 import httpx
 import pytest
 
-from freepod import FreepodError, RolloutFailed, UsageError
+from freepod import BuildFailed, FreepodError, RolloutFailed, UsageError
 from freepod.deploy import (
     describe_conflict,
     deploy,
     follow_rollout,
     preflight,
+    ensure_deployment,
     release,
     select_free_plan,
     wait_until_settled,
@@ -128,6 +129,11 @@ class Platform:
     `reads` is the queue of deployment records successive
     `GET /api/users/{id}/deployments/{id}` calls return, repeating the last
     forever — which is how a test scripts a rollout without a clock.
+
+    An update is applied the way the platform applies one: once a PUT has been
+    answered, reads report at least that update's generation, in whatever
+    state the script gives them. So a first deploy's create, wait and release
+    are scripted with a single terminal read.
     """
 
     def __init__(
@@ -147,6 +153,7 @@ class Platform:
         hostname_usable=True,
         hostname_reason=None,
         image=IMAGE,
+        build_status="succeeded",
         checkout_url=None,
         tos_version=TOS_VERSION,
         tos_current=TOS_VERSION,
@@ -167,6 +174,7 @@ class Platform:
         self.hostname_usable = hostname_usable
         self.hostname_reason = hostname_reason
         self.image = image
+        self.build_status = build_status
         self.checkout_url = checkout_url
         # Accepted by default: the terms are a first-deploy precondition, not
         # the subject of most of these tests.
@@ -184,6 +192,7 @@ class Platform:
         self.calls = []
         self.bodies = {}
         self.hostname_checks = []
+        self.applied_generation = 0
 
     # -- routing ----------------------------------------------------------
 
@@ -242,13 +251,15 @@ class Platform:
                 self.bodies["update"] = json.loads(request.content)
                 if self.update_detail is not None:
                     return json_response(self.update_status, {"detail": self.update_detail})
-                return json_response(
-                    self.update_status,
-                    self.update or deployment(status="provisioning", generation=4),
-                )
+                updated = self.update or deployment(status="provisioning", generation=4)
+                if self.update_status == 200:
+                    self.applied_generation = updated.get("generation", 0)
+                return json_response(self.update_status, updated)
             if self.deployment_missing:
                 return json_response(404, {"detail": "Deployment not found"})
             record = self.reads.pop(0) if len(self.reads) > 1 else self.reads[0]
+            if record.get("generation", 0) < self.applied_generation:
+                record = {**record, "generation": self.applied_generation}
             return json_response(200, record)
 
         # -- the build pipeline, scripted to succeed --------------------
@@ -262,14 +273,18 @@ class Platform:
                     "max_bytes": 104857600,
                 },
             )
-        if path == f"/api/users/{self.user_id}/builds" and method == "POST":
+        builds = rf"/api/users/{self.user_id}/deployments/[^/]+/builds"
+        if re.fullmatch(builds, path) and method == "POST":
+            self.bodies["build"] = json.loads(request.content)
             return json_response(201, {"id": "b-1", "status": "queued"})
         if path.endswith("/log"):
             return httpx.Response(
-                206, content=b"step 1\n", headers={"X-Build-Status": "succeeded"}
+                206, content=b"step 1\n", headers={"X-Build-Status": self.build_status}
             )
-        if path.startswith(f"/api/users/{self.user_id}/builds/"):
-            return json_response(200, {"id": "b-1", "status": "succeeded", "image": self.image})
+        if re.fullmatch(builds + r"/[^/]+", path):
+            return json_response(
+                200, {"id": "b-1", "status": self.build_status, "image": self.image}
+            )
 
         return json_response(404, {"detail": "Not Found"})
 
@@ -722,41 +737,32 @@ def test_plans_are_not_read_when_a_deployment_already_exists(make_api, tmp_path)
 # --------------------------------------------------------------------------
 
 
-def test_a_first_deploy_performs_a_single_rollout(make_api, tmp_path):
-    """Creating first would roll out the placeholder and then the real image."""
-    platform = Platform(
-        create=deployment(status="provisioning", generation=1),
-        reads=[deployment(status="ready", generation=1)],
+def _first_deploy():
+    return Platform(
+        create=deployment(id="new-id-1", name="custom-fresh", status="provisioning", generation=1),
+        reads=[deployment(id="new-id-1", status="ready", generation=1)],
     )
+
+
+def test_a_first_deploy_creates_then_builds_then_releases(make_api, tmp_path):
+    """A build belongs to a deployment, so the deployment has to exist first."""
+    platform = _first_deploy()
     project_at(tmp_path)
 
     run(make_api, platform, tmp_path)
 
-    creates = [c for c in platform.calls if c == ("POST", "/api/users/7/deployments")]
-    updates = [c for c in platform.calls if c[0] == "PUT"]
-    assert len(creates) == 1
-    assert updates == []
+    create = platform.index_of("POST", "/api/users/7/deployments")
+    build = platform.index_of("POST", "/api/users/7/deployments/new-id-1/builds")
+    update = platform.index_of("PUT", "/api/users/7/deployments/new-id-1")
+    assert create < platform.index_of("POST", "/api/artifacts") < build < update
+    assert [c for c in platform.calls if c == ("POST", "/api/users/7/deployments")] == [
+        ("POST", "/api/users/7/deployments")
+    ]
 
 
-def test_the_build_completes_before_the_deployment_is_created(make_api, tmp_path):
-    platform = Platform(
-        create=deployment(status="provisioning", generation=1),
-        reads=[deployment(status="ready", generation=1)],
-    )
-    project_at(tmp_path)
-
-    run(make_api, platform, tmp_path)
-
-    assert platform.index_of("GET", "/api/users/7/builds/b-1") < platform.index_of(
-        "POST", "/api/users/7/deployments"
-    )
-
-
-def test_the_creation_carries_the_built_image(make_api, tmp_path):
-    platform = Platform(
-        create=deployment(status="provisioning", generation=1),
-        reads=[deployment(status="ready", generation=1)],
-    )
+def test_the_creation_carries_no_image_and_no_build(make_api, tmp_path):
+    """The placeholder serves until the first build is released."""
+    platform = _first_deploy()
     project_at(tmp_path)
 
     run(make_api, platform, tmp_path)
@@ -764,7 +770,70 @@ def test_the_creation_carries_the_built_image(make_api, tmp_path):
     body = platform.bodies["create"]
     assert body["desired_template_id"] == 49
     assert body["plan_template_id"] == 11
-    assert body["user_values_json"] == {"hostname": "myapp.erik.freepod.eu", "image": IMAGE}
+    assert body["user_values_json"] == {"hostname": "myapp.erik.freepod.eu"}
+    assert "build_id" not in body
+
+
+def test_the_first_release_carries_the_built_image(make_api, tmp_path):
+    platform = _first_deploy()
+    project_at(tmp_path)
+
+    run(make_api, platform, tmp_path)
+
+    assert platform.bodies["update"]["user_values_json"] == {
+        "hostname": "myapp.erik.freepod.eu",
+        "image": IMAGE,
+    }
+
+
+def test_the_pointer_is_written_before_anything_is_packed(make_api, tmp_path):
+    """A failed pack, upload or build must leave a deployment the next deploy reuses."""
+    seen = {}
+
+    class Watcher(Platform):
+        def __call__(self, request):
+            if request.url.path == "/api/artifacts":
+                seen.setdefault("file", json.loads((tmp_path / ".freepod.json").read_text()))
+            return super().__call__(request)
+
+    platform = Watcher(
+        create=deployment(id="new-id-1", name="custom-fresh", status="provisioning", generation=1),
+        reads=[deployment(id="new-id-1", status="ready", generation=1)],
+    )
+    project_at(tmp_path)
+
+    run(make_api, platform, tmp_path)
+
+    assert seen["file"]["deployment"] == {"id": "new-id-1", "name": "custom-fresh"}
+
+
+def test_a_failed_first_build_keeps_the_deployment_and_names_delete(make_api, tmp_path):
+    platform = Platform(
+        create=deployment(id="new-id-1", name="custom-fresh", status="provisioning", generation=1),
+        build_status="failed",
+    )
+    project_at(tmp_path)
+    said = []
+
+    with pytest.raises(BuildFailed):
+        run(make_api, platform, tmp_path, echo=said.append)
+
+    saved = json.loads((tmp_path / ".freepod.json").read_text())
+    assert saved["deployment"] == {"id": "new-id-1", "name": "custom-fresh"}
+    assert any("freepod delete" in line and "custom-fresh" in line for line in said)
+    assert not any(method == "PUT" for method, _ in platform.calls)
+
+
+def test_a_failed_build_of_an_existing_deployment_says_nothing_about_delete(make_api, tmp_path):
+    platform = Platform(build_status="failed")
+    project_at(tmp_path, pointer={"id": deployment()["id"], "name": "custom-d8dtx4"})
+    said = []
+
+    with pytest.raises(BuildFailed):
+        run(make_api, platform, tmp_path, echo=said.append)
+
+    assert not any("freepod delete" in line for line in said)
+    assert "create" not in platform.bodies
 
 
 def test_the_pointer_is_written_before_the_rollout_is_awaited(make_api, tmp_path):
@@ -1073,6 +1142,26 @@ def test_a_creation_conflict_is_read_the_same_way(make_api, tmp_path):
     assert "moved while this deploy was running" in str(raised.value)
 
 
+@pytest.mark.parametrize(
+    "detail",
+    [
+        "product template has an invalid values_schema_json: bad",
+        "user_values_json is invalid: 'x' is a required property",
+        "A deployment job is already queued or running",
+    ],
+)
+def test_a_refused_creation_claims_no_build(make_api, tmp_path, detail):
+    """The deployment is created before anything is built, so there is no image to reassure about."""
+    platform = Platform(create_status=409, create_detail=detail)
+    project_at(tmp_path)
+
+    with pytest.raises(FreepodError) as raised:
+        run(make_api, platform, tmp_path)
+
+    assert "built" not in str(raised.value) and "build succeeded" not in str(raised.value)
+    assert not any("/builds" in path for _method, path in platform.calls)
+
+
 # --------------------------------------------------------------------------
 # The rollout (task 10.10)
 # --------------------------------------------------------------------------
@@ -1154,6 +1243,7 @@ def test_a_ready_deployment_without_a_hostname_is_a_platform_condition(make_api,
     project_at(tmp_path)
     api, _, _ = make_api(platform)
     state = preflight(api, "prod", root=tmp_path, echo=lambda _m: None)
+    ensure_deployment(api, state, echo=lambda _m: None)
 
     with pytest.raises(FreepodError) as raised:
         release(api, state, IMAGE, poll=0, echo=lambda _m: None)
@@ -1176,7 +1266,9 @@ def test_recreate_discards_the_pointer_and_creates_a_new_deployment(make_api, tm
     run(make_api, platform, tmp_path, recreate=True)
 
     assert "create" in platform.bodies
-    assert not any(method == "PUT" for method, _ in platform.calls)
+    # The build and the release go to the new deployment, never the old one.
+    assert ("POST", "/api/users/7/deployments/new-id-2/builds") in platform.calls
+    assert [p for m, p in platform.calls if m == "PUT"] == ["/api/users/7/deployments/new-id-2"]
     saved = json.loads((tmp_path / ".freepod.json").read_text())
     assert saved["deployment"] == {"id": "new-id-2", "name": "custom-second"}
 
@@ -1233,21 +1325,23 @@ def test_the_build_log_and_the_address_are_kept_apart(make_api, tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_a_created_deployment_names_the_build_that_produced_its_image(make_api, tmp_path):
+def test_a_first_release_names_the_build_that_produced_its_image(make_api, tmp_path):
     """Without this every release records a null build and the chain from
     source archive through build to running pod is broken at its last link.
 
     The platform stores it on the *release*, never on the deployment, so it
-    rides as a plain request field beside `plan_template_id`.
+    rides as a plain request field on the update. The creation names none: no
+    build can belong to a deployment that does not exist yet.
     """
-    platform = Platform()
+    platform = _first_deploy()
     project_at(tmp_path, values={"hostname": "myapp.erik.freepod.eu"})
 
     run(make_api, platform, tmp_path)
 
-    assert platform.bodies["create"]["build_id"] == "b-1"
+    assert "build_id" not in platform.bodies["create"]
+    assert platform.bodies["update"]["build_id"] == "b-1"
     # And the image it names is the one that build produced.
-    assert platform.bodies["create"]["user_values_json"]["image"] == IMAGE
+    assert platform.bodies["update"]["user_values_json"]["image"] == IMAGE
 
 
 def test_an_updated_deployment_names_the_build_too(make_api, tmp_path):
@@ -1276,7 +1370,8 @@ def test_releasing_without_a_build_sends_no_build_reference(make_api, tmp_path):
     project_at(tmp_path, values={"hostname": "myapp.erik.freepod.eu"})
     api, _, _ = make_api(platform)
     state = preflight(api, "prod", root=tmp_path, echo=lambda _m: None)
+    ensure_deployment(api, state, echo=lambda _m: None)
 
     release(api, state, IMAGE, poll=0, echo=lambda _m: None)
 
-    assert "build_id" not in platform.bodies["create"]
+    assert "build_id" not in platform.bodies["update"]

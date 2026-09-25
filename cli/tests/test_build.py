@@ -95,7 +95,7 @@ def platform(*, slots=None, build=None, build_status=201, log=None, record=None)
             )
             return json_response(201, body)
 
-        if request.method == "POST" and path == "/api/users/7/builds":
+        if request.method == "POST" and path == "/api/users/7/deployments/d-1/builds":
             state["build_payload"] = request.content
             return json_response(build_status, build or {"id": "b-1", "status": "queued"})
 
@@ -111,7 +111,7 @@ def platform(*, slots=None, build=None, build_status=201, log=None, record=None)
                 headers={"X-Build-Status": status, "Accept-Ranges": "bytes"},
             )
 
-        if path.startswith("/api/users/7/builds/"):
+        if path.startswith("/api/users/7/deployments/d-1/builds/"):
             return json_response(200, record or {"id": "b-1", "status": "succeeded",
                                                  "image": "5@sha256:" + "a" * 64})
 
@@ -371,7 +371,7 @@ def test_the_build_is_created_with_the_artifact_id_alone(make_api):
     handler, state = platform()
     api, _, _ = make_api(handler)
 
-    create_build(api, 7, "3f6c1e9a4b2d47c8a1e05d9f7b3c2a10")
+    create_build(api, 7, "d-1", "3f6c1e9a4b2d47c8a1e05d9f7b3c2a10")
 
     payload = json.loads(state["build_payload"])
     assert payload == {"artifact_id": "3f6c1e9a4b2d47c8a1e05d9f7b3c2a10"}, (
@@ -383,7 +383,7 @@ def test_a_201_is_a_new_build(make_api):
     handler, _ = platform(build_status=201, build={"id": "b-9", "status": "queued"})
     api, _, _ = make_api(handler)
 
-    build, reattached = create_build(api, 7, "a" * 32)
+    build, reattached = create_build(api, 7, "d-1", "a" * 32)
 
     assert build["id"] == "b-9"
     assert reattached is False
@@ -399,7 +399,7 @@ def test_a_200_is_reported_as_re_attaching(make_api, capsys):
     store = Store(204)
     handle, size = archive()
 
-    build_image(api, 7, handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
+    build_image(api, 7, "d-1", handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
 
     stderr = capsys.readouterr().err
     assert "Re-attaching" in stderr
@@ -410,10 +410,10 @@ def test_a_200_does_not_create_a_second_build(make_api):
     handler, state = platform(build_status=200, build={"id": "b-1", "status": "running"})
     api, _, _ = make_api(handler)
 
-    create_build(api, 7, "a" * 32)
+    create_build(api, 7, "d-1", "a" * 32)
 
-    assert [call for call in state["calls"] if call == ("POST", "/api/users/7/builds")] == [
-        ("POST", "/api/users/7/builds")
+    assert [call for call in state["calls"] if call == ("POST", "/api/users/7/deployments/d-1/builds")] == [
+        ("POST", "/api/users/7/deployments/d-1/builds")
     ]
 
 
@@ -429,7 +429,7 @@ def test_output_is_streamed_as_it_arrives(make_api):
     api, _, _ = make_api(handler)
     out = io.BytesIO()
 
-    status = follow_build(api, 7, "b-1", out=out, poll_active=0, poll_idle=0)
+    status = follow_build(api, 7, "d-1", "b-1", out=out, poll_active=0, poll_idle=0)
 
     assert status == "succeeded"
     assert out.getvalue() == b"step 1\nstep 2\ndone\n"
@@ -441,7 +441,7 @@ def test_no_byte_is_displayed_twice(make_api):
     api, _, _ = make_api(handler)
     out = io.BytesIO()
 
-    follow_build(api, 7, "b-1", out=out, poll_active=0, poll_idle=0)
+    follow_build(api, 7, "d-1", "b-1", out=out, poll_active=0, poll_idle=0)
 
     assert out.getvalue() == b"aaabbbccc"
     # The offset advances by bytes read, so each request asks for what follows.
@@ -454,7 +454,7 @@ def test_the_offset_advances_by_bytes_not_characters(make_api):
     handler, state = platform(log=[(chunk, "running"), (b"", "succeeded")])
     api, _, _ = make_api(handler)
 
-    follow_build(api, 7, "b-1", out=io.BytesIO(), poll_active=0, poll_idle=0)
+    follow_build(api, 7, "d-1", "b-1", out=io.BytesIO(), poll_active=0, poll_idle=0)
 
     assert state["ranges"][1] == f"bytes={len(chunk)}-"
     assert len(chunk) == 13
@@ -467,7 +467,7 @@ def test_an_empty_range_is_not_an_error(make_api):
     api, _, _ = make_api(handler)
     out = io.BytesIO()
 
-    status = follow_build(api, 7, "b-1", out=out, poll_active=0, poll_idle=0)
+    status = follow_build(api, 7, "d-1", "b-1", out=out, poll_active=0, poll_idle=0)
 
     assert status == "succeeded"
     assert out.getvalue() == b"output\n"
@@ -478,13 +478,13 @@ def test_streaming_stops_at_every_terminal_status(terminal, make_api):
     handler, state = platform(log=[(b"work\n", "running"), (b"last\n", terminal)])
     api, _, _ = make_api(handler)
 
-    status = follow_build(api, 7, "b-1", out=io.BytesIO(), poll_active=0, poll_idle=0)
+    status = follow_build(api, 7, "d-1", "b-1", out=io.BytesIO(), poll_active=0, poll_idle=0)
 
     assert status == terminal
     # Two log reads and nothing else: the status travelled with the bytes.
     assert state["calls"] == [
-        ("GET", "/api/users/7/builds/b-1/log"),
-        ("GET", "/api/users/7/builds/b-1/log"),
+        ("GET", "/api/users/7/deployments/d-1/builds/b-1/log"),
+        ("GET", "/api/users/7/deployments/d-1/builds/b-1/log"),
     ]
 
 
@@ -493,7 +493,7 @@ def test_the_final_chunk_is_written_before_stopping(make_api):
     api, _, _ = make_api(handler)
     out = io.BytesIO()
 
-    follow_build(api, 7, "b-1", out=out, poll_active=0, poll_idle=0)
+    follow_build(api, 7, "d-1", "b-1", out=out, poll_active=0, poll_idle=0)
 
     assert out.getvalue() == b"the last words\n"
 
@@ -504,7 +504,7 @@ def test_a_queued_build_says_it_is_waiting(make_api, capsys):
     )
     api, _, _ = make_api(handler)
 
-    follow_build(api, 7, "b-1", out=io.BytesIO(), poll_active=0, poll_idle=0)
+    follow_build(api, 7, "d-1", "b-1", out=io.BytesIO(), poll_active=0, poll_idle=0)
 
     stderr = capsys.readouterr().err
     assert "Queued" in stderr
@@ -520,7 +520,7 @@ def test_polling_backs_off_while_no_output_arrives(make_api, monkeypatch):
     slept = []
     monkeypatch.setattr("freepod.build.time.sleep", lambda seconds: slept.append(seconds))
 
-    follow_build(api, 7, "b-1", out=io.BytesIO(), poll_active=1.0, poll_idle=3.0)
+    follow_build(api, 7, "d-1", "b-1", out=io.BytesIO(), poll_active=1.0, poll_idle=3.0)
 
     assert slept == [1.0, 3.0], "1s while output arrives, 3s while idle"
 
@@ -530,7 +530,7 @@ def test_a_wait_that_times_out_says_the_build_continues(make_api):
     api, _, _ = make_api(handler)
 
     with pytest.raises(FreepodError) as raised:
-        follow_build(api, 7, "b-42", out=io.BytesIO(), timeout=0, poll_active=0, poll_idle=0)
+        follow_build(api, 7, "d-1", "b-42", out=io.BytesIO(), timeout=0, poll_active=0, poll_idle=0)
 
     message = str(raised.value)
     assert "stopped waiting" in message
@@ -555,7 +555,7 @@ def test_an_interrupt_says_the_build_continues_and_names_it(make_api, capsys):
     api, _, _ = make_api(handler)
 
     with pytest.raises(KeyboardInterrupt):
-        follow_build(api, 7, "b-abc123", out=io.BytesIO(), poll_active=0, poll_idle=0)
+        follow_build(api, 7, "d-1", "b-abc123", out=io.BytesIO(), poll_active=0, poll_idle=0)
 
     stderr = capsys.readouterr().err
     assert "continues on the platform" in stderr
@@ -575,12 +575,15 @@ def test_a_failed_build_stops_before_release(make_api, capsys):
     handle, size = archive()
 
     with pytest.raises(BuildFailed) as raised:
-        build_image(api, 7, handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
+        build_image(api, 7, "d-1", handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
 
     assert "failed" in str(raised.value)
     assert "Nothing has been deployed" in str(raised.value)
-    # No deployment call of any kind was made.
-    assert not any("deployments" in path for _method, path in state["calls"])
+    # Nothing was done to the deployment itself; only its builds were touched.
+    assert not any(
+        re.fullmatch(r"/api/users/\d+/deployments(/[^/]+)?", path)
+        for _method, path in state["calls"]
+    )
     capsys.readouterr()
 
 
@@ -593,7 +596,7 @@ def test_a_failed_build_exits_four(make_api, capsys):
     handle, size = archive()
 
     with pytest.raises(BuildFailed) as raised:
-        build_image(api, 7, handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
+        build_image(api, 7, "d-1", handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
 
     assert raised.value.exit_code == EXIT_BUILD_FAILED
     capsys.readouterr()
@@ -606,7 +609,7 @@ def test_a_canceled_build_also_stops(make_api, capsys):
     handle, size = archive()
 
     with pytest.raises(BuildFailed, match="canceled"):
-        build_image(api, 7, handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
+        build_image(api, 7, "d-1", handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
     capsys.readouterr()
 
 
@@ -620,7 +623,7 @@ def test_a_successful_build_yields_the_image_reference(make_api, capsys):
     store = Store(204)
     handle, size = archive()
 
-    built = build_image(api, 7, handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
+    built = build_image(api, 7, "d-1", handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
 
     assert built.image == digest
     # The build id travels with the image, because the platform records
@@ -629,7 +632,7 @@ def test_a_successful_build_yields_the_image_reference(make_api, capsys):
     # many-to-one.
     assert built.build_id == "b-1"
     # `image` is null until success, so it is read from the record afterwards.
-    assert ("GET", "/api/users/7/builds/b-1") in state["calls"]
+    assert ("GET", "/api/users/7/deployments/d-1/builds/b-1") in state["calls"]
     capsys.readouterr()
 
 
@@ -642,7 +645,7 @@ def test_a_success_without_an_image_is_a_platform_condition(make_api, capsys):
     handle, size = archive()
 
     with pytest.raises(FreepodError, match="unexpected platform condition"):
-        build_image(api, 7, handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
+        build_image(api, 7, "d-1", handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
     capsys.readouterr()
 
 
@@ -657,13 +660,13 @@ def test_the_phases_happen_in_order(make_api, capsys):
     store = Store(204)
     handle, size = archive()
 
-    build_image(api, 7, handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
+    build_image(api, 7, "d-1", handle, size, client=store.client(), out=io.BytesIO(), quiet=True)
 
     assert state["calls"] == [
         ("POST", "/api/artifacts"),
-        ("POST", "/api/users/7/builds"),
-        ("GET", "/api/users/7/builds/b-1/log"),
-        ("GET", "/api/users/7/builds/b-1"),
+        ("POST", "/api/users/7/deployments/d-1/builds"),
+        ("GET", "/api/users/7/deployments/d-1/builds/b-1/log"),
+        ("GET", "/api/users/7/deployments/d-1/builds/b-1"),
     ]
     capsys.readouterr()
 
@@ -676,7 +679,7 @@ def test_the_build_log_goes_to_stdout_and_progress_to_stderr(make_api, capsys):
     handle, size = archive()
 
     out = io.BytesIO()
-    build_image(api, 7, handle, size, client=store.client(), out=out, quiet=True)
+    build_image(api, 7, "d-1", handle, size, client=store.client(), out=out, quiet=True)
 
     captured = capsys.readouterr()
     assert out.getvalue() == b"BUILD-OUTPUT\n"

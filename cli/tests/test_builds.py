@@ -44,7 +44,7 @@ def build(
 ):
     return {
         "id": id,
-        "user_id": 7,
+        "deployment_id": DEPLOYMENT_ID,
         "artifact_id": "f7fdc396465f41dd8710577b1417eccf",
         "status": status,
         "created_at": created_at,
@@ -55,7 +55,8 @@ def build(
 
 
 class Platform:
-    """The two reads a listing performs, and nothing else."""
+    """The reads a listing performs, and nothing else. Builds are served only
+    under the project's deployment."""
 
     def __init__(self, *, user_id=7, builds=None, deployment=None, deployment_status=200):
         self.user_id = user_id
@@ -70,7 +71,7 @@ class Platform:
 
         if path == "/api/me":
             return json_response(200, {"id": self.user_id, "email": "dev@example.com"})
-        if path == f"/api/users/{self.user_id}/builds":
+        if path == f"/api/users/{self.user_id}/deployments/{DEPLOYMENT_ID}/builds":
             return json_response(200, self.builds)
         if re.fullmatch(r"/api/users/\d+/deployments/[^/]+", path):
             if self.deployment_status != 200:
@@ -117,56 +118,28 @@ def test_the_platforms_order_is_kept(make_api):
     ordered = [build(id="b-1"), build(id="b-2"), build(id="b-3")]
     api, _, _ = make_api(Platform(builds=ordered))
 
-    assert [record["id"] for record in list_builds(api, 7)] == ["b-1", "b-2", "b-3"]
+    listed = list_builds(api, 7, DEPLOYMENT_ID)
+
+    assert [record["id"] for record in listed] == ["b-1", "b-2", "b-3"]
 
 
-def test_the_deployed_image_comes_from_the_projects_deployment(make_api, tmp_path):
-    project_at(tmp_path, pointer=POINTER)
+def test_the_deployed_image_comes_from_the_projects_deployment(make_api):
     api, _, _ = make_api(Platform(deployment=deployment_running(IMAGE)))
 
-    assert deployed_image(api, 7, "prod", tmp_path) == IMAGE
+    assert deployed_image(api, 7, DEPLOYMENT_ID) == IMAGE
 
 
-def test_without_a_project_nothing_is_marked(make_api, tmp_path):
-    """`builds` is account-wide and works anywhere; the annotation is what
-    needs a project, not the listing."""
-    platform = Platform()
-    api, _, _ = make_api(platform)
-
-    assert deployed_image(api, 7, "prod", tmp_path) is None
-    assert platform.calls == []
-
-
-def test_a_project_for_another_environment_is_ignored(make_api, tmp_path):
-    """Not an error: a deployment id minted on dev means nothing on prod, but
-    the prod listing is still perfectly good."""
-    project_at(tmp_path, env="dev", pointer=POINTER)
-    api, _, _ = make_api(Platform(deployment=deployment_running(IMAGE)))
-
-    assert deployed_image(api, 7, "prod", tmp_path) is None
-
-
-def test_a_project_with_no_deployment_yet_marks_nothing(make_api, tmp_path):
-    project_at(tmp_path, pointer=None)
-    api, _, _ = make_api(Platform())
-
-    assert deployed_image(api, 7, "prod", tmp_path) is None
-
-
-def test_a_deployment_the_platform_lost_does_not_break_the_listing(make_api, tmp_path):
-    """A stale pointer is the common way a project goes out of date. It must
-    not turn a listing into a failure."""
-    project_at(tmp_path, pointer=POINTER)
+def test_a_deleted_deployment_marks_nothing(make_api):
+    """The platform no longer answers for it, but its builds are still listed."""
     api, _, _ = make_api(Platform(deployment_status=404))
 
-    assert deployed_image(api, 7, "prod", tmp_path) is None
+    assert deployed_image(api, 7, DEPLOYMENT_ID) is None
 
 
-def test_a_deployment_with_no_image_marks_nothing(make_api, tmp_path):
-    project_at(tmp_path, pointer=POINTER)
+def test_a_deployment_with_no_image_marks_nothing(make_api):
     api, _, _ = make_api(Platform(deployment=deployment_running(None)))
 
-    assert deployed_image(api, 7, "prod", tmp_path) is None
+    assert deployed_image(api, 7, DEPLOYMENT_ID) is None
 
 
 # --------------------------------------------------------------------------
@@ -308,6 +281,7 @@ def test_limit_keeps_the_most_recent_and_says_what_it_hid(
     stub_api, cached_credential, tmp_path, monkeypatch, capsys
 ):
     stub_api(Platform(builds=[build(id=f"b-{n}") for n in range(5)]))
+    project_at(tmp_path, pointer=POINTER)
     monkeypatch.chdir(tmp_path)
 
     assert main(["builds", "--limit", "2"]) == EXIT_OK
@@ -320,6 +294,7 @@ def test_limit_keeps_the_most_recent_and_says_what_it_hid(
 
 def test_all_overrides_the_limit(stub_api, cached_credential, tmp_path, monkeypatch, capsys):
     stub_api(Platform(builds=[build(id=f"b-{n}") for n in range(DEFAULT_LIMIT + 3)]))
+    project_at(tmp_path, pointer=POINTER)
     monkeypatch.chdir(tmp_path)
 
     assert main(["builds", "--all"]) == EXIT_OK
@@ -341,23 +316,25 @@ def test_a_limit_of_zero_is_a_usage_error(stub_api, cached_credential, tmp_path,
     capsys.readouterr()
 
 
-def test_an_account_with_no_builds_says_so_and_prints_no_table(
+def test_a_project_with_no_builds_says_so_and_prints_no_table(
     stub_api, cached_credential, tmp_path, monkeypatch, capsys
 ):
     stub_api(Platform(builds=[]))
+    project_at(tmp_path, pointer=POINTER)
     monkeypatch.chdir(tmp_path)
 
     assert main(["builds"]) == EXIT_OK
 
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert "No builds" in captured.err
+    assert "no builds" in captured.err
 
 
 def test_verbose_widens_the_image_column(
     stub_api, cached_credential, tmp_path, monkeypatch, capsys
 ):
     stub_api(Platform(builds=[build()]))
+    project_at(tmp_path, pointer=POINTER)
     monkeypatch.chdir(tmp_path)
 
     assert main(["--verbose", "builds"]) == EXIT_OK
@@ -377,3 +354,75 @@ def test_quiet_leaves_the_table_and_drops_the_legend(
     captured = capsys.readouterr()
     assert "BUILD" in captured.out
     assert captured.err == ""
+
+
+def test_only_the_projects_builds_are_listed(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsys
+):
+    project_at(tmp_path, pointer=POINTER)
+    platform = Platform(builds=[build(id="b-mine")], deployment=deployment_running(IMAGE))
+    stub_api(platform)
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["builds"]) == EXIT_OK
+
+    assert "b-mine" in capsys.readouterr().out
+    assert f"/api/users/7/deployments/{DEPLOYMENT_ID}/builds" in platform.paths()
+    assert "/api/users/7/builds" not in platform.paths()
+
+
+def test_a_deleted_deployments_builds_are_still_listed(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsys
+):
+    project_at(tmp_path, pointer=POINTER)
+    stub_api(Platform(builds=[build(id="b-old")], deployment_status=404))
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["builds"]) == EXIT_OK
+
+    captured = capsys.readouterr()
+    assert "b-old" in captured.out
+    assert LIVE_MARKER not in captured.err
+
+
+def test_outside_a_project_the_history_is_refused(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsys
+):
+    platform = Platform()
+    stub_api(platform)
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["builds"]) == EXIT_USAGE
+
+    assert "freepod init" in capsys.readouterr().err
+    assert platform.calls == []
+
+
+def test_a_project_that_has_not_deployed_is_refused(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsys
+):
+    project_at(tmp_path, pointer=None)
+    platform = Platform()
+    stub_api(platform)
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["builds"]) == EXIT_USAGE
+
+    err = capsys.readouterr().err
+    assert "no builds" in err and "freepod deploy" in err
+    assert platform.calls == []
+
+
+def test_a_project_for_another_environment_is_refused(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsys
+):
+    """The file's environment is the default; only an explicit `--env` can disagree."""
+    project_at(tmp_path, env="dev", pointer=POINTER)
+    platform = Platform()
+    stub_api(platform)
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["--env", "prod", "builds"]) == EXIT_USAGE
+
+    assert "dev" in capsys.readouterr().err
+    assert platform.calls == []

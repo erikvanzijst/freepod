@@ -21,17 +21,21 @@ This repository is a monorepo with:
 - Provisioning is in `api/app/provisioner.py`: a `Provisioner` that drives
   kubectl and helm through adapters (namespaces, tenant network policy,
   secrets, Helm releases).
-- **Builds** turn an uploaded project archive into a container image and are
-  owned by a **user**, addressed under their owner like every other user-owned
-  resource. Nothing auto-deploys a build — the client submits a successful
-  build's `image` to the deployment create/update endpoint itself, and may pass
-  that build's `build_id` alongside it, which is recorded on the release row.
-  Spec: [build-api](openspec/specs/build-api/spec.md),
+- **Builds** turn an uploaded project archive into a container image and
+  **belong to a deployment**, addressed under it
+  (`/users/{uid}/deployments/{id}/builds`); a build's owner is its deployment's
+  owner, and a build outlives its deployment. So a first `freepod deploy`
+  creates the deployment, serving the `custom` placeholder, before it builds.
+  Nothing auto-deploys a build — the client submits a successful build's `image`
+  to the deployment update endpoint itself, and may pass that build's
+  `build_id`, which must be that deployment's own and is recorded on the release
+  row. Spec: [build-api](openspec/specs/build-api/spec.md),
   [build-data-model](openspec/specs/build-data-model/spec.md),
   [build-execution](openspec/specs/build-execution/spec.md),
   [build-worker](openspec/specs/build-worker/spec.md) · Rationale:
   [add-build-subsystem](openspec/changes/archive/2026-08-14-add-build-subsystem/design.md),
-  [add-deployment-logs](openspec/changes/archive/2026-08-18-add-deployment-logs/design.md)
+  [add-deployment-logs](openspec/changes/archive/2026-08-18-add-deployment-logs/design.md),
+  [builds-belong-to-deployments](openspec/changes/builds-belong-to-deployments/design.md)
 - **Tenant images live in a per-environment registry where every operation
   authenticates**, reachable only inside the cluster. A build pushes with a
   short-lived capability the build worker mints for exactly its own

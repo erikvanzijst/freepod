@@ -7,8 +7,10 @@ Three phases, in this order:
    that. Minting persists nothing, so an unused slot costs nothing.
 2. **Submit the archive** — a presigned form POST straight to the object store,
    every field verbatim and in order with the file part last.
-3. **Create and follow the build** — `POST /api/users/{uid}/builds` with the artifact id
-   alone, then read the log by byte range until `X-Build-Status` is terminal.
+3. **Create and follow the build** — `POST
+   /api/users/{uid}/deployments/{deployment_id}/builds` with the artifact id alone,
+   then read the log by byte range until `X-Build-Status` is terminal. A build
+   belongs to the project's deployment, so that deployment exists first.
 
 See design D9, D12, and D13.
 """
@@ -221,10 +223,15 @@ def upload_archive(
 # --------------------------------------------------------------------------
 
 
+def builds_path(user_id: int, deployment_id: str) -> str:
+    """Where a deployment's builds live: builds belong to a deployment."""
+    return f"/api/users/{user_id}/deployments/{deployment_id}/builds"
+
+
 def create_build(
-    api: ApiClient, user_id: int, artifact_id: str
+    api: ApiClient, user_id: int, deployment_id: str, artifact_id: str
 ) -> Tuple[Dict[str, Any], bool]:
-    """`POST /api/users/{user_id}/builds` with the artifact id alone.
+    """Create a build of the deployment, with the artifact id alone.
 
     Returns `(build, reattached)`. A **200** rather than 201 means the platform
     handed back a build already queued or running for this artifact instead of
@@ -232,7 +239,7 @@ def create_build(
     is worth saying out loud rather than silently following.
     """
     response = api.post(
-        f"/api/users/{user_id}/builds", json={"artifact_id": artifact_id}
+        builds_path(user_id, deployment_id), json={"artifact_id": artifact_id}
     )
     if response.status_code not in (200, 201):
         detail = response.text.strip()[:300]
@@ -243,6 +250,7 @@ def create_build(
 def follow_build(
     api: ApiClient,
     user_id: int,
+    deployment_id: str,
     build_id: str,
     *,
     out: Optional[IO[bytes]] = None,
@@ -270,7 +278,7 @@ def follow_build(
     try:
         while True:
             response = api.get(
-                f"/api/users/{user_id}/builds/{build_id}/log",
+                f"{builds_path(user_id, deployment_id)}/{build_id}/log",
                 headers={"Range": f"bytes={offset}-"},
             )
             if response.status_code not in (200, 206):
@@ -335,6 +343,7 @@ class Built(NamedTuple):
 def build_image(
     api: ApiClient,
     user_id: int,
+    deployment_id: str,
     handle: IO[bytes],
     size: int,
     *,
@@ -344,7 +353,7 @@ def build_image(
     quiet: bool = False,
     echo: Callable[[str], None] = _log,
 ) -> Built:
-    """Upload, build, and return the image reference with its build id.
+    """Upload, build for the deployment, and return the image reference with its build id.
 
     Raises `BuildFailed` — exit 4 — when the build reaches any terminal status
     other than success, so a caller cannot mistake a failed build for something
@@ -352,14 +361,16 @@ def build_image(
     """
     artifact_id = upload_archive(api, handle, size, client=client, quiet=quiet, echo=echo)
 
-    build, reattached = create_build(api, user_id, artifact_id)
+    build, reattached = create_build(api, user_id, deployment_id, artifact_id)
     build_id = build["id"]
     if reattached:
         echo(f"  Re-attaching to the build already in progress for this archive ({build_id}).")
     else:
         echo(f"  Build {build_id} queued.")
 
-    status = follow_build(api, user_id, build_id, out=out, timeout=timeout, echo=echo)
+    status = follow_build(
+        api, user_id, deployment_id, build_id, out=out, timeout=timeout, echo=echo
+    )
 
     if status != STATUS_SUCCEEDED:
         raise BuildFailed(
@@ -369,7 +380,7 @@ def build_image(
 
     # `image` is null until the build succeeds, so it is read from the record
     # afterwards rather than from the creation response.
-    record = api.get_json(f"/api/users/{user_id}/builds/{build_id}")
+    record = api.get_json(f"{builds_path(user_id, deployment_id)}/{build_id}")
     image = record.get("image")
     if not image:
         raise FreepodError(

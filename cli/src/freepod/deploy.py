@@ -1,10 +1,11 @@
-"""The deploy pipeline: preflight, pack, upload, build, release.
+"""The deploy pipeline: preflight, create (first deploy only), pack, upload, build, release.
 
-The build comes before the deployment is touched, which collapses a first
-deploy to a single rollout and never shows a placeholder page. The deployment
-is created on first run and updated thereafter, always targeting the product's
-canonical template and always submitting user values as a complete document.
-See design D6, D7, and D8.
+A build belongs to a deployment, so on a first deploy the deployment is created
+before anything is packed, with no image: the product serves its placeholder
+until the first build is released into it. Every deploy then builds against
+that deployment and updates it, always targeting the product's canonical
+template and always submitting user values as a complete document. See the
+`builds-belong-to-deployments` design D6, and the CLI's design D7 and D8.
 
 Preflight is the whole point of the ordering. Packing and building cost
 minutes; every question that can be answered from a cheap read is answered
@@ -438,8 +439,14 @@ def select_free_plan(api: ApiClient, product: Dict[str, Any]) -> Dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
-def describe_conflict(detail: Optional[str], *, move: Optional[str] = None) -> Tuple[str, bool]:
+def describe_conflict(
+    detail: Optional[str], *, move: Optional[str] = None, built: bool = True
+) -> Tuple[str, bool]:
     """Read a release 409's `detail`. Returns `(message, worth_retrying)`.
+
+    `built` says whether an image was built before the refusal. A first deploy
+    creates its deployment before building anything, so a refused creation
+    must not reassure the user about a build that never ran.
 
     The status cannot carry the distinction: `ERROR_STATUS` maps
     `HostnameException`, `IntegrityException`, and `DeploymentInProgressException`
@@ -455,7 +462,7 @@ def describe_conflict(detail: Optional[str], *, move: Optional[str] = None) -> T
             "deployed against it. This is a platform defect — your configuration and "
             "your values are not at fault, and changing them will not help.\n"
             f"  The platform said: {text}\n"
-            "  Please report it. The built image is unaffected.",
+            "  Please report it." + (" The built image is unaffected." if built else ""),
             False,
         )
 
@@ -466,7 +473,8 @@ def describe_conflict(detail: Optional[str], *, move: Optional[str] = None) -> T
             f"{moved}.\n"
             f"  The platform said: {text}\n"
             f"  Retrying cannot help: the template narrowed what it accepts, so the "
-            f"values have to change. The build succeeded and is not lost.",
+            f"values have to change."
+            + (" The build succeeded and is not lost." if built else ""),
             False,
         )
 
@@ -533,9 +541,11 @@ def describe_conflict(detail: Optional[str], *, move: Optional[str] = None) -> T
     )
 
 
-def _conflict(response: httpx.Response, *, move: Optional[str] = None) -> FreepodError:
-    message, retryable = describe_conflict(_json_detail(response), move=move)
-    if retryable:
+def _conflict(
+    response: httpx.Response, *, move: Optional[str] = None, built: bool = True
+) -> FreepodError:
+    message, retryable = describe_conflict(_json_detail(response), move=move, built=built)
+    if retryable and built:
         message = f"{message}\n  The image is already built; a re-run reuses it."
     return FreepodError(message)
 
@@ -572,26 +582,25 @@ def create_deployment(
     template_id: int,
     plan_template_id: int,
     values: Dict[str, Any],
-    *,
-    build_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """`POST /api/users/{user_id}/deployments` — one rollout, image included."""
+    """`POST /api/users/{user_id}/deployments`, with no image and no build.
+
+    Nothing has been built yet: a build belongs to a deployment, so the
+    deployment comes first and serves the product's placeholder meanwhile.
+    """
     body = {
         "desired_template_id": template_id,
         "plan_template_id": plan_template_id,
         "user_values_json": values,
     }
-    if build_id is not None:
-        body["build_id"] = build_id
     response = api.post(f"/api/users/{user_id}/deployments", json=body)
     if response.status_code == 409:
-        raise _conflict(response)
+        raise _conflict(response, built=False)
     if response.status_code == 400 and _json_code(response) == subdomain_module.DEPLOY_REFUSAL_CODE:
         raise FreepodError(
             f"the platform refused the deployment because this account does not "
             f"have a domain name.\n"
-            f"  Choose one at {api.env.api_base}, then re-run.\n"
-            f"  The build succeeded and is not lost."
+            f"  Choose one at {api.env.api_base}, then re-run."
         )
     if response.status_code == 400 and _json_detail(response) == tos.DEPLOY_REFUSAL:
         # Preflight settles this, so reaching it means the acceptance was
@@ -602,8 +611,7 @@ def create_deployment(
             f"the platform refused the deployment because this account has not "
             f"accepted its terms.\n"
             f"  Run `freepod login --env {api.env.name}` to accept them, or accept "
-            f"them at {api.env.api_base}, then re-run.\n"
-            f"  The build succeeded and is not lost."
+            f"them at {api.env.api_base}, then re-run."
         )
     if response.status_code != 201:
         raise FreepodError(
@@ -773,6 +781,37 @@ def address(deployment: Dict[str, Any]) -> Optional[str]:
 # --------------------------------------------------------------------------
 
 
+def ensure_deployment(
+    api: ApiClient, state: Preflight, *, echo: Callable[[str], None] = _log
+) -> Dict[str, Any]:
+    """The project's deployment, created first when it has none.
+
+    Created with no image, so the product serves its placeholder until the
+    first build is released, and recorded in the project file straight away:
+    a deployment that exists but is not recorded is one this project can never
+    address again. The environment travels with the pointer, in the same write:
+    a file that recorded a deployment while still declaring another environment
+    would point at an id the declared environment cannot answer.
+    """
+    if state.deployment is not None:
+        return state.deployment
+
+    plan = state.plan or select_free_plan(api, state.product)
+    echo(f"Creating a deployment on the '{plan.get('name')}' plan...")
+    record = create_deployment(
+        api, state.user_id, state.template_id, plan["template"]["id"], dict(state.values)
+    )
+    if state.project.env != api.env.name:
+        state.project.env = api.env.name
+    state.project.record_deployment(record["id"], record["name"])
+    echo(
+        f"Created deployment '{record['name']}' ({record['id']}); it serves a "
+        f"placeholder until this build is released."
+    )
+    state.deployment = record
+    return record
+
+
 def release(
     api: ApiClient,
     state: Preflight,
@@ -783,50 +822,34 @@ def release(
     poll: float = POLL_SECONDS,
     echo: Callable[[str], None] = _log,
 ) -> str:
-    """Create or update the deployment, then follow the rollout. Returns the address.
+    """Update the deployment to `image`, then follow the rollout. Returns the address.
 
     `build_id` names the build that produced `image`, and is recorded on the
-    platform's release rather than on the deployment. Optional so that a caller
-    releasing an image it did not just build still works.
+    platform's release rather than on the deployment. It must be one of this
+    deployment's own builds. Optional so that a caller releasing an image it
+    did not just build still works.
     """
+    if state.deployment is None:
+        raise FreepodError("there is no deployment to release to — this is a client bug")
+
     values = dict(state.values)
     values[IMAGE_KEY] = image
 
-    if state.deployment is None:
-        plan = state.plan or select_free_plan(api, state.product)
-        echo(f"Creating a deployment on the '{plan.get('name')}' plan...")
-        record = create_deployment(
-            api,
-            state.user_id,
-            state.template_id,
-            plan["template"]["id"],
-            values,
-            build_id=build_id,
-        )
-        # Written before the rollout is awaited: a deployment that exists but
-        # is not recorded is one this project can never address again. The
-        # environment travels with the pointer, in the same write: a file that
-        # recorded a deployment while still declaring another environment
-        # would point at an id the declared environment cannot answer.
-        if state.project.env != api.env.name:
-            state.project.env = api.env.name
-        state.project.record_deployment(record["id"], record["name"])
-        echo(f"Created deployment '{record['name']}' ({record['id']}).")
-    else:
-        settled = wait_until_settled(
-            api, state.user_id, state.deployment, timeout=timeout, poll=poll, echo=echo
-        )
-        move = _announce_move(state, echo)
-        echo(f"Releasing to deployment '{settled.get('name')}'...")
-        record = update_deployment(
-            api,
-            state.user_id,
-            settled["id"],
-            state.template_id,
-            values,
-            move=move,
-            build_id=build_id,
-        )
+    # A deployment created moments ago is still provisioning; this waits it out.
+    settled = wait_until_settled(
+        api, state.user_id, state.deployment, timeout=timeout, poll=poll, echo=echo
+    )
+    move = _announce_move(state, echo)
+    echo(f"Releasing to deployment '{settled.get('name')}'...")
+    record = update_deployment(
+        api,
+        state.user_id,
+        settled["id"],
+        state.template_id,
+        values,
+        move=move,
+        build_id=build_id,
+    )
 
     final = follow_rollout(
         api,
@@ -929,7 +952,7 @@ def deploy(
     store: Optional[httpx.Client] = None,
     echo: Callable[[str], None] = _log,
 ) -> str:
-    """Preflight, pack, upload, build, release. Returns the live address.
+    """Preflight, create if needed, pack, upload, build, release. Returns the live address.
 
     `store` reaches the object store, which is a different host with a
     different credential model; left unset the upload opens its own client.
@@ -954,24 +977,39 @@ def deploy(
     )
     announce_pending_vars(api, state, echo=echo)
 
-    with packed_archive(
-        state.project.root,
-        honor_gitignore=honor_gitignore,
-        on_skip=None if quiet else (lambda name, reason: echo(f"  skipped {name}: {reason}")),
-    ) as (handle, size, members):
-        if not quiet:
-            report(size, members, verbose=verbose, echo=echo)
-        built = build_image(
-            api,
-            state.user_id,
-            handle,
-            size,
-            client=store,
-            out=out,
-            timeout=build_timeout,
-            quiet=quiet,
-            echo=echo,
-        )
+    created = state.deployment is None
+    deployment = ensure_deployment(api, state, echo=echo)
+
+    try:
+        with packed_archive(
+            state.project.root,
+            honor_gitignore=honor_gitignore,
+            on_skip=None if quiet else (lambda name, reason: echo(f"  skipped {name}: {reason}")),
+        ) as (handle, size, members):
+            if not quiet:
+                report(size, members, verbose=verbose, echo=echo)
+            built = build_image(
+                api,
+                state.user_id,
+                deployment["id"],
+                handle,
+                size,
+                client=store,
+                out=out,
+                timeout=build_timeout,
+                quiet=quiet,
+                echo=echo,
+            )
+    except FreepodError:
+        if created:
+            # Not an orphan: the pointer is recorded, so the next deploy builds
+            # into this same deployment rather than creating another.
+            echo(
+                f"Deployment '{deployment['name']}' was created and keeps serving its "
+                f"placeholder. The next `freepod deploy` builds into it again; "
+                f"`freepod delete` removes it."
+            )
+        raise
 
     echo(f"Built {built.image}.")
     return release(
