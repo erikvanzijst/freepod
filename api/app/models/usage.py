@@ -2,7 +2,8 @@
 ``usage_subject`` names what it measures against, ``usage_sample`` holds the values.
 
 The catalog is a table rather than an enum so that an unconstrained metric name cannot
-silently create a new series. Nothing here stores money.
+silently create a new series. The ledger itself stores no money; ``usage_rate`` says
+what a quantity costs from when, and is applied only when the ledger is read.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from uuid import UUID
 
 from sqlmodel import Field, SQLModel
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -28,6 +30,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    text,
 )
 
 
@@ -171,6 +174,33 @@ class UsageSampleORM(SQLModel, table=True):
     interval_seconds: int = Field(sa_column=Column(Integer(), nullable=False))
     observed_at: datetime = Field(sa_column=Column(DateTime(), nullable=False))
     value: Decimal = Field(sa_column=Column(Numeric(), nullable=False))
+
+
+class UsageRateORM(SQLModel, table=True):
+    """What one unit of a metric costs, from ``effective_from`` until the next row.
+
+    ``unit_price`` buys ``per_quantity`` of the metric's catalogued unit, so a price
+    per GiB-hour stays legible against a ledger that records byte-hours. A metric
+    with no rate is not billable. Rows are added, never edited: changing one would
+    re-price every bill already issued from it.
+    """
+
+    __tablename__ = "usage_rate"
+    __table_args__ = (
+        PrimaryKeyConstraint("metric_id", "effective_from"),
+        CheckConstraint("unit_price >= 0", name="ck_usage_rate_unit_price"),
+        CheckConstraint("per_quantity > 0", name="ck_usage_rate_per_quantity"),
+    )
+
+    metric_id: int = Field(
+        sa_column=Column(SmallInteger, ForeignKey("usage_metric.id"), nullable=False)
+    )
+    effective_from: datetime = Field(sa_column=Column(DateTime(), nullable=False))
+    unit_price: Decimal = Field(sa_column=Column(Numeric(), nullable=False))
+    per_quantity: Decimal = Field(
+        default=Decimal(1),
+        sa_column=Column(Numeric(), nullable=False, server_default=text("1")),
+    )
 
 
 class UsageBucket(StrEnum):

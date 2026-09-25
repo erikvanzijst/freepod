@@ -21,17 +21,13 @@ from app.models.core import _utcnow
 from app.services.errors import ValidationException
 from app.services.usage import ledger
 from app.services.usage.ledger import SampleRow
-from app.services.usage.report import GIB, Rate, current_month, query_usage
+from app.services.usage.report import current_month, query_usage
 from tests.conftest import USER_EMAIL, make_deployment_with_release
-from tests.usage_fixtures import seeded_catalog  # noqa: F401
+from tests.usage_fixtures import GIB, add_rate, seeded_catalog, seeded_rates  # noqa: F401
 
-pytestmark = pytest.mark.usefixtures("seeded_catalog")
+pytestmark = pytest.mark.usefixtures("seeded_rates")
 
 DAY = datetime(2026, 9, 23)
-RATES = (
-    Rate("cpu_core_hours", datetime(2026, 1, 1), Decimal("0.01")),
-    Rate("ram_byte_hours", datetime(2026, 1, 1), Decimal("0.002"), GIB),
-)
 BOTH = {UsageDimension.DEPLOYMENT, UsageDimension.METRIC}
 
 
@@ -133,7 +129,6 @@ def ledger_data(db_session):
 def _query(session, user, **kwargs):
     kwargs.setdefault("start", DAY)
     kwargs.setdefault("end", DAY + timedelta(days=1))
-    kwargs.setdefault("rates", RATES)
     return query_usage(session, user_id=user.id, **kwargs)
 
 
@@ -194,13 +189,15 @@ def test_without_the_metric_dimension_only_cost_is_reported(db_session, ledger_d
 
 
 def test_a_sample_is_priced_at_the_rate_in_effect_for_its_window(db_session, ledger_data):
+    """A new rate is a new row; the hour before it keeps the old price."""
     user, _, _ = ledger_data
-    rates = (
-        Rate("cpu_core_hours", datetime(2026, 1, 1), Decimal("0.01")),
-        Rate("cpu_core_hours", DAY + timedelta(hours=1), Decimal("1")),
-    )
+    add_rate(db_session, "cpu_core_hours", DAY + timedelta(hours=1), Decimal("1"))
     report = _query(
-        db_session, user, bucket=UsageBucket.HOUR, group_by=set(), rates=rates
+        db_session,
+        user,
+        bucket=UsageBucket.HOUR,
+        group_by=set(),
+        metrics={"cpu_core_hours"},
     )
 
     assert report.rows == [
@@ -331,7 +328,6 @@ def test_every_account_is_reported_when_no_user_is_given(db_session, ledger_data
         start=DAY,
         end=DAY + timedelta(days=1),
         group_by={UsageDimension.PRODUCT},
-        rates=RATES,
     )
 
     assert report.user_id is None

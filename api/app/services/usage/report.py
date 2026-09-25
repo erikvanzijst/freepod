@@ -2,7 +2,8 @@
 
 Prices are applied here, at read time, never stored with a sample: the ledger holds
 quantities only, so a past period can be re-evaluated when rates change. A sample is
-priced at the rate in effect at its ``window_start``.
+priced at the ``usage_rate`` row in effect at its ``window_start``; a metric with no
+rate is not billable.
 
 Only additive (``delta``) quantities are reported. A gauge summed across a bucket is
 not in its catalogued unit, and nothing here needs one yet.
@@ -12,7 +13,6 @@ from __future__ import annotations
 
 import csv
 import io
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -24,26 +24,6 @@ from app.models import UsageBucket, UsageDimension, UsageReport, UsageSampleORM
 from app.services.errors import ValidationException
 
 CURRENCY = "EUR"
-GIB = Decimal(2**30)
-
-
-@dataclass(frozen=True)
-class Rate:
-    """``unit_price`` buys ``per_quantity`` of the metric's catalogued unit."""
-
-    metric: str
-    effective_from: datetime
-    unit_price: Decimal
-    per_quantity: Decimal = Decimal(1)
-
-
-# Interim: these move to a versioned rate table once a migration can ship. They
-# mirror the OpenCost costModel in tf/deps/opencost/main.tf, whose RAM price is per
-# GiB-hour. A metric with no rate here is not billable.
-RATES: tuple[Rate, ...] = (
-    Rate("cpu_core_hours", datetime(2026, 6, 1), Decimal("0.015437")),
-    Rate("ram_byte_hours", datetime(2026, 6, 1), Decimal("0.002069"), GIB),
-)
 
 
 MAX_BUCKETS = 1000
@@ -98,7 +78,6 @@ def query_usage(
     deployment_id: UUID | None = None,
     metrics: set[str] | None = None,
     billable_only: bool = True,
-    rates: tuple[Rate, ...] = RATES,
 ) -> UsageReport:
     """Usage over ``[start, end)``, summed per bucket and per grouped dimension.
 
@@ -152,10 +131,6 @@ def query_usage(
         "bucket": bucket.value,
         "start": start,
         "end": end,
-        "rate_metric": [r.metric for r in rates],
-        "rate_from": [r.effective_from for r in rates],
-        "rate_price": [r.unit_price for r in rates],
-        "rate_per": [r.per_quantity for r in rates],
     }
     if user_id is not None:
         filters.append("d.user_id = :user_id")
@@ -171,14 +146,6 @@ def query_usage(
 
     statement = text(
         f"""
-        WITH rate AS (
-            SELECT * FROM unnest(
-                CAST(:rate_metric AS text[]),
-                CAST(:rate_from AS timestamp[]),
-                CAST(:rate_price AS numeric[]),
-                CAST(:rate_per AS numeric[])
-            ) AS r(metric, effective_from, unit_price, per_quantity)
-        )
         SELECT date_trunc(:bucket, s.window_start) AS window_start{select_dims},
                sum(s.value) AS value,
                sum(s.value * r.unit_price / r.per_quantity) AS cost
@@ -189,8 +156,8 @@ def query_usage(
         JOIN product_template_version t ON t.id = d.desired_template_id
         JOIN product p ON p.id = t.product_id
         LEFT JOIN LATERAL (
-            SELECT rate.unit_price, rate.per_quantity FROM rate
-            WHERE rate.metric = m.name AND rate.effective_from <= s.window_start
+            SELECT rate.unit_price, rate.per_quantity FROM usage_rate rate
+            WHERE rate.metric_id = s.metric_id AND rate.effective_from <= s.window_start
             ORDER BY rate.effective_from DESC
             LIMIT 1
         ) r ON true
