@@ -341,7 +341,7 @@ for the new deployment to settle. A failed first build leaves the deployment
 recorded, so the next deploy reuses it rather than orphaning it; the client
 names `freepod delete` for anyone who wants it gone.
 
-Rationale: [builds-belong-to-deployments](../openspec/changes/builds-belong-to-deployments/design.md)
+Rationale: [builds-belong-to-deployments](../openspec/changes/archive/2026-09-25-builds-belong-to-deployments/design.md)
 D6, which reverses this client's original build-first ordering (design D6 of
 `add-freepod-cli`).
 

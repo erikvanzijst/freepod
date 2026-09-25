@@ -1,32 +1,42 @@
 # build-data-model Specification
 
 ## Purpose
-Defines the build record: what a build is, who owns it, the states it moves through, and
-the identifiers that tie it to its uploaded artifact and its resulting container image.
+Defines the build record: what a build is, the deployment it belongs to and through which
+it is owned, the states it moves through, and the identifiers that tie it to its uploaded
+artifact and its resulting container image.
 ## Requirements
-### Requirement: Builds are owned by a user, not a deployment
+### Requirement: A build belongs to a deployment
 
-A build SHALL be owned by the user who created it. A build MUST NOT reference a
-deployment. The system MUST NOT restrict how many builds a user may create, nor relate
-concurrent builds to one another.
+Every build SHALL belong to exactly one deployment, recorded when the build is created
+and never changed. A build MUST NOT exist without one.
 
-Builds transform a project archive into a container image. Which deployment, if any,
-consumes that image is decided separately by the client: a deployment may consume several
-images, and most products consume none.
+A build's owner SHALL be its deployment's owner. The build SHALL NOT record an owner of
+its own, so that the two can never disagree.
 
-#### Scenario: Build records its owner
+A build SHALL outlive its deployment: deleting a deployment MUST NOT delete its builds,
+and a build of a deleted deployment SHALL remain readable by that deployment's owner.
 
-- **WHEN** a build is created by an authenticated user
-- **THEN** the build records that user as its owner
+The system MUST NOT restrict how many builds a deployment may have, nor relate concurrent
+builds to one another.
 
-#### Scenario: Build carries no deployment reference
+#### Scenario: A build records its deployment
 
-- **WHEN** a build record is read
-- **THEN** it exposes no deployment identifier, and no deployment is implied by its existence
+- **WHEN** a build is created for a deployment
+- **THEN** the build records that deployment, and its owner is that deployment's owner
 
-#### Scenario: A user runs two builds at once
+#### Scenario: A build cannot be orphaned
 
-- **WHEN** a user creates a second build while a first is still running
+- **WHEN** a build is written with no deployment
+- **THEN** the write is rejected
+
+#### Scenario: A deleted deployment keeps its builds
+
+- **WHEN** a deployment is deleted
+- **THEN** its builds remain, still attributed to it
+
+#### Scenario: A deployment runs two builds at once
+
+- **WHEN** a second build is created for a deployment while a first is still running
 - **THEN** both builds are accepted and proceed independently, and neither supersedes the other
 
 ### Requirement: Build state machine
@@ -78,9 +88,13 @@ for the two subsystems to diverge on format.
 ### Requirement: An artifact has at most one build in flight
 
 The system SHALL permit at most one non-terminal build per artifact. Creating a build for
-an artifact whose existing build is `queued` or `running` MUST return that existing build
-rather than creating a second one. Creating a build for an artifact whose builds have all
-reached a terminal status MUST create a new build.
+an artifact whose existing build is `queued` or `running`, for the same deployment, MUST
+return that existing build rather than creating a second one. Creating a build for an
+artifact whose builds have all reached a terminal status MUST create a new build.
+
+Creating a build for an artifact whose in-flight build belongs to a different deployment
+MUST be refused as a conflict. Returning that build would answer a request about one
+deployment with a build of another.
 
 This makes creation idempotent over the window in which retries actually occur — a client
 retrying a request whose response was lost does so within seconds, while its original build
@@ -93,8 +107,13 @@ rebuild remains possible is bounded naturally by the artifact's own expiry.
 
 #### Scenario: Retry while a build is in flight returns the existing build
 
-- **WHEN** a client creates a build for an artifact whose build is `queued` or `running`
+- **WHEN** a client creates a build for an artifact whose build for the same deployment is `queued` or `running`
 - **THEN** the existing build is returned and no second build is created
+
+#### Scenario: The same artifact for another deployment while in flight
+
+- **WHEN** a client creates a build for an artifact whose in-flight build belongs to a different deployment
+- **THEN** the request is refused as a conflict and no build is created
 
 #### Scenario: Rebuild after failure is allowed
 
@@ -123,4 +142,3 @@ determine that build's true outcome.
 
 - **WHEN** a Kubernetes Job has been created for a build
 - **THEN** the build records that Job's identifier
-

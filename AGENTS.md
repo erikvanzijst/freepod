@@ -35,7 +35,7 @@ This repository is a monorepo with:
   [build-worker](openspec/specs/build-worker/spec.md) · Rationale:
   [add-build-subsystem](openspec/changes/archive/2026-08-14-add-build-subsystem/design.md),
   [add-deployment-logs](openspec/changes/archive/2026-08-18-add-deployment-logs/design.md),
-  [builds-belong-to-deployments](openspec/changes/builds-belong-to-deployments/design.md)
+  [builds-belong-to-deployments](openspec/changes/archive/2026-09-25-builds-belong-to-deployments/design.md)
 - **Tenant images live in a per-environment registry where every operation
   authenticates**, reachable only inside the cluster. A build pushes with a
   short-lived capability the build worker mints for exactly its own

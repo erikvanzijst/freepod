@@ -5,22 +5,34 @@ The client-facing surface of the build subsystem: creating a build from an uploa
 artifact, polling its status, and streaming its log output incrementally while it runs.
 
 ## Requirements
-
 ### Requirement: Builds are created from an uploaded artifact
 
-The system SHALL provide an authenticated endpoint that creates a build from a previously
-issued artifact identifier. The caller MUST supply only that identifier; the owning user
-MUST be taken from the authenticated session and MUST NOT be accepted as request input.
+The system SHALL provide an authenticated endpoint that creates a build for a deployment
+from a previously issued artifact identifier. The caller MUST supply only that
+identifier; the deployment MUST be taken from the request path, and the owner from the
+deployment. Neither MUST be accepted as request body input.
+
+A build SHALL be refused for a deployment that is being deleted or has been deleted:
+nothing can be released into it, so a build for it could only be wasted.
+
+The system SHALL NOT refuse a build because of which product the deployment runs or
+which values its chart declares. Whether a chart consumes an image is that chart's
+concern, not the build path's.
 
 #### Scenario: Build is created for an uploaded artifact
 
-- **WHEN** an authenticated user creates a build referencing an artifact they uploaded
-- **THEN** a build is created in `queued` status, owned by that user, and its location is returned
+- **WHEN** a deployment's owner creates a build for it, referencing an artifact they uploaded
+- **THEN** a build is created in `queued` status, belonging to that deployment, and its location is returned
 
 #### Scenario: Owner is not taken from the request body
 
-- **WHEN** a build creation request includes a user identifier
-- **THEN** that value is ignored or rejected, and the build is owned by the authenticated caller
+- **WHEN** a build creation request body includes a user or deployment identifier
+- **THEN** that value is ignored or rejected, and the build belongs to the deployment named in the path
+
+#### Scenario: A deleting or deleted deployment takes no builds
+
+- **WHEN** a build is created for a deployment that is being deleted or has been deleted
+- **THEN** the request is refused with a client error and no build is created
 
 #### Scenario: Anonymous creation is refused
 
@@ -48,49 +60,50 @@ client can act on it.
 
 ### Requirement: Builds are readable only by their owner
 
-The system SHALL scope build reads to the authenticated caller's own builds.
-Administrators MAY read any build. A build belonging to another user MUST be
-indistinguishable from one that does not exist.
+The system SHALL scope build reads to builds of deployments the authenticated caller
+owns. Administrators MAY read any build. A build belonging to another user's deployment,
+or to a different deployment than the one addressed, MUST be indistinguishable from one
+that does not exist.
 
 #### Scenario: Owner reads their build
 
-- **WHEN** a user requests a build they own
+- **WHEN** a user requests a build of a deployment they own
 - **THEN** the build's status, timestamps, artifact identifier, and image value are returned
 
 #### Scenario: Another user's build is not found
 
-- **WHEN** a user requests a build owned by someone else
+- **WHEN** a user requests a build of a deployment owned by someone else
 - **THEN** the response is indistinguishable from a request for a build that does not exist
 
-### Requirement: A user can list their own builds
+#### Scenario: A build addressed under the wrong deployment is not found
 
-The system SHALL provide an endpoint listing the builds of the user named in the
-request path, most recent first. Builds owned by other users MUST NOT appear.
-A caller MAY list their own builds; administrators MAY list any user's builds,
-by naming that user in the path rather than by any other means.
+- **WHEN** a build is requested under a deployment other than its own
+- **THEN** the response is indistinguishable from a request for a build that does not exist
+
+### Requirement: A deployment's builds can be listed
+
+The system SHALL provide an endpoint listing the builds of the deployment named in the
+request path, most recent first, including builds of a deployment that has since been
+deleted. Builds of other deployments MUST NOT appear. A deployment's owner MAY list its
+builds; administrators MAY list any deployment's builds.
 
 Without enumeration a client can only ever reference a build whose identifier it still
 holds, so a previously produced image becomes unreachable once the client forgets it —
 which is what a redeploy or a rollback needs.
 
-#### Scenario: Caller lists their builds
+#### Scenario: Owner lists a deployment's builds
 
-- **WHEN** an authenticated user lists builds under their own account
-- **THEN** their own builds are returned, most recent first
+- **WHEN** a deployment's owner lists its builds
+- **THEN** that deployment's builds are returned, most recent first
 
-#### Scenario: Listing excludes other users' builds
+#### Scenario: Listing excludes other deployments' builds
 
-- **WHEN** an authenticated user lists builds while other users also have builds
-- **THEN** only the caller's own builds are returned
-
-#### Scenario: An administrator lists another user's builds
-
-- **WHEN** an administrator lists builds under another user's account
-- **THEN** that user's builds are returned, most recent first
+- **WHEN** builds are listed for one deployment while the same owner has builds for others
+- **THEN** only the named deployment's builds are returned
 
 #### Scenario: A non-administrator cannot list another user's builds
 
-- **WHEN** a non-administrator lists builds under another user's account
+- **WHEN** a non-administrator lists builds of a deployment owned by another user
 - **THEN** the request is refused as forbidden
 
 ### Requirement: Build log is retrievable incrementally
@@ -153,38 +166,29 @@ truncation occurred.
 - **WHEN** a build's output is truncated
 - **THEN** the build's own outcome is unaffected
 
-### Requirement: Builds are addressed under their owning user
+### Requirement: Builds are addressed under their deployment
 
-A build is owned by a user, and the system SHALL address the build endpoints
-under that user, as it already does for every other user-owned resource. The
-owner named in the request path SHALL be what scopes the request; the system
-SHALL NOT accept a separate query parameter selecting whose builds to act on.
+The system SHALL address every build endpoint — creating, listing, reading one, and
+reading its log — under the deployment the build belongs to, which is itself addressed
+under its owner. The platform's existing self-or-administrator guard on the owner in the
+path SHALL apply unchanged.
 
-Two ways of expressing the same ownership is one too many: with the owner in the
-path, the platform's existing self-or-administrator guard applies to builds
-unchanged, instead of each build endpoint re-deriving the scope for itself.
+The previous account-level build paths SHALL cease to exist rather than remaining as
+aliases. A client built against them is not partially compatible — it must be upgraded —
+and leaving the old paths answering would hide that from the very clients that need to
+know.
 
-The previous root-level build paths SHALL cease to exist rather than remaining
-as aliases. A client built against them is not partially compatible — it must be
-upgraded — and leaving the old paths answering would hide that from the very
-clients that need to know.
+#### Scenario: Builds are reached under their deployment
 
-#### Scenario: Builds are reached under their owner
+- **WHEN** a client acts on builds
+- **THEN** the request is addressed under the owning user and the deployment, and both scope it
 
-- **WHEN** a client acts on builds — creating, listing, reading one, or reading its log
-- **THEN** the request is addressed under the owning user, and the owner in the path is what scopes it
+#### Scenario: The account-level build paths are gone
 
-#### Scenario: The root-level build paths are gone
-
-- **WHEN** a client requests the former root-level build path
+- **WHEN** a client requests a former account-level build path
 - **THEN** no build endpoint answers it
 
 #### Scenario: Acting under another account is refused
 
 - **WHEN** a non-administrator addresses a build endpoint under another user's account
 - **THEN** the request is refused as forbidden, before any build is created or read
-
-#### Scenario: Creation still takes its owner from the session
-
-- **WHEN** an authenticated user creates a build under their own account
-- **THEN** the build is owned by the authenticated caller, and the path identifies whose account is being acted on rather than supplying the owner as input

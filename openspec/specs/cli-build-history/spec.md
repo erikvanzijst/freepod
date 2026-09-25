@@ -1,52 +1,59 @@
 # cli-build-history Specification
 
 ## Purpose
-Listing what an account has built: what the platform can actually be asked for, how the
-one build that matters to the current project is picked out of it, and what each row
-tells the reader.
+Listing what the current project has built: its deployment's builds and no others, how
+the build that deployment is running is marked, and what each row tells the reader.
 ## Requirements
-### Requirement: The history is the account's builds, not a project's
+### Requirement: The history is the project's builds
 
-A build is owned by a user and never by a deployment or a directory, and the platform
-has no notion of a project at all. The client SHALL therefore list the builds of the
-authenticated account, and SHALL NOT present them as belonging to a project or filter
-them by one — a filter with nothing behind it would hide builds while implying they were
-irrelevant.
+The client SHALL list the builds of the deployment the working directory's project
+records, for the environment targeted, and no others.
+
+Where there is no project file, the project belongs to another environment, or the
+project records no deployment, the client SHALL refuse and say why, naming
+`freepod deploy` where the project has simply not deployed yet. It SHALL NOT fall back to
+listing anything else.
+
+A project whose recorded deployment has since been deleted SHALL still have its builds
+listed: builds outlive their deployment.
 
 The client SHALL present the builds in the order the platform returns them, most recent
-first, and SHALL NOT reorder them. Reordering would require re-deriving an ordering the
-platform has already given, and would silently misplace any row whose timestamp could
-not be read.
+first, and SHALL NOT reorder them.
 
-The listing SHALL be available wherever the command runs, whether or not the working
-directory belongs to a project.
+#### Scenario: Only this project's builds are listed
 
-#### Scenario: Every build the account made is listed
+- **WHEN** the history runs in a project whose owner has also deployed other projects
+- **THEN** only the builds of this project's deployment are listed
 
-- **WHEN** the history runs in a project directory
-- **THEN** builds made from other directories are listed too
-
-#### Scenario: The history works outside a project
+#### Scenario: Outside a project the history is refused
 
 - **WHEN** the history runs where no project file exists
-- **THEN** the builds are listed
+- **THEN** the client refuses and states that it lists a project's builds
+
+#### Scenario: A project that has not deployed
+
+- **WHEN** the project records no deployment
+- **THEN** the client refuses and names `freepod deploy`
+
+#### Scenario: A deleted deployment's builds are still listed
+
+- **WHEN** the project records a deployment that has since been deleted
+- **THEN** that deployment's builds are listed
 
 #### Scenario: The platform's order is preserved
 
 - **WHEN** the platform returns builds most recent first
 - **THEN** they are presented in that order
 
-### Requirement: The build a project is running is identified
+### Requirement: The project's running build is marked
 
-Where the working directory belongs to a project targeting the same environment, and
-that project records a deployment, the client SHALL read that deployment and mark the
-build whose image it is running. This is what makes an account-wide listing answer the
-question a project asks: which of these builds is serving traffic.
+The client SHALL read the project's deployment and mark the listed build whose image it
+is running, answering the question the history exists for: which of these builds is
+serving traffic.
 
-Every way of not knowing SHALL yield an unmarked listing rather than a failure — no
-project file, a project belonging to another environment, a project that has not
-deployed, a deployment the platform no longer has, or a deployment running no image the
-listing contains. The mark is a convenience; the listing is the result.
+A deployment that is deleted, has never been applied, or runs an image none of the listed
+builds produced SHALL yield an unmarked listing rather than a failure. The mark is a
+convenience; the listing is the result.
 
 Only a build producing the image the deployment runs SHALL be marked, and the meaning of
 the mark SHALL be stated whenever one is shown.
@@ -56,15 +63,10 @@ the mark SHALL be stated whenever one is shown.
 - **WHEN** the project's deployment runs the image of a listed build
 - **THEN** that build is marked and no other is
 
-#### Scenario: A stale project file does not cost the listing
+#### Scenario: A deleted deployment marks nothing
 
-- **WHEN** the project records a deployment the platform no longer has
-- **THEN** the builds are listed with nothing marked
-
-#### Scenario: A project for another environment is ignored
-
-- **WHEN** the project file belongs to an environment other than the one targeted
-- **THEN** the builds are listed with nothing marked
+- **WHEN** the project's deployment has been deleted
+- **THEN** its builds are listed with nothing marked
 
 ### Requirement: Each build reports its identity, outcome, timing, and image
 

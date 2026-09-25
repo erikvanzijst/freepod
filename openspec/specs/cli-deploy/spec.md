@@ -83,20 +83,42 @@ complete FQDN and left alone, so a custom domain still works.
 - **WHEN** the project file's hostname is `photos.example.com`
 - **THEN** the client submits it unchanged and the custom-domain path applies
 
-### Requirement: The image is built before the deployment is created or updated
+### Requirement: A first deploy creates the deployment before building
 
-The client SHALL complete the build and obtain its image reference before creating or
-updating the deployment, and SHALL supply that image with the creation request when
-creating.
+When the project records no deployment, or recreation is requested, the client SHALL
+create the deployment before packing, uploading or building anything, supplying no image,
+so that the product serves its placeholder until the first build is released. The client
+SHALL record the new deployment in the project file immediately after the platform
+creates it, before any further step.
 
-Creating first would roll out the platform's placeholder image and then roll out the
-real one, and would leave a newly created deployment in a state that refuses updates.
+The client SHALL then build against that deployment and release the build into it,
+exactly as on any later deploy, including waiting for the deployment to become ready
+before updating it.
 
-#### Scenario: A first deploy performs a single rollout
+A first build that does not succeed SHALL leave the deployment in place and recorded, so
+that the next deploy reuses it rather than creating another. The client SHALL say that
+the deployment exists and name `freepod delete` as the way to remove it.
 
-- **WHEN** a project is deployed for the first time
-- **THEN** the deployment is created carrying the built image
-- **AND** only one rollout occurs
+`freepod init` SHALL continue to write nothing to the platform.
+
+#### Scenario: A first deploy creates, then builds, then releases
+
+- **WHEN** a project with no recorded deployment is deployed
+- **THEN** the deployment is created with no image and recorded in the project file
+- **AND** the build is created against that deployment
+- **AND** the build's image is released into it
+
+#### Scenario: The pointer survives a failed first build
+
+- **WHEN** a first deploy's build does not succeed
+- **THEN** the project file still records the new deployment
+- **AND** the client states that it exists and that `freepod delete` removes it
+- **AND** the next deploy builds against that same deployment
+
+#### Scenario: Recreation creates before building
+
+- **WHEN** a deploy runs with recreation requested
+- **THEN** the new deployment is created and recorded before the build is created against it
 
 ### Requirement: A first deploy selects a free plan
 

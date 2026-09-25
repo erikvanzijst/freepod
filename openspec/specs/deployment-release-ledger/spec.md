@@ -7,7 +7,6 @@ for it and completed by the reconciler that applies it — and how status and li
 without any field being revised after it is written.
 
 ## Requirements
-
 ### Requirement: A release is created by the request that asks for a rollout
 
 Creating or updating a deployment SHALL create exactly one release, in the **same transaction** as
@@ -100,44 +99,51 @@ reference is never rendered by any chart.
 - **WHEN** a release is applied
 - **THEN** the values passed to Helm contain no build reference
 
-### Requirement: A named build must belong to the caller
+### Requirement: A named build must belong to the deployment
 
-A build reference is optional on every write. Where one is named, it SHALL exist and SHALL belong
-to the same user as the deployment; a request naming any other build SHALL be rejected.
+A build reference is optional on every write. Where one is named, it SHALL exist and
+SHALL belong to the deployment being created or updated; a request naming any other
+build SHALL be rejected. On creation, where no deployment exists yet, no build can
+belong to it, so a creation request naming a build SHALL be rejected.
 
-Validation SHALL occur at the write, where the caller can still be told, and SHALL NOT be deferred
-to the reconciler.
+Validation SHALL occur at the write, where the caller can still be told, and SHALL NOT be
+deferred to the reconciler.
 
-Ownership is the **only** condition. The platform SHALL NOT require agreement between a named build
-and any value in the deployment's user values, and SHALL NOT require a build to be named because
-some value is present.
+Belonging is the **only** condition. The platform SHALL NOT require agreement between a
+named build and any value in the deployment's user values, and SHALL NOT require a build
+to be named because some value is present.
 
-`image` is a value of one product's chart, not a platform-wide concept: most products build nothing,
-charts choose their own value names, and a single build or release may come to carry more than one
-image. A rule tying the ledger to a particular chart's value key would make the release record an
-artifact of `custom`'s schema, and would have to be unpicked the first time either model grows.
-An image reference could not identify a build on its own in any case: it is content-addressed, so
-more than one build can produce the same reference.
+`image` is a value of one product's chart, not a platform-wide concept: most products
+build nothing, charts choose their own value names, and a single build or release may
+come to carry more than one image. A rule tying the ledger to a particular chart's value
+key would make the release record an artifact of `custom`'s schema. An image reference
+could not identify a build on its own in any case: it is content-addressed, so more than
+one build can produce the same reference.
 
-#### Scenario: Another user's build
+#### Scenario: A build of another deployment
 
-- **WHEN** a request names a build belonging to a different user
+- **WHEN** an update names a build belonging to a different deployment, even one the caller owns
 - **THEN** the request is rejected, and no provenance from it is recorded
 
 #### Scenario: A build that does not exist
 
 - **WHEN** a request names a build that does not exist
-- **THEN** the request is rejected, indistinguishably from one belonging to another user
+- **THEN** the request is rejected, indistinguishably from one belonging to another deployment
+
+#### Scenario: A build named on creation
+
+- **WHEN** a deployment creation request names a build
+- **THEN** the request is rejected and no deployment is created
+
+#### Scenario: An image reused without its build
+
+- **WHEN** an update submits an image produced by another deployment's build, naming no build
+- **THEN** the request is accepted and the release records no build
 
 #### Scenario: No build is named
 
 - **WHEN** a deployment is written with no build named, whatever its user values carry
 - **THEN** the request is accepted and the release records no build
-
-#### Scenario: A build is named for a product with no image value
-
-- **WHEN** a request names a build the caller owns, for a deployment whose values carry no image
-- **THEN** the request is accepted and the release records that build
 
 ### Requirement: Releases are numbered per deployment
 

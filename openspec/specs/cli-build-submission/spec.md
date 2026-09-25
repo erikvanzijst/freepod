@@ -50,13 +50,14 @@ fail and report the object store's response.
 
 ### Requirement: A build is created from the uploaded artifact
 
-The client SHALL create a build referencing the uploaded artifact identifier, supplying
-that identifier alone. It SHALL NOT attempt to specify the build's owner.
+The client SHALL create a build for the project's recorded deployment, referencing the
+uploaded artifact identifier and supplying that identifier alone. It SHALL NOT attempt to
+specify the build's owner, which is the deployment's.
 
 #### Scenario: A build is queued
 
 - **WHEN** the client creates a build for a successfully uploaded artifact
-- **THEN** the platform returns a build in a queued state, owned by the caller
+- **THEN** the platform returns a build in a queued state, belonging to the project's deployment
 
 ### Requirement: An in-flight build is re-attached rather than duplicated
 
@@ -135,4 +136,3 @@ read the resulting image reference from the build record.
 
 - **WHEN** the build ends with a successful status
 - **THEN** the client reads the build's image reference for the release step
-
