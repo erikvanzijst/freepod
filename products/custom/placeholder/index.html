@@ -98,5 +98,49 @@
     </p>
     <footer>Freepod</footer>
   </main>
+  <script>
+    // Once the first build is released, the Service routes this URL to it and
+    // the response stops carrying the placeholder's header. Reload then, so a
+    // visitor left on this page lands on the application without doing
+    // anything. Gateway errors and network failures are the rollout in
+    // progress (or a hiccup), not the application, so polling continues.
+    (function () {
+      var INTERVAL_MS = 2000;
+      var timer = null;
+
+      function schedule() {
+        if (timer === null && !document.hidden) {
+          timer = setTimeout(probe, INTERVAL_MS);
+        }
+      }
+
+      function probe() {
+        timer = null;
+        if (document.hidden) return;
+        fetch(location.href, { method: "HEAD", cache: "no-store", redirect: "manual" })
+          .then(function (res) {
+            // A redirect is opaque here, but the placeholder never redirects.
+            var released = res.type === "opaqueredirect" ||
+              (!res.headers.has("X-Freepod-Placeholder") && [502, 503, 504].indexOf(res.status) === -1);
+            if (released) {
+              location.reload();
+            } else {
+              schedule();
+            }
+          }, schedule);
+      }
+
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+          clearTimeout(timer);
+          timer = null;
+        } else {
+          probe();
+        }
+      });
+
+      schedule();
+    })();
+  </script>
 </body>
 </html>
