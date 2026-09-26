@@ -71,10 +71,14 @@ success.
 ### D3: Measurements are stored on the build row, when the worker sees it finish
 
 New nullable columns on `build`: `usage_cpu_seconds`, `usage_memory_byte_seconds`,
-`usage_memory_peak_bytes`, `usage_started_at`, `usage_finished_at`, `usage_measured`
-(boolean) and `usage_recorded_at`. They are written in the same transaction that moves
-the build to its terminal status, which is the last moment the report is certainly
-readable.
+`usage_memory_peak_bytes`, `usage_started_at`, `usage_finished_at` and
+`usage_recorded_at`. They are written in the same transaction that moves the build to
+its terminal status, which is the last moment the report is certainly readable.
+
+The measurements are written all together or not at all, so "measured" is
+`usage_cpu_seconds IS NOT NULL` and needs no flag of its own: with `job_id` and
+`status` beside it, every state such a flag could hold is already derivable, and a
+separate flag could only disagree with them.
 
 *Alternative considered:* a JSON column holding the report. Rejected: the recording
 pass does arithmetic on these values, and typed columns make a malformed report fail at
@@ -146,7 +150,7 @@ still be recorded (D7).
 
 A build with a Job but no usage report records `request × h` for the billable metrics,
 the request and limit averages and `running_seconds`, using the worker-observed
-`started_at`/`finished_at`, and `usage_measured = false`. The usage-average metrics are
+`started_at`/`finished_at`; its measurement columns stay null. The usage-average metrics are
 **not** recorded for it: the ledger distinguishes "not measured" from "zero", and nothing
 was measured.
 

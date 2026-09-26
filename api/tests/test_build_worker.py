@@ -19,8 +19,9 @@ from sqlmodel import select
 from app import build_worker
 from app.build_worker import merge_log, run_pass, truncate_log
 from app.config import CaelusSettings
-from app.models import BuildORM
+from app.models import BuildORM, UsageSampleORM, UsageSubjectORM
 from app.services import build_jobs
+from app.services.usage.builds import is_measured
 from app.services.build_constants import (
     BUILD_STATUS_FAILED,
     BUILD_STATUS_QUEUED,
@@ -39,6 +40,7 @@ from app.services.build_jobs import (
 )
 from app.services.registry_tokens import RegistryKeyException
 from tests.conftest import db_session, make_accepted_user, make_bare_deployment  # noqa: F401
+from tests.usage_fixtures import seeded_catalog  # noqa: F401
 
 IMAGE = "7@sha256:" + "d" * 64
 
@@ -76,14 +78,24 @@ class FakeCluster:
         return self.termination.get(build_id)
 
     # -- test helpers -----------------------------------------------------
-    def complete(self, build_id: UUID, *, image: str | None = IMAGE) -> None:
+    def complete(
+        self, build_id: UUID, *, image: str | None = IMAGE, usage: dict | None = None
+    ) -> None:
         self.jobs[job_name(build_id)]["status"] = {"succeeded": 1}
         if image is not None:
-            self.termination[str(build_id)] = json.dumps({"image": image})
+            self.termination[str(build_id)] = json.dumps(
+                {"image": image, **({"usage": usage} if usage else {})}
+            )
 
-    def fail(self, build_id: UUID, *, error: str = "boom") -> None:
+    def fail(
+        self, build_id: UUID, *, error: str | None = "boom", usage: dict | None = None
+    ) -> None:
+        """`error=None` is a container killed before it could report anything."""
         self.jobs[job_name(build_id)]["status"] = {"failed": 1}
-        self.termination[str(build_id)] = json.dumps({"error": error})
+        if error is not None:
+            self.termination[str(build_id)] = json.dumps(
+                {"error": error, **({"usage": usage} if usage else {})}
+            )
 
 
 @pytest.fixture
@@ -360,6 +372,157 @@ def test_a_null_job_id_fails_the_build_and_deletes_any_orphan(db_session, cluste
     db_session.refresh(build)
     assert build.status == BUILD_STATUS_FAILED
     assert job_name(build.id) in cluster.deleted
+
+
+USAGE = {
+    "cpu_seconds": 41.2,
+    "memory_byte_seconds": 71_000_000_000,
+    "memory_peak_bytes": 812_000_000,
+    "started_at": "2026-09-25T22:45:41.250Z",
+    "finished_at": "2026-09-25T22:46:56.000Z",
+}
+
+
+def _running(db_session, cluster, settings) -> BuildORM:
+    build = _queued(db_session, _user(db_session).id)
+    run_pass(db_session, client=cluster, settings=settings)
+    db_session.refresh(build)
+    return build
+
+
+def _assert_measured(build: BuildORM) -> None:
+    assert is_measured(build)
+    assert build.usage_cpu_seconds == 41.2
+    assert build.usage_memory_byte_seconds == 71_000_000_000
+    assert build.usage_memory_peak_bytes == 812_000_000
+    assert build.usage_started_at == datetime(2026, 9, 25, 22, 45, 41, 250_000)
+    assert build.usage_finished_at == datetime(2026, 9, 25, 22, 46, 56)
+    assert build.usage_recorded_at is None
+
+
+def test_a_succeeded_build_stores_its_usage(db_session, cluster, settings):
+    build = _running(db_session, cluster, settings)
+    cluster.complete(build.id, usage=USAGE)
+
+    run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert build.status == BUILD_STATUS_SUCCEEDED
+    _assert_measured(build)
+
+
+def test_a_failed_build_that_reported_stores_its_usage(db_session, cluster, settings):
+    build = _running(db_session, cluster, settings)
+    cluster.fail(build.id, usage=USAGE)
+
+    run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert build.status == BUILD_STATUS_FAILED
+    _assert_measured(build)
+
+
+def test_a_failed_build_that_did_not_report_is_marked_for_estimating(
+    db_session, cluster, settings
+):
+    """An OOM or deadline kill leaves no termination message."""
+    build = _running(db_session, cluster, settings)
+    cluster.fail(build.id, error=None)
+
+    run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert build.status == BUILD_STATUS_FAILED
+    assert not is_measured(build)
+    assert build.usage_cpu_seconds is None and build.usage_started_at is None
+
+
+def test_a_build_from_a_builder_that_does_not_report_is_marked_for_estimating(
+    db_session, cluster, settings
+):
+    build = _running(db_session, cluster, settings)
+    cluster.complete(build.id)
+
+    run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert build.status == BUILD_STATUS_SUCCEEDED
+    assert not is_measured(build)
+
+
+def test_a_build_whose_job_vanished_is_marked_for_estimating(db_session, cluster, settings):
+    build = _running(db_session, cluster, settings)
+    cluster.jobs.clear()
+
+    run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert not is_measured(build)
+
+
+def test_a_build_that_never_got_a_job_is_never_recorded(db_session, cluster, settings):
+    build = _queued(
+        db_session, _user(db_session).id, status=BUILD_STATUS_RUNNING, started_at=datetime.now(UTC)
+    )
+
+    run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert build.status == BUILD_STATUS_FAILED
+    assert build.job_id is None and not is_measured(build)
+
+
+def test_a_finished_builds_usage_reaches_the_ledger_once_settled(
+    db_session, cluster, settings, seeded_catalog
+):
+    start = datetime(2026, 9, 25, 14, 8, tzinfo=UTC)
+    build = _queued(db_session, _user(db_session).id)
+    run_pass(db_session, client=cluster, settings=settings, now=start)
+    cluster.complete(
+        build.id,
+        usage={**USAGE, "started_at": "2026-09-25T14:08:01Z", "finished_at": "2026-09-25T14:10:01Z"},
+    )
+    run_pass(db_session, client=cluster, settings=settings, now=start + timedelta(minutes=2))
+
+    unsettled = run_pass(
+        db_session, client=cluster, settings=settings, now=start + timedelta(minutes=55)
+    )
+    settled = run_pass(
+        db_session, client=cluster, settings=settings, now=start + timedelta(minutes=57)
+    )
+
+    db_session.refresh(build)
+    assert (unsettled.usage_recorded, settled.usage_recorded) == (0, 1)
+    assert build.usage_recorded_at is not None
+    subject = db_session.exec(
+        select(UsageSubjectORM).where(UsageSubjectORM.ref == str(build.id))
+    ).one()
+    samples = db_session.exec(
+        select(UsageSampleORM).where(UsageSampleORM.subject_id == subject.id)
+    ).all()
+    assert {s.window_start for s in samples} == {datetime(2026, 9, 25, 14)}
+    assert len(samples) == 9
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        {**USAGE, "cpu_seconds": -1},
+        {**USAGE, "cpu_seconds": "41"},
+        {**USAGE, "memory_byte_seconds": True},
+        {**USAGE, "started_at": "2026-09-25T22:45:41"},
+        {**USAGE, "finished_at": "not a time"},
+        {**USAGE, "started_at": USAGE["finished_at"], "finished_at": USAGE["started_at"]},
+        {k: v for k, v in USAGE.items() if k != "memory_peak_bytes"},
+        [],
+    ],
+    ids=["negative", "string", "bool", "naive-time", "bad-time", "reversed", "missing", "list"],
+)
+def test_a_malformed_usage_report_is_not_believed(usage):
+    message = json.dumps({"image": IMAGE, "usage": usage})
+
+    assert build_jobs.parse_usage_from_termination_message(message) is None
+    assert build_jobs.parse_image_from_termination_message(message) == IMAGE
 
 
 def test_a_finished_job_is_adopted_after_a_worker_restart(db_session, cluster, settings):

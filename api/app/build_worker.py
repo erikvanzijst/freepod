@@ -1,6 +1,6 @@
 """The build worker: one repeating, non-blocking pass.
 
-Each pass does three things and blocks on none of them:
+Each pass does four things and blocks on none of them:
 
 1. **advance** every `running` build — mirror its Job's output into the log,
    adopt its outcome if it finished, and enforce the deadline backstop;
@@ -9,7 +9,9 @@ Each pass does three things and blocks on none of them:
 3. **recover**, which is not a separate step — it *is* step 1. Visiting every
    running build on every pass is what makes a worker restart survivable: a
    build whose worker died is picked up by whichever worker runs next, and its
-   log self-heals because the log is a mirror rather than an append.
+   log self-heals because the log is a mirror rather than an append;
+4. **record** the usage of finished builds whose windows have settled into the
+   usage ledger (`app/services/usage/builds.py`).
 
 Advancing before claiming is deliberate: a build that finished this pass frees
 its in-flight slot immediately rather than a whole interval later.
@@ -44,14 +46,17 @@ from app.services.build_constants import (
     BUILD_STATUS_RUNNING,
     BUILD_STATUS_SUCCEEDED,
 )
+from app.services.usage import builds as build_usage
 from app.services.build_jobs import (
     BuildJobClient,
+    BuildUsage,
     KubectlBuildJobClient,
     build_job_manifest,
     job_is_complete,
     job_is_failed,
     job_name,
     parse_image_from_termination_message,
+    parse_usage_from_termination_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,10 +74,11 @@ class PassResult:
     succeeded: list[UUID]
     failed: list[UUID]
     advanced: int
+    usage_recorded: int = 0
 
     @property
     def changed(self) -> bool:
-        return bool(self.claimed or self.succeeded or self.failed)
+        return bool(self.claimed or self.succeeded or self.failed or self.usage_recorded)
 
 
 # ---------------------------------------------------------------------------
@@ -197,8 +203,17 @@ def _finish(
     image: str | None = None,
     now: datetime,
     reason: str,
+    usage: BuildUsage | None = None,
 ) -> None:
     build.transition_to(status, image=image, now=now)
+    # Stored with the outcome, because the report goes with the Job. Without
+    # one the columns stay null and the build is estimated when recorded.
+    if usage is not None:
+        build.usage_cpu_seconds = usage.cpu_seconds
+        build.usage_memory_byte_seconds = usage.memory_byte_seconds
+        build.usage_memory_peak_bytes = usage.memory_peak_bytes
+        build.usage_started_at = usage.started_at
+        build.usage_finished_at = usage.finished_at
     session.add(build)
     session.commit()
     logger.info("Build id=%s -> %s (%s)", build.id, status, reason)
@@ -245,13 +260,13 @@ def _advance_build(
         return
 
     if job_is_complete(job):
-        image = parse_image_from_termination_message(
-            client.read_termination_message(str(build.id))
-        )
+        message = client.read_termination_message(str(build.id))
+        image = parse_image_from_termination_message(message)
+        usage = parse_usage_from_termination_message(message)
         if image:
             _finish(
                 session, build, status=BUILD_STATUS_SUCCEEDED, image=image, now=now,
-                reason="Job succeeded and reported an image",
+                reason="Job succeeded and reported an image", usage=usage,
             )
             result.succeeded.append(build.id)
         else:
@@ -259,7 +274,7 @@ def _advance_build(
             # build: there is nothing a deployment could run.
             _finish(
                 session, build, status=BUILD_STATUS_FAILED, now=now,
-                reason="Job succeeded but reported no usable image",
+                reason="Job succeeded but reported no usable image", usage=usage,
             )
             result.failed.append(build.id)
         return
@@ -268,6 +283,9 @@ def _advance_build(
         _finish(
             session, build, status=BUILD_STATUS_FAILED, now=now,
             reason="Job terminated unsuccessfully",
+            usage=parse_usage_from_termination_message(
+                client.read_termination_message(str(build.id))
+            ),
         )
         result.failed.append(build.id)
         return
@@ -345,6 +363,15 @@ def run_pass(
             logger.exception("Failed to start build id=%s", build.id)
             break
 
+    # Last, and isolated: the ledger must never hold up running builds.
+    try:
+        result.usage_recorded = build_usage.record_settled_builds(
+            session, now=now, settings=settings
+        ).builds_recorded
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to record build usage")
+
     return result
 
 
@@ -395,6 +422,7 @@ def run_build_worker(
                         "succeeded": [str(b) for b in result.succeeded],
                         "failed": [str(b) for b in result.failed],
                         "advanced": result.advanced,
+                        "usage_recorded": result.usage_recorded,
                     }
                 )
         except Exception:

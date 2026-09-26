@@ -21,7 +21,7 @@ missing — an owner to attribute them to — exists.
   deployment. It therefore appears under that deployment's application, owner and
   product in every existing report, with no change to reporting.
 - A build that ran but reported no measurements is recorded at its resource requests for
-  its wall-clock time, and marked as estimated.
+  its wall-clock time; having no measurements marks it as estimated.
 - The usage sampler derives its resume position from the containers it records alone,
   and stops recording its own environment's builds namespace, so the two writers never
   record the same build or confuse each other's progress.

@@ -19,8 +19,10 @@ import io
 import json
 import os
 import tarfile
+import time
 import tomllib
 import urllib.error
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -39,6 +41,13 @@ def _load_build_module():
 
 
 build = _load_build_module()
+
+
+@pytest.fixture(autouse=True)
+def _no_host_cgroup(monkeypatch, tmp_path):
+    """Keep `main` off the test machine's own cgroup: it reports no usage unless
+    a test hands it one."""
+    monkeypatch.setattr(build, "CGROUP_ROOT", tmp_path / "no-cgroup")
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +388,189 @@ def test_failure_payload_carries_no_image_key(tmp_path):
 def test_an_unwritable_termination_path_does_not_mask_the_outcome(tmp_path):
     """Failing to report must not turn a finished build into a crash."""
     build.write_termination_message(tmp_path / "no-such-dir" / "term", {"image": "x"})
+
+
+# ---------------------------------------------------------------------------
+# Measuring usage
+# ---------------------------------------------------------------------------
+
+
+def _cgroup(
+    root: Path,
+    *,
+    usage_usec: int = 41_200_000,
+    current: int = 900_000_000,
+    inactive_file: int = 100_000_000,
+    peak: int = 812_000_000,
+) -> Path:
+    """A cgroup v2 directory shaped like the kernel's, with only what is read."""
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "cpu.stat").write_text(
+        f"usage_usec {usage_usec}\nuser_usec 30000000\nsystem_usec 11200000\n"
+        "nr_periods 0\nnr_throttled 0\nthrottled_usec 0\n"
+    )
+    (root / "memory.current").write_text(f"{current}\n")
+    (root / "memory.stat").write_text(
+        f"anon 700000000\nfile 200000000\nactive_file 100000000\n"
+        f"inactive_file {inactive_file}\nslab 1000\n"
+    )
+    (root / "memory.peak").write_text(f"{peak}\n")
+    return root
+
+
+def test_cpu_is_read_from_cpu_stat_in_seconds(tmp_path):
+    assert build.read_cpu_seconds(_cgroup(tmp_path, usage_usec=41_200_000)) == 41.2
+
+
+def test_working_set_excludes_inactive_file_cache(tmp_path):
+    root = _cgroup(tmp_path, current=900_000_000, inactive_file=100_000_000)
+
+    assert build.read_working_set(root) == 800_000_000
+
+
+def test_working_set_never_goes_negative(tmp_path):
+    root = _cgroup(tmp_path, current=100, inactive_file=200)
+
+    assert build.read_working_set(root) == 0
+
+
+def test_peak_memory_is_read_from_memory_peak(tmp_path):
+    assert build.read_memory_peak(_cgroup(tmp_path, peak=812_000_000)) == 812_000_000
+
+
+def test_a_stat_file_missing_its_key_is_an_error(tmp_path):
+    root = _cgroup(tmp_path)
+    (root / "cpu.stat").write_text("user_usec 1\n")
+
+    with pytest.raises(ValueError, match="usage_usec"):
+        build.read_cpu_seconds(root)
+
+
+class _Script:
+    """Scripted clock and working-set readings for driving a meter by hand."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.now = 0.0
+
+    def at(self, seconds: float, working_set: int) -> None:
+        self.now = seconds
+        (self.root / "memory.current").write_text(str(working_set))
+        (self.root / "memory.stat").write_text("inactive_file 0\n")
+
+
+def _meter(tmp_path) -> tuple[object, _Script]:
+    script = _Script(_cgroup(tmp_path / "cg"))
+    walls = iter(
+        [
+            datetime(2026, 9, 25, 22, 45, 41, tzinfo=UTC),
+            datetime(2026, 9, 25, 22, 46, 56, tzinfo=UTC),
+        ]
+    )
+    meter = build.UsageMeter(
+        script.root,
+        # Long enough that the background thread never ticks during a test.
+        interval=3600,
+        clock=lambda: script.now,
+        wall=lambda: next(walls),
+    )
+    return meter, script
+
+
+def test_working_set_is_integrated_over_the_run(tmp_path):
+    meter, script = _meter(tmp_path)
+    script.at(0, 100)
+    meter.start()
+    script.at(2, 300)
+    meter.sample()
+    script.at(4, 300)
+    meter.sample()
+    script.at(10, 0)
+
+    usage = meter.finish()
+
+    # Trapezoids: (100+300)/2*2 + 300*2 + (300+0)/2*6
+    assert usage["memory_byte_seconds"] == 400 + 600 + 900
+
+
+def test_the_report_carries_cpu_peak_and_the_run(tmp_path):
+    meter, script = _meter(tmp_path)
+    script.at(0, 0)
+    meter.start()
+    script.at(75, 0)
+
+    assert meter.finish() == {
+        "cpu_seconds": 41.2,
+        "memory_byte_seconds": 0,
+        "memory_peak_bytes": 812_000_000,
+        "started_at": "2026-09-25T22:45:41.000Z",
+        "finished_at": "2026-09-25T22:46:56.000Z",
+    }
+
+
+def test_an_unreadable_cgroup_reports_nothing(tmp_path):
+    """A partial integral would under-bill silently; no report is estimated instead."""
+    meter, script = _meter(tmp_path)
+    script.at(0, 100)
+    meter.start()
+    (script.root / "memory.current").unlink()
+    meter.sample()
+    script.at(10, 100)
+
+    assert meter.finish() is None
+
+
+def test_the_background_thread_samples_and_stops(tmp_path):
+    root = _cgroup(tmp_path / "cg")
+    meter = build.UsageMeter(root, interval=0.01)
+    meter.start()
+    time.sleep(0.1)
+
+    usage = meter.finish()
+
+    assert usage is not None and usage["memory_byte_seconds"] > 0
+    assert not meter._thread.is_alive()
+
+
+def _run_main(monkeypatch, tmp_path, failure: Exception | None) -> dict:
+    """`main` with every stage stubbed out, succeeding or raising `failure`."""
+    _arrange_build(monkeypatch, tmp_path, dockerfile=True)
+    monkeypatch.setattr(build, "CGROUP_ROOT", _cgroup(tmp_path / "cg"))
+
+    def _build(**kwargs):
+        if failure is not None:
+            raise failure
+
+    monkeypatch.setattr(build, "build_and_push_dockerfile", _build)
+
+    build.main()
+    return json.loads((tmp_path / "term").read_text())
+
+
+@pytest.mark.parametrize(
+    "failure, outcome",
+    [
+        (None, "image"),
+        (build.BuildFailure("stack detection failed"), "error"),
+        (RuntimeError("boom"), "error"),
+    ],
+    ids=["success", "build-failure", "unexpected-exception"],
+)
+def test_every_exit_path_reports_usage(monkeypatch, tmp_path, failure, outcome):
+    payload = _run_main(monkeypatch, tmp_path, failure)
+
+    assert outcome in payload
+    assert payload["usage"]["cpu_seconds"] == 41.2
+    assert set(payload["usage"]) == {
+        "cpu_seconds", "memory_byte_seconds", "memory_peak_bytes", "started_at", "finished_at",
+    }
+
+
+def test_the_message_stays_under_the_termination_limit(monkeypatch, tmp_path):
+    payload = _run_main(monkeypatch, tmp_path, build.BuildFailure("x" * 100_000))
+
+    assert len(json.dumps(payload).encode()) < 4096
+    assert "usage" in payload
 
 
 # ---------------------------------------------------------------------------

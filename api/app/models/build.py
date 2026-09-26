@@ -19,7 +19,17 @@ from uuid import UUID, uuid4
 
 from pydantic import ConfigDict
 from sqlmodel import Field, SQLModel
-from sqlalchemy import Column, ForeignKey, Index, LargeBinary, String, Uuid
+from sqlalchemy import (
+    BigInteger,
+    Column,
+    DateTime,
+    Double,
+    ForeignKey,
+    Index,
+    LargeBinary,
+    String,
+    Uuid,
+)
 
 from app.models.core import _utcnow
 from app.services.build_constants import (
@@ -48,6 +58,12 @@ class BuildORM(BuildBase, table=True):
             "artifact_id",
             unique=True,
             postgresql_where=Column("status").in_(BUILD_STATUSES_OPEN),
+        ),
+        # The build worker's recording pass walks exactly these rows.
+        Index(
+            "ix_build_usage_pending",
+            "finished_at",
+            postgresql_where=Column("usage_recorded_at").is_(None),
         ),
     )
 
@@ -97,6 +113,33 @@ class BuildORM(BuildBase, table=True):
     # The log endpoint serves these bytes as `text/plain; charset=utf-8`; UTF-8
     # is what the client should assume, not something the server enforces.
     log: bytes = Field(default=b"", sa_column=Column(LargeBinary, nullable=False))
+
+    # What the build container reported about its own run, stored when the
+    # worker sees it finish: the report does not outlive the Job. The start and
+    # end are the container's own, free of the worker's polling delay. All set
+    # or all null: a finished build with a Job and no report is estimated at
+    # its requests.
+    usage_cpu_seconds: Optional[float] = Field(
+        default=None, sa_column=Column(Double(), nullable=True)
+    )
+    usage_memory_byte_seconds: Optional[int] = Field(
+        default=None, sa_column=Column(BigInteger(), nullable=True)
+    )
+    usage_memory_peak_bytes: Optional[int] = Field(
+        default=None, sa_column=Column(BigInteger(), nullable=True)
+    )
+    usage_started_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(), nullable=True)
+    )
+    usage_finished_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(), nullable=True)
+    )
+    # When this build's samples reached the usage ledger. Null marks it
+    # pending; builds finished before recording existed were marked by the
+    # migration and are never recorded.
+    usage_recorded_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(), nullable=True)
+    )
 
     def transition_to(
         self,

@@ -17,12 +17,14 @@ from app.models import (
     UsageSubjectORM,
     UserORM,
 )
+from app.models.usage import SubjectKind
 from app.services.usage.opencost import Allocation
 from app.services.usage.subjects import (
     UNRESOLVED,
     is_degraded,
     resolve_subjects,
     subject_ref,
+    upsert_subject,
 )
 from tests.conftest import make_deployment_with_release
 
@@ -341,3 +343,27 @@ def test_resolving_the_same_subject_twice_yields_one_row(db_session):
     db_session.commit()
     assert first == second
     assert len(db_session.exec(select(UsageSubjectORM)).all()) == 1
+
+
+# other subject kinds
+
+
+def test_a_build_subject_is_distinct_from_a_container_with_the_same_ref(db_session, tenant):
+    """Kind is part of the identity, so a build's id can never collide with a
+    container reference."""
+    build = upsert_subject(
+        db_session,
+        kind=SubjectKind.BUILD,
+        ref="same-ref",
+        namespace="caelus-builds",
+        deployment_id=tenant.id,
+        observed_at=OBSERVED,
+    )
+    container = upsert_subject(
+        db_session, ref="same-ref", namespace="tenant-ns", observed_at=OBSERVED
+    )
+    db_session.commit()
+
+    assert build != container
+    subject = db_session.get(UsageSubjectORM, build)
+    assert (subject.kind, subject.deployment_id) == (SubjectKind.BUILD, tenant.id)

@@ -170,6 +170,47 @@ def test_the_position_is_the_ledger_itself(db_session, seeded_catalog, tenants):
     assert last_recorded_window(db_session) == datetime(2026, 9, 23, 11)
 
 
+def test_another_writers_samples_do_not_advance_the_position(
+    db_session, seeded_catalog, tenants
+):
+    """A build recorded for 13:00 while the sampler is stuck at 10:00 -- say
+    OpenCost is down -- must not make it skip 11:00 and 12:00."""
+    _seed_sample(db_session, datetime(2026, 9, 23, 10))
+    _seed_sample(db_session, datetime(2026, 9, 23, 13), kind="build")
+
+    assert last_recorded_window(db_session) == datetime(2026, 9, 23, 10)
+
+
+def test_only_another_writers_samples_is_an_empty_position(db_session, seeded_catalog):
+    _seed_sample(db_session, datetime(2026, 9, 23, 13), kind="build")
+
+    assert last_recorded_window(db_session) is None
+
+
+def test_the_own_builds_namespace_is_not_sampled(
+    db_session, seeded_catalog, tenants, settings
+):
+    """`caelus-dev` stands in for the builds namespace: the fixture has no build pods."""
+    own = settings.model_copy(update={"builds_namespace": "caelus-dev"})
+    sample_once(db_session, _client(), now=datetime(2026, 9, 23, 14, 30), settings=own)
+
+    namespaces = {s.namespace for s in db_session.exec(select(UsageSubjectORM)).all()}
+    assert "caelus-dev" not in namespaces
+    assert "bookstack-fred-mi4dpvrph" in namespaces
+
+
+def test_another_environments_builds_namespace_is_sampled(
+    db_session, seeded_catalog, tenants, settings
+):
+    other = settings.model_copy(update={"builds_namespace": "caelus-builds"})
+    sample_once(db_session, _client(), now=datetime(2026, 9, 23, 14, 30), settings=other)
+
+    subjects = db_session.exec(
+        select(UsageSubjectORM).where(UsageSubjectORM.namespace == "caelus-dev")
+    ).all()
+    assert subjects and all(s.deployment_id is None for s in subjects)
+
+
 # recordable range
 
 
@@ -454,11 +495,11 @@ def test_a_replayed_window_is_left_unchanged(
     assert after == before
 
 
-def _seed_sample(session, window_start: datetime) -> None:
+def _seed_sample(session, window_start: datetime, *, kind: str = "container") -> None:
     """One recorded sample, which is all the cursor reads."""
     from app.models import UsageMetricORM
 
-    subject = UsageSubjectORM(kind="container", ref=f"ns/d/c/{window_start:%H}", namespace="ns")
+    subject = UsageSubjectORM(kind=kind, ref=f"ns/d/c/{window_start:%H}/{kind}", namespace="ns")
     session.add(subject)
     session.commit()
     session.refresh(subject)

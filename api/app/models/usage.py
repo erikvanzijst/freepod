@@ -76,6 +76,8 @@ class SubjectKind(StrEnum):
     BUCKET = "bucket"
     DATABASE = "database"
     NODE = "node"
+    # Written by the build worker from the build's own measurements, not sampled.
+    BUILD = "build"
 
 
 class UsageMetricORM(SQLModel, table=True):

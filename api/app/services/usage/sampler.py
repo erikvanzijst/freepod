@@ -13,7 +13,8 @@ import logging
 from sqlmodel import Session, select
 
 from app.config import CaelusSettings, get_settings
-from app.models import UsageSampleORM
+from app.models import UsageSampleORM, UsageSubjectORM
+from app.models.usage import SubjectKind
 from app.services.usage import ledger, subjects
 from app.services.usage.opencost import OpenCostClient
 from app.services.usage.ledger import SampleRow
@@ -41,10 +42,19 @@ def align(moment: datetime, window_seconds: int) -> datetime:
 
 
 def last_recorded_window(session: Session) -> datetime | None:
-    """The newest window present in the ledger, or None when it is empty."""
-    return session.exec(select(UsageSampleORM.window_start).order_by(
-        UsageSampleORM.window_start.desc()
-    ).limit(1)).first()
+    """The newest window this sampler recorded, or None when it has recorded none.
+
+    Only container subjects count: the build worker writes closed windows of its own,
+    possibly ahead of a stalled sampler, and counting those would skip the windows in
+    between for good.
+    """
+    return session.exec(
+        select(UsageSampleORM.window_start)
+        .join(UsageSubjectORM, UsageSubjectORM.id == UsageSampleORM.subject_id)
+        .where(UsageSubjectORM.kind == SubjectKind.CONTAINER)
+        .order_by(UsageSampleORM.window_start.desc())
+        .limit(1)
+    ).first()
 
 
 def resume_from(
@@ -105,6 +115,7 @@ def record_window(
     window_seconds: int,
     observed_at: datetime,
     environment: str,
+    builds_namespace: str | None = None,
     catalog: dict[str, int] | None = None,
 ) -> int | None:
     """Record one window. Returns samples written, or None if it was not usable.
@@ -117,7 +128,9 @@ def record_window(
     if not reading.is_usable:
         return None
 
-    allocations = billable(reading.allocations, environment=environment)
+    allocations = billable(
+        reading.allocations, environment=environment, builds_namespace=builds_namespace
+    )
     if not allocations:
         return None
 
@@ -181,6 +194,7 @@ def sample_once(
             window_seconds=settings.usage_window_seconds,
             observed_at=now,
             environment=settings.environment,
+            builds_namespace=settings.builds_namespace,
             catalog=catalog,
         )
         if written is None:
