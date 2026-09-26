@@ -318,6 +318,13 @@ The placeholder is built from [`placeholder/`](placeholder/): nginx serving one
 self-contained landing page (no external CSS, fonts, or images — it has to render
 standalone, on a hostname with nothing else behind it).
 
+The page quietly polls its own URL every two seconds (paused while the tab is
+hidden) and reloads once the response no longer carries the placeholder's
+`X-Freepod-Placeholder` header — that is, once the first build is released and
+the Service routes to it. Gateway errors (502–504) and network failures read as
+a rollout in progress and polling continues. The placeholder is served
+`Cache-Control: no-store`, so that reload cannot come back to a cached copy.
+
 It is published to `ghcr.io/erikvanzijst/freepod/custom-placeholder`, tagged
 from `placeholder/VERSION`, and CI publishes it on merge when that version is
 new. To publish by hand, from the repository root:
@@ -365,7 +372,7 @@ is published. To publish by hand, from the repository root:
 | Field               | Value                                                                                                                                              |
 |---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|
 | Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/custom`                                                                                                 |
-| Chart version       | `0.10.1`                                                                                                                                           |
+| Chart version       | `0.10.3`                                                                                                                                           |
 | Default Helm values | `{}` — the chart's own defaults already carry `registry`, `placeholderImage`, and `containerPort`. Set them here only to override per environment. |
 | User values schema  | see below                                                                                                                                          |
 

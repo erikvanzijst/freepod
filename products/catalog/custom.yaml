@@ -13,9 +13,9 @@ upstream:
   version_path: template.system_values.placeholderImage
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/custom
-  chart_version: 0.10.2
+  chart_version: 0.10.3
   system_values:
-    placeholderImage: ghcr.io/erikvanzijst/freepod/custom-placeholder:0.1.0
+    placeholderImage: ghcr.io/erikvanzijst/freepod/custom-placeholder:0.2.0
     objectStorage:
       enabled: true
     relationalStorage:
