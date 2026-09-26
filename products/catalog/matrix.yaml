@@ -18,7 +18,7 @@ template:
   chart_version: 0.3.1
   system_values:
     image:
-      tag: v1.9.2
+      tag: v1.9.3
   values_schema:
     $schema: https://json-schema.org/draft/2020-12/schema
     title: matrix values
