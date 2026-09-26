@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import subprocess
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from tempfile import NamedTemporaryFile
 from typing import Any, Protocol
 from uuid import UUID
@@ -341,6 +344,16 @@ def job_is_failed(job: dict[str, Any]) -> bool:
     return int(job.get("status", {}).get("failed") or 0) > 0
 
 
+def _termination_payload(message: str | None) -> dict[str, Any] | None:
+    if not message:
+        return None
+    try:
+        payload = json.loads(message)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def parse_image_from_termination_message(message: str | None) -> str | None:
     """The image reference a successful build reported, or None.
 
@@ -350,13 +363,64 @@ def parse_image_from_termination_message(message: str | None) -> str | None:
     output cannot forge it, because this comes from the pod's termination
     message rather than from the log.
     """
-    if not message:
-        return None
-    try:
-        payload = json.loads(message)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    if not isinstance(payload, dict):
+    payload = _termination_payload(message)
+    if payload is None:
         return None
     image = payload.get("image")
     return image if isinstance(image, str) and image else None
+
+
+@dataclass(frozen=True)
+class BuildUsage:
+    """What a build container measured about its own run. Times are naive UTC."""
+
+    cpu_seconds: float
+    memory_byte_seconds: int
+    memory_peak_bytes: int
+    started_at: datetime
+    finished_at: datetime
+
+
+def _quantity(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if math.isfinite(value) and value >= 0 else None
+
+
+def _timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        return None
+    return moment.astimezone(UTC).replace(tzinfo=None)
+
+
+def parse_usage_from_termination_message(message: str | None) -> BuildUsage | None:
+    """The usage a build reported beside its image or error, or None.
+
+    Anything malformed yields None rather than a partial report: the build is
+    then estimated at its requests, which is the documented fallback, where a
+    half-read report would be a silent undercount.
+    """
+    payload = _termination_payload(message)
+    usage = payload.get("usage") if payload else None
+    if not isinstance(usage, dict):
+        return None
+    cpu = _quantity(usage.get("cpu_seconds"))
+    memory = _quantity(usage.get("memory_byte_seconds"))
+    peak = _quantity(usage.get("memory_peak_bytes"))
+    started = _timestamp(usage.get("started_at"))
+    finished = _timestamp(usage.get("finished_at"))
+    if None in (cpu, memory, peak, started, finished) or finished < started:
+        return None
+    return BuildUsage(
+        cpu_seconds=cpu,
+        memory_byte_seconds=round(memory),
+        memory_peak_bytes=round(peak),
+        started_at=started,
+        finished_at=finished,
+    )

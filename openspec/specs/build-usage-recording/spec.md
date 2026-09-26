@@ -1,10 +1,12 @@
+# build-usage-recording Specification
+
 ## Purpose
 
 How a finished build's resource consumption becomes usage ledger samples: when it is
 recorded, in which windows, with which quantities, and what is recorded when the build's
 own measurements are missing.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: A finished build's usage is recorded once its windows have settled
 
@@ -114,12 +116,13 @@ and limited CPU and memory, and how long it ran.
 Where a build ran a Job but its own measurements are unavailable — it was killed before it
 could report, its report was lost, or it was built by a builder that does not report — its
 usage SHALL be recorded at its requested CPU and memory for the time the worker observed
-it running, and the build SHALL be marked as estimated rather than measured.
+it running. Such a build is identified as estimated by having no measurements recorded.
 
 #### Scenario: An OOM-killed build
 
 - **WHEN** a build's container is killed without reporting its usage
-- **THEN** its requests over its observed run are recorded, and the build is marked estimated
+- **THEN** its requests over its observed run are recorded, and the build records no
+  measurements
 
 ### Requirement: Build usage is attributed through the build's deployment
 

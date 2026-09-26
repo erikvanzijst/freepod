@@ -61,6 +61,7 @@ def upsert_subject(
     namespace: str | None,
     deployment_id=None,
     observed_at: datetime,
+    kind: SubjectKind = SubjectKind.CONTAINER,
 ) -> int:
     """Get or create the subject, returning its id.
 
@@ -70,7 +71,7 @@ def upsert_subject(
     """
     table = UsageSubjectORM.__table__
     statement = insert(table).values(
-        kind=SubjectKind.CONTAINER.value,
+        kind=kind.value,
         ref=ref,
         namespace=namespace,
         deployment_id=deployment_id,

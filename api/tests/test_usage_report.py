@@ -388,3 +388,63 @@ def test_the_admin_api_refuses_deployments_across_accounts(client, ledger_data):
 def test_the_admin_api_is_for_administrators(user_client, ledger_data):
     client, _ = user_client
     assert client.get("/api/usage", params=_params()).status_code == 403
+
+
+# builds
+
+
+def test_a_builds_usage_is_reported_under_its_deployment_and_product(db_session, ledger_data):
+    """Recorded by the build worker, and reported with no change to reporting --
+    including after the deployment is gone."""
+    from app.config import CaelusSettings
+    from app.models import BuildORM
+    from app.services.usage.builds import record_settled_builds
+
+    user, _, db = ledger_data
+    build = BuildORM(
+        artifact_id=uuid4().hex,
+        deployment_id=db.id,
+        status="succeeded",
+        job_id="build-x",
+        started_at=DAY + timedelta(hours=1, minutes=10),
+        finished_at=DAY + timedelta(hours=1, minutes=13),
+        usage_cpu_seconds=7200.0,  # two core-hours in three minutes: over the floor
+        usage_memory_byte_seconds=0,
+        usage_memory_peak_bytes=0,
+        usage_started_at=DAY + timedelta(hours=1, minutes=10),
+        usage_finished_at=DAY + timedelta(hours=1, minutes=12),
+    )
+    db_session.add(build)
+    db_session.commit()
+    record_settled_builds(
+        db_session, now=DAY + timedelta(hours=3), settings=CaelusSettings(_env_file=None)
+    )
+
+    by_deployment = {
+        r["deployment_name"]: r["cost"]
+        for r in _as_dicts(_query(db_session, user, group_by={UsageDimension.DEPLOYMENT}))
+    }
+    # db's own 2 core-hours and the build's 2 at 0.01, plus the build's memory at
+    # its floor: 1 GiB held for 2 minutes at 0.002 per GiB-hour.
+    expected = Decimal("0.04") + Decimal("0.002") / 30
+    assert abs(Decimal(by_deployment["db"]) - expected) < Decimal("1e-20")
+
+    by_product = {
+        r["product_name"]: r["cost"]
+        for r in _as_dicts(
+            query_usage(
+                db_session, user_id=None, start=DAY, end=DAY + timedelta(days=1),
+                group_by={UsageDimension.PRODUCT},
+            )
+        )
+    }
+    assert Decimal(by_product["Postgres"]) > Decimal("0.04")
+
+    db.deleted_at = _utcnow()
+    db_session.add(db)
+    db_session.commit()
+    after = {
+        r["deployment_name"]: r["cost"]
+        for r in _as_dicts(_query(db_session, user, group_by={UsageDimension.DEPLOYMENT}))
+    }
+    assert after["db"] == by_deployment["db"]

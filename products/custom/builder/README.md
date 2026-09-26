@@ -31,7 +31,7 @@ presigned artifact URL
   read the pushed config back, warn if it cannot serve
         │
         ▼
-  /dev/termination-log:  {"image": "{user_id}@{digest}"}
+  /dev/termination-log:  {"image": "{user_id}@{digest}", "usage": {…}}
 ```
 
 ## Which builder runs
@@ -210,6 +210,32 @@ redraws (`Reading database ... 5%\r10%\r…`). A tenant can print arbitrary
 bytes, and the platform stores them faithfully rather than rewriting them,
 which is why the `build.log` column is `bytea`. Rendering is the reader's
 choice; a client that wants a tidy transcript can collapse CR runs itself.
+
+## The termination message
+
+The result goes to `/dev/termination-log` as one JSON object: `{"image": …}` on
+success, `{"error": …}` on failure, and on either, when it could be measured, the
+run's resource usage:
+
+```json
+{"image": "5@sha256:…",
+ "usage": {"cpu_seconds": 41.2, "memory_byte_seconds": 71000000000,
+           "memory_peak_bytes": 812000000,
+           "started_at": "2026-09-25T22:45:41.000Z",
+           "finished_at": "2026-09-25T22:46:56.000Z"}}
+```
+
+The container is its own cgroup v2 root, so the usage covers every process the
+build ran, BuildKit's included. `cpu_seconds` is `cpu.stat usage_usec`;
+`memory_byte_seconds` is working set (`memory.current` minus `inactive_file`)
+sampled every 2 s and integrated over the run; `memory_peak_bytes` is
+`memory.peak`. The build worker stores these on the build and records them in
+the usage ledger.
+
+`usage` is left out when any of it could not be read, and is necessarily absent
+when the container was killed before it could write anything; the worker then
+estimates the build at its resource requests. The error text is capped so the
+message stays under Kubernetes' 4 KiB limit.
 
 ## Pulls from ghcr.io go through the environment's registry
 

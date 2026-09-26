@@ -210,3 +210,24 @@ def test_the_filter_is_symmetric(healthy_body):
     kept = billable(_allocations(healthy_body), environment="prod")
     assert not [a for a in kept if a.tenant_environment == "dev"]
     assert [a for a in kept if a.tenant_environment == "prod"]
+
+
+def _in_namespace(body, namespace: str):
+    from dataclasses import replace
+
+    platform = next(a for a in _allocations(body) if not a.is_tenant)
+    return replace(platform, namespace=namespace)
+
+
+def test_our_own_builds_namespace_is_skipped(healthy_body):
+    """The build worker records those builds from their own measurements."""
+    build = _in_namespace(healthy_body, "caelus-builds-dev")
+
+    assert billable([build], environment="dev", builds_namespace="caelus-builds-dev") == []
+
+
+def test_another_environments_builds_namespace_is_platform_overhead(healthy_body):
+    build = _in_namespace(healthy_body, "caelus-builds")
+
+    assert billable([build], environment="dev", builds_namespace="caelus-builds-dev") == [build]
+    assert not build.is_tenant

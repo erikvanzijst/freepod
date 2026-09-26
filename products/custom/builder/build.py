@@ -25,8 +25,11 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import threading
+import time
 import urllib.error
 import urllib.request
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Pinned by digest and version-matched to the `railpack` binary in the
@@ -88,6 +91,19 @@ CACHE_TAG = "latest"
 
 DIGEST_PREFIX = "sha256:"
 DIGEST_HEX_LEN = 64
+
+# The container is its own cgroup v2 root, so its accounting covers every
+# process the build runs — BuildKit's included — and nothing a build step can
+# write to.
+CGROUP_ROOT = Path("/sys/fs/cgroup")
+
+# How often working set is sampled. Builds last about a minute, so this is what
+# makes the memory integral mean something.
+MEMORY_SAMPLE_SECONDS = 2.0
+
+# Kubernetes truncates a termination message at 4 KiB, which would cut the JSON
+# short and lose the whole report. The error text is the only unbounded part.
+MAX_ERROR_CHARS = 2048
 
 
 class BuildFailure(Exception):
@@ -567,12 +583,117 @@ def read_digest(metadata_file: Path) -> str:
     return digest
 
 
-def write_termination_message(path: Path, payload: dict[str, str]) -> None:
+def _stat_value(path: Path, key: str) -> int:
+    """One `key value` line from a cgroup flat-keyed file such as `cpu.stat`."""
+    for line in path.read_text().splitlines():
+        name, _, value = line.partition(" ")
+        if name == key:
+            return int(value)
+    raise ValueError(f"{path.name} has no {key}")
+
+
+def read_cpu_seconds(cgroup: Path) -> float:
+    return _stat_value(cgroup / "cpu.stat", "usage_usec") / 1_000_000
+
+
+def read_working_set(cgroup: Path) -> int:
+    """Memory in use minus reclaimable file cache, as the kubelet defines it."""
+    current = int((cgroup / "memory.current").read_text())
+    inactive_file = _stat_value(cgroup / "memory.stat", "inactive_file")
+    return max(current - inactive_file, 0)
+
+
+def read_memory_peak(cgroup: Path) -> int:
+    return int((cgroup / "memory.peak").read_text())
+
+
+def _utc_timestamp(moment: datetime) -> str:
+    return moment.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+class UsageMeter:
+    """Measures this container's run: CPU and peak memory from the cgroup at the
+    end, and working set integrated into byte-seconds by a background thread.
+
+    Any failed read yields no report at all rather than a partial one: the
+    worker estimates a build that reported nothing, and a silently low integral
+    would be worse than that.
+    """
+
+    def __init__(
+        self,
+        cgroup: Path,
+        *,
+        interval: float = MEMORY_SAMPLE_SECONDS,
+        clock=time.monotonic,
+        wall=lambda: datetime.now(UTC),
+    ) -> None:
+        self._cgroup = cgroup
+        self._interval = interval
+        self._clock = clock
+        self._wall = wall
+        self._lock = threading.Lock()
+        self._stopped = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._last: tuple[float, int] | None = None
+        self._byte_seconds = 0.0
+        self._failed = False
+        self._started_at: datetime | None = None
+
+    def start(self) -> None:
+        self._started_at = self._wall()
+        self.sample()
+        self._thread = threading.Thread(target=self._run, name="usage-meter", daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        while not self._stopped.wait(self._interval):
+            self.sample()
+
+    def sample(self) -> None:
+        """Read working set now and add the trapezoid since the last reading."""
+        with self._lock:
+            now = self._clock()
+            try:
+                working_set = read_working_set(self._cgroup)
+            except (OSError, ValueError):
+                self._failed = True
+                return
+            if self._last is not None:
+                then, previous = self._last
+                self._byte_seconds += (previous + working_set) / 2 * (now - then)
+            self._last = (now, working_set)
+
+    def finish(self) -> dict | None:
+        """Stop sampling and return the report, or None if anything was unreadable."""
+        self._stopped.set()
+        if self._thread is not None:
+            self._thread.join()
+        self.sample()
+        finished_at = self._wall()
+        if self._failed or self._started_at is None:
+            return None
+        try:
+            cpu_seconds = read_cpu_seconds(self._cgroup)
+            memory_peak = read_memory_peak(self._cgroup)
+        except (OSError, ValueError):
+            return None
+        return {
+            "cpu_seconds": round(cpu_seconds, 3),
+            "memory_byte_seconds": round(self._byte_seconds),
+            "memory_peak_bytes": memory_peak,
+            "started_at": _utc_timestamp(self._started_at),
+            "finished_at": _utc_timestamp(finished_at),
+        }
+
+
+def write_termination_message(path: Path, payload: dict) -> None:
     """Report the outcome through the pod's termination message.
 
     Purpose-built for this: a small structured result from a terminating
     container, surfaced through pod status, requiring no credential. Kubernetes
-    caps it at 4 KiB, which is ample for one image reference.
+    caps it at 4 KiB, which is ample for one image reference and a usage
+    report.
 
     Failing to write it must not mask the build's own outcome, so a write error
     is reported and swallowed.
@@ -583,8 +704,20 @@ def write_termination_message(path: Path, payload: dict[str, str]) -> None:
         print(f"warning: could not write termination message to {path}: {exc}", flush=True)
 
 
+def report(path: Path, payload: dict, meter: UsageMeter) -> None:
+    """Write the outcome with this run's usage, on every exit path."""
+    if "error" in payload:
+        payload = {**payload, "error": payload["error"][:MAX_ERROR_CHARS]}
+    usage = meter.finish()
+    if usage is not None:
+        payload = {**payload, "usage": usage}
+    write_termination_message(path, payload)
+
+
 def main() -> int:
     termination_log = Path(os.environ.get("CAELUS_TERMINATION_LOG", "/dev/termination-log"))
+    meter = UsageMeter(CGROUP_ROOT)
+    meter.start()
     try:
         artifact_url = _env("CAELUS_ARTIFACT_URL")
         user_id = _env("CAELUS_USER_ID")
@@ -658,18 +791,18 @@ def main() -> int:
         # a deployment at an arbitrary registry.
         image = f"{user_id}@{digest}"
         log(f"Built {image}")
-        write_termination_message(termination_log, {"image": image})
+        report(termination_log, {"image": image}, meter)
         return 0
 
     except BuildFailure as exc:
         print(f"ERROR: {exc}", flush=True)
         # Deliberately carries no `image` key — the worker requires one to
         # treat a build as succeeded, so this can only ever read as a failure.
-        write_termination_message(termination_log, {"error": str(exc)})
+        report(termination_log, {"error": str(exc)}, meter)
         return 1
     except Exception as exc:  # noqa: BLE001 — a crash here must still be a clean failure
         print(f"ERROR: unexpected build failure: {exc!r}", flush=True)
-        write_termination_message(termination_log, {"error": f"unexpected failure: {exc!r}"})
+        report(termination_log, {"error": f"unexpected failure: {exc!r}"}, meter)
         return 1
 
 
