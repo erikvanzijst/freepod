@@ -26,7 +26,7 @@ class CaelusSettings(BaseSettings):
     # parity by construction, and a CI test binds it to the ToS markdown so the
     # two cannot drift. The CAELUS_CURRENT_TOS_VERSION override exists only as an
     # emergency escape hatch and is not populated in normal operation.
-    current_tos_version: str = "2026-08-26"
+    current_tos_version: str = "2026-09-27"
 
     database_url: str = "postgresql+psycopg://caelus:caelus@localhost:5432/caelus"
     static_path: Path = Path(__file__).parent.parent / "static"
@@ -47,6 +47,12 @@ class CaelusSettings(BaseSettings):
     # (The ACME account email and the wildcard secret name are Terraform-side: see
     # tf/deps/certmanager and tf/deps/system/traefik.tf)
     tls_cluster_issuer: str = "letsencrypt-http"
+
+    # The app authentication verifier's in-cluster forward-auth address (app-auth/).
+    # Injected into every chart as caelus.appAuth.verifyUrl; the custom chart
+    # routes an auth-enabled deployment through it and refuses to render one
+    # without it. Empty means the environment does not run app-auth.
+    app_auth_verify_url: str = ""
 
     # ── Tenant network isolation ──────────────────────────────────────────
     # Cluster-specific inputs to the baseline NetworkPolicy + Pod Security labels

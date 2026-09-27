@@ -9,7 +9,7 @@ Customer's behalf.
 In case of conflict between this DPA and the Terms, this DPA prevails with
 respect to the processing of Personal Data.
 
-**Effective date:** 2026-08-26  
+**Effective date:** 2026-09-27  
 This DPA takes effect on the effective date of the Terms and is versioned
 alongside them.
 
@@ -50,6 +50,30 @@ or Personal Data it collects, stores, or discloses. The Customer is solely
 responsible for selecting and lawfully configuring the application and for
 providing any notices and obtaining any consents required from the application's
 users.
+
+2.5 **Sign in with Freepod.** Where the Customer enables Sign in with Freepod
+for an application it deploys, Freepod authenticates the application's users
+against their Freepod accounts and, after each user has consented through
+Freepod's consent screen, discloses to the application that user's name, email
+address and a stable account identifier. For that authentication and
+disclosure Freepod acts as an independent **Controller**, not as the Customer's
+Processor, and this DPA does not govern it. On receipt, the Customer becomes an
+independent **Controller** of the disclosed data and shall:
+
+(a) process it only to operate the application for the user who signed in, and
+in accordance with Data Protection Law;
+
+(b) provide the application's users with its own privacy notice covering that
+processing, and handle their data-subject requests in respect of it;
+
+(c) not attempt to obtain, infer, or forge the identity of a user other than
+through what Freepod discloses for a sign-in that user completed; and
+
+(d) not represent itself as Freepod, or its application as operated or endorsed
+by Freepod, to the application's users.
+
+A user's withdrawal of consent stops future disclosures to the application; it
+does not oblige Freepod to recover data already disclosed.
 
 ---
 

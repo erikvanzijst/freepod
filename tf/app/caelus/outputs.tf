@@ -47,3 +47,15 @@ output "database_name" {
   description = "Platform database name"
   value       = var.db_name
 }
+
+# Consumed by tf/app/app-auth, for the same reason as the SSH resolver's.
+output "app_auth_db_password" {
+  description = "Password for the caelus_app_auth role"
+  value       = random_password.app_auth_db.result
+  sensitive   = true
+}
+
+output "app_auth_db_role" {
+  description = "Role name the app authentication service connects as"
+  value       = "caelus_app_auth"
+}

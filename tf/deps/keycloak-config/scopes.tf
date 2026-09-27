@@ -181,3 +181,35 @@ resource "keycloak_openid_client_optional_scopes" "freepod_cli_dev" {
   client_id       = keycloak_openid_client.freepod_cli_dev.id
   optional_scopes = ["offline_access"]
 }
+
+# The broker needs identity only: who (sub), their verified email and a display
+# name. No groups, no roles, no audiences -- nothing that would describe the user
+# beyond what the consent page lists, and no optional scopes either, so an
+# `offline_access` refresh token can never be requested.
+locals {
+  app_auth_client_scopes = ["acr", "email", "profile"]
+}
+
+resource "keycloak_openid_client_default_scopes" "freepod_apps_prod" {
+  realm_id       = keycloak_realm.freepod.id
+  client_id      = keycloak_openid_client.freepod_apps_prod.id
+  default_scopes = local.app_auth_client_scopes
+}
+
+resource "keycloak_openid_client_default_scopes" "freepod_apps_dev" {
+  realm_id       = keycloak_realm.freepod.id
+  client_id      = keycloak_openid_client.freepod_apps_dev.id
+  default_scopes = local.app_auth_client_scopes
+}
+
+resource "keycloak_openid_client_optional_scopes" "freepod_apps_prod" {
+  realm_id        = keycloak_realm.freepod.id
+  client_id       = keycloak_openid_client.freepod_apps_prod.id
+  optional_scopes = []
+}
+
+resource "keycloak_openid_client_optional_scopes" "freepod_apps_dev" {
+  realm_id        = keycloak_realm.freepod.id
+  client_id       = keycloak_openid_client.freepod_apps_dev.id
+  optional_scopes = []
+}

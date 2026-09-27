@@ -178,7 +178,7 @@ describe('DeployDialog', () => {
     // First launch records ToS acceptance (with the displayed version) before
     // creating the deployment; the create payload carries no ToS field.
     await waitFor(() => {
-      expect(recordTosAcceptanceMock).toHaveBeenCalledWith('2026-08-26')
+      expect(recordTosAcceptanceMock).toHaveBeenCalledWith('2026-09-27')
     })
     await waitFor(() => {
       expect(createDeploymentMock).toHaveBeenCalledWith(42, {

@@ -2,7 +2,7 @@
 
 ---
 
-**Effective date:** 2026-06-30  
+**Effective date:** 2026-09-27  
 **Controller:** Freepod (`[entity type]`), `[REGISTERED ADDRESS]`,
 enterprise number `[BE 0xxx.xxx.xxx]` ("**Freepod**", "**we**").  
 **Contact / data-protection queries:** privacy@freepod.eu  
@@ -26,6 +26,12 @@ cookie consent, and data-subject handling those applications require. Freepod
 does not author or control Third-Party Applications or their data-processing
 behaviour.
 
+**Sign in with Freepod.** Some Third-Party Applications let you sign in with
+your Freepod account. For that sign-in, Freepod is the controller of your account
+data and of the record of your consent; once, with your consent, we have passed
+your identity to the application, its operator is an independent controller of
+what it received (see Sections 3 and 4).
+
 ---
 
 ## 2. Personal Data we collect
@@ -37,6 +43,7 @@ behaviour.
 | **Usage & technical data** | IP address, device/browser, log and access records, resource metrics | Automatically |
 | **Support data** | messages, tickets, correspondence | You |
 | **Cookies / similar** | session and analytics identifiers | Automatically — see Section 8 |
+| **Sign in with Freepod records** | which applications you consented to share your identity with, and when | You, when you consent |
 
 We do not intentionally collect special-category data about account holders.
 
@@ -52,6 +59,7 @@ We do not intentionally collect special-category data about account holders.
 | Comply with legal, tax, and accounting obligations | **Legal obligation** (Art. 6(1)(c)) |
 | Send service/administrative messages | **Contract** / **Legitimate interests** |
 | Send marketing (if any) | **Consent** (Art. 6(1)(a)), withdrawable at any time |
+| Share your name, email address and account identifier with a Third-Party Application you choose to sign in to with Freepod | **Consent** (Art. 6(1)(a)), asked separately for each application |
 | Product analytics / improvement | **Legitimate interests** or **Consent**, as applicable |
 
 Where we rely on legitimate interests, we have balanced those interests against
@@ -66,6 +74,12 @@ We share Personal Data with:
 - **Service providers / processors** acting on our behalf (e.g. infrastructure
   hosting, `[payment provider / merchant of record]`, `[email provider]`,
   support tooling), bound by data-processing terms;
+- **Operators of Third-Party Applications you sign in to with Freepod** — only
+  your name, email address and a stable account identifier, only for an
+  application whose sign-in you started, and only after you agreed to share
+  them with that application on the consent screen. The operator is another
+  Freepod customer, not Freepod, and processes what it receives under its own
+  terms and privacy notice;
 - **Authorities** where required by law or valid legal request;
 - **Successors** in the event of a merger, acquisition, or asset sale, subject to
   this policy.
@@ -91,6 +105,10 @@ Subject to Data Protection Law, you have the right to: **access**;
 direct marketing); and to **withdraw consent** at any time without affecting
 prior processing.
 
+Withdrawing consent you gave to a Third-Party Application through Sign in with
+Freepod stops Freepod from sharing your identity with it again. It cannot recall
+what the application already received; for that, contact its operator.
+
 To exercise these rights, contact privacy@freepod.eu. You also have the
 right to lodge a complaint with a supervisory authority — in Belgium, the
 **Gegevensbeschermingsautoriteit / Autorité de protection des données**
@@ -107,7 +125,10 @@ We keep Personal Data only as long as necessary for the purposes above:
 - **Billing/accounting records** — for the period required by law (in Belgium,
   generally `[7 / 10]` years);
 - **Logs/security data** — `[retention period]`;
-- **Support data** — `[retention period]`.
+- **Support data** — `[retention period]`;
+- **Sign in with Freepod consent records** — for the life of your account, or
+  until the application is deleted; single-use sign-in codes are deleted within
+  an hour of being issued.
 
 We then delete or anonymise the data.
 
@@ -115,7 +136,10 @@ We then delete or anonymise the data.
 
 ## 8. Cookies and similar technologies
 
-We use strictly necessary cookies to operate the Service. See our `[Cookie Policy URL]` for
+We use strictly necessary cookies to operate the Service. When you sign in to a
+Third-Party Application with Freepod, strictly necessary cookies are also set on
+that application's own address to keep you signed in (for at most 12 hours) and
+to protect the sign-in against forgery; the application itself cannot read them. See our `[Cookie Policy URL]` for
 details. Under the EU ePrivacy rules, non-essential cookies are set only with
 your consent.
 

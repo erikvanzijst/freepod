@@ -11,6 +11,7 @@ from freepod.values import (
     ValueCollector,
     ValueError_,
     check_constraints,
+    check_public_patterns,
     describe_reason,
     hostname_label,
     is_hostname_property,
@@ -500,3 +501,36 @@ def test_off_a_terminal_the_default_is_offered_by_click(monkeypatch):
 
     assert prompt("  hostname", default="myapp") == "x"
     assert calls == [{"default": "myapp", "err": True}]
+
+
+# --- auth.public ------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "patterns",
+    [["^/$", "^/static/", r"^/api/v\d+/health$", "(?i)^/about"], [], None],
+)
+def test_re2_compatible_public_patterns_pass(patterns):
+    check_public_patterns({"auth": {"enabled": True, "public": patterns}})
+
+
+@pytest.mark.parametrize(
+    "pattern, reason",
+    [
+        ("^/(?=admin)", "lookahead"),
+        ("^/(?!admin)", "lookahead"),
+        ("(?<=/)x", "lookbehind"),
+        ("(?<!/)x", "lookbehind"),
+        (r"^/(a)\1$", "backreference"),
+        ("(?P<n>a)(?P=n)", "backreference"),
+        ("(?>a+)b", "atomic"),
+        ("a++b", "possessive"),
+        ("^/(", "not a valid pattern"),
+    ],
+)
+def test_patterns_outside_re2_are_refused_before_deploy(pattern, reason):
+    with pytest.raises(ValueError_, match=reason):
+        check_public_patterns({"auth": {"enabled": True, "public": [pattern]}})
+
+
+def test_values_without_auth_are_untouched():
+    check_public_patterns({"hostname": "a.example"})

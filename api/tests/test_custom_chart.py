@@ -478,3 +478,132 @@ def test_no_readiness_probe_is_declared():
     assert "readinessProbe" not in container
     assert "livenessProbe" not in container
     assert "startupProbe" not in container
+
+
+# --- Sign in with Freepod (app-auth-chart-contract) ---------------------------
+
+INGRESS = {
+    "caelus__ingress__enabled": "true",
+    "caelus__ingress__host": "app.example.test",
+    "caelus__ingress__tls__wildcard": "true",
+}
+VERIFY_URL = "http://app-auth.login.svc.cluster.local:8080/verify"
+APP_AUTH_GO = Path(__file__).resolve().parents[2] / "app-auth" / "request.go"
+
+
+def _render_ns(*sets: str, **values: str) -> list[dict]:
+    """Like _render, with a namespace and raw `--set` expressions for lists."""
+    args = ["helm", "template", "t", str(CHART), "--namespace", "tenant-ns"]
+    for key, value in values.items():
+        args += ["--set", f"{key.replace('__', '.')}={value}"]
+    for expr in sets:
+        args += ["--set", expr]
+    result = subprocess.run(args, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    return [doc for doc in yaml.safe_load_all(result.stdout) if doc]
+
+
+def _middleware(docs: list[dict], suffix: str) -> dict | None:
+    return next(
+        (d for d in docs if d["kind"] == "Middleware" and d["metadata"]["name"].endswith(suffix)),
+        None,
+    )
+
+
+def _router_middlewares(docs: list[dict]) -> list[str]:
+    ingress = next(d for d in docs if d["kind"] == "Ingress")
+    return ingress["metadata"]["annotations"]["traefik.ingress.kubernetes.io/router.middlewares"].split(",")
+
+
+def _identity_headers_in_go() -> list[str]:
+    import re
+
+    block = re.search(r"var identityHeaders = \[\]string\{(.*?)\}", APP_AUTH_GO.read_text(), re.S)
+    assert block, "identityHeaders not found in app-auth/request.go"
+    return re.findall(r'"([^"]+)"', block.group(1))
+
+
+def test_identity_headers_are_stripped_without_auth():
+    docs = _render_ns(**BASE, **INGRESS)
+    strip = _middleware(docs, "-strip-identity")
+    assert strip is not None
+    assert strip["spec"]["headers"]["customRequestHeaders"] == {h: "" for h in _identity_headers_in_go()}
+    assert _router_middlewares(docs) == ["tenant-ns-t-strip-identity@kubernetescrd"]
+    assert _middleware(docs, "-app-auth") is None
+
+
+def test_auth_routes_every_request_through_the_verifier():
+    docs = _render_ns(**BASE, **INGRESS, auth__enabled="true", caelus__appAuth__verifyUrl=VERIFY_URL)
+    fwd = _middleware(docs, "-app-auth")["spec"]["forwardAuth"]
+    assert fwd["address"] == VERIFY_URL
+    assert fwd["authResponseHeaders"] == ["Cookie", *_identity_headers_in_go()]
+    # Unset, so X-Forwarded-Host is the real Host the session is bound to.
+    assert "trustForwardHeader" not in fwd
+    assert _router_middlewares(docs) == [
+        "tenant-ns-t-strip-identity@kubernetescrd",
+        "tenant-ns-t-app-auth@kubernetescrd",
+    ]
+
+
+def test_public_patterns_travel_in_the_verifier_address():
+    import base64
+
+    docs = _render_ns(
+        "auth.public={^/$,^/static/}",
+        **BASE, **INGRESS, auth__enabled="true", caelus__appAuth__verifyUrl=VERIFY_URL,
+    )
+    address = _middleware(docs, "-app-auth")["spec"]["forwardAuth"]["address"]
+    base, _, p = address.partition("?p=")
+    assert base == VERIFY_URL
+    assert "=" not in p and "+" not in p and "/" not in p
+    assert json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4))) == ["^/$", "^/static/"]
+
+
+def test_auth_without_the_injected_verifier_fails_loudly():
+    args = ["helm", "template", "t", str(CHART), "--set", "auth.enabled=true"]
+    for key, value in {**BASE, **INGRESS}.items():
+        args += ["--set", f"{key.replace('__', '.')}={value}"]
+    result = subprocess.run(args, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "caelus.appAuth.verifyUrl" in result.stderr
+
+
+def test_the_schema_rejects_an_unknown_auth_key():
+    args = ["helm", "template", "t", str(CHART), "--set", "auth.allow={bob@example.com}"]
+    for key, value in BASE.items():
+        args += ["--set", f"{key.replace('__', '.')}={value}"]
+    result = subprocess.run(args, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "allow" in result.stderr
+
+
+def _tenant_schema() -> dict:
+    catalog = Path(__file__).resolve().parents[2] / "products" / "catalog" / "custom.yaml"
+    return yaml.safe_load(catalog.read_text())["template"]["values_schema"]
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [{"enabled": True}, {"enabled": True, "public": ["^/$", "^/static/"]}, {"enabled": False}],
+)
+def test_the_tenant_schema_accepts_auth(auth):
+    from app.services.template_values import validate_user_values
+
+    validate_user_values({"hostname": "a.example", "auth": auth}, _tenant_schema())
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [
+        {"enabled": True, "allow": ["bob@example.com"]},
+        {"enabled": "yes"},
+        {"enabled": True, "public": ["x"] * 33},
+        {"enabled": True, "public": [""]},
+    ],
+)
+def test_the_tenant_schema_rejects_malformed_auth(auth):
+    from app.services.errors import CaelusException
+    from app.services.template_values import validate_user_values
+
+    with pytest.raises(CaelusException):
+        validate_user_values({"hostname": "a.example", "auth": auth}, _tenant_schema())

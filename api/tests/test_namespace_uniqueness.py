@@ -118,7 +118,7 @@ def _create_via_service(db_session, user, template):
 def test_a_colliding_candidate_is_regenerated(db_session, scenario, monkeypatch):
     """The first draw is taken; the create still succeeds, on another namespace."""
     user, template = scenario
-    user.tos_accepted_version = "2026-08-26"
+    user.tos_accepted_version = "2026-09-27"
     _add(db_session, user, template, namespace="taken-ns", name="a-000001")
     db_session.commit()
 
@@ -135,7 +135,7 @@ def test_a_colliding_candidate_is_regenerated(db_session, scenario, monkeypatch)
 
 def test_a_deleted_deployments_namespace_is_treated_as_taken(db_session, scenario, monkeypatch):
     user, template = scenario
-    user.tos_accepted_version = "2026-08-26"
+    user.tos_accepted_version = "2026-09-27"
     _add(
         db_session,
         user,
@@ -161,7 +161,7 @@ def test_exhausted_attempts_fail_without_writing_a_row(db_session, scenario, mon
     from app.services.errors import CaelusException
 
     user, template = scenario
-    user.tos_accepted_version = "2026-08-26"
+    user.tos_accepted_version = "2026-09-27"
     _add(db_session, user, template, namespace="always-ns", name="a-000001")
     db_session.commit()
 

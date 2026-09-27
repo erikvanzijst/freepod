@@ -102,10 +102,31 @@ jobs:
             go vet ./...
             go test ./...
 
+  app-auth-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CAELUS_SND_DEVICE: /dev/null
+      CAELUS_AUDIO_GROUP: root
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Build and run the app-auth tests in the dev container
+        uses: devcontainers/ci@v0.3
+        with:
+          imageName: ghcr.io/${{ github.repository }}-devcontainer
+          push: never
+          runCmd: |
+            cd app-auth
+            go vet ./...
+            go test ./...
+
   publish-images:
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    needs: [ui-test, api-test, catalog-lint, cli, ssh-sidecar-test, ssh-auth-test, upgrader-test]
+    needs: [ui-test, api-test, catalog-lint, cli, ssh-sidecar-test, ssh-auth-test, app-auth-test, upgrader-test]
     permissions:
       contents: read
       packages: write
@@ -129,6 +150,9 @@ jobs:
 
       - name: Publish the SSH auth resolver when its version is new
         run: ./scripts/build-images.sh --ssh-resolver --skip-if-published
+
+      - name: Publish the app authentication service when its version is new
+        run: ./scripts/build-images.sh --app-auth --skip-if-published
 
       - name: Publish the tenant build image when its version is new
         run: ./scripts/build-images.sh --builder --skip-if-published

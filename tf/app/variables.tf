@@ -109,6 +109,27 @@ variable "oauth2_proxy_client_secrets" {
   }
 }
 
+variable "app_auth_client_ids" {
+  description = "Keycloak client ID of the app-authentication broker per Terraform workspace, e.g. { default = \"freepod-apps-dev\", prod = \"freepod-apps-prod\" }. Read from tf/deps outputs."
+  type        = map(string)
+
+  validation {
+    condition     = alltrue([for k in ["default", "prod"] : contains(keys(var.app_auth_client_ids), k)])
+    error_message = "app_auth_client_ids must have both a \"default\" (dev) and a \"prod\" key. The dev workspace is named `default`, not `dev`."
+  }
+}
+
+variable "app_auth_client_secrets" {
+  description = "Keycloak client secret of the app-authentication broker per Terraform workspace. Read with `terraform output -raw freepod_apps_{dev,prod}_client_secret` in tf/deps."
+  type        = map(string)
+  sensitive   = true
+
+  validation {
+    condition     = alltrue([for k in ["default", "prod"] : contains(keys(var.app_auth_client_secrets), k)])
+    error_message = "app_auth_client_secrets must have both a \"default\" (dev) and a \"prod\" key. The dev workspace is named `default`, not `dev`."
+  }
+}
+
 variable "oauth2_proxy_cookie_secret" {
   description = "Cookie secret for oauth2-proxy (32 bytes, base64 encoded)"
   type        = string
@@ -258,6 +279,12 @@ variable "registry_pull_hmac_keys" {
 # The resolver image. Immutable tag from ssh-auth/VERSION, never re-pushed, and
 # deliberately not a moving tag like the API's: the SSH edge must not roll
 # because the API rolled. Bump it here to deploy a new resolver.
+variable "app_auth_image" {
+  description = "App authentication service image (app-auth/), pinned to an immutable version"
+  type        = string
+  default     = "ghcr.io/erikvanzijst/freepod/app-auth:0.1.1"
+}
+
 variable "ssh_resolver_image" {
   description = "SSH auth resolver image (ssh-auth/), pinned to an immutable version"
   type        = string
