@@ -284,6 +284,73 @@ Three things worth knowing:
   `GetObject`. Use the object's `LastModified`, or store what you need in the
   object body or the key.
 
+## Signing users in: "Sign in with Freepod"
+
+An app that needs to know **who** is calling does not have to build signup,
+login, password reset or email verification. Opt in, and the platform puts
+every request through a Freepod sign-in first and hands the app the user's
+identity in request headers. Anyone with a Freepod account can sign in —
+registration is open — and each person is asked once per app whether to share
+their name and email with it. Add to `.freepod.json`, under `user_values`, and
+redeploy:
+
+```json
+"user_values": {
+  "hostname": "myapp.example.freepod.eu",
+  "auth": { "enabled": true, "public": ["^/$", "^/static/"] }
+}
+```
+
+Every request that reaches the app then carries:
+
+```
+X-Freepod-User    stable account id — key your users table on THIS
+X-Freepod-Email   verified email address — can change; do not use as a key
+X-Freepod-Name    display name, percent-encoded UTF-8 (decode before showing)
+```
+
+`Remote-User` and `X-Forwarded-User` carry the account id too, and
+`X-Forwarded-Email` the email, for frameworks that already read those.
+
+> **This is authentication only.** Every Freepod account can sign in to every
+> auth-enabled app. Whether a signed-in user may see a given list, document or
+> admin page is the app's decision, made from `X-Freepod-User`.
+
+What to know when writing the app:
+
+- **Trust the headers only from the platform.** The platform strips any copy a
+  client sends, on every deployment, so in production they are always
+  genuine. Never accept them from anywhere else (for example a proxy you run
+  yourself in front of the app).
+- **`public` paths are served without signing in.** Patterns are
+  [RE2](https://github.com/google/re2/wiki/Syntax) regexes matched against the
+  path only (never the query string); `^/$` is just the landing page,
+  `"^/"` makes the whole app optional-login. On a public path the headers are
+  present when the visitor happens to be signed in and absent otherwise, so a
+  landing page can show "Sign in" or "Hello, Alice". Lookarounds and
+  backreferences are not RE2 — `freepod deploy` refuses them.
+- **Signing in and out are links, not code.** `/.freepod/auth/login?rd=/path`
+  signs in and returns to `/path`; `/.freepod/auth/logout?rd=/` signs out of
+  this app. Everything under `/.freepod/auth/` belongs to the platform and
+  never reaches the app.
+- **Browser page loads are redirected to sign in; everything else gets
+  `401`.** A `fetch()` from a single-page app without a session, or with one
+  that expired (sessions last 7 days), receives `401` rather than an HTML
+  redirect — handle it by navigating to `/.freepod/auth/login`. A form `POST`
+  after expiry also gets `401`.
+- **The app never sees the session cookie** and never needs to: there is no
+  token to validate and nothing to store. Don't set cookies whose names start
+  with `__Host-freepod_`; the platform removes them.
+- **Locally there is no sign-in.** Simulate it by sending the headers yourself:
+
+  ```bash
+  curl -H 'X-Freepod-User: dev-user-1' -H 'X-Freepod-Email: dev@example.com' \
+       -H 'X-Freepod-Name: Dev%20User' http://localhost:$PORT/
+  ```
+
+  or have the app fall back to a fixed development identity when an env var you
+  control (not a header) says it is running locally.
+
 ## Make the start command explicit
 
 Railpack infers a start command from the source tree. The inference is good but

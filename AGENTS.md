@@ -190,6 +190,22 @@ This repository is a monorepo with:
   Rationale:
   [product-upgrade-service](openspec/changes/archive/2026-09-17-product-upgrade-service/design.md),
   [ops/upgrader/README.md](ops/upgrader/README.md)
+- **"Sign in with Freepod" is an edge feature of `custom` deployments, served
+  by `app-auth/`** (Go): a Traefik forward-auth verifier and a broker on
+  `login.<domain>`, the only party that talks to Keycloak for tenant apps (one
+  client per environment, never one per app). A deployment opts in with
+  `auth.enabled` in its values; the `custom` chart then routes every request
+  through the verifier, whose address the reconciler injects
+  (`caelus.appAuth.verifyUrl`), and strips client-supplied identity headers on
+  every deployment regardless. Sessions are host-bound cookies the app never
+  sees; the per-request path touches no database. Authentication only: any
+  Freepod account may sign in, and authorization is the app's. Spec:
+  [app-auth-verifier](openspec/specs/app-auth-verifier/spec.md),
+  [app-auth-broker](openspec/specs/app-auth-broker/spec.md),
+  [app-auth-chart-contract](openspec/specs/app-auth-chart-contract/spec.md),
+  [app-auth-data-model](openspec/specs/app-auth-data-model/spec.md) ·
+  Rationale: [app-authentication](openspec/changes/app-authentication/design.md),
+  [app-auth/README.md](app-auth/README.md)
 - Authentication: all API endpoints require the `X-Auth-Request-Email` header
   (injected by oauth2-proxy in production, set by the frontend in local dev);
   `GET /api/me` is the session initialization endpoint. The CLI uses

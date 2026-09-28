@@ -424,3 +424,30 @@ def test_build_registry_overrides_are_not_shadowable_by_user_values(monkeypatch)
         "prefix": "cr.test.example/u",
         "pullSecret": "r-registry-pull",
     }
+
+
+def test_build_app_auth_overrides_inject_the_verifier(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.reconcile.get_settings",
+        lambda: SimpleNamespace(app_auth_verify_url="http://app-auth.login.svc.cluster.local:8080/verify"),
+    )
+    assert DeploymentReconciler._build_app_auth_overrides() == {
+        "caelus": {"appAuth": {"verifyUrl": "http://app-auth.login.svc.cluster.local:8080/verify"}}
+    }
+
+    monkeypatch.setattr("app.services.reconcile.get_settings", lambda: SimpleNamespace(app_auth_verify_url=""))
+    assert DeploymentReconciler._build_app_auth_overrides() is None
+
+
+def test_build_app_auth_overrides_are_not_shadowable_by_user_values(monkeypatch) -> None:
+    """A tenant naming its own verifier would decide its own users' identities."""
+    monkeypatch.setattr(
+        "app.services.reconcile.get_settings",
+        lambda: SimpleNamespace(app_auth_verify_url="http://app-auth.login.svc.cluster.local:8080/verify"),
+    )
+    merged = template_values.merge_values_scoped(
+        {},
+        {"caelus": {"appAuth": {"verifyUrl": "http://evil.example/verify"}}},
+        DeploymentReconciler._build_app_auth_overrides(),
+    )
+    assert merged["caelus"]["appAuth"] == {"verifyUrl": "http://app-auth.login.svc.cluster.local:8080/verify"}

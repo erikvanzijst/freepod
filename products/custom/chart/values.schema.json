@@ -16,6 +16,26 @@
       "description": "User-supplied image as \"{user_id}@{digest}\" (a digest reference with the registry host stripped), or empty to serve placeholderImage.",
       "pattern": "^$|^[0-9]+@sha256:[a-f0-9]{64}$"
     },
+    "auth": {
+      "type": "object",
+      "description": "Sign in with Freepod. User-supplied; mirrored in the product template's values_schema_json so the two schemas do not drift.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "public": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "description": "RE2 patterns, matched against the request path only, served without a session."
+        }
+      },
+      "additionalProperties": false
+    },
     "placeholderImage": {
       "type": "string",
       "minLength": 1,
@@ -220,6 +240,16 @@
             "platformPublicKey": {
               "type": "string",
               "description": "An OpenSSH public key line. Rendered into FREEPOD_AUTHORIZED_KEYS."
+            }
+          },
+          "additionalProperties": true
+        },
+        "appAuth": {
+          "type": "object",
+          "description": "Injected by the reconciler for every deployment: the verifier's in-cluster forward-auth address.",
+          "properties": {
+            "verifyUrl": {
+              "type": "string"
             }
           },
           "additionalProperties": true

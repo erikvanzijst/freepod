@@ -12,6 +12,7 @@ resource "kubernetes_config_map" "api" {
     CAELUS_ENVIRONMENT              = var.environment
     CAELUS_DOMAIN                   = var.domain
     CAELUS_WILDCARD_DOMAINS         = jsonencode(var.wildcard_domains)
+    CAELUS_APP_AUTH_VERIFY_URL      = var.app_auth_verify_url
     CAELUS_RESERVED_HOSTNAMES       = jsonencode(var.reserved_hostnames)
     CAELUS_MOLLIE_API_KEY           = var.mollie_api_key
     CAELUS_MOLLIE_REDIRECT_URL      = "https://${var.domain}"

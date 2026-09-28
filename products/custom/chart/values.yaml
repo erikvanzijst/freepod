@@ -26,6 +26,15 @@ hostname: ""
 # placeholderImage, so the domain serves a real page instead of a Traefik 503.
 image: ""
 
+# "Sign in with Freepod": when enabled, every request passes the platform's
+# verifier first and reaches the app with X-Freepod-User / -Email / -Name set,
+# or is sent to sign in. `public` lists RE2 patterns, matched against the path
+# only, that are served without a session (and still carry identity when there
+# is one). See templates/app-auth.yaml.
+auth:
+  enabled: false
+  public: []
+
 # --- System values ------------------------------------------------------------
 
 # Served whenever `image` is empty. Deliberately a system value with a default: a
@@ -138,3 +147,6 @@ caelus:
   # Empty by default, and absent entirely when the release carries no vars, in
   # which case no `envFrom` source is rendered at all rather than an empty one.
   vars: {}
+  # The app authentication verifier's forward-auth address. Injected for every
+  # deployment; read only when `auth.enabled`, which refuses to render without it.
+  appAuth: {}

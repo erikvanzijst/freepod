@@ -60,6 +60,32 @@ module "registry" {
   jwks         = var.registry_jwks[terraform.workspace]
 }
 
+# The verifier's in-cluster address. Derived here rather than output by
+# module.app_auth, which needs module.caelus's database role: the reverse edge
+# would be a cycle. The Service name is module.app_auth's.
+locals {
+  app_auth_verify_url = "http://app-auth.${kubernetes_namespace.login.metadata[0].name}.svc.cluster.local:8080/verify"
+}
+
+module "app_auth" {
+  source    = "./app-auth"
+  namespace = kubernetes_namespace.login.metadata[0].name
+  domain    = local.domain
+  image     = var.app_auth_image
+
+  oidc_issuer        = "https://keycloak.freepod.eu/realms/freepod"
+  oidc_client_id     = var.app_auth_client_ids[terraform.workspace]
+  oidc_client_secret = var.app_auth_client_secrets[terraform.workspace]
+
+  database_url = format(
+    "postgresql://%s:%s@%s:5432/%s",
+    module.caelus.app_auth_db_role,
+    module.caelus.app_auth_db_password,
+    module.caelus.database_host,
+    module.caelus.database_name,
+  )
+}
+
 module "caelus" {
   source             = "./caelus"
   namespace          = kubernetes_namespace.caelus.metadata[0].name
@@ -121,6 +147,8 @@ module "caelus" {
   opencost_base_url     = var.opencost_base_url
   prometheus_base_url   = var.prometheus_base_url
   log_keepalive_seconds = var.log_keepalive_seconds
+
+  app_auth_verify_url = local.app_auth_verify_url
 
   depends_on = [kubernetes_namespace.caelus, kubernetes_namespace.builds]
 }

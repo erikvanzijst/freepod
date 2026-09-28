@@ -337,3 +337,41 @@ def missing_required(schema: Dict[str, Any], values: Dict[str, Any]) -> List[str
         if not isinstance(value, str) or value == "":
             missing.append(name)
     return missing
+
+
+#: Constructs Python's `re` accepts but RE2 -- the engine the platform matches
+#: `auth.public` with -- does not. Each can take matching time beyond linear in
+#: the input, which is exactly what RE2 exists to rule out.
+_NOT_RE2 = (
+    (re.compile(r"\(\?<?[=!]"), "lookahead or lookbehind"),
+    (re.compile(r"\(\?>"), "an atomic group"),
+    (re.compile(r"\\[1-9]|\(\?P="), "a backreference"),
+    (re.compile(r"[*+?}]\+"), "a possessive quantifier"),
+)
+
+
+def check_public_patterns(values: Dict[str, Any]) -> None:
+    """Refuse `auth.public` patterns the platform could not use.
+
+    The platform ignores a pattern it cannot compile, which keeps the path it
+    was meant to open behind sign-in -- safe, but silent. Saying so here, before
+    a deploy, is the only feedback a developer would get.
+    """
+    auth = values.get("auth")
+    if not isinstance(auth, dict):
+        return
+    for pattern in auth.get("public") or []:
+        if not isinstance(pattern, str):
+            raise ValueError_(f"auth.public: {pattern!r} is not a string.")
+        for construct, what in _NOT_RE2:
+            if construct.search(pattern):
+                raise ValueError_(
+                    f"auth.public: {pattern!r} uses {what}, which the platform's "
+                    "RE2 matcher does not support. Rewrite it without, or list "
+                    "the paths as separate patterns."
+                )
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise ValueError_(f"auth.public: {pattern!r} is not a valid pattern: {exc}.") from None
+

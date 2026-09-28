@@ -36,6 +36,7 @@ resource "kubernetes_deployment" "worker" {
           "checksum/tenant-bootstrap" = sha256(kubernetes_config_map.tenant_db_bootstrap.data["tenant-bootstrap.sql"])
           # Same reason as the line above, for the platform database's side.
           "checksum/ssh-resolver-bootstrap" = sha256(kubernetes_config_map.ssh_resolver_bootstrap.data["ssh-resolver-bootstrap.sql"])
+          "checksum/app-auth-bootstrap"     = sha256(kubernetes_config_map.app_auth_bootstrap.data["app-auth-bootstrap.sql"])
         }
       }
 
@@ -128,6 +129,69 @@ resource "kubernetes_deployment" "worker" {
           volume_mount {
             name       = "ssh-resolver-bootstrap"
             mount_path = "/ssh-resolver-bootstrap"
+            read_only  = true
+          }
+        }
+
+        # The app authentication service's role, likewise after `migrate`.
+        init_container {
+          name    = "app-auth-db-bootstrap"
+          image   = "postgres:16-alpine"
+          command = ["/bin/sh", "-c"]
+          args = [
+            <<-EOT
+              set -e
+              echo 'Provisioning the app-auth database role...'
+              psql -q -v ON_ERROR_STOP=1 \
+                -v app_auth_password="$APP_AUTH_PASSWORD" \
+                -f /app-auth-bootstrap/app-auth-bootstrap.sql
+              echo 'app-auth role ready'
+            EOT
+          ]
+
+          env {
+            name  = "PGHOST"
+            value = "caelus-postgres.${var.namespace}.svc.cluster.local"
+          }
+
+          env {
+            name  = "PGPORT"
+            value = "5432"
+          }
+
+          env {
+            name  = "PGUSER"
+            value = var.db_user
+          }
+
+          env {
+            name  = "PGDATABASE"
+            value = var.db_name
+          }
+
+          env {
+            name = "PGPASSWORD"
+            value_from {
+              secret_key_ref {
+                name = "caelus-db"
+                key  = "password"
+              }
+            }
+          }
+
+          env {
+            name = "APP_AUTH_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.app_auth_db_bootstrap.metadata[0].name
+                key  = "APP_AUTH_PASSWORD"
+              }
+            }
+          }
+
+          volume_mount {
+            name       = "app-auth-bootstrap"
+            mount_path = "/app-auth-bootstrap"
             read_only  = true
           }
         }
@@ -303,6 +367,13 @@ resource "kubernetes_deployment" "worker" {
           name = "ssh-resolver-bootstrap"
           config_map {
             name = kubernetes_config_map.ssh_resolver_bootstrap.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "app-auth-bootstrap"
+          config_map {
+            name = kubernetes_config_map.app_auth_bootstrap.metadata[0].name
           }
         }
       }

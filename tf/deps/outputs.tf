@@ -93,3 +93,25 @@ output "garage_s3_region" {
   description = "SigV4 signing region for the Garage S3 API."
   value       = module.garage.s3_region
 }
+
+output "freepod_apps_prod_client_id" {
+  description = "App-authentication broker client ID for the prod workspace of tf/app."
+  value       = module.keycloak_config.freepod_apps_prod_client_id
+}
+
+output "freepod_apps_prod_client_secret" {
+  description = "App-authentication broker client secret for the prod workspace of tf/app."
+  value       = module.keycloak_config.freepod_apps_prod_client_secret
+  sensitive   = true
+}
+
+output "freepod_apps_dev_client_id" {
+  description = "App-authentication broker client ID for the default (dev) workspace of tf/app."
+  value       = module.keycloak_config.freepod_apps_dev_client_id
+}
+
+output "freepod_apps_dev_client_secret" {
+  description = "App-authentication broker client secret for the default (dev) workspace of tf/app."
+  value       = module.keycloak_config.freepod_apps_dev_client_secret
+  sensitive   = true
+}

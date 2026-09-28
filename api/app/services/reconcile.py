@@ -728,6 +728,7 @@ class DeploymentReconciler:
             cls._build_vars_overrides(vars_secret),
             cls._build_release_overrides(release),
             cls._build_ssh_overrides(),
+            cls._build_app_auth_overrides(),
             cls._build_registry_overrides(pull_secret),
         ):
             if part:
@@ -739,6 +740,16 @@ class DeploymentReconciler:
         """The platform SSH key every sidecar trusts, from per-environment settings."""
         key = get_settings().sftp_platform_public_key.strip()
         return {"caelus": {"ssh": {"platformPublicKey": key}}} if key else None
+
+    @staticmethod
+    def _build_app_auth_overrides() -> dict | None:
+        """Where auth-enabled apps send Traefik's forward-auth, from per-environment settings.
+
+        Platform-owned, like the SSH key above: user values can never name the
+        verifier, or a tenant could point its own authentication anywhere.
+        """
+        url = get_settings().app_auth_verify_url.strip()
+        return {"caelus": {"appAuth": {"verifyUrl": url}}} if url else None
 
     @staticmethod
     def _build_registry_overrides(pull_secret: str | None) -> dict | None:

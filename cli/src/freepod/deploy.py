@@ -48,6 +48,7 @@ from .project import PROJECT_FILE, Project, require_project
 from .values import (
     HOSTNAME_REASONS,
     ValueCollector,
+    check_public_patterns,
     describe_reason,
     is_hostname_property,
     missing_required,
@@ -305,6 +306,7 @@ def _settle_values(
     reconstructed.
     """
     values = dict(project.user_values)
+    check_public_patterns(values)
     missing = missing_required(schema, values)
     hostname_key = _hostname_key(schema)
 

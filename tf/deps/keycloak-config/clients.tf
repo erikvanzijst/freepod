@@ -179,3 +179,56 @@ resource "keycloak_openid_client" "grafana" {
 
   login_theme = "freepod"
 }
+
+# The app-authentication broker (app-auth/), one per environment. It signs users
+# in to tenant `custom` apps that opt in to "Sign in with Freepod", and it is the
+# only party that talks to Keycloak on their behalf: however many apps opt in,
+# these stay the only two clients, with one fixed redirect URI each. Every app
+# host gets its session through the broker's own code handoff instead
+# (openspec app-authentication D2), which is why no wildcard appears here.
+#
+# consent_required stays off: the broker asks for consent per app itself, and
+# Keycloak can only ask per client -- which would be once, for all apps.
+resource "keycloak_openid_client" "freepod_apps_prod" {
+  realm_id    = keycloak_realm.freepod.id
+  client_id   = "freepod-apps-prod"
+  name        = "Sign in with Freepod"
+  description = "app-auth broker at login.${var.prod_domain}; signs users in to tenant apps that opt in."
+  enabled     = true
+
+  access_type           = "CONFIDENTIAL"
+  standard_flow_enabled = true
+  implicit_flow_enabled = false
+
+  direct_access_grants_enabled = false
+  service_accounts_enabled     = false
+  consent_required             = false
+
+  pkce_code_challenge_method = "S256"
+
+  valid_redirect_uris = ["https://login.${var.prod_domain}/callback"]
+
+  login_theme = "freepod"
+}
+
+resource "keycloak_openid_client" "freepod_apps_dev" {
+  realm_id    = keycloak_realm.freepod.id
+  client_id   = "freepod-apps-dev"
+  name        = "Sign in with Freepod (development)"
+  description = "app-auth broker at login.${var.dev_domain}; signs users in to tenant apps that opt in."
+  enabled     = true
+
+  access_type           = "CONFIDENTIAL"
+  standard_flow_enabled = true
+  implicit_flow_enabled = false
+
+  direct_access_grants_enabled = false
+  service_accounts_enabled     = false
+  consent_required             = false
+
+  pkce_code_challenge_method = "S256"
+
+  valid_redirect_uris = ["https://login.${var.dev_domain}/callback"]
+
+  login_theme = "freepod"
+}

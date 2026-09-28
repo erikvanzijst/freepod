@@ -260,3 +260,8 @@ variable "dns_record_target" {
   type        = string
   default     = ""
 }
+
+variable "app_auth_verify_url" {
+  description = "The app authentication verifier's forward-auth address; the reconciler injects it into custom deployments as caelus.appAuth.verifyUrl."
+  type        = string
+}

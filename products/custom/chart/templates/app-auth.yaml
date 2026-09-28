@@ -1,0 +1,56 @@
+{{- /*
+"Sign in with Freepod" (openspec app-authentication; contract:
+app-auth-chart-contract).
+
+strip-identity is rendered for EVERY deployment with an Ingress, opted in or
+not: it removes client-supplied identity headers, so an app that reads
+X-Freepod-Email without having enabled `auth` cannot be trivially spoofed.
+
+app-auth is rendered only when `auth.enabled`. It sends every request through
+the platform verifier (app-auth/), whose address the reconciler injects as
+caelus.appAuth.verifyUrl -- never a user value, or a tenant could choose its own
+identities. Two Traefik behaviors carry the contract, both covered by
+app-auth/traefik_test.go:
+  - every header in authResponseHeaders is deleted from the request before the
+    verifier's value (if any) is copied in, which makes the list a sanitizer;
+    `Cookie` is in it so the verifier can strip its session cookie;
+  - trustForwardHeader stays UNSET, so X-Forwarded-Host is the request's real
+    Host and not a client-supplied one; sessions are bound to that host.
+Keep authResponseHeaders in step with identityHeaders in app-auth/request.go.
+*/}}
+{{- if .Values.caelus.ingress.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ .Release.Name }}-strip-identity
+  labels:
+    {{- include "custom.labels" . | nindent 4 }}
+spec:
+  headers:
+    customRequestHeaders:
+      {{- range (include "custom.identityHeaders" . | fromJsonArray) }}
+      {{ . }}: ""
+      {{- end }}
+{{- if .Values.auth.enabled }}
+---
+{{- $verifyUrl := required "auth.enabled needs caelus.appAuth.verifyUrl, which the reconciler injects; refusing to serve this app unauthenticated" .Values.caelus.appAuth.verifyUrl }}
+{{- $address := $verifyUrl }}
+{{- with .Values.auth.public }}
+{{- $address = printf "%s?p=%s" $verifyUrl (toJson . | b64enc | replace "+" "-" | replace "/" "_" | trimAll "=") }}
+{{- end }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ .Release.Name }}-app-auth
+  labels:
+    {{- include "custom.labels" . | nindent 4 }}
+spec:
+  forwardAuth:
+    address: {{ $address | quote }}
+    authResponseHeaders:
+      - Cookie
+      {{- range (include "custom.identityHeaders" . | fromJsonArray) }}
+      - {{ . }}
+      {{- end }}
+{{- end }}
+{{- end }}

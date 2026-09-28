@@ -2,7 +2,7 @@
 
 ---
 
-**Effective date:** 2026-08-26  
+**Effective date:** 2026-09-27  
 **Provider:** Freepod VZW  
 organised under the laws of Belgium, with registered office at
 `[REGISTERED ADDRESS]`, enterprise number `[BE 0xxx.xxx.xxx]`
@@ -239,6 +239,14 @@ responses to data-subject requests relating to data held within your Instance.
 **Freepod's Privacy Policy does not cover personal data processed by Third-Party
 Applications you operate**, and Freepod does not, by deploying an application on
 your instruction, become its controller.
+
+8.5 **Sign in with Freepod.** If you enable Sign in with Freepod for an
+application you deploy, Freepod discloses to that application the name, email
+address and a stable account identifier of each user who signs in and consents.
+You receive that data as an independent **controller**, on the terms in
+Section 2.5 of the **DPA**. If you sign in to someone else's application with your
+Freepod account, Freepod shares those details with its operator only after you
+consent, as described in the **Privacy Policy**.
 
 ---
 

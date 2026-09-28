@@ -10,6 +10,7 @@
 #   ./scripts/build-images.sh --keycloak     # Build only Keycloak image (Freepod theme)
 #   ./scripts/build-images.sh --ssh-sidecar   # Build only the dev-profile SSH sidecar
 #   ./scripts/build-images.sh --ssh-resolver  # Build only the SSH auth resolver
+#   ./scripts/build-images.sh --app-auth      # Build only the app authentication service
 #   ./scripts/build-images.sh --builder       # Build only the tenant build image
 #   ./scripts/build-images.sh --placeholder   # Build only the custom placeholder image
 #   ./scripts/build-images.sh v1.2.3 --api   # Build only API image with custom tag
@@ -42,6 +43,11 @@
 # change what runs tenant code without anything having been rolled out. Version
 # in products/custom/builder/VERSION, never re-pushed, reaching builds only when
 # Terraform names a new version.
+#
+# The app authentication service (app-auth/) is versioned the same way and for
+# the same reason as the SSH resolver: it sits on the authentication path of
+# every opted-in app, and reaches the cluster only when Terraform names a new
+# version from app-auth/VERSION.
 
 set -euo pipefail
 
@@ -50,7 +56,7 @@ REGISTRY=ghcr.io/$(gh repo view --json nameWithOwner -q .nameWithOwner)
 # Function to display help
 usage() {
   cat <<'EOF'
-Usage: ./scripts/build-images.sh [TAG] [--api|--ui|--keycloak|--ssh-sidecar|--ssh-resolver|--builder|--placeholder|--all|--help]
+Usage: ./scripts/build-images.sh [TAG] [--api|--ui|--keycloak|--ssh-sidecar|--ssh-resolver|--app-auth|--builder|--placeholder|--all|--help]
 
 If TAG is not provided, the current git SHA will be used.
 
@@ -64,6 +70,9 @@ Options:
   --ssh-resolver  Build only the SSH auth resolver. Ignores TAG: its version
                   comes from ssh-auth/VERSION and an already-published version
                   is refused rather than overwritten.
+  --app-auth      Build only the app authentication service. Ignores TAG: its
+                  version comes from app-auth/VERSION and an already-published
+                  version is refused rather than overwritten.
   --builder       Build only the tenant build image. Ignores TAG: its version
                   comes from products/custom/builder/VERSION and an already-
                   published version is refused rather than overwritten.
@@ -72,8 +81,8 @@ Options:
                   an already-published version is refused rather than
                   overwritten.
   --skip-if-published
-                  With --ssh-sidecar, --ssh-resolver, --builder or
-                  --placeholder, treat an already-published version as nothing
+                  With --ssh-sidecar, --ssh-resolver, --app-auth,
+                  --builder or --placeholder, treat an already-published version as nothing
                   to do rather than an error. This is what makes the publish
                   safe to run on every merge: it pushes exactly when VERSION is
                   new. Run by hand without it, so that a version you believed
@@ -85,7 +94,7 @@ EOF
 
 # Parse arguments
 TAG=""
-TARGET="both"  # possible values: both, api, ui, keycloak, ssh-sidecar, ssh-resolver, builder, placeholder, all
+TARGET="both"  # possible values: both, api, ui, keycloak, ssh-sidecar, ssh-resolver, app-auth, builder, placeholder, all
 SKIP_IF_PUBLISHED=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -107,6 +116,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --ssh-resolver)
       TARGET="ssh-resolver"
+      shift
+      ;;
+    --app-auth)
+      TARGET="app-auth"
       shift
       ;;
     --builder)
@@ -144,8 +157,8 @@ done
 # Only the immutably-tagged images can be already-published, so anywhere else
 # this flag would silently do nothing -- which is how a publish everyone
 # believes is conditional turns out never to have been.
-if [[ "$SKIP_IF_PUBLISHED" == "true" && "$TARGET" != "ssh-sidecar" && "$TARGET" != "ssh-resolver" && "$TARGET" != "builder" && "$TARGET" != "placeholder" ]]; then
-  echo "--skip-if-published only applies to --ssh-sidecar, --ssh-resolver, --builder and --placeholder." >&2
+if [[ "$SKIP_IF_PUBLISHED" == "true" && "$TARGET" != "ssh-sidecar" && "$TARGET" != "ssh-resolver" && "$TARGET" != "app-auth" && "$TARGET" != "builder" && "$TARGET" != "placeholder" ]]; then
+  echo "--skip-if-published only applies to --ssh-sidecar, --ssh-resolver, --app-auth, --builder and --placeholder." >&2
   exit 1
 fi
 
@@ -239,6 +252,39 @@ if [[ "$TARGET" == "ssh-resolver" ]]; then
   echo ""
   echo "This does not reach the SSH edge on its own. Point tf/app/sshpiper at"
   echo "this version and apply; ./scripts/rollout.sh does not touch it."
+  echo "=============================================="
+  exit 0
+fi
+
+if [[ "$TARGET" == "app-auth" ]]; then
+  APP_AUTH_CONTEXT=./app-auth
+  APP_AUTH_VERSION=$(tr -d '[:space:]' < "${APP_AUTH_CONTEXT}/VERSION")
+  APP_AUTH_REF="${REGISTRY}/app-auth:${APP_AUTH_VERSION}"
+
+  if docker manifest inspect "${APP_AUTH_REF}" >/dev/null 2>&1; then
+    if [[ "$SKIP_IF_PUBLISHED" == "true" ]]; then
+      echo "${APP_AUTH_REF} is already published. Nothing to do."
+      exit 0
+    fi
+    echo "Refusing to overwrite ${APP_AUTH_REF}, which is already published." >&2
+    echo "Bump app-auth/VERSION and repoint tf/app." >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "[1/1] Building and pushing app-auth image ${APP_AUTH_VERSION}..."
+  docker buildx build \
+    --push \
+    --platform linux/amd64 \
+    --tag "${APP_AUTH_REF}" \
+    "${APP_AUTH_CONTEXT}"
+
+  echo ""
+  echo "=============================================="
+  echo "Pushed ${APP_AUTH_REF}"
+  echo ""
+  echo "This does not reach the cluster on its own. Point tf/app at this version"
+  echo "and apply; ./scripts/rollout.sh does not touch it."
   echo "=============================================="
   exit 0
 fi

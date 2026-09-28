@@ -35,3 +35,25 @@ output "grafana_client_secret" {
   value       = keycloak_openid_client.grafana.client_secret
   sensitive   = true
 }
+
+output "freepod_apps_prod_client_id" {
+  description = "App-authentication broker client ID for the prod workspace of tf/app."
+  value       = keycloak_openid_client.freepod_apps_prod.client_id
+}
+
+output "freepod_apps_prod_client_secret" {
+  description = "App-authentication broker client secret for the prod workspace of tf/app. Copy into tf/app/secrets.auto.tfvars under the \"prod\" key."
+  value       = keycloak_openid_client.freepod_apps_prod.client_secret
+  sensitive   = true
+}
+
+output "freepod_apps_dev_client_id" {
+  description = "App-authentication broker client ID for the default (dev) workspace of tf/app."
+  value       = keycloak_openid_client.freepod_apps_dev.client_id
+}
+
+output "freepod_apps_dev_client_secret" {
+  description = "App-authentication broker client secret for the default (dev) workspace of tf/app. Copy into tf/app/secrets.auto.tfvars under the \"default\" key."
+  value       = keycloak_openid_client.freepod_apps_dev.client_secret
+  sensitive   = true
+}
