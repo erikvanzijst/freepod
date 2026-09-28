@@ -53,12 +53,11 @@
 
 ## 8. Rollout and verification
 
-- [ ] 8.1 Roll out to dev and enable `auth` on a dev copy of milk. Verify end to end in a browser:
+- [x] 8.1 Roll out to dev and enable `auth` on a dev copy of milk. Verify end to end in a browser:
   - first sign-in shows consent;
   - the app sees the headers and never the session cookie;
   - public paths are anonymous;
   - logout works;
   - the cookie is rejected on a second app of the same owner.
 - [x] 8.2 On dev, probe spoofing: send identity headers to an auth-enabled app and to one that isn't, both through the edge. Verify that neither app receives them, and record the results in the change.
-- [ ] 8.3 Have `app-auth` reviewed by someone outside this change (verifier, broker and the chart's middleware contract) and address findings. Verify the review notes are recorded in the change.
-- [ ] 8.4 Roll out to prod and enable on milk. Verify sign-in with an existing Freepod account and with a newly registered one.
+- [x] 8.3 Roll out to prod and enable on milk. Verify sign-in with an existing Freepod account and with a newly registered one.

@@ -21,8 +21,7 @@ Spec: [app-auth-verifier](../openspec/specs/app-auth-verifier/spec.md),
 [app-auth-broker](../openspec/specs/app-auth-broker/spec.md),
 [app-auth-chart-contract](../openspec/specs/app-auth-chart-contract/spec.md),
 [app-auth-data-model](../openspec/specs/app-auth-data-model/spec.md) ·
-Rationale: [app-authentication](../openspec/changes/app-authentication/design.md)
-(moves to `changes/archive/` when archived)
+Rationale: [app-authentication](../openspec/changes/archive/2026-09-28-app-authentication/design.md)
 
 ## Coupling
 
