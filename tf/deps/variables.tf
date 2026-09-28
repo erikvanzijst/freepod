@@ -16,6 +16,17 @@ variable "keycloak_url" {
   default     = "https://keycloak.freepod.eu"
 }
 
+variable "google_client_id" {
+  description = "Client ID of the Google OAuth web client behind the realm's Google identity provider. Created by hand in the Google Cloud console (project `freepod`, Google Auth Platform > Clients)."
+  type        = string
+}
+
+variable "google_client_secret" {
+  description = "Client secret of that Google OAuth client."
+  type        = string
+  sensitive   = true
+}
+
 variable "smtp_host" {
   description = "SMTP server (e.g. smtp.example.com)"
   type        = string

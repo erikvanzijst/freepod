@@ -2,7 +2,7 @@
 
 ---
 
-**Effective date:** 2026-09-27  
+**Effective date:** 2026-09-28  
 **Controller:** Freepod (`[entity type]`), `[REGISTERED ADDRESS]`,
 enterprise number `[BE 0xxx.xxx.xxx]` ("**Freepod**", "**we**").  
 **Contact / data-protection queries:** privacy@freepod.eu  
@@ -43,6 +43,7 @@ what it received (see Sections 3 and 4).
 | **Usage & technical data** | IP address, device/browser, log and access records, resource metrics | Automatically |
 | **Support data** | messages, tickets, correspondence | You |
 | **Cookies / similar** | session and analytics identifiers | Automatically — see Section 8 |
+| **Sign in with Google data** | name, email address, Google account identifier | Google, when you choose to sign in with your Google account |
 | **Sign in with Freepod records** | which applications you consented to share your identity with, and when | You, when you consent |
 
 We do not intentionally collect special-category data about account holders.

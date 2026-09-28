@@ -57,6 +57,12 @@ resource "kubernetes_deployment" "smtp" {
       }
     }
   }
+  # Ignore restartedAt annotations written by `kubectl rollout restart`
+  lifecycle {
+    ignore_changes = [
+      spec[0].template[0].metadata[0].annotations["kubectl.kubernetes.io/restartedAt"],
+    ]
+  }
 }
 
 resource "kubernetes_service" "smtp_relay_service" {

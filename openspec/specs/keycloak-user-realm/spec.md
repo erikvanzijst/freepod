@@ -7,11 +7,10 @@ realm: its registration and email-verification policy, SMTP, themes, the
 per-environment OAuth2 clients, and the groups that gate access to the
 development environment and to Grafana.
 
-Social identity providers are deliberately **not** part of this capability.
-Google, Apple and Microsoft were specified here for a long time and never
-built, and a spec asserting infrastructure that does not exist is how the
-`master`-realm drift went unnoticed. Propose them as their own change if they
-are ever wanted.
+Identity providers are specified separately, one capability each: Google in
+[keycloak-google-identity-provider](../keycloak-google-identity-provider/spec.md).
+This capability covers only what they rely on, such as the email-verification
+rule a trusted provider may satisfy.
 ## Requirements
 ### Requirement: Keycloak has a Freepod realm
 The system SHALL authenticate Freepod end users against a dedicated Keycloak
@@ -137,6 +136,11 @@ The system SHALL require email verification for new user accounts in the
 and Freepod's own user records, an unverified email is a privilege-escalation
 vector and verification SHALL NOT be relaxed.
 
+An account created through an identity provider configured to trust its email
+assertions — currently only Google — SHALL be marked verified by that assertion
+instead of by a Keycloak verification email. No other path SHALL mark an email
+verified without the user following a Keycloak verification link.
+
 #### Scenario: Email verification is required
 - **WHEN** the `freepod` realm settings are inspected
 - **THEN** `verifyEmail` is set to `true`
@@ -145,6 +149,14 @@ vector and verification SHALL NOT be relaxed.
 - **WHEN** Freepod resolves an authenticated caller to a user record
 - **THEN** the lookup is performed on the verified email claim
 - **AND** no Keycloak subject identifier is persisted by Freepod
+
+#### Scenario: Trusted identity provider verifies the email
+- **WHEN** an account is created by a first sign-in through Google
+- **THEN** its email is marked verified without a Keycloak verification email
+
+#### Scenario: Self-registration still verifies by email
+- **WHEN** a user registers through the registration form
+- **THEN** they must follow the Keycloak verification link before they can sign in
 
 ### Requirement: SMTP is configured for email sending
 The system SHALL configure SMTP on the `freepod` realm through Terraform, so

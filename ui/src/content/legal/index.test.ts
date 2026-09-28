@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LEGAL_DOCS, LEGAL_NAV } from './index'
+import { LEGAL_FILES } from './files'
 
 describe('legal document registry', () => {
   // Guard against a document whose **Effective date:** line was reformatted or
@@ -15,5 +16,9 @@ describe('legal document registry', () => {
 
   it('keeps the nav list and registry in sync', () => {
     expect(LEGAL_NAV.map((d) => d.slug)).toEqual(['terms', 'privacy', 'aup', 'dpa'])
+  })
+
+  it('publishes a markdown file for every registered document', () => {
+    expect(Object.keys(LEGAL_FILES).sort()).toEqual(Object.keys(LEGAL_DOCS).sort())
   })
 })
