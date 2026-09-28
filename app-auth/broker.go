@@ -19,6 +19,7 @@ import (
 const (
 	flowTTL    = 10 * time.Minute
 	consentTTL = 10 * time.Minute
+	logoutTTL  = 10 * time.Minute
 )
 
 // flow is the broker's state for one sign-in while the browser is away at
@@ -47,6 +48,14 @@ type pendingConsent struct {
 	CSRF         string `json:"csrf"`
 }
 
+// logoutState is where to send the browser once Keycloak has ended its session.
+// It travels sealed in the end-session request's `state`, which Keycloak hands
+// back verbatim, so no cookie is needed and nothing else can mint one.
+type logoutState struct {
+	Host string `json:"host"`
+	RD   string `json:"rd"`
+}
+
 type identity struct {
 	Sub   string
 	Email string
@@ -58,17 +67,19 @@ type identity struct {
 type authenticator interface {
 	authURL(state, nonce, verifier string) (string, error)
 	exchange(ctx context.Context, code, verifier, nonce string) (identity, error)
+	endSessionURL(state, postLogoutRedirect string) (string, error)
 }
 
 var errEmailUnverified = errors.New("email not verified")
 
 type broker struct {
-	chrome chrome
-	keys   *keyring
-	store  store
-	auth   authenticator
-	now    func() time.Time
-	log    *slog.Logger
+	chrome   chrome
+	loginURL string
+	keys     *keyring
+	store    store
+	auth     authenticator
+	now      func() time.Time
+	log      *slog.Logger
 }
 
 func (b *broker) routes() http.Handler {
@@ -76,6 +87,8 @@ func (b *broker) routes() http.Handler {
 	mux.HandleFunc("GET /start", b.start)
 	mux.HandleFunc("GET /callback", b.callback)
 	mux.HandleFunc("POST /consent", b.consent)
+	mux.HandleFunc("GET /logout", b.logout)
+	mux.HandleFunc("GET /signed-out", b.signedOut)
 	mux.Handle("GET /assets/", assetHandler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	return mux
@@ -231,6 +244,47 @@ func (b *broker) consent(w http.ResponseWriter, r *http.Request) {
 	b.issueCode(ctx, w, pc.Host, pc.RD, pc.NonceHash, identity{Sub: pc.Sub, Email: pc.Email, Name: pc.Name})
 }
 
+// logout ends the user's Keycloak session on the way back to an app that has
+// already dropped its own. Keycloak asks the user to confirm, because the
+// broker keeps no ID token to vouch for the request with.
+func (b *broker) logout(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	host := normalizeHost(q.Get("host"))
+	if host == "" {
+		b.errorPage(w, http.StatusBadRequest, "This sign-out link is incomplete", "Part of the link is missing. Go back to the app and sign out again.")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := b.eligible(ctx, w, host); !ok {
+		return
+	}
+	state, err := b.keys.seal("logout", logoutState{Host: host, RD: safeReturnPath(q.Get("rd"))}, logoutTTL, b.now())
+	if err != nil {
+		b.internal(w, "sealing logout state", err)
+		return
+	}
+	target, err := b.auth.endSessionURL(state, b.loginURL+"/signed-out")
+	if err != nil {
+		b.log.Error("identity provider unavailable", "err", err)
+		b.errorPage(w, http.StatusServiceUnavailable, "Sign-out is temporarily unavailable", "Something on our side isn't answering. Please try again in a moment.")
+		return
+	}
+	redirect(w, target)
+}
+
+// signedOut is Keycloak's post-logout landing. Without a state only the broker
+// could have sealed, there is no host it is safe to send the browser to.
+func (b *broker) signedOut(w http.ResponseWriter, r *http.Request) {
+	var s logoutState
+	if b.keys.open("logout", r.URL.Query().Get("state"), &s, b.now()) == nil && s.Host != "" {
+		redirect(w, "https://"+s.Host+safeReturnPath(s.RD))
+		return
+	}
+	renderPage(w, http.StatusOK, page{chrome: b.chrome, Kind: "done", Title: "You're signed out of Freepod",
+		Message: "You can close this page, or go back to the app to sign in again."})
+}
+
 // eligible checks the host against the platform's records and, when it is not
 // an auth-enabled custom deployment, answers the browser itself -- never with a
 // redirect, so the broker cannot be used to bounce anyone anywhere.
@@ -310,6 +364,38 @@ func (a *oidcAuth) authURL(state, nonce, verifier string) (string, error) {
 		return "", err
 	}
 	return cfg.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)), nil
+}
+
+// endSessionURL builds Keycloak's RP-initiated logout request from the
+// discovered end_session_endpoint.
+func (a *oidcAuth) endSessionURL(state, postLogoutRedirect string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, _, err := a.config(ctx); err != nil {
+		return "", err
+	}
+	var meta struct {
+		EndSession string `json:"end_session_endpoint"`
+	}
+	a.mu.Lock()
+	err := a.provider.Claims(&meta)
+	a.mu.Unlock()
+	if err != nil {
+		return "", err
+	}
+	if meta.EndSession == "" {
+		return "", errors.New("provider publishes no end_session_endpoint")
+	}
+	u, err := url.Parse(meta.EndSession)
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	q.Set("client_id", a.clientID)
+	q.Set("post_logout_redirect_uri", postLogoutRedirect)
+	q.Set("state", state)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 // exchange trades the code for tokens, verifies the ID token, and keeps only

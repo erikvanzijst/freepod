@@ -7,17 +7,24 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeAuth stands in for Keycloak in the handler tests; the real exchange is
 // covered against a stub provider in oidc_test.go.
 type fakeAuth struct {
-	id  identity
-	err error
+	id          identity
+	err         error
+	endSessions int
 }
 
 func (f *fakeAuth) authURL(state, nonce, verifier string) (string, error) {
 	return "https://keycloak.example/auth?" + url.Values{"state": {state}}.Encode(), nil
+}
+
+func (f *fakeAuth) endSessionURL(state, postLogoutRedirect string) (string, error) {
+	f.endSessions++
+	return "https://keycloak.example/logout?" + url.Values{"state": {state}, "post_logout_redirect_uri": {postLogoutRedirect}}.Encode(), nil
 }
 
 func (f *fakeAuth) exchange(context.Context, string, string, string) (identity, error) {
@@ -29,6 +36,7 @@ type brokerRig struct {
 	b     *broker
 	st    *memStore
 	auth  *fakeAuth
+	clock *clock
 	jar   map[string]string // the login host's cookies in the browser
 	nonce string            // the app host's login cookie
 }
@@ -40,8 +48,8 @@ func newBrokerRig(t *testing.T) *brokerRig {
 	st.hosts[milk] = "dep-milk"
 	auth := &fakeAuth{id: identity{Sub: "3f2a", Email: "alice@example.com", Name: "Alice"}}
 	return &brokerRig{
-		t: t, st: st, auth: auth, jar: map[string]string{}, nonce: "app-host-nonce",
-		b: &broker{keys: mustKeyring(t, "k1:"+testKey('a')), store: st, auth: auth, now: c.now, log: quiet},
+		t: t, st: st, auth: auth, clock: c, jar: map[string]string{}, nonce: "app-host-nonce",
+		b: &broker{loginURL: login, keys: mustKeyring(t, "k1:"+testKey('a')), store: st, auth: auth, now: c.now, log: quiet},
 	}
 }
 
@@ -326,5 +334,77 @@ func TestPagesLoadOnlyFromTheLoginHost(t *testing.T) {
 	}
 	if strings.Contains(csp, "unsafe-inline") {
 		t.Error("inline styles allowed")
+	}
+}
+
+// logout starts sign-out for host and returns the state Keycloak would hand back.
+func (g *brokerRig) logout(host, rd string) (*httptest.ResponseRecorder, string) {
+	w := g.do("GET", "/logout?"+url.Values{"host": {host}, "rd": {rd}}.Encode(), nil)
+	loc, _ := url.Parse(w.Header().Get("Location"))
+	return w, loc.Query().Get("state")
+}
+
+func TestBrokerLogout(t *testing.T) {
+	t.Run("eligible host goes to the identity provider and back", func(t *testing.T) {
+		g := newBrokerRig(t)
+		w, state := g.logout(milk, "/lists")
+		loc, _ := url.Parse(w.Header().Get("Location"))
+		if w.Code != http.StatusFound || loc.Host != "keycloak.example" || state == "" ||
+			loc.Query().Get("post_logout_redirect_uri") != login+"/signed-out" {
+			t.Fatalf("%d %s", w.Code, loc)
+		}
+		back := g.do("GET", "/signed-out?"+url.Values{"state": {state}}.Encode(), nil)
+		if back.Code != http.StatusFound || back.Header().Get("Location") != "https://"+milk+"/lists" {
+			t.Fatalf("%d %s", back.Code, back.Header().Get("Location"))
+		}
+	})
+
+	for name, host := range map[string]string{
+		"host without authentication": "plain.erik.freepod.eu",
+		"arbitrary host":              "evil.example",
+		"no host":                     "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			g := newBrokerRig(t)
+			w, _ := g.logout(host, "/")
+			if w.Code < 400 || w.Header().Get("Location") != "" || g.auth.endSessions != 0 {
+				t.Fatalf("%d Location=%q endSessions=%d", w.Code, w.Header().Get("Location"), g.auth.endSessions)
+			}
+		})
+	}
+
+	t.Run("return target is sanitized", func(t *testing.T) {
+		g := newBrokerRig(t)
+		_, state := g.logout(milk, "//evil.example/")
+		back := g.do("GET", "/signed-out?"+url.Values{"state": {state}}.Encode(), nil)
+		if back.Header().Get("Location") != "https://"+milk+"/" {
+			t.Fatalf("Location %s", back.Header().Get("Location"))
+		}
+	})
+}
+
+func TestBrokerSignedOutRefusesUntrustedState(t *testing.T) {
+	g := newBrokerRig(t)
+	_, state := g.logout(milk, "/lists")
+	flow, _ := g.b.keys.seal("flow", logoutState{Host: "evil.example", RD: "/"}, logoutTTL, g.clock.now())
+	i := len(state) / 2
+	tampered := state[:i] + map[bool]string{true: "B", false: "A"}[state[i] == 'A'] + state[i+1:]
+
+	cases := map[string]func() string{
+		"missing":       func() string { return "" },
+		"tampered":      func() string { return tampered },
+		"wrong purpose": func() string { return flow },
+		"expired": func() string {
+			g.clock.t = g.clock.t.Add(logoutTTL + time.Second)
+			return state
+		},
+	}
+	for _, name := range []string{"missing", "tampered", "wrong purpose", "expired"} {
+		t.Run(name, func(t *testing.T) {
+			w := g.do("GET", "/signed-out?"+url.Values{"state": {cases[name]()}}.Encode(), nil)
+			if w.Code != http.StatusOK || w.Header().Get("Location") != "" || !strings.Contains(w.Body.String(), "signed out of Freepod") {
+				t.Fatalf("%d Location=%q", w.Code, w.Header().Get("Location"))
+			}
+		})
 	}
 }

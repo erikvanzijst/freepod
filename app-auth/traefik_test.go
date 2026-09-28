@@ -326,6 +326,22 @@ func TestBehindTraefik(t *testing.T) {
 		}
 	})
 
+	t.Run("logout: cleared session and broker redirect reach the browser", func(t *testing.T) {
+		resp, _ := e.do(authHost, "GET", reservedPrefix+"logout?rd=/bye",
+			http.Header{"Cookie": {sessionCookie + "=" + sess}})
+		if e.upstream() != nil {
+			t.Fatal("a reserved path reached the app")
+		}
+		loc, _ := url.Parse(resp.Header.Get("Location"))
+		if resp.StatusCode != 302 || loc.Scheme != "https" || loc.Host != "login.freepod.eu" || loc.Path != "/logout" ||
+			loc.Query().Get("host") != authHost || loc.Query().Get("rd") != "/bye" {
+			t.Fatalf("%d Location=%s", resp.StatusCode, loc)
+		}
+		if !strings.Contains(strings.Join(resp.Header.Values("Set-Cookie"), "\n"), sessionCookie+"=;") {
+			t.Fatalf("session cookie not cleared: %v", resp.Header.Values("Set-Cookie"))
+		}
+	})
+
 	t.Run("app without authentication: identity headers stripped anyway", func(t *testing.T) {
 		e.do(plainHost, "GET", "/", spoofed)
 		got := e.upstream()

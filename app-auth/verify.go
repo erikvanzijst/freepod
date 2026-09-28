@@ -122,8 +122,10 @@ func (v *verifier) reserved(w http.ResponseWriter, r *http.Request, host string,
 	case reservedPrefix + "login":
 		v.startLogin(w, host, safeReturnPath(q.Get("rd")))
 	case reservedPrefix + "logout":
+		// The broker ends the Keycloak session too; otherwise the next
+		// navigation would sign the same account straight back in.
 		clearCookie(w, sessionCookie)
-		redirect(w, "https://"+host+safeReturnPath(q.Get("rd")))
+		redirect(w, v.loginURL+"/logout?"+url.Values{"host": {host}, "rd": {safeReturnPath(q.Get("rd"))}}.Encode())
 	case reservedPrefix + "callback":
 		v.callback(w, r, host, q.Get("code"))
 	default:

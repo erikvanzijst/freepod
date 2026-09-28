@@ -128,9 +128,10 @@ The `freepod` realm SHALL declare one OpenID Connect client per environment for 
 - be confidential;
 - enable only the standard (authorization code) flow, with PKCE method `S256`;
 - disable the implicit flow, direct access grants and service accounts;
-- list exactly one valid redirect URI: its environment's broker callback on `login.freepod.eu` or `login.dev.freepod.eu`.
+- list exactly one valid redirect URI: its environment's broker callback on `login.freepod.eu` or `login.dev.freepod.eu`;
+- list exactly one valid post-logout redirect URI: its environment's broker post-logout landing on the same host.
 
-Neither client SHALL use a wildcard redirect URI. Neither SHALL require identity-provider consent, because the broker asks for consent per app itself. The number of clients SHALL NOT grow with the number of deployments.
+Neither client SHALL use a wildcard redirect URI or a wildcard post-logout redirect URI. Neither SHALL require identity-provider consent, because the broker asks for consent per app itself. The number of clients SHALL NOT grow with the number of deployments.
 
 The broker's client ID and secret SHALL reach `tf/app` the same way the existing client credentials do: as maps keyed by workspace name, supplied through the gitignored `secrets.auto.tfvars`.
 
@@ -142,6 +143,11 @@ The broker's client ID and secret SHALL reach `tf/app` the same way the existing
 #### Scenario: Single fixed redirect URI
 
 - **WHEN** the redirect URIs of `freepod-apps-prod` are inspected
+- **THEN** there is exactly one, on `https://login.freepod.eu`, and it contains no wildcard
+
+#### Scenario: Single fixed post-logout redirect URI
+
+- **WHEN** the post-logout redirect URIs of `freepod-apps-prod` are inspected
 - **THEN** there is exactly one, on `https://login.freepod.eu`, and it contains no wildcard
 
 #### Scenario: New deployments need no identity-provider change

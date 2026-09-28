@@ -143,7 +143,7 @@ A browser navigation is a request with `Sec-Fetch-Mode: navigate`. When `Sec-Fet
 On every auth-enabled app host, the verifier SHALL answer every path under `/.freepod/auth/` itself, and none of them SHALL reach the app. At least these SHALL exist:
 - `/.freepod/auth/login?rd=<path>`: starts sign-in and returns to `<path>` afterwards.
 - `/.freepod/auth/callback`: completes sign-in (see *Sign-in completes on the app's own host*).
-- `/.freepod/auth/logout?rd=<path>`: ends the session on this host and redirects to `<path>`.
+- `/.freepod/auth/logout?rd=<path>`: signs out (see *Logout ends the Freepod sign-in*) and returns to `<path>` afterwards.
 
 Unknown paths under the prefix SHALL receive `404`. A return target SHALL be accepted only if it is a path on the same host: it starts with a single `/`, and is neither protocol-relative (`//`) nor a backslash variant. Otherwise the return target SHALL be `/`.
 
@@ -158,6 +158,11 @@ Every redirect the verifier issues SHALL use an absolute `https://` URL. Relativ
 
 - **WHEN** a request asks for `/.freepod/auth/login?rd=//evil.example/`
 - **THEN** the return target becomes `/`
+
+#### Scenario: Open-redirect attempt on logout
+
+- **WHEN** a request asks for `/.freepod/auth/logout?rd=//evil.example/`
+- **THEN** the return target carried through sign-out is `/`
 
 #### Scenario: App cannot shadow reserved paths
 
@@ -194,16 +199,6 @@ A successful redemption SHALL set `__Host-freepod_session` with attributes `Secu
 - **WHEN** a code issued for `milk.erik.freepod.eu` is presented at `notes.erik.freepod.eu/.freepod/auth/callback`
 - **THEN** no session is set
 
-### Requirement: Logout ends the session on one host
-
-`/.freepod/auth/logout` SHALL expire `__Host-freepod_session` on the requesting host and redirect to the return target. It SHALL NOT affect sessions on other hosts. It SHALL NOT end the user's Freepod sign-in at the identity provider.
-
-#### Scenario: Log out of one app
-
-- **WHEN** Alice, signed in to both `milk.erik.freepod.eu` and `notes.erik.freepod.eu`, opens `milk.erik.freepod.eu/.freepod/auth/logout`
-- **THEN** her next navigation to a protected path on `milk` starts sign-in
-- **AND** her session on `notes` still works
-
 ### Requirement: Fail closed
 
 If the verifier is unreachable or errors, requests to auth-enabled apps SHALL NOT reach the app. Deployments without authentication SHALL be unaffected by the verifier's availability.
@@ -213,3 +208,32 @@ If the verifier is unreachable or errors, requests to auth-enabled apps SHALL NO
 - **WHEN** the verifier is unavailable
 - **THEN** requests to auth-enabled apps receive an error from the edge and the apps see no requests
 - **AND** deployments without authentication keep serving normally
+
+### Requirement: Logout ends the Freepod sign-in
+
+`/.freepod/auth/logout` SHALL expire `__Host-freepod_session` on the requesting host. It SHALL then redirect the browser to the broker's sign-out for that host, carrying the return target, so that the user's Freepod sign-in at the identity provider ends as well (see the broker's *Signing out at the identity provider*). Once sign-out completes, the browser SHALL land on the return target on the same host.
+
+Logout SHALL NOT expire sessions on other hosts. A user signed in to other apps SHALL stay signed in to them until those sessions expire or the user logs out of them.
+
+After logout, the next sign-in on any app SHALL ask the user to authenticate at the identity provider, where they MAY choose a different account. Sign-ins after that one SHALL again need no interaction, as long as the new identity-provider sign-in lasts.
+
+#### Scenario: Log out and sign in as someone else
+
+- **WHEN** Alice, signed in to `milk.erik.freepod.eu`, opens `/.freepod/auth/logout?rd=/` and confirms signing out, and `/` is protected
+- **THEN** she lands on the identity provider's sign-in form rather than back in the app as Alice
+- **AND** signing in there as Bob returns her to `https://milk.erik.freepod.eu/` as Bob
+
+#### Scenario: Other apps keep their session
+
+- **WHEN** Alice, signed in to both `milk.erik.freepod.eu` and `notes.erik.freepod.eu`, logs out of `milk`
+- **THEN** her session on `notes` still works
+
+#### Scenario: One sign-in after logout
+
+- **WHEN** Alice logs out of `milk`, signs in again, and later opens `docs.erik.freepod.eu`, an app she has no session for but has consented to
+- **THEN** she reaches `docs` without entering credentials
+
+#### Scenario: Logout with a public return target
+
+- **WHEN** a deployment declares `public: ["^/$"]` and Alice opens `/.freepod/auth/logout?rd=/`
+- **THEN** after signing out she lands on `https://<host>/` with no identity headers reaching the app

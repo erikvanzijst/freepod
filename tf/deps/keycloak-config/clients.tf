@@ -207,6 +207,8 @@ resource "keycloak_openid_client" "freepod_apps_prod" {
   pkce_code_challenge_method = "S256"
 
   valid_redirect_uris = ["https://login.${var.prod_domain}/callback"]
+  # Keycloak returns here after ending its session; the broker forwards to the app.
+  valid_post_logout_redirect_uris = ["https://login.${var.prod_domain}/signed-out"]
 
   login_theme = "freepod"
 }
@@ -229,6 +231,8 @@ resource "keycloak_openid_client" "freepod_apps_dev" {
   pkce_code_challenge_method = "S256"
 
   valid_redirect_uris = ["https://login.${var.dev_domain}/callback"]
+  # Keycloak returns here after ending its session; the broker forwards to the app.
+  valid_post_logout_redirect_uris = ["https://login.${var.dev_domain}/signed-out"]
 
   login_theme = "freepod"
 }

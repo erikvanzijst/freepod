@@ -331,7 +331,11 @@ What to know when writing the app:
   backreferences are not RE2 — `freepod deploy` refuses them.
 - **Signing in and out are links, not code.** `/.freepod/auth/login?rd=/path`
   signs in and returns to `/path`; `/.freepod/auth/logout?rd=/` signs out of
-  this app. Everything under `/.freepod/auth/` belongs to the platform and
+  this app *and* ends the Freepod sign-in (the user confirms on Freepod's
+  page), then returns to `/`. The next sign-in asks for credentials, so the
+  same link is how a user switches to another account — offer it on any
+  "you don't have access" page. Other apps the user is signed in to stay
+  signed in. Everything under `/.freepod/auth/` belongs to the platform and
   never reaches the app.
 - **Browser page loads are redirected to sign in; everything else gets
   `401`.** A `fetch()` from a single-page app without a session, or with one

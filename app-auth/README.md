@@ -17,6 +17,12 @@ Freepod's Keycloak as the identity provider. This service is both halves:
   and hands the app host a single-use code bound to that host and to the
   browser that started signing in.
 
+**Logout** (`/.freepod/auth/logout?rd=…`) clears the app host's session, then
+goes through the broker's `/logout` to Keycloak's end-session endpoint, so the
+next sign-in asks for credentials and can pick another account. Keycloak
+returns to the broker's `/signed-out` (the client's only post-logout redirect
+URI), which forwards to the app host. Other hosts' sessions are untouched.
+
 Spec: [app-auth-verifier](../openspec/specs/app-auth-verifier/spec.md),
 [app-auth-broker](../openspec/specs/app-auth-broker/spec.md),
 [app-auth-chart-contract](../openspec/specs/app-auth-chart-contract/spec.md),

@@ -103,8 +103,9 @@ func run(log *slog.Logger) error {
 		patterns: newPatternCache(log),
 	}
 	b := &broker{
-		chrome: newChrome(cfg.loginURL),
-		keys:   keys, store: st, now: time.Now, log: log,
+		chrome:   newChrome(cfg.loginURL),
+		loginURL: cfg.loginURL,
+		keys:     keys, store: st, now: time.Now, log: log,
 		auth: &oidcAuth{
 			issuer: cfg.issuer, clientID: cfg.clientID, clientSecret: cfg.clientSecret,
 			redirectURL: cfg.loginURL + "/callback",

@@ -3,8 +3,10 @@ package main
 import (
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 )
 
 // TestPreview serves every page with sample data, for design work:
@@ -36,6 +38,10 @@ func TestPreview(t *testing.T) {
 		"/declined": func(w http.ResponseWriter) {
 			renderPage(w, 200, page{chrome: c, Kind: "done", Title: "Nothing was shared",
 				Message: "milk.fred.dev.freepod.eu did not receive your name, email address or account identifier. You can close this page."})
+		},
+		"/signed-out": func(w http.ResponseWriter) {
+			b := &broker{chrome: c, keys: mustKeyring(t, "k1:"+testKey('a')), now: time.Now}
+			b.signedOut(w, httptest.NewRequest("GET", "/signed-out", nil))
 		},
 		"/unavailable": func(w http.ResponseWriter) {
 			renderPage(w, 404, page{chrome: c, Title: "Sign-in isn't available here",

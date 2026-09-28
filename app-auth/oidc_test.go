@@ -47,6 +47,7 @@ func newStubIdP(t *testing.T) *stubIdP {
 		json.NewEncoder(w).Encode(map[string]any{
 			"issuer": iss, "authorization_endpoint": iss + "/auth", "token_endpoint": iss + "/token",
 			"jwks_uri": iss + "/jwks", "id_token_signing_alg_values_supported": []string{"RS256"},
+			"end_session_endpoint": iss + "/logout?ui_locales=en",
 		})
 	})
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
@@ -158,6 +159,21 @@ func TestOIDCExchange(t *testing.T) {
 			t.Fatal("accepted an ID token for another audience")
 		}
 	})
+}
+
+func TestOIDCEndSessionURL(t *testing.T) {
+	p := newStubIdP(t)
+	got, err := p.auth().endSessionURL("sealed-state", "https://login.example/signed-out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, _ := url.Parse(got)
+	q := u.Query()
+	if u.Scheme+"://"+u.Host != p.srv.URL || u.Path != "/logout" || q.Get("ui_locales") != "en" ||
+		q.Get("client_id") != "freepod-apps-dev" || q.Get("state") != "sealed-state" ||
+		q.Get("post_logout_redirect_uri") != "https://login.example/signed-out" || q.Has("id_token_hint") {
+		t.Fatalf("end-session URL %s", got)
+	}
 }
 
 func TestOIDCDiscoveryRecovers(t *testing.T) {

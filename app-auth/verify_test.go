@@ -277,14 +277,22 @@ func TestReservedPaths(t *testing.T) {
 			t.Fatalf("rd = %q", loc.Query().Get("rd"))
 		}
 	})
-	t.Run("logout clears only the session and redirects absolutely", func(t *testing.T) {
+	t.Run("logout clears only the session and hands off to the broker", func(t *testing.T) {
 		w := v.do(fwd{host: milk, uri: reservedPrefix + "logout?rd=/bye"})
-		if w.Code != 302 || w.Header().Get("Location") != "https://"+milk+"/bye" {
+		want := login + "/logout?" + url.Values{"host": {milk}, "rd": {"/bye"}}.Encode()
+		if w.Code != 302 || w.Header().Get("Location") != want {
 			t.Fatalf("%d %s", w.Code, w.Header().Get("Location"))
 		}
 		cookies := w.Result().Cookies()
 		if len(cookies) != 1 || cookies[0].Name != sessionCookie || cookies[0].MaxAge >= 0 {
 			t.Fatalf("Set-Cookie %v", w.Header()["Set-Cookie"])
+		}
+	})
+	t.Run("logout open redirect attempt", func(t *testing.T) {
+		w := v.do(fwd{host: milk, uri: reservedPrefix + "logout?rd=//evil.example/"})
+		loc, _ := url.Parse(w.Header().Get("Location"))
+		if loc.Query().Get("rd") != "/" || loc.Query().Get("host") != milk {
+			t.Fatalf("Location %s", loc)
 		}
 	})
 	t.Run("unknown reserved path", func(t *testing.T) {
