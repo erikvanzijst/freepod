@@ -150,16 +150,23 @@ chart can check and the one whose absence must never resolve to a default.
       port: 2222
     periodSeconds: 2
     failureThreshold: 15
+  # Every probe is a real connection that sshd forks a handler for and logs, and
+  # that is nearly all an idle sidecar ever does. A minute between checks still
+  # restarts a wedged server within a few minutes, which is soon enough for an
+  # administrative side door.
   livenessProbe:
     tcpSocket:
       port: 2222
-    periodSeconds: 10
+    periodSeconds: 60
     timeoutSeconds: 3
     failureThreshold: 3
+  # Sized for the idle server every deployment carries, not for the rare session:
+  # an idle sidecar measures about 1Mi, and the limit below still leaves a session
+  # room to burst.
   resources:
     requests:
-      cpu: 10m
-      memory: 32Mi
+      cpu: 2m
+      memory: 16Mi
     limits:
       # Headroom for `pg_dump`/`pg_restore`, which stream rather than buffer.
       memory: 256Mi

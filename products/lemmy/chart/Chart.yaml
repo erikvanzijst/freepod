@@ -5,7 +5,7 @@ description: >-
   Rust backend, the SSR frontend, pict-rs media storage, and a bundled
   PostgreSQL StatefulSet. No upstream chart dependency.
 type: application
-version: 0.5.4
+version: 0.5.5
 appVersion: "0.19.20"
 keywords:
   - lemmy
@@ -19,5 +19,5 @@ maintainers:
 # its own; provides the sidecar + Pipe/Service/Secret helpers).
 dependencies:
   - name: ssh-sidecar
-    version: "0.5.0"
+    version: "0.5.1"
     repository: "file://../../_lib/ssh-sidecar-chart"
