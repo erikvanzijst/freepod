@@ -70,7 +70,7 @@ A session SHALL be valid only when all of the following hold:
 - it was issued for the exact host the request is addressed to;
 - it has not expired.
 
-A session SHALL expire no later than 12 hours after issue. A session issued for one host SHALL NOT be accepted on any other host, including another host of the same owner. A session issued in one environment SHALL NOT be accepted in the other.
+A session SHALL expire no later than 7 days after issue. A session issued for one host SHALL NOT be accepted on any other host, including another host of the same owner. A session issued in one environment SHALL NOT be accepted in the other.
 
 #### Scenario: Cookie replayed on another app
 
@@ -79,7 +79,7 @@ A session SHALL expire no later than 12 hours after issue. A session issued for 
 
 #### Scenario: Expired session
 
-- **WHEN** a session cookie issued 12 hours and one minute ago is presented
+- **WHEN** a session cookie issued 7 days and one minute ago is presented
 - **THEN** the verifier treats the request as having no session
 
 #### Scenario: Tampered cookie

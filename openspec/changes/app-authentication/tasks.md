@@ -11,7 +11,7 @@
 ## 3. `app-auth` service: verifier
 
 - [x] 3.1 Scaffold `app-auth/` (Go module, Dockerfile, two listeners, config from env, health endpoints). Wire it into `scripts/build-images.sh` and CI next to `ssh-auth`. Verify `go test ./...` runs in CI and the image builds.
-- [x] 3.2 Implement the session cookie (D4): HMAC-SHA256 keyring with key IDs, claims `{sub,email,name,host,iat,exp}`, and a 12-hour maximum. Verify with unit tests for: valid, expired, tampered, wrong host, and rotated-key acceptance.
+- [x] 3.2 Implement the session cookie (D4): HMAC-SHA256 keyring with key IDs, claims `{sub,email,name,host,iat,exp}`, and a 7-day maximum (first shipped as 12 hours; see D4). Verify with unit tests for: valid, expired, tampered, wrong host, and rotated-key acceptance.
 - [x] 3.3 Implement `/verify` for regular paths: cookie filtering across multiple `Cookie` lines (D5); identity headers, with the name percent-encoded; public-path matching on the path only, using cached RE2 patterns decoded from the `p` query parameter and failing closed on bad patterns (D6); navigation detection → 302 with absolute `https://` Location and the login-nonce cookie; 401 otherwise. Verify with table-driven tests covering every scenario in the verifier spec's header, cookie, session, public-path and unauthenticated requirements.
 - [x] 3.4 Implement the reserved paths `/.freepod/auth/login`, `/callback`, `/logout` and 404 for the rest (D7). Include return-target sanitization and atomic code redemption bound to host and nonce. Verify with tests for: open-redirect inputs, a replayed code, a code for another host, login CSRF (no matching nonce cookie), and logout clearing only the session cookie.
 - [x] 3.5 Run an integration test of the verifier behind a real Traefik (the binary or container, as in the design's context checks). The config should match what the chart renders. Assert that the app receives filtered cookies and identity headers, that spoofed headers never arrive, and that 302s and `Set-Cookie`s reach the client. Verify the test runs in CI.
@@ -40,6 +40,7 @@
 
   Verify with chart render tests for: enabled, enabled with public patterns, and a missing `verifyUrl` failing.
 - [x] 6.3 Bump the chart version. Extend `products/catalog/custom.yaml` `values_schema` with the closed `auth` object (`enabled`, `public` ≤32 × ≤256 chars). Verify with catalog reconciliation tests, and that a deployment with an unknown `auth` key is rejected by schema validation.
+- [x] 6.4 Give `auth.enabled` and `auth.public` their own `title` and `description` in the catalog schema: the deploy form labels leaf fields and ignores a parent's title. Verify the dev catalog serves both titles.
 
 ## 7. Client and docs
 
@@ -47,6 +48,8 @@
 - [x] 7.2 Document authentication in `cli/src/freepod/assets/SKILL.md`: how to opt in, public paths, the header contract (`X-Freepod-User` as the stable key, email may change), `/.freepod/auth/login` and `/logout`, 401 for background requests, and simulating the headers locally. Verify by reading it against the specs.
 - [x] 7.3 Add an architecture note for app authentication to `AGENTS.md`, and a README for `app-auth/` stating its coupling to the chart's middleware contract and the platform schema, mirroring `ssh-auth/README.md`. Verify that the links resolve.
 - [x] 7.4 Update the privacy policy (and DPA where relevant) under `legal/`: disclosure of name, email and account identifier to operators of apps a user signs in to, on the basis of per-app consent. Bump the document version per `legal-doc-versioning`. Verify that the rendered legal page shows the new version.
+- [x] 7.5 Render `type: array` of strings in the deploy form as a multi-line field, one entry per line, submitted as a list with blank lines dropped. Verify with form tests for labels, prefill, blank-line editing and schema validation.
+- [x] 7.6 Bump the `freepod` CLI to 0.16.0 for the public-pattern check. Verify `freepod --version`; publishing is the `freepod-v0.16.0` tag after merge.
 
 ## 8. Rollout and verification
 

@@ -142,7 +142,7 @@ func TestSessionValidity(t *testing.T) {
 		later  time.Duration
 	}{
 		"replayed on another app":        {notes, valid, 0},
-		"expired after twelve hours":     {milk, valid, 12*time.Hour + time.Minute},
+		"expired after seven days":       {milk, valid, sessionTTL + time.Minute},
 		"tampered":                       {milk, string(tampered), 0},
 		"other environment's keys":       {milk, mustOtherEnvSession(t), 0},
 		"flow cookie presented as login": {milk, mustFlowToken(t, v), 0},
@@ -389,5 +389,14 @@ func TestNotAForwardAuthRequest(t *testing.T) {
 	v.ServeHTTP(w, httptest.NewRequest("GET", "/verify", nil))
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status %d", w.Code)
+	}
+}
+
+func TestSessionLastsSevenDays(t *testing.T) {
+	v, _, c := newTestVerifier(t)
+	cookie := sessionCookie + "=" + v.sessionFor(t, alice, milk)
+	c.t = t0.Add(7*24*time.Hour - time.Minute)
+	if w := v.do(fwd{host: milk, uri: "/api/items", header: cookieHeader(cookie)}); w.Code != 200 {
+		t.Fatalf("status %d a minute before the week is up", w.Code)
 	}
 }

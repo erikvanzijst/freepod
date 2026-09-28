@@ -335,7 +335,7 @@ What to know when writing the app:
   never reaches the app.
 - **Browser page loads are redirected to sign in; everything else gets
   `401`.** A `fetch()` from a single-page app without a session, or with one
-  that expired (sessions last 12 hours), receives `401` rather than an HTML
+  that expired (sessions last 7 days), receives `401` rather than an HTML
   redirect — handle it by navigating to `/.freepod/auth/login`. A form `POST`
   after expiry also gets `401`.
 - **The app never sees the session cookie** and never needs to: there is no

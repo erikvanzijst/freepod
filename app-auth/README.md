@@ -49,7 +49,7 @@ each with a test that fails when one side moves:
 
 `APP_AUTH_SESSION_KEYS` is `id:base64,id:base64…`, current key first. The first
 key seals; all keys open. Rotate by adding a new key in front, and drop the old
-one after 12 hours (the session lifetime). Replacing a key outright signs every
+one after 7 days (the session lifetime). Replacing a key outright signs every
 user out of every app. Values are sealed with AES-256-GCM, with the key derived
 per purpose, so a broker flow cookie can never open as a session.
 

@@ -16,6 +16,7 @@ import { getCnameTarget } from '../api/endpoints'
 import { useMySubdomain } from './subdomain/useMySubdomain'
 import { HostnameField } from './HostnameField'
 import { SensitiveVarField } from './SensitiveVarField'
+import { isStringList, linesToList } from './stringListField'
 
 const ajv = new Ajv2020({ allErrors: true, strict: false })
 addFormats(ajv)
@@ -41,6 +42,8 @@ export interface SchemaField {
   minimum?: number
   maximum?: number
   default?: unknown
+  /** For an `array`: the type of its items. Only `string` items are editable. */
+  itemsType?: string
   required: boolean
   target: FieldTarget
   /** Write-only: read back without its value, so it is never prefilled. */
@@ -143,6 +146,7 @@ export function flattenSchema(
       minimum: propSchema.minimum as number | undefined,
       maximum: propSchema.maximum as number | undefined,
       default: propSchema.default,
+      itemsType: (propSchema.items as Record<string, unknown> | undefined)?.type as string | undefined,
       required: requiredPaths.includes(currentPath),
     })
   }
@@ -269,7 +273,9 @@ export function UserValuesForm({
       }
       const defaultValue = field.path in initialValues ? initialValues[field.path] : field.default
       if (defaultValue !== undefined) {
-        if (field.type === 'boolean') {
+        if (isStringList(field)) {
+          initialData[field.path] = linesToList(defaultValue).join('\n')
+        } else if (field.type === 'boolean') {
           initialData[field.path] = Boolean(defaultValue)
         } else {
           initialData[field.path] = defaultValue
@@ -297,7 +303,9 @@ export function UserValuesForm({
     for (const field of fields) {
       if (field.target !== 'runtime') {
         if (field.path in formData) {
-          chartData[field.path] = formData[field.path]
+          chartData[field.path] = isStringList(field)
+            ? linesToList(formData[field.path])
+            : formData[field.path]
         }
         continue
       }
@@ -327,6 +335,9 @@ export function UserValuesForm({
     const hasValues = Object.values(chartData).some((v) => {
       if (typeof v === 'string') {
         return v !== ''
+      }
+      if (Array.isArray(v)) {
+        return v.length > 0
       }
       return v !== undefined && v !== null
     })
@@ -464,6 +475,30 @@ export function UserValuesForm({
               value={typeof formData[field.path] === 'string' ? (formData[field.path] as string) : ''}
               onChange={(value) => handleChange(field.path, value, 'string', true)}
             />
+          )
+        }
+
+        if (isStringList(field)) {
+          return (
+            <FormControl key={field.path} fullWidth error={!!fieldErrors[field.path]}>
+              <TextField
+                label={field.title || field.path}
+                helperText={
+                  fieldErrors[field.path] ||
+                  [field.description, 'One per line.'].filter(Boolean).join(' ')
+                }
+                value={typeof formData[field.path] === 'string' ? formData[field.path] : ''}
+                onChange={(e) => handleChange(field.path, e.target.value, field.type)}
+                multiline
+                minRows={2}
+                required={field.required}
+                error={!!fieldErrors[field.path]}
+                slotProps={{
+                  htmlInput: { spellCheck: false, style: { fontFamily: 'monospace' } },
+                  ...(readOnly ? { input: { readOnly: true } } : {}),
+                }}
+              />
+            </FormControl>
           )
         }
 

@@ -49,8 +49,14 @@ template:
         properties:
           enabled:
             type: boolean
+            title: Sign in with Freepod
+            description: Visitors sign in with their Freepod account before reaching the app, which then
+              receives their identity in the X-Freepod-User, X-Freepod-Email and X-Freepod-Name headers.
           public:
             type: array
+            title: Public paths
+            description: Paths served without signing in, as RE2 regular expressions matched against the
+              path only, e.g. ^/$ for the landing page. Signed-in visitors still carry their identity there.
             maxItems: 32
             items:
               type: string

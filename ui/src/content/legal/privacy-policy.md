@@ -138,7 +138,7 @@ We then delete or anonymise the data.
 
 We use strictly necessary cookies to operate the Service. When you sign in to a
 Third-Party Application with Freepod, strictly necessary cookies are also set on
-that application's own address to keep you signed in (for at most 12 hours) and
+that application's own address to keep you signed in (for at most 7 days) and
 to protect the sign-in against forgery; the application itself cannot read them. See our `[Cookie Policy URL]` for
 details. Under the EU ePrivacy rules, non-essential cookies are set only with
 your consent.

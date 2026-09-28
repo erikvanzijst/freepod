@@ -12,7 +12,7 @@ locals {
 
 # The session keyring. Every key seals the same way; the first seals, all open.
 # Rotating: add a new key in FRONT of this one (id k2), apply, and drop k1 once
-# sessions sealed with it have expired (12 h). Replacing k1 outright signs
+# sessions sealed with it have expired (7 days). Replacing k1 outright signs
 # everyone out of every app.
 resource "random_bytes" "session_key_k1" {
   length = 32

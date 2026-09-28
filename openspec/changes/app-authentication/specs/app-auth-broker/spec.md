@@ -125,7 +125,7 @@ When an app session expires, the next browser navigation to a protected path SHA
 
 #### Scenario: Next day
 
-- **WHEN** Alice returns to the app after her 12-hour session expired, while still signed in to Freepod
+- **WHEN** Alice returns to the app after her 7-day session expired, while still signed in to Freepod
 - **THEN** she lands on the requested page after redirects only
 
 #### Scenario: Deleted account

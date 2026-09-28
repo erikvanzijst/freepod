@@ -557,3 +557,72 @@ describe('server validation errors', () => {
     expect(screen.getByText('Too long')).toBeInTheDocument()
   })
 })
+
+describe('string list fields', () => {
+  // The shape of the custom product's `auth` block.
+  const authSchema = {
+    type: 'object',
+    properties: {
+      auth: {
+        type: 'object',
+        title: 'Parent titles are not shown',
+        properties: {
+          enabled: { type: 'boolean', title: 'Sign in with Freepod', description: 'Visitors sign in.' },
+          public: {
+            type: 'array',
+            title: 'Public paths',
+            description: 'RE2 patterns.',
+            items: { type: 'string', minLength: 1 },
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  }
+
+  it('labels each leaf with its own title', () => {
+    render(<UserValuesForm valuesSchemaJson={authSchema} onChange={vi.fn()} />, { wrapper: Wrapper })
+    expect(screen.getByLabelText('Sign in with Freepod')).toBeInTheDocument()
+    expect(screen.getByLabelText('Public paths')).toBeInTheDocument()
+    expect(screen.getByText('RE2 patterns. One per line.')).toBeInTheDocument()
+  })
+
+  it('prefills a stored list one entry per line', () => {
+    render(
+      <UserValuesForm
+        valuesSchemaJson={authSchema}
+        initialValuesJson={{ auth: { enabled: true, public: ['^/$', '^/static/'] } }}
+        onChange={vi.fn()}
+      />,
+      { wrapper: Wrapper },
+    )
+    expect(screen.getByLabelText('Public paths')).toHaveValue('^/$\n^/static/')
+  })
+
+  it('submits the lines as a list, dropping blank ones', async () => {
+    const onChange = vi.fn()
+    render(
+      <UserValuesForm
+        valuesSchemaJson={authSchema}
+        initialValuesJson={{ auth: { enabled: true } }}
+        onChange={onChange}
+      />,
+      { wrapper: Wrapper },
+    )
+    const field = screen.getByLabelText('Public paths')
+    // A trailing newline is what typing the next entry starts with; it must
+    // survive rather than be swallowed by a round trip through the list.
+    fireEvent.change(field, { target: { value: '^/$\n' } })
+    expect(field).toHaveValue('^/$\n')
+    fireEvent.change(field, { target: { value: '^/$\n\n^/static/\r\n' } })
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenLastCalledWith({ auth: { enabled: true, public: ['^/$', '^/static/'] } })
+    })
+  })
+
+  it('validates the submitted list against the schema', () => {
+    expect(validateUserValues(authSchema, { auth: { enabled: true, public: ['^/$'] } })).toEqual([])
+    expect(validateUserValues(authSchema, { auth: { enabled: true, public: '^/$' } })).not.toEqual([])
+  })
+})

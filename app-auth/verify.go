@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	sessionTTL     = 12 * time.Hour
+	sessionTTL     = 7 * 24 * time.Hour
 	loginNonceTTL  = 10 * time.Minute
 	reservedPrefix = "/.freepod/auth/"
 )

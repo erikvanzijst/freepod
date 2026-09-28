@@ -11,6 +11,7 @@
 - **Identity headers**: `X-Freepod-User` (the Keycloak subject), `X-Freepod-Email`, `X-Freepod-Name`, and the conventional `Remote-User` / `X-Forwarded-User` (subject) and `X-Forwarded-Email` (email). The edge removes client-supplied copies of all of them on **every** `custom` deployment, including ones that have not opted in.
 - **The session cookie never reaches the app**: the verifier strips it from the request before it is forwarded to the app.
 - **Public paths**: requests matching an RE2 regex in `auth.public` pass without a session, and still carry identity when a session exists.
+- **The deploy form** labels both `auth` fields and edits `public` as one pattern per line; it gains general support for lists of strings.
 - **Access gate v1 = any Freepod account.** Authorization is the app's job.
 - The `custom` chart renders the forward-auth middleware when `auth` is set, and the header-stripping middleware always. The reconciler injects the verifier's address.
 - **Keycloak** gains one client per environment (`freepod-apps-prod`, `freepod-apps-dev`) with a single redirect URI on the login host. There are no per-deployment clients.
