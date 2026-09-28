@@ -74,8 +74,7 @@ naming the secret:
   `[redacted:github-token]`;
 - the value of `GITHUB_APP_PRIVATE_KEY`, the key it decodes to, and each line of that
   key's body, as `[redacted:GITHUB_APP_PRIVATE_KEY]`;
-- the current values of `INFERENCE_API_KEY` and `DASHBOARD_PASSWORD`, as
-  `[redacted:INFERENCE_API_KEY]` and `[redacted:DASHBOARD_PASSWORD]`.
+- the current value of `INFERENCE_API_KEY`, as `[redacted:INFERENCE_API_KEY]`.
 
 An unset or empty secret MUST NOT cause any replacement.
 
@@ -94,5 +93,5 @@ The HTML rendering MUST be produced from the already-redacted transcript.
 - **THEN** the error stored in the database and the stored `result.json` contain the marker instead
 
 #### Scenario: An unset secret
-- **WHEN** `DASHBOARD_PASSWORD` is unset
+- **WHEN** `INFERENCE_API_KEY` is unset
 - **THEN** the stored files are identical to what the session wrote, apart from the replacements for the other secrets

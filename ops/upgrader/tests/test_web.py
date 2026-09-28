@@ -18,7 +18,7 @@ from upgrader.web import create_app
 
 from .fakes import FakeGitHub, MemoryStore
 
-AUTH = ("owner", "correct horse")
+AUTH = {"X-Freepod-Email": "owner@example.com"}
 
 
 @pytest.fixture
@@ -50,10 +50,10 @@ def scheduler(calls, release):
 CATALOG = ("immich", "nextcloud", "vaultwarden")
 
 
-def client(Session, scheduler, github, password="correct horse", store=None, choices=CATALOG, live=None,
+def client(Session, scheduler, github, allowed=("Owner@example.com",), store=None, choices=CATALOG, live=None,
            cancel=None):
     app = create_app(Session, store or MemoryStore(), scheduler,
-                     PullRequests(None, http=github.client()), password, lambda: list(choices), live=live,
+                     PullRequests(None, http=github.client()), allowed, lambda: list(choices), live=live,
                      cancel=cancel)
     return TestClient(app)
 
@@ -80,15 +80,15 @@ def test_healthz_needs_no_credentials(Session, scheduler, github):
     assert client(Session, scheduler, github).get("/healthz").status_code == 200
 
 
-def test_the_challenge_is_html_and_uncacheable(Session, scheduler, github):
+def test_forbidden_is_html_and_uncacheable(Session, scheduler, github):
     c = client(Session, scheduler, github)
-    response = c.get("/")
-    assert response.status_code == 401
+    response = c.get("/", headers={"X-Freepod-Email": "stranger@example.com"})
+    assert response.status_code == 403
     assert response.headers["content-type"].startswith("text/html")
-    assert response.headers["www-authenticate"].startswith("Basic")
     assert response.headers["cache-control"] == "no-store"
+    assert "/.freepod/auth/logout" in response.text
     # Every other error keeps the JSON body.
-    assert c.get("/runs/999999", auth=AUTH).headers["content-type"].startswith("application/json")
+    assert c.get("/runs/999999", headers=AUTH).headers["content-type"].startswith("application/json")
 
 
 def test_head_is_answered_wherever_get_is(Session, scheduler, github):
@@ -96,40 +96,42 @@ def test_head_is_answered_wherever_get_is(Session, scheduler, github):
     c = client(Session, scheduler, github)
     paths = ("/healthz", "/", "/progress", "/logbook", "/terminals", f"/runs/{run.id}", "/live/1")
     for path in paths:
-        response = c.request("HEAD", path, auth=AUTH)
+        response = c.request("HEAD", path, headers=AUTH)
         assert response.status_code == 200, path
         assert response.content == b""
     assert c.request("HEAD", "/").status_code == 401
     # A HEAD is not invented for a route that has no GET.
-    assert c.request("HEAD", "/runs", auth=AUTH).status_code == 405
+    assert c.request("HEAD", "/runs", headers=AUTH).status_code == 405
 
 
-@pytest.mark.parametrize("auth", [None, ("owner", "wrong"), ("", "")])
-def test_pages_need_the_password(Session, scheduler, github, auth):
+@pytest.mark.parametrize("headers, status", [
+    ({}, 401),
+    ({"X-Freepod-Email": ""}, 401),
+    ({"X-Freepod-Email": "stranger@example.com"}, 403),
+    ({"X-Freepod-User": "owner@example.com"}, 401),
+])
+def test_pages_need_an_allowed_email(Session, scheduler, github, headers, status):
     c = client(Session, scheduler, github)
     for path in ("/", "/progress", "/runs/1"):
-        response = c.get(path, auth=auth)
-        assert response.status_code == 401
-        assert response.headers["www-authenticate"].startswith("Basic")
-    assert c.post("/runs", auth=auth).status_code == 401
+        assert c.get(path, headers=headers).status_code == status
+    assert c.post("/runs", headers=headers).status_code == status
 
 
-@pytest.mark.parametrize("password", [None, ""])
-def test_an_unset_password_refuses_everything(Session, scheduler, github, password):
-    c = client(Session, scheduler, github, password=password)
-    assert c.get("/", auth=AUTH).status_code == 401
-    assert c.get("/", auth=("owner", "")).status_code == 401
+def test_an_empty_allow_list_refuses_everyone(Session, scheduler, github):
+    c = client(Session, scheduler, github, allowed=())
+    assert c.get("/", headers=AUTH).status_code == 403
     assert c.get("/healthz").status_code == 200
 
 
-def test_the_username_is_not_checked(Session, scheduler, github):
-    assert client(Session, scheduler, github).get("/", auth=("anyone", "correct horse")).status_code == 200
+def test_the_email_is_compared_without_case(Session, scheduler, github):
+    c = client(Session, scheduler, github)
+    assert c.get("/", headers={"X-Freepod-Email": "OWNER@Example.COM"}).status_code == 200
 
 
 def test_history_is_newest_first_and_marks_the_mode(Session, scheduler, github):
     old = add_run(Session, product("immich"))
     new = add_run(Session, product("immich", "would_open", branch="upgrade/immich-v3.2.1"))
-    page = client(Session, scheduler, github).get("/", auth=AUTH).text
+    page = client(Session, scheduler, github).get("/", headers=AUTH).text
     assert page.index(f'href="/runs/{new.id}"') < page.index(f'href="/runs/{old.id}"')
     assert "dry run" in page and "1 would open" in page
 
@@ -140,7 +142,7 @@ def test_a_would_open_product_shows_its_description_and_patch(Session, scheduler
         "immich", "would_open", target_version="v3.2.1", branch="upgrade/immich-v3.2.1", draft=True,
         needs_human=["Confirm x86-64-v2"],
         files=["session.jsonl", "session.html", "stdout.txt", "result.json", "body.md", "change.patch"]))
-    page = client(Session, scheduler, github, store=store).get(f"/runs/{run.id}", auth=AUTH).text
+    page = client(Session, scheduler, github, store=store).get(f"/runs/{run.id}", headers=AUTH).text
     prefix = f"https://blob.test/bucket/runs/{run.id}/immich/"
     assert f'<div class="markdown" data-src="{prefix}body.md?' in page
     assert f'<pre class="patch" data-src="{prefix}change.patch?' in page
@@ -166,7 +168,7 @@ def test_pr_state_from_github(Session, scheduler, github):
     github.pulls[12] = {"state": "closed", "draft": False, "merged": True}
     run = add_run(Session, product("vaultwarden", "opened", draft=False,
                                    pr_url="https://github.com/erikvanzijst/freepod/pull/12"))
-    page = client(Session, scheduler, github).get(f"/runs/{run.id}", auth=AUTH).text
+    page = client(Session, scheduler, github).get(f"/runs/{run.id}", headers=AUTH).text
     assert ">merged</span>" in page
 
 
@@ -174,12 +176,12 @@ def test_unreachable_github_still_renders(Session, scheduler, github):
     github.down = True
     run = add_run(Session, product("vaultwarden", "opened", draft=False,
                                    pr_url="https://github.com/erikvanzijst/freepod/pull/13"))
-    response = client(Session, scheduler, github).get(f"/runs/{run.id}", auth=AUTH)
+    response = client(Session, scheduler, github).get(f"/runs/{run.id}", headers=AUTH)
     assert response.status_code == 200 and ">unknown</span>" in response.text
 
 
 def test_every_eligible_product_can_be_run_before_any_run(Session, scheduler, github):
-    page = client(Session, scheduler, github).get("/", auth=AUTH).text
+    page = client(Session, scheduler, github).get("/", headers=AUTH).text
     assert [s for s in CATALOG if f'<option value="{s}">' in page] == list(CATALOG)
     assert "disabled>Run one product" not in page
 
@@ -187,27 +189,27 @@ def test_every_eligible_product_can_be_run_before_any_run(Session, scheduler, gi
 def test_run_now_and_run_one_product(Session, scheduler, github, calls, release):
     add_run(Session, product("immich"), product("nextcloud"))
     c = client(Session, scheduler, github)
-    response = c.post("/runs", data={"product": "nextcloud"}, auth=AUTH, follow_redirects=False)
+    response = c.post("/runs", data={"product": "nextcloud"}, headers=AUTH, follow_redirects=False)
     assert response.status_code == 303
-    assert "Started a run of nextcloud" in c.get(response.headers["location"], auth=AUTH).text
+    assert "Started a run of nextcloud" in c.get(response.headers["location"], headers=AUTH).text
     for request in ({}, {"product": "immich"}):
-        refused = c.post("/runs", data=request, auth=AUTH)
+        refused = c.post("/runs", data=request, headers=AUTH)
         assert refused.status_code == 409 and "already in progress" in refused.text
-    page = c.get("/", auth=AUTH).text
+    page = c.get("/", headers=AUTH).text
     assert "disabled" in page and 'data-busy="true"' in page
-    assert 'data-active="true"' in c.get("/progress", auth=AUTH).text
+    assert 'data-active="true"' in c.get("/progress", headers=AUTH).text
     release.set()
     deadline = time.monotonic() + 5
     while scheduler.active() and time.monotonic() < deadline:
         time.sleep(0.01)
-    assert 'data-active="false"' in c.get("/progress", auth=AUTH).text
-    assert c.post("/runs", data={}, auth=AUTH, follow_redirects=False).status_code == 303
+    assert 'data-active="false"' in c.get("/progress", headers=AUTH).text
+    assert c.post("/runs", data={}, headers=AUTH, follow_redirects=False).status_code == 303
     assert calls[:2] == [("manual", "nextcloud"), ("manual", None)]
 
 
 def test_a_product_outside_the_choices_is_refused(Session, scheduler, github, calls):
     add_run(Session, product("immich"))
-    response = client(Session, scheduler, github).post("/runs", data={"product": "custom"}, auth=AUTH)
+    response = client(Session, scheduler, github).post("/runs", data={"product": "custom"}, headers=AUTH)
     assert response.status_code == 400 and calls == []
 
 
@@ -215,7 +217,7 @@ def test_progress_names_the_running_product_and_finished_outcomes(Session, sched
     running = product("nextcloud", "running", finished=False)
     running.started_at = db.now() - timedelta(minutes=12, seconds=5)
     add_run(Session, product("immich", "would_open", branch="upgrade/x"), running, finished=False)
-    fragment = client(Session, scheduler, github).get("/progress", auth=AUTH).text
+    fragment = client(Session, scheduler, github).get("/progress", headers=AUTH).text
     assert 'hx-trigger="every 5s"' in fragment and 'data-active="true"' in fragment
     assert ">nextcloud</span>" in fragment and "running for 12m0" in fragment
     assert ">immich</span>" in fragment and "would open" in fragment
@@ -228,7 +230,7 @@ def test_pages_answer_while_a_run_is_in_progress(Session, scheduler, github, cal
     while not calls and time.monotonic() < deadline:
         time.sleep(0.01)
     started = time.monotonic()
-    assert c.get("/", auth=AUTH).status_code == 200
+    assert c.get("/", headers=AUTH).status_code == 200
     assert c.get("/healthz").status_code == 200
     assert time.monotonic() - started < 2
     assert scheduler.active()
@@ -255,15 +257,15 @@ def test_the_console_stays_out_of_the_polled_progress_fragment(Session, schedule
     """Re-inserting a console resets its scroll and restarts its animations, so polling must not carry it."""
     result_id, _, registry = running(Session, tmp_path, "hello")
     c = client(Session, scheduler, github, live=registry)
-    fragment = c.get("/progress", auth=AUTH).text
+    fragment = c.get("/progress", headers=AUTH).text
     assert f'data-running="{result_id}"' in fragment
     assert "console-" not in fragment and "/live/" not in fragment
-    terminals = c.get("/terminals", auth=AUTH).text
+    terminals = c.get("/terminals", headers=AUTH).text
     assert f'id="live-{result_id}"' in terminals
     assert f'hx-get="/live/{result_id}" hx-trigger="load"' in terminals
     # The console is opened over the page by moving it, so the control travels with it.
     assert 'class="widget"' in terminals
-    assert f'id="console-{result_id}"' in c.get("/", auth=AUTH).text
+    assert f'id="console-{result_id}"' in c.get("/", headers=AUTH).text
 
 
 def test_an_active_run_can_be_canceled(Session, scheduler, github):
@@ -271,11 +273,11 @@ def test_an_active_run_can_be_canceled(Session, scheduler, github):
     run = add_run(Session, product("immich", "running", finished=False), finished=False)
     cancel.start(run.id)
     c = client(Session, scheduler, github, cancel=cancel)
-    fragment = c.get("/progress", auth=AUTH).text
+    fragment = c.get("/progress", headers=AUTH).text
     assert f'action="/runs/{run.id}/cancel"' in fragment and "data-confirm=" in fragment
-    response = c.post(f"/runs/{run.id}/cancel", auth=AUTH, follow_redirects=False)
+    response = c.post(f"/runs/{run.id}/cancel", headers=AUTH, follow_redirects=False)
     assert response.status_code == 303
-    assert f"Canceling run {run.id}" in c.get(response.headers["location"], auth=AUTH).text
+    assert f"Canceling run {run.id}" in c.get(response.headers["location"], headers=AUTH).text
     assert cancel.asked() is True
 
 
@@ -283,9 +285,9 @@ def test_canceling_what_is_not_running_changes_nothing(Session, scheduler, githu
     cancel = Cancellation()
     finished = add_run(Session, product("immich"))
     c = client(Session, scheduler, github, cancel=cancel)
-    assert "/cancel" not in c.get("/progress", auth=AUTH).text
-    assert c.post(f"/runs/{finished.id}/cancel", auth=AUTH).status_code == 409
-    assert c.post("/runs/9999/cancel", auth=AUTH).status_code == 404
+    assert "/cancel" not in c.get("/progress", headers=AUTH).text
+    assert c.post(f"/runs/{finished.id}/cancel", headers=AUTH).status_code == 409
+    assert c.post("/runs/9999/cancel", headers=AUTH).status_code == 404
     assert c.post(f"/runs/{finished.id}/cancel").status_code == 401
     assert cancel.asked() is False
 
@@ -296,49 +298,49 @@ def test_the_logbook_follows_a_run_that_ends_after_its_last_product(Session, sch
     running_row = product("nextcloud", "running", finished=False)
     run = add_run(Session, running_row, finished=False)
     c = client(Session, scheduler, github)
-    assert f'data-run="{run.id}"' in c.get("/progress", auth=AUTH).text
-    assert f'data-state="{run.id}|true|{running_row.id}"' in c.get("/", auth=AUTH).text
+    assert f'data-run="{run.id}"' in c.get("/progress", headers=AUTH).text
+    assert f'data-state="{run.id}|true|{running_row.id}"' in c.get("/", headers=AUTH).text
 
     with Session.begin() as s:
         row = s.get(db.ProductResult, running_row.id)
         row.outcome, row.finished_at = "canceled", db.now()
-    window = c.get("/progress", auth=AUTH).text
+    window = c.get("/progress", headers=AUTH).text
     assert f'data-run="{run.id}"' in window and 'data-running=""' in window
 
     with Session.begin() as s:
         stored = s.get(db.Run, run.id)
         stored.state, stored.finished_at = "canceled", db.now()
-    ended = c.get("/progress", auth=AUTH).text
+    ended = c.get("/progress", headers=AUTH).text
     assert 'data-run=""' in ended and 'data-running=""' in ended
-    assert ">canceled</td>" in c.get("/logbook", auth=AUTH).text
+    assert ">canceled</td>" in c.get("/logbook", headers=AUTH).text
 
 
 def test_the_logbook_refreshes_on_its_own(Session, scheduler, github):
     add_run(Session, product("immich", "would_open"))
     c = client(Session, scheduler, github)
-    assert 'id="logbook"' in c.get("/", auth=AUTH).text
-    fragment = c.get("/logbook", auth=AUTH).text
+    assert 'id="logbook"' in c.get("/", headers=AUTH).text
+    fragment = c.get("/logbook", headers=AUTH).text
     assert "Logbook" in fragment and 'href="/runs/' in fragment and "would open" in fragment
     assert c.get("/logbook").status_code == 401
 
 
 def test_terminals_are_empty_when_no_run_is_active(Session, scheduler, github):
     c = client(Session, scheduler, github, live=Live())
-    assert c.get("/terminals", auth=AUTH).text.strip() == ""
+    assert c.get("/terminals", headers=AUTH).text.strip() == ""
     assert c.get("/terminals").status_code == 401
 
 
 def test_live_steps_open_on_the_latest_and_then_return_only_what_is_new(Session, scheduler, github, tmp_path):
     result_id, path, registry = running(Session, tmp_path, "reading the skill", "cloning <script>alert(1)</script>")
     c = client(Session, scheduler, github, live=registry)
-    first = c.get(f"/live/{result_id}", auth=AUTH).text
+    first = c.get(f"/live/{result_id}", headers=AUTH).text
     assert "reading the skill" in first
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in first and "<script>alert" not in first
     size = path.stat().st_size
     assert f'hx-get="/live/{result_id}?offset={size}" hx-trigger="every 3s"' in first
     with path.open("a") as f:
         f.write(transcript_line("key sk-live and then some"))
-    second = c.get(f"/live/{result_id}?offset={size}", auth=AUTH).text
+    second = c.get(f"/live/{result_id}?offset={size}", headers=AUTH).text
     assert "reading the skill" not in second
     assert "key [redacted:INFERENCE_API_KEY] and then some" in second
 
@@ -347,7 +349,7 @@ def test_live_steps_keep_polling_until_the_session_is_registered(Session, schedu
     """A product is polled from the moment it starts, which is before its session is registered."""
     row = product("nextcloud", "running", finished=False)
     add_run(Session, row, finished=False)
-    text = client(Session, scheduler, github, live=Live()).get(f"/live/{row.id}", auth=AUTH).text
+    text = client(Session, scheduler, github, live=Live()).get(f"/live/{row.id}", headers=AUTH).text
     assert "session ended" not in text
     assert f'hx-get="/live/{row.id}" hx-trigger="every 3s"' in text
     assert "offset=None" not in text
@@ -356,16 +358,16 @@ def test_live_steps_keep_polling_until_the_session_is_registered(Session, schedu
 def test_live_steps_stop_when_the_product_has_finished(Session, scheduler, github):
     row = product("nextcloud", "would_open")
     add_run(Session, row)
-    text = client(Session, scheduler, github, live=Live()).get(f"/live/{row.id}", auth=AUTH).text
+    text = client(Session, scheduler, github, live=Live()).get(f"/live/{row.id}", headers=AUTH).text
     assert "session ended" in text and "hx-trigger" not in text
 
 
 def test_live_steps_stop_when_the_session_has_ended(Session, scheduler, github):
-    response = client(Session, scheduler, github, live=Live()).get("/live/99?offset=10", auth=AUTH)
+    response = client(Session, scheduler, github, live=Live()).get("/live/99?offset=10", headers=AUTH)
     assert response.status_code == 200
     assert "session ended" in response.text
     assert 'id="poller-99" hx-swap-oob="true">' in response.text
 
 
-def test_live_steps_need_the_password(Session, scheduler, github):
+def test_live_steps_need_a_sign_in(Session, scheduler, github):
     assert client(Session, scheduler, github).get("/live/1").status_code == 401

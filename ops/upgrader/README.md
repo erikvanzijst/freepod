@@ -83,7 +83,7 @@ Everything arrives as deployment vars.
 | `INFERENCE_API_KEY`       | *required*, **secret**           |                                                                        |
 | `GITHUB_APP_ID`           | *required*                       | the installation is looked up from the repository, never configured    |
 | `GITHUB_APP_PRIVATE_KEY`  | *required*, **secret**           | base64 of the PEM, on one line                                         |
-| `DASHBOARD_PASSWORD`      | **secret**                       | unset refuses every page but `/healthz`                                |
+| `ALLOWED_EMAILS`          | unset                            | comma-separated; unset refuses every signed-in user                    |
 | `UPGRADE_DRY_RUN`         | `1`                              | only `0` means real pull requests                                      |
 | `THINKING_LEVEL`          | `medium`                         | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`              |
 | `SCHEDULE_TIME`           | `03:00`                          | `HH:MM` local, or `off`                                                |
@@ -109,7 +109,8 @@ recorded `failed` naming the var, and the dashboard stays up.
 
 ## Operations
 
-**Dashboard.** HTTP Basic, any username, `DASHBOARD_PASSWORD`. `/healthz` is
+**Dashboard.** Sign in with Freepod (`auth` in `.freepod.json`), then only an
+address in `ALLOWED_EMAILS` gets in; any other account gets a 403. `/healthz` is
 open. It lists runs, streams the running session, shows each product's files and
 each PR's GitHub state, and carries "Run now", "Run one product" and cancel.
 

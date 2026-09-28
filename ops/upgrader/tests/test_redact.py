@@ -19,7 +19,7 @@ KEY_B64 = base64.b64encode(PEM.encode()).decode()
 
 
 def redactor():
-    r = Redactor({"INFERENCE_API_KEY": "sk-inference-123", "DASHBOARD_PASSWORD": "hunter2hunter2"}, KEY_B64)
+    r = Redactor({"INFERENCE_API_KEY": "sk-inference-123", "OTHER_SECRET": "hunter2hunter2"}, KEY_B64)
     r.add_token("ghs_first111")
     r.add_token("ghs_second22")
     return r
@@ -28,7 +28,7 @@ def redactor():
 def test_each_secret():
     r = redactor()
     assert r("key sk-inference-123") == "key [redacted:INFERENCE_API_KEY]"
-    assert r("pw hunter2hunter2") == "pw [redacted:DASHBOARD_PASSWORD]"
+    assert r("pw hunter2hunter2") == "pw [redacted:OTHER_SECRET]"
     assert r(f"export GITHUB_APP_PRIVATE_KEY={KEY_B64}") == (
         "export GITHUB_APP_PRIVATE_KEY=[redacted:GITHUB_APP_PRIVATE_KEY]"
     )
@@ -66,7 +66,7 @@ def test_token_inside_a_json_string():
 
 
 def test_unset_or_empty_secret_changes_nothing():
-    r = Redactor({"INFERENCE_API_KEY": "", "DASHBOARD_PASSWORD": None}, None)
+    r = Redactor({"INFERENCE_API_KEY": "", "OTHER_SECRET": None}, None)
     r.add_token("")
     text = "nothing to see: , '' and so on"
     assert r(text) == text

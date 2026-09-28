@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import hmac
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Form, Header, HTTPException, Query, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.routing import APIRoute
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
@@ -74,9 +72,6 @@ templates.env.globals.update(
 )
 
 
-UNAUTHORIZED = "<!doctype html><meta charset=utf-8><title>Upgrader</title><h1>401 Unauthorized</h1>"
-
-
 class _HeadAllowed(APIRoute):
     """FastAPI, unlike Starlette's own Route, does not answer HEAD on a GET route."""
 
@@ -87,29 +82,32 @@ class _HeadAllowed(APIRoute):
 
 
 def create_app(Session: sessionmaker, store, scheduler: Scheduler, prs: PullRequests,
-               password: str | None, choices: Callable[[], list[str]], live: Live | None = None,
+               allowed_emails: Collection[str], choices: Callable[[], list[str]], live: Live | None = None,
                cancel: Cancellation | None = None,
                settings: Callable[[], Settings] = Settings.from_env, lifespan=None) -> FastAPI:
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.router.route_class = _HeadAllowed
-    basic = HTTPBasic(auto_error=False)
 
     @app.exception_handler(StarletteHTTPException)
     async def errors(request: Request, exc: StarletteHTTPException):
-        # The challenge answers in HTML because Firefox for Android hands an application/json
-        # document to its download handler, which strands the credentials it just prompted for.
-        if exc.status_code != 401:
+        if exc.status_code != 403:
             return await http_exception_handler(request, exc)
-        return HTMLResponse(UNAUTHORIZED, status_code=401,
-                            headers={**(exc.headers or {}), "Cache-Control": "no-store"})
+        return templates.TemplateResponse(request, "forbidden.html", {
+            "email": request.headers.get("X-Freepod-Email")}, status_code=403,
+            headers={"Cache-Control": "no-store"})
 
     live = live or Live()
     cancel = cancel or Cancellation()
 
-    def authenticated(credentials: HTTPBasicCredentials | None = Depends(basic)) -> None:
-        if not (password and credentials
-                and hmac.compare_digest(credentials.password.encode(), password.encode())):
-            raise HTTPException(401, headers={"WWW-Authenticate": 'Basic realm="upgrader"'})
+    allowed = frozenset(e.lower() for e in allowed_emails)
+
+    # Sign in with Freepod authenticates and strips any client-sent copy of the header;
+    # authorization is ours. Without the header the platform did not sign anyone in.
+    def authenticated(email: str | None = Header(None, alias="X-Freepod-Email")) -> None:
+        if not email:
+            raise HTTPException(401)
+        if email.strip().lower() not in allowed:
+            raise HTTPException(403)
 
     def status() -> dict:
         current = settings()
@@ -237,5 +235,5 @@ def build() -> FastAPI:
         scheduler.stop.set()
 
     choices = Choices(lambda: fetch(settings.repo_url, git=deps.git, workdir=deps.workdir))
-    return create_app(Session, store, scheduler, PullRequests(app_client), settings.dashboard_password,
+    return create_app(Session, store, scheduler, PullRequests(app_client), settings.allowed_emails,
                       choices, live=deps.live, cancel=deps.cancel, lifespan=lifespan)

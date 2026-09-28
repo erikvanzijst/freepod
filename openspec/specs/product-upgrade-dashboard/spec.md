@@ -5,24 +5,27 @@ can start from it, and who can reach it.
 
 ## Requirements
 
-### Requirement: Every page requires the dashboard password
-Every dashboard page and action except `GET /healthz` MUST require HTTP Basic
-authentication whose password equals `DASHBOARD_PASSWORD`. The username is not checked.
+### Requirement: Every page requires an allowed Freepod account
+The deployment MUST opt in to Sign in with Freepod, with `GET /healthz` as its only public
+path. Every other dashboard page and action MUST be served only when the platform's
+`X-Freepod-Email` header names an address listed in `ALLOWED_EMAILS`, compared without
+regard to case.
 
-When `DASHBOARD_PASSWORD` is unset or empty, every request except `GET /healthz` MUST be
-refused.
+A request without the header MUST be refused with 401. A signed-in account whose address
+is not listed MUST be refused with 403 and a link to sign out. When `ALLOWED_EMAILS` is
+unset or empty, every request except `GET /healthz` MUST be refused.
 
-#### Scenario: No credentials
-- **WHEN** a run page is requested without credentials
-- **THEN** the response has status 401 with a Basic authentication challenge
-
-#### Scenario: The wrong password
-- **WHEN** a run page is requested with a password that is not `DASHBOARD_PASSWORD`
+#### Scenario: Not signed in
+- **WHEN** a run page is requested without an `X-Freepod-Email` header
 - **THEN** the response has status 401
 
-#### Scenario: The password was never set
-- **WHEN** `DASHBOARD_PASSWORD` is unset and any page other than `/healthz` is requested, with any credentials
-- **THEN** the response has status 401
+#### Scenario: An account that is not allowed
+- **WHEN** a run page is requested by a signed-in account whose email is not in `ALLOWED_EMAILS`
+- **THEN** the response has status 403
+
+#### Scenario: The allow-list was never set
+- **WHEN** `ALLOWED_EMAILS` is unset and any page other than `/healthz` is requested, by any account
+- **THEN** the response has status 403
 
 ### Requirement: The run history is browsable
 The dashboard MUST list runs newest first. Each entry shows the run's trigger, scope,

@@ -26,6 +26,12 @@ def test_defaults():
     assert s.notify_from == "upgrader@freepod.eu"
     assert s.smtp_host == "smtp.mailer.svc.cluster.local"
     assert s.repo_url == "https://github.com/erikvanzijst/freepod.git"
+    assert s.allowed_emails == frozenset()
+
+
+def test_allowed_emails_are_a_comma_separated_list():
+    s = Settings.from_env({**FULL, "ALLOWED_EMAILS": " a@example.com, b@example.com ,,"})
+    assert s.allowed_emails == {"a@example.com", "b@example.com"}
 
 
 @pytest.mark.parametrize(

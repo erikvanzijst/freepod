@@ -16,7 +16,7 @@ REQUIRED = (
     "GITHUB_APP_ID",
     "GITHUB_APP_PRIVATE_KEY",
 )
-SECRETS = ("GITHUB_APP_PRIVATE_KEY", "INFERENCE_API_KEY", "DASHBOARD_PASSWORD")
+SECRETS = ("GITHUB_APP_PRIVATE_KEY", "INFERENCE_API_KEY")
 THINKING_LEVELS = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
 
 
@@ -32,7 +32,7 @@ class Settings:
     inference_api_key: str | None = None
     github_app_id: str | None = None
     github_app_private_key: str | None = None
-    dashboard_password: str | None = None
+    allowed_emails: frozenset[str] = frozenset()
     thinking_level: str = "medium"
     schedule_time: str = "03:00"
     schedule_timezone: str = "Europe/Brussels"
@@ -54,7 +54,9 @@ class Settings:
             inference_api_key=_get(env, "INFERENCE_API_KEY"),
             github_app_id=_get(env, "GITHUB_APP_ID"),
             github_app_private_key=_get(env, "GITHUB_APP_PRIVATE_KEY"),
-            dashboard_password=_get(env, "DASHBOARD_PASSWORD"),
+            allowed_emails=frozenset(
+                e.strip() for e in env.get("ALLOWED_EMAILS", "").split(",") if e.strip()
+            ),
             thinking_level=_get(env, "THINKING_LEVEL") or defaults.thinking_level,
             schedule_time=_get(env, "SCHEDULE_TIME") or defaults.schedule_time,
             schedule_timezone=_get(env, "SCHEDULE_TIMEZONE") or defaults.schedule_timezone,
@@ -103,11 +105,4 @@ class Settings:
         return found
 
     def secret_values(self) -> dict[str, str]:
-        return {
-            name: value
-            for name, value in (
-                ("INFERENCE_API_KEY", self.inference_api_key),
-                ("DASHBOARD_PASSWORD", self.dashboard_password),
-            )
-            if value
-        }
+        return {"INFERENCE_API_KEY": self.inference_api_key} if self.inference_api_key else {}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Not on the watch list · Upgrader{% endblock %}
+{% block content %}
+  <section class="denied" aria-labelledby="denied-title">
+    <p class="eyebrow">403 · Access refused</p>
+    <h1 id="denied-title">Not on the<br><span>watch list</span></h1>
+    <p class="lede">
+      You are signed in as <code>{{ email }}</code>, but this dashboard only lets in the
+      addresses its owner has allowed.
+    </p>
+    <div class="denied-actions">
+      <a class="button primary" href="/.freepod/auth/logout?rd=/">Sign in with another account</a>
+      <span class="hint">Or ask the owner to add this address to <code>ALLOWED_EMAILS</code>.</span>
+    </div>
+  </section>
+{% endblock %}

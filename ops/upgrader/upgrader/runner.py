@@ -32,8 +32,7 @@ from .store import CONTENT_TYPES, product_prefix
 log = logging.getLogger(__name__)
 
 HERE = Path(__file__).resolve().parents[1]
-PRIVATE_ENV = ("GITHUB_APP_PRIVATE_KEY", "DASHBOARD_PASSWORD", "DATABASE_URL", "BUCKET_NAME",
-               "GH_TOKEN", "GITHUB_TOKEN")
+PRIVATE_ENV = ("GITHUB_APP_PRIVATE_KEY", "DATABASE_URL", "BUCKET_NAME", "GH_TOKEN", "GITHUB_TOKEN")
 PRIVATE_PREFIXES = ("PG", "AWS_", "S3_")
 RESULT_FILES = ("result.json", "body.md", "change.patch")
 

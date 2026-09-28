@@ -77,13 +77,12 @@ The dashboard MUST answer `GET /healthz` with status 200, and without authentica
 
 ### Requirement: Configuration arrives as deployment vars
 The service MUST take its configuration from environment variables that the owner sets as
-Freepod vars. The following three MUST be set with `freepod var set --secret`, because
+Freepod vars. The following two MUST be set with `freepod var set --secret`, because
 the platform never returns a secret var:
 
 - `GITHUB_APP_PRIVATE_KEY`: the GitHub App's private key, base64-encoded on one line,
   because the CLI's hidden prompt reads a single line.
 - `INFERENCE_API_KEY`: the key for the inference endpoint.
-- `DASHBOARD_PASSWORD`: the dashboard's password.
 
 The plain vars, with defaults where one exists:
 
@@ -100,6 +99,8 @@ The plain vars, with defaults where one exists:
 - `NOTIFY_FROM`: the sender address. Default `upgrader@freepod.eu`.
 - `SMTP_HOST`: the mail relay. Default `smtp.mailer.svc.cluster.local`.
 - `DASHBOARD_URL`: the dashboard's public URL, used for links in emails. Optional.
+- `ALLOWED_EMAILS`: the comma-separated email addresses allowed into the dashboard. When
+  unset, nobody is.
 
 The service MUST NOT require any var whose name the platform reserves or overrides:
 `PORT`, `BUCKET_NAME`, `DATABASE_URL`, and anything starting with `AWS_`, `S3_`, `PG`,
