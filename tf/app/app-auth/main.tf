@@ -39,9 +39,7 @@ resource "kubernetes_deployment" "app_auth" {
   }
 
   spec {
-    # Two, because every request to an auth-enabled app passes through this
-    # pod, and those apps fail closed when it is gone.
-    replicas = 2
+    replicas = 1
 
     selector {
       match_labels = local.labels
@@ -132,20 +130,6 @@ resource "kubernetes_deployment" "app_auth" {
           }
         }
       }
-    }
-  }
-}
-
-resource "kubernetes_pod_disruption_budget_v1" "app_auth" {
-  metadata {
-    name      = "app-auth"
-    namespace = var.namespace
-  }
-
-  spec {
-    min_available = 1
-    selector {
-      match_labels = local.labels
     }
   }
 }

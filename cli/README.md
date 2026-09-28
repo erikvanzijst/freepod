@@ -162,6 +162,13 @@ without rebuilding your entire project.
 A var marked `--secret` is **write-only**: the platform never returns it, so
 `var list` shows its key with the value hidden and nothing can print it back.
 
+## Sign in with Freepod
+
+Need to know who your users are? Opt in with `"auth": {"enabled": true}`
+under `user_values` in `.freepod.json`, and visitors sign in with their Freepod
+account before reaching your app, which receives their identity in request
+headers. There's no login code to write.
+
 ## .freepod.json
 
 `init` writes it, and it is meant to be committed. It records the hostname you
