@@ -51,3 +51,14 @@ variable "smtp_reply_to" {
   type        = string
   default     = "noreply@freepod.eu"
 }
+
+variable "google_client_id" {
+  description = "Client ID of the Google OAuth web client used by the Google identity provider."
+  type        = string
+}
+
+variable "google_client_secret" {
+  description = "Client secret of the Google OAuth web client used by the Google identity provider."
+  type        = string
+  sensitive   = true
+}

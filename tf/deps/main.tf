@@ -47,6 +47,9 @@ module "keycloak" {
 module "keycloak_config" {
   source = "./keycloak-config"
 
+  google_client_id     = var.google_client_id
+  google_client_secret = var.google_client_secret
+
   depends_on = [module.keycloak, module.mailer]
 }
 

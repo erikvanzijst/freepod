@@ -44,6 +44,21 @@ Create `secrets.auto.tfvars` (gitignored):
 ```hcl
 keycloak_admin_password = "replace-with-actual-password"
 
+# Sign in with Google: the OAuth web client in the Google Cloud console
+# (see "Sign in with Google" under Keycloak configuration)
+google_client_id     = "....apps.googleusercontent.com"
+google_client_secret = "GOCSPX-..."
+
+# Mailer relay's upstream SMTP account (purelymail)
+smtp_host     = "smtp.example.com"
+smtp_port     = "587"
+smtp_username = "relay@example.com"
+smtp_password = "replace-with-actual-password"
+
+# TLS: DNS-01 wildcard issuance through Cloudflare
+cloudflare_api_token = "replace-with-actual-token"
+letsencrypt_email    = "ops@example.com"
+
 # Monitoring stack
 grafana_admin_password = "replace-with-actual-password" # break-glass local admin
 alert_email_to         = "ops@example.com"              # Alertmanager recipient
@@ -441,6 +456,7 @@ What it manages:
 - The `freepod-api-prod` / `freepod-api-dev` audience scopes, which put the
   environment's oauth2-proxy client ID into the access token's `aud` claim.
 - Groups `freepod-dev` and `freepod-observability`.
+- The `google` identity provider (Sign in with Google), below.
 
 **Apply `tf/deps` before `tf/app`.** oauth2-proxy fails its readiness probe if
 OIDC discovery does not resolve, so the realm, clients and scopes must exist
@@ -454,6 +470,37 @@ Deliberately *not* managed, and safe to change by hand:
 - **End-user accounts.** There is no `keycloak_user` resource. Users live in
   Keycloak's own Postgres, and self-registration causes no drift.
 - **Group membership.** Terraform owns the groups, not who is in them.
+
+### Sign in with Google
+
+`keycloak-config/identity-providers.tf` registers Google on the realm, so every
+client (both environments, the CLI, app-auth, Grafana) offers it on the login
+page. The Google side is not in Terraform:
+
+- **Where:** Google Cloud console, project `freepod`, Google Auth Platform.
+  *Clients* holds the web client `Keycloak freepod realm`; *Branding* holds the
+  consent screen (published and brand-verified, with the privacy policy and
+  terms links pointing at `https://freepod.eu/legal/{privacy,terms}.md`, which
+  Google's checker can read without running the SPA).
+- **Credentials:** `google_client_id` / `google_client_secret` in
+  `secrets.auto.tfvars`. Google shows a secret only once, at creation; to
+  rotate, add a new secret to the client, update the tfvars, apply, then delete
+  the old one.
+- **Redirect URI:** `https://keycloak.freepod.eu/realms/freepod/broker/google/endpoint`,
+  registered on the Google client. It is derived from the provider alias
+  `google`, so renaming the alias breaks sign-in until the client is updated.
+
+Behavior that is deliberate (openspec `keycloak-google-identity-provider`):
+
+- `trust_email = true`: a first Google sign-in creates an account whose email
+  is already verified.
+- The stock `first broker login` flow: an email that already has an account
+  must confirm the link and prove ownership (emailed link or password). Never
+  switch to an auto-link flow; it lets a squatter's unverified account capture
+  the real owner.
+- `sync_mode = "IMPORT"`: Google attributes are copied once. `FORCE` would
+  rewrite the email whenever the Google address changes, which moves the person
+  to a new, empty Freepod account while the API resolves callers by email.
 
 ### Things that will bite you
 
@@ -480,12 +527,13 @@ Deliberately *not* managed, and safe to change by hand:
   the other's client, and never add them to `local.default_client_scopes` —
   that local is applied to every client, which would hand each one both
   audiences.
-- **A `kubectl rollout restart` on the Keycloak deployment shows up as drift.**
-  Terraform removes the `kubectl.kubernetes.io/restartedAt` annotation on the
-  next apply, which restarts the pod. That is a brief authentication outage for
-  prod, dev and Grafana at once — and if the same apply also creates Keycloak
-  provider resources, they race the restart and fail with `502 Bad Gateway`.
-  Reconcile that drift on its own, or re-run the apply once the pod is Ready.
+- **`kubectl rollout restart` is safe on the Keycloak deployment.** The
+  `kubectl.kubernetes.io/restartedAt` annotation it writes is in
+  `ignore_changes` (as on every deployment here), so the next apply does not
+  restart the pod again. Keycloak does return `502 Bad Gateway` at the edge for
+  roughly 25 seconds after the rollout reports Ready, so wait for
+  `/realms/freepod/.well-known/openid-configuration` to answer before applying
+  Keycloak provider resources.
 
 ### Reading client secrets
 
@@ -523,9 +571,14 @@ type's `template.ftl`.
 ### How it's deployed (production)
 
 The theme is **baked into the Keycloak image** rather than mounted (it's ~22
-files / ~400KB — too much for a ConfigMap). `keycloak/Dockerfile` is just
-`FROM quay.io/keycloak/keycloak:24.0` + `COPY theme/freepod`. Build, push and
-roll out:
+files / ~400KB — too much for a ConfigMap). `keycloak/Dockerfile` copies
+`theme/freepod` onto `quay.io/keycloak/keycloak:24.0`, after a small build stage
+that appends `?v=<content hash>` to each stylesheet in its theme's `styles`
+line. Keycloak serves theme resources with a 30-day `max-age` under a path that
+changes only with the Keycloak version, so without that hash browsers keep the
+old CSS for a month after a theme change. Fonts and images referenced from the
+CSS are not hashed: give a changed asset a new file name. Build, push and roll
+out:
 
 ```bash
 ./scripts/build-images.sh --keycloak     # build + push ghcr.io/<owner>/caelus/keycloak
