@@ -210,7 +210,7 @@ Then just prompt:
 
 > Build a URL shortener and deploy it to freepod.
 
-Supported: **Claude Code**, **Codex**, **OpenCode**, **Amp**, **Gemini CLI**, **Qwen Code**
+Supported: **Claude Code**, **Codex**, **OpenCode**, **Amp**, **Gemini CLI**, **Mistral Vibe**, **Qwen Code**
 
 ---
 
