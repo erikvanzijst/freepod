@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react'
 import { listAllDeployments, listUsers } from '../api/endpoints'
 import { useAuth } from '../state/AuthContext'
 import type { User } from '../api/types'
-import { formatLocalIso } from '../utils/formatDate'
+import { formatLocalIso, parseUtc } from '../utils/formatDate'
 
 interface UserRow extends User {
   deployment_count: number
@@ -26,7 +26,7 @@ const columns: GridColDef<UserRow>[] = [
     headerName: 'Joined',
     flex: 1,
     minWidth: 160,
-    valueGetter: (_value, row) => (row.created_at ? new Date(row.created_at) : null),
+    valueGetter: (_value, row) => (row.created_at ? parseUtc(row.created_at) : null),
     renderCell: ({ value }) => (value ? formatLocalIso(value as Date) : ''),
   },
   { field: 'deployment_count', headerName: 'Deployments', width: 120 },

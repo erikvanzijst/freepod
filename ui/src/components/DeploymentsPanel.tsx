@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { listAllDeployments } from '../api/endpoints'
 import { useAuth } from '../state/AuthContext'
 import type { Deployment } from '../api/types'
-import { formatLocalIso } from '../utils/formatDate'
+import { formatLocalIso, parseUtc } from '../utils/formatDate'
 import { DeploymentDialog } from './DeploymentDialog'
 
 const columns: GridColDef<Deployment>[] = [
@@ -50,7 +50,7 @@ const columns: GridColDef<Deployment>[] = [
     headerName: 'Created',
     flex: 1,
     minWidth: 160,
-    valueGetter: (_value, row) => row.created_at ? new Date(row.created_at) : null,
+    valueGetter: (_value, row) => row.created_at ? parseUtc(row.created_at) : null,
     renderCell: ({ value }) => value ? formatLocalIso(value as Date) : '',
   },
   {

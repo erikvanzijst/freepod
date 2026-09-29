@@ -5,7 +5,7 @@ import type { Deployment, Plan } from '../api/types'
 import { ApiError } from '../api/client'
 import { deleteDeployment, getDeployment, updateDeployment } from '../api/endpoints'
 import { isTransitionalStatus } from '../utils/deploymentStatus'
-import { formatLocalIso } from '../utils/formatDate'
+import { formatLocalIso, parseUtc } from '../utils/formatDate'
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog'
 import { DeployDialogContent } from './DeployDialogContent'
 import { DatabasePanel } from './DatabasePanel'
@@ -18,7 +18,7 @@ interface DeploymentDialogProps {
 
 function formatAge(value: string | null | undefined): string {
   if (!value) return '—'
-  const ms = Date.now() - new Date(value).getTime()
+  const ms = Date.now() - parseUtc(value).getTime()
   const seconds = Math.floor(ms / 1000)
   const minutes = Math.floor(seconds / 60)
   const hours = Math.floor(minutes / 60)

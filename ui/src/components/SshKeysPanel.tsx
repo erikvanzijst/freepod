@@ -19,13 +19,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { addSshKey, deleteSshKey, listSshKeys } from '../api/endpoints'
 import type { SshKey } from '../api/types'
 import { useAuth } from '../state/AuthContext'
+import { parseUtc } from '../utils/formatDate'
 import { AddSshKeyDialog } from './AddSshKeyDialog'
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog'
 import { CopyButton } from './CopyButton'
 import { accent, fg, line, MONO } from './landing/landingTokens'
 
 function formatAdded(iso: string): string {
-  const date = new Date(iso)
+  const date = parseUtc(iso)
   if (Number.isNaN(date.getTime())) return iso
   return date.toLocaleDateString(undefined, {
     year: 'numeric',

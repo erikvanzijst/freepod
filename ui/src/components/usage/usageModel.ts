@@ -1,4 +1,5 @@
 import type { UsageBucket, UsageReport } from '../../api/types'
+import { parseUtc } from '../../utils/formatDate'
 
 /**
  * Period math and report pivoting for the usage pane. Everything here is UTC:
@@ -123,11 +124,6 @@ export function periodTitle(period: UsagePeriod, range: PeriodRange): string {
     case 'year':
       return fmt(range.start, { year: 'numeric' })
   }
-}
-
-/** The API's naive-UTC timestamps, as instants. */
-export function parseUtc(iso: string): Date {
-  return new Date(/[zZ]|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`)
 }
 
 export interface UsageSeries {

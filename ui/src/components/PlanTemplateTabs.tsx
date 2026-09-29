@@ -14,6 +14,7 @@ import AddIcon from '@mui/icons-material/Add'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createPlanTemplate, updatePlan } from '../api/endpoints'
 import type { Plan, PlanTemplatePayload, PlanTemplateVersion } from '../api/types'
+import { formatDateTime } from '../utils/format'
 import { SplitPane } from './SplitPane'
 import { PlanCardPreview } from './PlanCardPreview'
 
@@ -175,7 +176,7 @@ function PlanTemplateReadOnly({ plan, template, isCanonical, onMakeCanonical }: 
             </Box>
           )}
           <Typography variant="caption" color="text.secondary">
-            Created {new Date(template.created_at).toLocaleString()}
+            Created {formatDateTime(template.created_at)}
           </Typography>
           {isCanonical ? (
             <Button variant="outlined" disabled startIcon={<StarIcon />} sx={{ alignSelf: 'flex-start' }}>

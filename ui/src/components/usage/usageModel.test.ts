@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { UsageReport } from '../../api/types'
 import { CATEGORICAL, colorSeries, OTHER_KEY } from './usagePalette'
-import { parseUtc, periodRange, pivot, shiftAnchor } from './usageModel'
+import { periodRange, pivot, shiftAnchor } from './usageModel'
 
 const at = (iso: string) => new Date(iso)
 
@@ -31,12 +31,6 @@ describe('shiftAnchor', () => {
     expect(periodRange('month', previous).start.toISOString()).toBe('2025-12-01T00:00:00.000Z')
     const next = shiftAnchor('month', at('2025-12-15T00:00:00Z'), 1)
     expect(periodRange('month', next).start.toISOString()).toBe('2026-01-01T00:00:00.000Z')
-  })
-})
-
-describe('parseUtc', () => {
-  it('reads the API’s naive timestamps as UTC', () => {
-    expect(parseUtc('2026-09-23T00:00:00').toISOString()).toBe('2026-09-23T00:00:00.000Z')
   })
 })
 
