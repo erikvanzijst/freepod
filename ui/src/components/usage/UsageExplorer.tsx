@@ -22,12 +22,12 @@ import { colorSeries, OTHER_COLOR, type ColoredSeries } from './usagePalette'
 import {
   drillDown,
   formatEuro,
-  parseUtc,
   periodRange,
   pivot,
   type UsagePeriod,
   type UsageSeries,
 } from './usageModel'
+import { parseUtc } from '../../utils/formatDate'
 
 /** One way to split the bars: by user, by application or by resource. */
 export interface UsageBreakdownOption {

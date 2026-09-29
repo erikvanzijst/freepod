@@ -1,3 +1,5 @@
+import { parseUtc } from './formatDate'
+
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -5,7 +7,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-US', {
 
 export function formatDateTime(value?: string | null) {
   if (!value) return '—'
-  return dateFormatter.format(new Date(value))
+  return dateFormatter.format(parseUtc(value))
 }
 
 export function ensureUrl(domain: string) {
