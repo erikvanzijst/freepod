@@ -117,6 +117,13 @@ def agents() -> List[Agent]:
             user_skills=home / ".qwen" / "skills",
             project_skills=Path(".qwen/skills"),
         ),
+        Agent(
+            key="vibe",
+            label="Mistral Vibe",
+            config_dir=home / ".vibe",
+            user_skills=home / ".vibe" / "skills",
+            project_skills=Path(".vibe/skills"),
+        ),
     ]
 
 

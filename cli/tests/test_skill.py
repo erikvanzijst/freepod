@@ -97,6 +97,7 @@ def test_every_agent_the_readme_promises_is_supported():
         "amp",
         "gemini",
         "qwencode",
+        "vibe",
     }
 
 
