@@ -145,35 +145,30 @@ body#keycloak-bg::after {
   display: flex;
   justify-content: center;
   width: 100%;
-  margin-bottom: 8px;
+  margin-bottom: 24px;
 }
+/* The wrapper holds the realm's display name as plain text ("Freepod"; the
+   realm sets no displayNameHtml), so the logo is prepended to it. */
 #kc-header-wrapper {
-  padding: 0;
-}
-/* Replace the stock Keycloak logo image + "Keycloak" text. */
-div.kc-logo-text {
-  background: none !important;
-  width: auto;
-  height: auto;
   display: flex;
   align-items: center;
   gap: 14px;
-  font-size: 0; /* hides the inner <span>Keycloak</span> text */
+  padding: 32px 0 0;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  color: var(--fg-primary);
 }
-div.kc-logo-text::before {
+#kc-header-wrapper::before {
   content: '';
+  flex: none;
   width: 42px;
   height: 42px;
   background: url('../img/logo.svg') center / contain no-repeat;
   filter: drop-shadow(0 6px 16px rgba(37, 99, 235, 0.45));
-}
-div.kc-logo-text::after {
-  content: 'Freepod';
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: 30px;
-  letter-spacing: -0.02em;
-  color: var(--fg-primary);
 }
 
 /* ── The card: glassy translucent panel instead of a white box ─────────── */
@@ -246,7 +241,10 @@ div.kc-logo-text::after {
   cursor: pointer;
 }
 
-/* ── Inputs (the visible box is the .pf-v5-c-form-control span wrapper) ─── */
+/* ── Inputs (the visible box is the .pf-v5-c-form-control span wrapper) ───
+   PatternFly draws its own square border on the wrapper's ::before and a
+   bottom underline on ::after; both would show through our rounded box. The
+   focus ring lives on the wrapper, so the inner input's native outline goes. */
 .pf-v5-c-form-control {
   background: rgba(255, 255, 255, 0.04) !important;
   border: 1px solid var(--line-soft) !important;
@@ -262,8 +260,17 @@ div.kc-logo-text::after {
   font-size: 15px;
 }
 .pf-v5-c-form-control input::placeholder { color: var(--fg-faint); }
-.pf-v5-c-form-control::after,
-.pf-v5-c-form-control input::after { display: none !important; } /* kill PF underline */
+.pf-v5-c-form-control::before,
+.pf-v5-c-form-control::after { display: none !important; }
+.pf-v5-c-form-control input { outline: none !important; }
+/* The user-profile fields (register, update profile) repeat the wrapper's
+   class on the <input> itself, which would draw the box and glow twice. */
+.pf-v5-c-form-control input.pf-v5-c-form-control,
+.pf-v5-c-form-control input.pf-v5-c-form-control:focus-within {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
 .pf-v5-c-form-control:focus-within {
   border-color: var(--accent-blue) !important;
   background: rgba(255, 255, 255, 0.06) !important;
@@ -277,13 +284,27 @@ div.kc-logo-text::after {
   caret-color: var(--fg-primary);
 }
 
-/* Password show/hide control */
+/* Password show/hide control: its own rounded box beside the field. Its PF
+   border is drawn on ::after, square, so that goes too. */
+.pf-v5-c-input-group {
+  gap: 8px;
+}
 .pf-v5-c-button.pf-m-control {
   background: rgba(255, 255, 255, 0.04) !important;
   border: 1px solid var(--line-soft) !important;
-  border-left: none !important;
+  border-radius: 12px !important;
   color: var(--fg-muted) !important;
-  border-radius: 0 12px 12px 0 !important;
+  transition: border-color 0.18s, color 0.18s;
+}
+.pf-v5-c-button.pf-m-control::after { display: none !important; }
+.pf-v5-c-button.pf-m-control:hover {
+  border-color: rgba(148, 163, 184, 0.35) !important;
+  color: var(--fg-primary) !important;
+}
+.pf-v5-c-button.pf-m-control:focus-visible {
+  outline: none;
+  border-color: var(--accent-blue) !important;
+  box-shadow: 0 0 0 3px rgba(91, 140, 255, 0.25);
 }
 
 /* ── Links (forgot password, register) ─────────────────────────────────── */
@@ -322,6 +343,10 @@ a:hover { color: var(--accent-pink); }
   color: var(--fg-muted);
 }
 #kc-registration { font-family: var(--sans); }
+#kc-registration-container,
+#kc-form-buttons {
+  margin-top: 16px;
+}
 
 /* ── Alerts (error / info messages) ────────────────────────────────────── */
 .pf-v5-c-alert {
