@@ -67,6 +67,18 @@ allowPrivilegeEscalation: false
 capabilities:
   drop: [ALL]
 {{- end -}}
+# The image sets ServerName only inside its vhost, so Apache warns at start
+# that the server itself has none.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-apache
+  labels:
+    {{- include "bookstack.labels" . | nindent 4 }}
+data:
+  servername.conf: |
+    ServerName {{ .Values.host }}
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -185,6 +197,10 @@ spec:
             - name: uploads
               mountPath: /var/www/bookstack/storage/uploads
               subPath: storage
+            - name: apache
+              mountPath: /etc/apache2/conf-enabled/servername.conf
+              subPath: servername.conf
+              readOnly: true
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -193,6 +209,9 @@ spec:
              "sessionRoot" "volume:/uploads"
              "mounts" (list (dict "volume" "uploads" "path" "/uploads"))) | nindent 8 }}
       volumes:
+        - name: apache
+          configMap:
+            name: {{ .Release.Name }}-apache
         - name: uploads
           persistentVolumeClaim:
             claimName: uploads

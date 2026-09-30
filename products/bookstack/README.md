@@ -81,7 +81,7 @@ is published. To publish by hand, from the repository root:
 | Field               | Value                                                       |
 |---------------------|-------------------------------------------------------------|
 | Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/bookstack`       |
-| Chart version       | `0.1.2`                                                     |
+| Chart version       | `0.1.5`                                                     |
 | User values schema  | see [`products/catalog/bookstack.yaml`](../catalog/bookstack.yaml) |
 | Default Helm values | see [`products/catalog/bookstack.yaml`](../catalog/bookstack.yaml) |
 
