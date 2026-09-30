@@ -147,6 +147,7 @@ postgresql:
 # (caelus.plan.*, caelus.ingress.tls). These defaults let the chart render standalone
 # (helm template / lint): plan is empty so the PVC falls back to the storage size above.
 caelus:
+  releaseId: ""
   plan: {}
   ingress:
     enabled: false

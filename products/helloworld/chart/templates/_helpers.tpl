@@ -14,3 +14,9 @@
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "helloworld.podLabels" -}}
+{{- with .Values.caelus.releaseId -}}
+caelus.dev/release-id: {{ . | quote }}
+{{- end -}}
+{{- end -}}

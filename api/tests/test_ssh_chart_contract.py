@@ -81,11 +81,6 @@ SESSION_ROOTS: dict[str, str | None] = {
     "vaultwarden": "volume:/data",
 }
 
-# Products that stamp `caelus.dev/release-id` on a pod template for reasons of
-# their own -- `custom` keys its log stream on it. That is independent of SSH
-# access and carries its own accepted cost: a redeploy cycles the pod.
-CHARTS_RENDERING_THEIR_OWN_RELEASE_LABEL = frozenset({"custom"})
-
 VOLUME_ROOTED = sorted(k for k, v in SESSION_ROOTS.items() if v and v != "app-container")
 WITH_SSH = sorted(k for k, v in SESSION_ROOTS.items() if v)
 WITHOUT_SSH = sorted(k for k, v in SESSION_ROOTS.items() if v is None)
@@ -438,53 +433,12 @@ def test_the_chart_supplies_every_input_the_image_requires(chart):
         "edge has one username convention and will not send root"
     )
 
-    # Both spellings straight from the reconciler's values. Not from a pod
-    # label: that would be the same fact by a longer route, and would change the
-    # pod-template hash on every apply -- see the test below.
+    # Both spellings straight from the reconciler's values, not read back from
+    # the pod's release label: that would be the same fact by a longer route.
     assert env["FREEPOD_RELEASE_ID"]["value"] == RELEASE_ID
     assert env["FREEPOD_RELEASE_NUMBER"]["value"] == RELEASE_NUMBER
     for name in ("FREEPOD_RELEASE_ID", "FREEPOD_RELEASE_NUMBER"):
         assert "valueFrom" not in env[name], f"{chart}: {name} is read from the pod"
-
-
-@pytest.mark.parametrize("chart", WITH_SSH)
-def test_ssh_access_does_not_make_a_redeploy_cycle_the_pod(chart):
-    """A release identity reaches the sidecar as a value, never as a pod label.
-
-    A label would be the same fact by a longer route and would put the release
-    identity into the pod-template hash, so a redeploy with identical values
-    would cycle the deployment's pod instead of being a Helm no-op. `custom`
-    renders such a label for its log pipeline and accepts that cost for its own
-    reasons; no product should pay it merely for having SSH access.
-
-    Asserted on the pod template rather than the whole render, because several
-    of these charts generate a random secret on every render.
-    """
-    def templates(release_id: str) -> list[dict]:
-        args = ["helm", "template", "t", str(PRODUCTS / chart / "chart"),
-                "--set-string", f"caelus.ssh.platformPublicKey={PLATFORM_KEY}",
-                "--set-string", f"caelus.releaseId={release_id}",
-                "--set-string", f"caelus.releaseNumber={RELEASE_NUMBER}"]
-        for key, value in EXTRA_VALUES.get(chart, {}).items():
-            args += ["--set", f"{key}={value}"]
-        result = subprocess.run(args, capture_output=True, text=True)
-        assert result.returncode == 0, f"{chart}: {result.stderr}"
-        out = []
-        for doc in yaml.safe_load_all(result.stdout):
-            if not isinstance(doc, dict) or doc.get("kind") not in {"Deployment", "StatefulSet"}:
-                continue
-            out.append((doc["spec"]["template"].get("metadata") or {}).get("labels") or {})
-        return out
-
-    first, second = templates(RELEASE_ID), templates("00000000-0000-4000-8000-000000000002")
-    assert first, f"{chart} rendered no workload pod template to compare"
-
-    if chart in CHARTS_RENDERING_THEIR_OWN_RELEASE_LABEL:
-        pytest.skip(f"{chart} renders the label for its own log pipeline")
-    assert first == second, (
-        f"{chart}: the release identity reached a pod template label, so every "
-        "redeploy now cycles this deployment's pods"
-    )
 
 
 # --- the gate the API hides the feature on ---------------------------------

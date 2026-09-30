@@ -93,6 +93,7 @@ extraEnv: {}
 
 # Injected per deployment by the Caelus reconciler.
 caelus:
+  releaseId: ""
   plan: {}
   owner: {}
   ingress:

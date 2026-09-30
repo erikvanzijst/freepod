@@ -99,9 +99,7 @@ def _log_settings(monkeypatch):
 def _setup(client, db_session, email, chart="custom"):
     """A user, product, canonical template, free plan and one deployment.
 
-    `chart` is what matters: release pinning is offered only where the chart
-    renders `caelus.dev/release-id`, which today is `custom` alone. Product
-    names must be unique, so they are derived from the caller's email.
+    Product names must be unique, so they are derived from the caller's email.
     """
     user_id = create_user(client, email)["id"]
     stem = email.split("@")[0]
@@ -383,26 +381,25 @@ def test_pinning_to_a_release_of_another_deployment_is_refused(client, db_sessio
     assert fake.queries == []
 
 
-def test_pinning_on_a_product_without_release_labels_is_reported_not_empty(
+def test_pinning_on_a_curated_product_narrows_the_selector_to_one_release(
     client, db_session, loki
 ):
-    """An empty stream would assert the release produced no output, which is a
-    different and misleading claim."""
+    """Every chart labels its application pods, so pinning is not
+    special-cased by product."""
     user_id, _, deployment_id = _setup(
         client, db_session, "curated@example.com", chart="nextcloud"
     )
-    _release(db_session, deployment_id, number=2)
+    release = _release(db_session, deployment_id, number=2)
     fake = loki([[]])
 
     resp = client.get(
         f"/api/users/{user_id}/deployments/{deployment_id}/log", params={"release": 2}
     )
-    assert resp.status_code == 400
-    assert "attribution is unavailable" in resp.json()["detail"].lower()
-    assert fake.queries == []
+    assert resp.status_code == 200
+    assert f'release_id="{release.id}"' in fake.queries[0]["query"]
 
 
-def test_the_unpinned_read_still_works_on_such_a_product(client, db_session, loki):
+def test_the_unpinned_read_works_on_a_curated_product(client, db_session, loki):
     user_id, _, deployment_id = _setup(
         client, db_session, "curated2@example.com", chart="nextcloud"
     )

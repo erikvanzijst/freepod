@@ -52,3 +52,9 @@ app.kubernetes.io/version: {{ .Values.elementWeb.image.tag | quote }}
 app.kubernetes.io/part-of: {{ include "matrix.name" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
+
+{{- define "matrix.podLabels" -}}
+{{- with .Values.caelus.releaseId -}}
+caelus.dev/release-id: {{ . | quote }}
+{{- end -}}
+{{- end -}}

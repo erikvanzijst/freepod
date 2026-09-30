@@ -24,6 +24,7 @@ spec:
     metadata:
       labels:
         {{- include "matrix.selectorLabels" . | nindent 8 }}
+        {{- include "matrix.podLabels" . | nindent 8 }}
       {{- with .Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}

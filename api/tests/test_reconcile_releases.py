@@ -340,41 +340,22 @@ def _use_chart(db_session, deployment_id, chart_ref):
     db_session.commit()
 
 
-def test_the_tail_is_pinned_to_the_release_where_the_chart_labels_its_pods(
-    db_session, monkeypatch
-):
+@pytest.mark.parametrize("chart", ["custom", "nextcloud"])
+def test_the_tail_is_pinned_to_the_release_whatever_the_chart(db_session, monkeypatch, chart):
     """A rollout overlaps the previous release's still-running pods, so an
-    unpinned query would report the wrong release's output."""
+    unpinned query would report the wrong release's output. Every chart labels
+    its application pods, so no chart falls back to the deployment."""
     from app.services.loki import LogEntry
 
     deployment_id = _seed_deployment(db_session)
-    _use_chart(db_session, deployment_id, "oci://registry.home/helm/custom")
-    loki = _install_loki(
-        monkeypatch, _FakeLokiClient(entries=[LogEntry("1787066060000000001", "boom", {})])
-    )
-
-    _fail_reconcile(db_session, deployment_id)
-    release = _desired_release(db_session, deployment_id)
-    assert f'release_id="{release.id}"' in loki.queries[0]["query"]
-
-
-def test_the_tail_falls_back_to_the_deployment_where_the_chart_does_not(
-    db_session, monkeypatch
-):
-    """A curated chart renders no release label, so pinning would match
-    nothing. The deployment selector bounded by the release's start time is
-    the closest honest answer -- and still far better than no output."""
-    from app.services.loki import LogEntry
-
-    deployment_id = _seed_deployment(db_session)
-    _use_chart(db_session, deployment_id, "oci://registry.home/helm/nextcloud")
+    _use_chart(db_session, deployment_id, f"oci://registry.home/helm/{chart}")
     loki = _install_loki(
         monkeypatch, _FakeLokiClient(entries=[LogEntry("1787066060000000001", "boom", {})])
     )
 
     deployment = _fail_reconcile(db_session, deployment_id)
-    assert "release_id" not in loki.queries[0]["query"]
-    assert f'namespace="{deployment.namespace}"' in loki.queries[0]["query"]
+    release = _desired_release(db_session, deployment_id)
+    assert f'release_id="{release.id}"' in loki.queries[0]["query"]
     assert "boom" in deployment.last_error
 
 

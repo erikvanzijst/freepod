@@ -341,7 +341,12 @@ Branch from a fresh `origin/master`: `upgrade/<slug>-<target-version>`.
   (patch for fixes, minor for new behavior), set the catalog's
   `template.chart_version` to match, and update the chart-version row in
   `products/<slug>/README.md` if there is one. Leave dependencies (`Chart.lock`,
-  `charts/`) alone unless the change requires otherwise. Follow the repo's
+  `charts/`) alone unless the change requires otherwise.
+  Every application workload's pod template keeps
+  `{{- include "<chart>.podLabels" . | nindent 8 }}` beside its other pod
+  labels, including any workload you add. A new database or cache gets no
+  include; add it to `DATASTORES` in
+  `api/tests/test_chart_release_label_contract.py` instead. Follow the repo's
   comment rules: comment only a non-obvious *why*. Open the PR as a **draft**.
 - **README "Upstream references" fixes** (step 5) go in the same PR, as a
   separate commit (`<Product>: Update upstream references`).
@@ -352,7 +357,8 @@ Branch from a fresh `origin/master`: `upgrade/<slug>-<target-version>`.
 ### 7. Validate
 
 - `cd api && uv sync && uv run caelus catalog lint`. The lint needs no database.
-- If you changed a chart: `helm lint` and
+- If you changed a chart: `cd api && uv run pytest
+  tests/test_chart_release_label_contract.py`, `helm lint` and
   `helm template t products/<slug>/chart --set host=example.test`, and read the
   rendered output for the change you made.
 - Except in a dry run: push, open the PR (step 8), and wait for CI with

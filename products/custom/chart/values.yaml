@@ -99,10 +99,10 @@ relationalStorage:
 caelus:
   # Identifier of the rollout being applied, rendered onto the pod template as
   # the `caelus.dev/release-id` label so a log line can be attributed to one
-  # release. The reconciler supplies it on every apply, for every product;
-  # rendering it is each chart's decision and only this one does. Empty by
-  # default so the chart renders standalone, in which case no label is emitted
-  # and collection behaves exactly as it did before.
+  # release. The reconciler supplies it on every apply, for every product, and
+  # every chart renders it (api/tests/test_chart_release_label_contract.py).
+  # Empty by default so the chart renders standalone, in which case no label is
+  # emitted.
   releaseId: ""
   # The same release as `freepod releases` shows it. Not rendered by this chart
   # itself: the `ssh-sidecar` dev profile hands it to the sidecar, whose session

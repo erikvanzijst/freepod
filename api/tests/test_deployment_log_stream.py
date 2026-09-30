@@ -344,29 +344,3 @@ def test_label_values_are_quoted_so_a_stray_quote_cannot_escape_the_selector():
     assert '\\"' in selector
     assert selector.startswith('{namespace="')
     assert selector.endswith('instance="app", container!="ssh"}')
-
-
-# ---------------------------------------------------------------------------
-# Which charts support pinning
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "chart_ref, expected",
-    [
-        ("oci://registry.home/helm/custom", "custom"),
-        ("oci://registry.home/helm/nextcloud", "nextcloud"),
-        ("oci://registry.home/helm/custom/", "custom"),
-        ("custom", "custom"),
-        (None, None),
-        ("", None),
-    ],
-)
-def test_the_chart_name_is_taken_from_its_ref(chart_ref, expected):
-    assert log_service._chart_name(chart_ref) == expected
-
-
-def test_only_custom_is_recorded_as_rendering_the_release_label():
-    """Adopting the label in another chart means adding it here as well as in
-    the chart -- see the note on CHARTS_RENDERING_RELEASE_LABEL."""
-    assert log_service.CHARTS_RENDERING_RELEASE_LABEL == frozenset({"custom"})

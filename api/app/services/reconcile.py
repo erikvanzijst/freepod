@@ -268,16 +268,7 @@ class DeploymentReconciler:
                 deployment_id=str(deployment.id),
                 namespace=deployment.namespace,
                 name=deployment.name,
-                # Pinned where the chart labels its pods, so a rollout that
-                # overlapped the previous release's still-running pods cannot
-                # report the wrong release's output. Where it does not, the
-                # deployment selector bounded by this release's start time is
-                # the closest honest answer.
-                release_id=(
-                    str(release.id)
-                    if deployment_logs._renders_release_labels(deployment)
-                    else None
-                ),
+                release_id=str(release.id),
             )
             entries = LokiQueryClient.from_settings(settings).query_range(
                 query=deployment_logs.build_selector(target),

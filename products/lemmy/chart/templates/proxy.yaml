@@ -38,6 +38,7 @@ spec:
         checksum/config: {{ include (print $.Template.BasePath "/proxy-config.yaml") . | sha256sum }}
       labels:
         {{- include "lemmy.componentSelector" (dict "root" . "name" "proxy") | nindent 8 }}
+        {{- include "lemmy.podLabels" . | nindent 8 }}
     spec:
       securityContext:
         runAsUser: 101

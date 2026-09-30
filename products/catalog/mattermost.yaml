@@ -15,7 +15,7 @@ upstream:
   version_path: template.system_values.mattermost.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/mattermost
-  chart_version: 1.1.4
+  chart_version: 1.1.5
   system_values:
     mattermost:
       image:

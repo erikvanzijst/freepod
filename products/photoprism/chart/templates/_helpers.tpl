@@ -66,3 +66,9 @@ a value that changed between releases would be a password nobody holds.
 {{- randAlphaNum 20 -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "photoprism.podLabels" -}}
+{{- with .Values.caelus.releaseId -}}
+caelus.dev/release-id: {{ . | quote }}
+{{- end -}}
+{{- end -}}

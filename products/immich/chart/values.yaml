@@ -90,6 +90,7 @@ valkey:
 # TLS is injected per-deployment by the Caelus reconciler (caelus.ingress.tls).
 # These defaults let the chart render standalone (helm template / tests).
 caelus:
+  releaseId: ""
   plan: {}
   ingress:
     enabled: false

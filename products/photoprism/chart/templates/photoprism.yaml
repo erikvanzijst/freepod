@@ -47,6 +47,7 @@ spec:
     metadata:
       labels:
         {{- include "photoprism.componentSelector" (dict "root" . "name" "photoprism") | nindent 8 }}
+        {{- include "photoprism.podLabels" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
       securityContext:

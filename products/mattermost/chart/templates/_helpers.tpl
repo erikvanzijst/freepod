@@ -12,3 +12,9 @@ and StatefulSets (e.g. controller-revision-hash). Label values must be
 {{- define "mattermost.postgresql.fullname" -}}
 {{- printf "%s-postgresql" .Release.Name | trunc 52 | trimSuffix "-" -}}
 {{- end -}}
+
+{{- define "mattermost.podLabels" -}}
+{{- with .Values.caelus.releaseId -}}
+caelus.dev/release-id: {{ . | quote }}
+{{- end -}}
+{{- end -}}

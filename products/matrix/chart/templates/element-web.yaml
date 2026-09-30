@@ -80,6 +80,7 @@ spec:
     metadata:
       labels:
         {{- include "matrix.elementWeb.selectorLabels" . | nindent 8 }}
+        {{- include "matrix.podLabels" . | nindent 8 }}
       annotations:
         # Both files are read once at startup; roll the pod when either changes.
         checksum/config: {{ print (include "matrix.elementWeb.config" .) (include "matrix.elementWeb.singleWorker" .) | sha256sum }}

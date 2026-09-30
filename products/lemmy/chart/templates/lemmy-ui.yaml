@@ -38,6 +38,7 @@ spec:
     metadata:
       labels:
         {{- include "lemmy.componentSelector" (dict "root" . "name" "lemmy-ui") | nindent 8 }}
+        {{- include "lemmy.podLabels" . | nindent 8 }}
     spec:
       containers:
         - name: lemmy-ui

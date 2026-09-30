@@ -107,6 +107,7 @@ extraEnv: {}
 # Injected per deployment by the Caelus reconciler. The defaults let the chart
 # render standalone (helm template / tests).
 caelus:
+  releaseId: ""
   plan: {}
   ingress:
     enabled: false

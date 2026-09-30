@@ -78,3 +78,9 @@ same value), but it is invalid YAML and strict validators reject the manifest.
 {{ include "lemmy.labels" .root }}
 app.kubernetes.io/name: {{ .name }}
 {{- end -}}
+
+{{- define "lemmy.podLabels" -}}
+{{- with .Values.caelus.releaseId -}}
+caelus.dev/release-id: {{ . | quote }}
+{{- end -}}
+{{- end -}}

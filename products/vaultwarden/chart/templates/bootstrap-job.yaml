@@ -33,6 +33,7 @@ spec:
     metadata:
       labels:
         {{- include "vaultwarden.labels" . | nindent 8 }}
+        {{- include "vaultwarden.podLabels" . | nindent 8 }}
     spec:
       restartPolicy: Never
       automountServiceAccountToken: false

@@ -16,6 +16,7 @@ spec:
       labels:
         app.kubernetes.io/name: {{ include "naas.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- include "naas.podLabels" . | nindent 8 }}
     spec:
       containers:
         - name: nas

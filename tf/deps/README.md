@@ -98,11 +98,11 @@ all Caelus environments (it is *not* duplicated per env). Modules:
   > not operator convenience.** The Caelus API builds every LogQL selector for
   > `freepod log` out of exactly those three: `namespace` is the per-user
   > namespace, `instance` is `deployment.name` (the Helm release name), and
-  > `release_id` comes from the `caelus.dev/release-id` pod label that the
-  > `custom` chart renders. Renaming or dropping any of them breaks a
-  > user-facing feature, not a dashboard. A pod without the release label
-  > collects exactly as before, with no `release_id` and no error, which is how
-  > every platform pod and every curated product behaves.
+  > `release_id` comes from the `caelus.dev/release-id` pod label that every
+  > product chart renders on its application pods. Renaming or dropping any of
+  > them breaks a user-facing feature, not a dashboard. A pod without the
+  > release label collects exactly as before, with no `release_id` and no
+  > error, which is how every platform pod and every product datastore behaves.
   >
   > Retention is `limits_config.retention_period` plus
   > `compactor.retention_enabled`. Note that `compactor.replicas` at the top

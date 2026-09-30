@@ -49,6 +49,7 @@ spec:
         checksum/config: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
       labels:
         {{- include "lemmy.componentSelector" (dict "root" . "name" "lemmy") | nindent 8 }}
+        {{- include "lemmy.podLabels" . | nindent 8 }}
     spec:
       initContainers:
         # Add setup.admin_password to the config at pod start.
