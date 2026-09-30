@@ -94,7 +94,7 @@ An application that is merely quiet SHALL NOT cause a stream to be closed by any
 - **WHEN** an application is quiet for longer than the shortest timeout in the path
 - **THEN** the client is not told the stream failed
 
-### Requirement: The default follows the deployment, not a release
+### Requirement: A read follows the deployment by default and can be pinned to any release
 
 The endpoint SHALL, by default, return the output of the deployment as a whole, continuing
 across redeploys and container restarts, so that a caller following a running application
@@ -107,11 +107,13 @@ Pinning SHALL work for a release whose pods no longer exist, including one that 
 rolled back. This is the case the endpoint exists to serve and SHALL NOT be treated as an
 exceptional path.
 
-Where the deployment's product does not carry release labels on its pods, the endpoint SHALL
-report that release attribution is unavailable for that deployment, and SHALL NOT answer a
-pinned request with an empty stream. An empty stream asserts that the release produced no
-output, which is a different and misleading claim. The unpinned read SHALL remain fully
-available for such a deployment.
+Pinning SHALL be offered for every deployment, whatever its product. The endpoint SHALL NOT vary
+its answer by chart.
+
+A release that was applied before its product's chart rendered release labels has no labeled
+output. A pinned read of such a release SHALL return an empty stream. This SHALL be the only
+case in which a release that ran answers a pinned read with nothing, and it SHALL disappear
+once the log store's retention has removed that release's output.
 
 #### Scenario: A rollout happens while following
 
@@ -128,16 +130,11 @@ available for such a deployment.
 - **WHEN** a caller names a release number that does not belong to the addressed deployment
 - **THEN** the request is refused and no output from any other deployment is returned
 
-#### Scenario: Pinning on a product whose pods carry no release label
+#### Scenario: Pinning on a curated product
 
-- **WHEN** a caller pins a read on a deployment whose product does not render release labels
-- **THEN** the caller is told release attribution is unavailable for that deployment
-- **AND** does not receive an empty successful stream
-
-#### Scenario: Reading unpinned on such a product
-
-- **WHEN** a caller reads the same deployment without pinning
-- **THEN** the deployment's output is streamed normally
+- **WHEN** a caller pins a read to a release of a deployment of any curated product
+- **THEN** that release's output is returned
+- **AND** the request is not refused as unsupported by the product
 
 #### Scenario: Pinning to a release that never produced a pod
 

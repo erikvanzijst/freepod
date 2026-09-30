@@ -62,7 +62,7 @@ contains the application's output and nothing the client added.
 - **WHEN** the output is piped to another program
 - **THEN** that program receives only the application's log lines
 
-### Requirement: Following is explicit, and following is the point
+### Requirement: Following is explicit, and pinning works on every product
 
 The client SHALL support a follow mode that keeps the stream open and prints lines as they
 arrive, and SHALL exit cleanly on interrupt without implying anything happened to the
@@ -73,7 +73,7 @@ application rather than a container, and a stream that ended silently when the a
 restarted would read as the application having stopped.
 
 The client SHALL be able to pin the read to a single release by its number, including a release
-that failed and whose pods no longer exist.
+that failed and whose pods no longer exist, on a deployment of any product.
 
 #### Scenario: Interrupting a follow
 
@@ -90,12 +90,10 @@ that failed and whose pods no longer exist.
 - **WHEN** the user asks for the log of a release that failed and was rolled back
 - **THEN** that release's output is printed
 
-#### Scenario: Pinning where the product does not support it
+#### Scenario: Pinning on a curated product
 
-- **WHEN** the user pins to a release on a deployment whose product carries no release labels
-- **THEN** the client says release pinning is unavailable for that deployment and that an
-  unpinned read still works
-- **AND** does not present the result as the release having been silent
+- **WHEN** the user pins to a release of a deployment of a curated product
+- **THEN** that release's output is printed
 
 ### Requirement: Timestamps are available but not imposed
 

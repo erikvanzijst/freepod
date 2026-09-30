@@ -9,38 +9,48 @@ each belongs to.
 
 ## Requirements
 
-### Requirement: The release identifier is offered to every chart
+### Requirement: Every chart renders the release identifier
 
 The reconciler SHALL supply the release's `uuid4` to the chart on every apply, for every
-product, without regard to whether that chart renders it. There SHALL be no per-product
-condition on the platform side.
+product. There SHALL be no per-product condition on the platform side.
 
 The identifier SHALL already exist and be persisted before the Helm operation begins, because the
 release is created by the request that asked for the rollout. It SHALL NOT be derived from anything
 observed after the fact.
 
-Rendering the value SHALL be the chart's decision. A chart that renders it gains release
-attribution for its pods; a chart that ignores it SHALL apply and run normally, and its
-deployment's logs SHALL remain readable without release attribution.
+Every chart a product deploys SHALL render the identifier, as set out in "A rendered identifier is
+stamped on every pod of its release". Because rendering is universal, the platform
+SHALL NOT keep a record of which charts render it, and SHALL NOT vary its behavior by chart.
 
-Adopting the label in a chart that does not yet render it SHALL therefore be a chart-only
-change, requiring no platform, reconciler or collector work.
+A chart SHALL still render and apply when no identifier is supplied, such as a standalone
+`helm template` or `helm lint`. In that case it SHALL emit no release label at all, rather than
+an empty one.
 
-#### Scenario: A chart that renders the value
+#### Scenario: A release of any product is applied
 
-- **WHEN** a release of a product whose chart renders the identifier is applied
-- **THEN** its pods carry the release identifier
+- **WHEN** a release of any product is applied
+- **THEN** its application pods carry the release identifier
 
-#### Scenario: A chart that ignores the value
+#### Scenario: A chart rendered standalone
 
-- **WHEN** a release of a product whose chart does not render the identifier is applied
-- **THEN** the apply succeeds and the pods carry no release label
-- **AND** the deployment's logs remain readable without release attribution
+- **WHEN** a product chart is rendered with no release identifier supplied
+- **THEN** the render succeeds
+- **AND** no pod template carries a `caelus.dev/release-id` label
 
 ### Requirement: A rendered identifier is stamped on every pod of its release
 
-Where a chart renders the identifier, it SHALL do so as the `caelus.dev/release-id` label on the
-pod template of the workload it creates, so that every pod of that release carries it.
+Every chart SHALL render the identifier as the `caelus.dev/release-id` label on the pod template
+of each **application** workload it creates, so that every application pod of that release
+carries it.
+
+An application workload is one that runs the product's own software. This includes auxiliary
+processes of the product, such as a web frontend, a proxy in front of it, a machine-learning
+worker or a media service, and Jobs that the chart runs as part of a release.
+
+A **datastore** workload SHALL NOT carry the label. A datastore is a database or cache whose
+process belongs to a third-party engine rather than to the product, such as Postgres, MySQL,
+MariaDB or Valkey. The identifier changes with every release. Stamping it on a datastore would
+restart that datastore on every apply, even one that only changes a var.
 
 A pod created later in the release's life — by a node eviction, a rescheduling or a kubelet
 restart — SHALL carry the same identifier without any component having to observe its creation.
@@ -48,11 +58,26 @@ restart — SHALL carry the same identifier without any component having to obse
 The label key SHALL follow the platform's existing convention for identifiers stamped on pods,
 alongside `caelus.dev/build-id`, `caelus.dev/component` and `caelus.dev/tenant`.
 
+Every chart under the product tree SHALL be checked against this requirement automatically. A
+chart with an application workload that lacks the label, or a datastore workload that carries it,
+SHALL fail that check.
+
 #### Scenario: A rollout's pods are labeled
 
-- **WHEN** a release is applied from a chart that renders the identifier
-- **THEN** every pod created for it carries `caelus.dev/release-id` set to that release's
-  identifier
+- **WHEN** a release is applied
+- **THEN** every application pod created for it carries `caelus.dev/release-id` set to that
+  release's identifier
+
+#### Scenario: A product with several application workloads
+
+- **WHEN** a release of a product with several application workloads is applied
+- **THEN** every one of those workloads' pods carries the release identifier
+
+#### Scenario: A datastore is not restarted by a new release
+
+- **WHEN** a new release of a product that runs a datastore is applied
+- **THEN** the datastore's pod template is unchanged by the new identifier
+- **AND** the datastore is not restarted on account of it
 
 #### Scenario: A pod is replaced without a new rollout
 
@@ -64,6 +89,11 @@ alongside `caelus.dev/build-id`, `caelus.dev/component` and `caelus.dev/tenant`.
 - **WHEN** a rollout fails and Helm rolls back
 - **THEN** the pods that come back carry the **earlier** release's identifier, because they are
   that release's pods
+
+#### Scenario: A chart that omits the label
+
+- **WHEN** a chart is added or changed so that an application workload lacks the label
+- **THEN** the automated check fails, naming the chart and the workload
 
 ### Requirement: The release label is applied to the pod template, never to a selector
 
