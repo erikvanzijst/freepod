@@ -423,6 +423,110 @@ def test_update_records_the_build_it_was_given(client, db_session):
 
 
 # ---------------------------------------------------------------------------
+# An update that omits the build inherits the applied release's
+# ---------------------------------------------------------------------------
+
+
+def _apply(db_session, deployment_id):
+    """Stand in for a successful reconcile: the desired release is now applied."""
+    deployment = _make_ready(db_session, deployment_id)
+    deployment.applied_release_id = deployment.desired_release_id
+    db_session.add(deployment)
+    db_session.commit()
+
+
+def _running_a_build(client, db_session, email, host):
+    """A deployment whose applied release names a build and runs its image."""
+    user_id, template_id, plan_id = _setup(client, db_session, email)
+    deployment_id = _deployed(client, db_session, user_id, template_id, plan_id, host)
+    build = _build(db_session, deployment_id=deployment_id)
+    assert _release_with(client, user_id, deployment_id, template_id, host, build).status_code == 200
+    _apply(db_session, deployment_id)
+    return user_id, template_id, deployment_id, build
+
+
+def _update(client, user_id, deployment_id, template_id, **body):
+    resp = client.put(
+        f"/api/users/{user_id}/deployments/{deployment_id}",
+        json={"desired_template_id": template_id, **body},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp
+
+
+def test_an_update_that_omits_the_build_keeps_the_applied_one(client, db_session):
+    user_id, template_id, deployment_id, build = _running_a_build(
+        client, db_session, "keep@example.com", "keep.example.com"
+    )
+    _update(client, user_id, deployment_id, template_id)
+    assert _releases(db_session, deployment_id)[-1].build_id == build.id
+
+
+def test_a_values_change_that_keeps_the_image_keeps_the_build(client, db_session):
+    user_id, template_id, deployment_id, build = _running_a_build(
+        client, db_session, "move@example.com", "move.example.com"
+    )
+    _update(
+        client, user_id, deployment_id, template_id,
+        user_values_json={"host": "moved.example.com", "image": build.image},
+    )
+    assert _releases(db_session, deployment_id)[-1].build_id == build.id
+
+
+def test_the_image_is_found_by_value_not_by_key(client, db_session):
+    """Which value holds the image is the chart's business."""
+    user_id, template_id, deployment_id, build = _running_a_build(
+        client, db_session, "bykey@example.com", "bykey.example.com"
+    )
+    _update(
+        client, user_id, deployment_id, template_id,
+        user_values_json={"host": "bykey.example.com", "workers": [{"ref": build.image}]},
+    )
+    assert _releases(db_session, deployment_id)[-1].build_id == build.id
+
+
+def test_swapping_the_image_drops_the_build(client, db_session):
+    """The old build no longer describes what the release runs."""
+    user_id, template_id, deployment_id, _ = _running_a_build(
+        client, db_session, "swap@example.com", "swap.example.com"
+    )
+    _update(
+        client, user_id, deployment_id, template_id,
+        user_values_json={"host": "swap.example.com", "image": "7@sha256:" + "b" * 64},
+    )
+    assert _releases(db_session, deployment_id)[-1].build_id is None
+
+
+def test_an_explicit_null_records_no_build(client, db_session):
+    user_id, template_id, deployment_id, _ = _running_a_build(
+        client, db_session, "clear@example.com", "clear.example.com"
+    )
+    _update(client, user_id, deployment_id, template_id, build_id=None)
+    assert _releases(db_session, deployment_id)[-1].build_id is None
+
+
+def test_a_named_build_overrides_the_applied_one(client, db_session):
+    user_id, template_id, deployment_id, _ = _running_a_build(
+        client, db_session, "next@example.com", "next.example.com"
+    )
+    newer = _build(db_session, deployment_id=deployment_id, image="7@sha256:" + "c" * 64)
+    _release_with(client, user_id, deployment_id, template_id, "next.example.com", newer)
+    assert _releases(db_session, deployment_id)[-1].build_id == newer.id
+
+
+def test_nothing_is_inherited_from_a_release_that_never_applied(client, db_session):
+    """A failed rollout's build was never live; the applied release is the base."""
+    user_id, template_id, plan_id = _setup(client, db_session, "failed@example.com")
+    deployment_id = _deployed(client, db_session, user_id, template_id, plan_id, "failed.example.com")
+    build = _build(db_session, deployment_id=deployment_id)
+    _release_with(client, user_id, deployment_id, template_id, "failed.example.com", build)
+    _make_ready(db_session, deployment_id)
+
+    _update(client, user_id, deployment_id, template_id)
+    assert _releases(db_session, deployment_id)[-1].build_id is None
+
+
+# ---------------------------------------------------------------------------
 # Status is derived, never stored
 # ---------------------------------------------------------------------------
 

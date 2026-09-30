@@ -150,10 +150,6 @@ export function DeployDialog({ product, userId, onClose, deployment }: DeployDia
         desired_template_id: payload.templateId,
         user_values_json: payload.userValuesJson,
         vars: payload.vars,
-        // Passed through explicitly. The platform does not yet infer it, so an
-        // update that omits it drops the new release's link to the build that
-        // produced the image it is running.
-        build_id: deploymentQuery.data?.applied_release?.build_id ?? undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deployments'] })

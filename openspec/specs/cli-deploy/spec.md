@@ -257,9 +257,9 @@ require editing the project file by hand.
 skipping the project archive upload and the build. This is what applies a staged
 configuration change, and it also rolls a deployment whose source has not changed.
 
-The command SHALL carry the applied release's build reference forward: it SHALL submit
-the same image and the same build the applied release named, so that the new release
-still records which build produced the code it is running.
+The command SHALL submit the same image the applied release runs and SHALL NOT name a
+build. The platform carries the applied release's build over to a release that keeps its
+image, so the new release still records which build produced the code it is running.
 
 `--no-build` SHALL be refused when the deployment has no applied release to take an image
 from.
