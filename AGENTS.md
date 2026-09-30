@@ -168,7 +168,12 @@ This repository is a monorepo with:
 - Products are either **curated** (declared in `products/catalog/<slug>.yaml`,
   reconciled into the database on rollout, and read-only through the API, CLI,
   and admin UI apart from `visibility`) or **non-curated** (database-authored).
-  Only `CatalogReconciler` writes `product.curated` and `product.slug`. Spec:
+  Only `CatalogReconciler` writes `product.curated` and `product.slug`.
+  Moving existing deployments to a new template is an administrator action (the
+  admin deployment dialog renders the canonical schema); a tenant's Edit dialog
+  stays on its deployment's template. So a field newly made required on an
+  existing product MUST carry a `default`, or every older deployment's upgrade
+  is blocked until someone fills it in by hand. Spec:
   [product-catalog-format](openspec/specs/product-catalog-format/spec.md),
   [catalog-reconciliation](openspec/specs/catalog-reconciliation/spec.md),
   [curated-product-governance](openspec/specs/curated-product-governance/spec.md) ·

@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Box, Button, Dialog, DialogActions, DialogContent, Divider, LinearProgress, Typography } from '@mui/material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Deployment, Plan } from '../api/types'
 import { ApiError } from '../api/client'
-import { deleteDeployment, getDeployment, updateDeployment } from '../api/endpoints'
+import { deleteDeployment, getDeployment, listTemplates, updateDeployment } from '../api/endpoints'
 import { isTransitionalStatus } from '../utils/deploymentStatus'
 import { formatLocalIso, parseUtc } from '../utils/formatDate'
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog'
 import { DeployDialogContent } from './DeployDialogContent'
+import { validateUserValues } from './UserValuesForm'
+import type { VarSubmission } from './UserValuesForm'
 import { DatabasePanel } from './DatabasePanel'
 import { SftpAccessPanel } from './SftpAccessPanel'
 
@@ -44,13 +46,21 @@ function MetadataRow({ label, value }: { label: string; value: string }) {
 export function DeploymentDialog({ deployment: initialDeployment, onClose }: DeploymentDialogProps) {
   const queryClient = useQueryClient()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [userValues, setUserValues] = useState<Record<string, unknown> | null>(null)
+  const [vars, setVars] = useState<Record<string, VarSubmission>>({})
+  const [userValuesErrors, setUserValuesErrors] = useState<string[]>([])
+  const [formError, setFormError] = useState<string | null>(null)
+  const [hostnameValid, setHostnameValid] = useState(true)
+  const [requiredFilled, setRequiredFilled] = useState(true)
 
   // Poll the single deployment while the dialog is open
-  const { data: polledDeployment, error: pollError } = useQuery({
+  const { data: polledDeployment, error: pollError, isFetchedAfterMount } = useQuery({
     queryKey: ['deployment', initialDeployment?.user_id, initialDeployment?.id],
     queryFn: () => getDeployment(initialDeployment!.user_id, initialDeployment!.id),
     enabled: Boolean(initialDeployment),
     initialData: initialDeployment ?? undefined,
+    // The listing row lacks vars, so it must never pass for a fresh read.
+    initialDataUpdatedAt: 0,
     retry: (_count, error) => !(error instanceof ApiError && error.status === 404),
     refetchInterval: (query) => {
       if (query.state.error) return false
@@ -88,19 +98,64 @@ export function DeploymentDialog({ deployment: initialDeployment, onClose }: Dep
   const isTransitioning = isTransitionalStatus(deployment?.status)
   const isDeleting = deployment?.status === 'deleting'
 
+  // Upgrading is administrator-only, so only this dialog renders the canonical
+  // template: the tenant's own Edit dialog stays on the deployment's template.
+  // The form is built from the canonical schema, which drops keys it no longer
+  // declares and asks for any it has newly made required. It waits for the
+  // deployment's own read, since the listing row carries no vars and a set
+  // secret would otherwise render as missing.
+  const upgrading = !isUpToDate && !isTransitioning && canonicalId != null
+  const templatesQuery = useQuery({
+    queryKey: ['templates', product?.id],
+    queryFn: () => listTemplates(product!.id),
+    enabled: upgrading && product != null,
+  })
+  const canonicalTemplate = templatesQuery.data?.find((t) => t.id === canonicalId)
+  const upgradeFormReady = upgrading && canonicalTemplate != null && isFetchedAfterMount
+
   const upgradeMutation = useMutation({
     mutationFn: () =>
       updateDeployment(deployment!.user_id, deployment!.id, {
         desired_template_id: canonicalId!,
-        user_values_json: deployment!.user_values_json ?? undefined,
+        user_values_json: userValues ?? {},
+        vars: Object.keys(vars).length > 0 ? vars : undefined,
       }),
     onSuccess: (updated) => {
+      setFormError(null)
+      setUserValuesErrors([])
       queryClient.setQueryData(['deployment', updated.user_id, updated.id], updated)
       queryClient.setQueryData<Deployment[]>(['admin-deployments'], (old) =>
         old?.map((d) => d.id === updated.id ? updated : d),
       )
     },
+    onError: (error: Error) => {
+      const errorMsg = error.message
+      if (errorMsg.startsWith('vars.')) {
+        setUserValuesErrors([errorMsg])
+      } else if (errorMsg.includes('user_values_json') || errorMsg.includes('validation')) {
+        const validationErrors = validateUserValues(
+          canonicalTemplate?.values_schema_json ?? null,
+          userValues,
+        )
+        setUserValuesErrors(validationErrors.length > 0 ? validationErrors : [errorMsg])
+      } else {
+        setFormError(errorMsg)
+      }
+    },
   })
+
+  const handleUpgrade = useCallback(() => {
+    if (canonicalTemplate?.values_schema_json) {
+      const validationErrors = validateUserValues(canonicalTemplate.values_schema_json, userValues)
+      if (validationErrors.length > 0) {
+        setUserValuesErrors(validationErrors)
+        return
+      }
+    }
+    setUserValuesErrors([])
+    setFormError(null)
+    upgradeMutation.mutate()
+  }, [canonicalTemplate, userValues, upgradeMutation])
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteDeployment(deployment!.user_id, deployment!.id),
@@ -121,7 +176,25 @@ export function DeploymentDialog({ deployment: initialDeployment, onClose }: Dep
   return (
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
       <DialogContent>
-        {product && template && (
+        {product && upgrading ? (
+          <DeployDialogContent
+            key={canonicalId}
+            product={product}
+            valuesSchemaJson={canonicalTemplate?.values_schema_json ?? null}
+            initialValuesJson={deployment.user_values_json ?? null}
+            onChange={setUserValues}
+            onVarsChange={setVars}
+            initialVars={deployment.vars ?? null}
+            onHostnameValidationChange={setHostnameValid}
+            onRequiredFilledChange={setRequiredFilled}
+            formError={formError}
+            userValuesErrors={userValuesErrors}
+            loading={!upgradeFormReady}
+            initialHostname={deployment.hostname ?? undefined}
+            plans={subscriptionPlan}
+            selectedPlanTemplateId={deployment.subscription?.plan_template?.id ?? null}
+          />
+        ) : product && template && (
           <DeployDialogContent
             product={product}
             valuesSchemaJson={template.values_schema_json ?? null}
@@ -177,8 +250,13 @@ export function DeploymentDialog({ deployment: initialDeployment, onClose }: Dep
         <Button
           variant="contained"
           color="primary"
-          disabled={isUpToDate || isTransitioning || upgradeMutation.isPending}
-          onClick={() => upgradeMutation.mutate()}
+          disabled={
+            !upgradeFormReady ||
+            !hostnameValid ||
+            !requiredFilled ||
+            upgradeMutation.isPending
+          }
+          onClick={handleUpgrade}
         >
           {upgradeMutation.isPending || (isTransitioning && !isDeleting)
             ? 'Upgrading...'

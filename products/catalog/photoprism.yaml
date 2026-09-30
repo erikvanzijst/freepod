@@ -46,6 +46,7 @@ template:
             title: Username
             minLength: 2
             maxLength: 64
+            default: admin
             description: The name you will sign in with. This account owns the library and can invite
               others later from PhotoPrism's own settings. It cannot be
               changed afterwards.
