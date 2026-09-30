@@ -35,3 +35,9 @@ lookup is empty under `helm template`, so a dry run renders a throwaway value.
 {{- randAlphaNum 24 -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "bookstack.podLabels" -}}
+{{- with .Values.caelus.releaseId -}}
+caelus.dev/release-id: {{ . | quote }}
+{{- end -}}
+{{- end -}}

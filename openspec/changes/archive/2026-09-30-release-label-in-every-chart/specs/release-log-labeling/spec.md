@@ -1,13 +1,4 @@
-# release-log-labeling Specification
-
-## Purpose
-
-How a release identifier reaches an individual log line — supplied to the chart as a system value,
-rendered onto the pod template and nowhere else, and relabeled into a stream label on the log
-store — so that two pods writing concurrently during a rollout remain attributable to the release
-each belongs to.
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Every chart renders the release identifier
 
@@ -36,6 +27,8 @@ an empty one.
 - **WHEN** a product chart is rendered with no release identifier supplied
 - **THEN** the render succeeds
 - **AND** no pod template carries a `caelus.dev/release-id` label
+
+## MODIFIED Requirements
 
 ### Requirement: A rendered identifier is stamped on every pod of its release
 
@@ -95,80 +88,10 @@ SHALL fail that check.
 - **WHEN** a chart is added or changed so that an application workload lacks the label
 - **THEN** the automated check fails, naming the chart and the workload
 
-### Requirement: The release label is applied to the pod template, never to a selector
+## REMOVED Requirements
 
-The release identifier SHALL be rendered through a chart helper used **only** at the pod
-template's metadata.
+### Requirement: The release identifier is offered to every chart
 
-It SHALL NOT be added to any helper that feeds a workload's `spec.selector.matchLabels`, which
-is immutable on a Kubernetes Deployment and would cause every subsequent apply to fail.
+**Reason**: Rendering is no longer each chart's decision. Its scenario for a chart that ignores the value described the exception this change removes.
 
-It SHALL NOT be added to any helper that feeds a Service's `spec.selector`, which would cause
-the Service to select only the new release's pods before they are ready, and drop traffic during
-a rollout.
-
-#### Scenario: A second rollout is applied
-
-- **WHEN** a deployment that already has a release is applied again with a new release
-  identifier
-- **THEN** the apply succeeds, because no immutable selector field changed
-
-#### Scenario: Traffic during a rollout
-
-- **WHEN** a new release's pods are starting while the previous release's pods still serve
-- **THEN** the Service continues to select the serving pods throughout
-
-### Requirement: The release identifier is a system value a tenant cannot forge
-
-The release identifier SHALL be supplied to the chart as a system override under the platform's
-reserved `caelus` values namespace, applied after user-scoped values so that user values cannot
-shadow it.
-
-A tenant SHALL NOT be able to set, override or influence the release identifier through user
-values, the deployment form, or any request field.
-
-#### Scenario: A tenant supplies a conflicting value
-
-- **WHEN** a tenant submits user values that attempt to set the release identifier
-- **THEN** the rendered pod carries the platform's identifier, not the tenant's
-
-### Requirement: The release identifier is a Loki stream label
-
-The log collector SHALL relabel the `caelus.dev/release-id` pod label into a Loki **stream
-label**, so that a query for one release is an index lookup rather than a scan of every line the
-deployment has produced.
-
-It SHALL NOT be carried as structured metadata. The usual reason to prefer structured metadata —
-avoiding stream multiplication from a high-cardinality field — does not apply, because `pod` is
-already a stream label and the release identifier is constant within a pod. It is functionally
-dependent on a label that already exists, so promoting it widens each existing series without
-creating new ones.
-
-#### Scenario: Logs are queryable by release
-
-- **WHEN** a pod carrying a release identifier writes a line
-- **THEN** the line is retrievable by a selector naming that release, without scanning the
-  deployment's other releases
-
-#### Scenario: Two releases write concurrently
-
-- **WHEN** a rollout is in progress and pods of two releases are writing at the same time
-- **THEN** a query naming one release returns only that release's lines, with no interleaving
-  from the other
-
-#### Scenario: A release's pods have been deleted
-
-- **WHEN** a rollout failed, was rolled back, and its pods were deleted
-- **THEN** that release's lines remain retrievable by its identifier
-
-### Requirement: Every returned line is attributable to a release
-
-A log line returned from the store SHALL carry the identifier of the release that produced it,
-so that a reader following a deployment across a rollout can tell which release each line came
-from without issuing a second query.
-
-#### Scenario: A reader observes a rollover
-
-- **WHEN** a reader is following a deployment and a new release becomes live
-- **THEN** the lines from before and after the rollover are individually attributable to their
-  respective releases
+**Migration**: Replaced by "Every chart renders the release identifier", which keeps the reconciler's obligation to supply the identifier and adds the obligation for every chart to render it.

@@ -75,6 +75,7 @@ resources:
 # (caelus.plan.*, caelus.ingress.tls). These defaults let the chart render standalone
 # (helm template / lint / tests): plan is empty so the PVC falls back to storage sizes.
 caelus:
+  releaseId: ""
   plan: {}
   ingress:
     enabled: false

@@ -17,7 +17,7 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/bookstack
-  chart_version: 0.1.5
+  chart_version: 0.1.6
   system_values:
     image:
       tag: 26.9.1

@@ -48,6 +48,7 @@ postgresql:
 # TLS is injected per-deployment by the Caelus reconciler (caelus.ingress.tls). This
 # default lets the chart render standalone (helm template / tests) with TLS off.
 caelus:
+  releaseId: ""
   ingress:
     enabled: false
     tls: {}

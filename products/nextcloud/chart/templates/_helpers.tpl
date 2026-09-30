@@ -43,3 +43,9 @@ hasKey guard keeps `b64dec nil` from hard-failing if the Secret ever lacks the k
 {{- randAlphaNum 24 -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "nextcloud.podLabels" -}}
+{{- with .Values.caelus.releaseId -}}
+caelus.dev/release-id: {{ . | quote }}
+{{- end -}}
+{{- end -}}

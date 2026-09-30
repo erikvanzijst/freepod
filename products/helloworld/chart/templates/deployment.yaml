@@ -16,6 +16,7 @@ spec:
       labels:
         app.kubernetes.io/name: {{ include "hello-static.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- include "helloworld.podLabels" . | nindent 8 }}
     spec:
       initContainers:
         - name: write-index

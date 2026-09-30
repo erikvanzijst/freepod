@@ -42,6 +42,7 @@ spec:
     metadata:
       labels:
         {{- include "immich.componentSelector" (dict "root" . "name" "server") | nindent 8 }}
+        {{- include "immich.podLabels" . | nindent 8 }}
     spec:
       containers:
         - name: main

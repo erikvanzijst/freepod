@@ -58,15 +58,6 @@ MIN_TIMESTAMP_NS = 1_000_000_000 * NS_PER_SECOND
 MAX_TIMESTAMP_NS = 2**64 - 1
 
 
-class LogAttributionUnavailable(ValidationException):
-    """A release read was asked for on a product whose pods carry no release label.
-
-    Deliberately not an empty stream. An empty success asserts that the release
-    produced no output, which is a different and misleading claim -- and the one
-    failure mode this whole path exists to avoid.
-    """
-
-
 @dataclass(frozen=True)
 class LogTarget:
     """Everything a stream needs, resolved before the DB session is released."""
@@ -121,46 +112,6 @@ def build_selector(target: LogTarget) -> str:
 # ---------------------------------------------------------------------------
 
 
-# Charts that render `caelus.dev/release-id` onto their pod template.
-#
-# The reconciler offers `caelus.releaseId` to every product with no per-product
-# condition, and rendering it is each chart's decision -- so this is the one
-# place the platform has to know which charts took it up. Keyed on the chart
-# name rather than the product's, because it is a property of the chart: two
-# products can share one, and a product can be renamed.
-#
-# **Adopting the label in another chart means adding its name here.** The chart
-# change alone is enough for the label to reach Loki and for unpinned reads to
-# keep working; this list only governs whether the API offers *pinning*, and
-# without the entry a pinned read is refused as unavailable rather than
-# answered. There is no signal in the database for what a chart renders, and
-# inferring it from an empty query result is precisely the misleading answer
-# this whole path exists to avoid.
-CHARTS_RENDERING_RELEASE_LABEL = frozenset({"custom"})
-
-
-def _chart_name(chart_ref: str | None) -> str | None:
-    """The chart's own name, from a ref like `oci://registry.home/helm/custom`."""
-    if not chart_ref:
-        return None
-    return chart_ref.rstrip("/").rsplit("/", 1)[-1] or None
-
-
-def _renders_release_labels(deployment: DeploymentORM) -> bool:
-    """Whether this deployment's pods carry a release label at all.
-
-    Asked of the chart rather than of the log store, so that the answer is
-    "this product does not support pinning" instead of an empty stream, which
-    would assert the release produced no output -- a different and misleading
-    claim. Curated charts are handed the value and ignore it, which Promtail
-    tolerates: their logs stay fully readable at deployment granularity and
-    only pinning is unavailable.
-    """
-    template = deployment.desired_template
-    chart_ref = getattr(template, "chart_ref", None) if template is not None else None
-    return _chart_name(chart_ref) in CHARTS_RENDERING_RELEASE_LABEL
-
-
 def resolve_target(
     session: Session,
     *,
@@ -185,12 +136,6 @@ def resolve_target(
             deployment_id=str(deployment.id),
             namespace=deployment.namespace,
             name=deployment.name,
-        )
-
-    if not _renders_release_labels(deployment):
-        raise LogAttributionUnavailable(
-            "Release attribution is unavailable for this deployment: its chart does not "
-            "label pods with a release. Read the deployment's log without pinning a release."
         )
 
     release = session.exec(
@@ -314,8 +259,8 @@ def _log_event(entry: LogEntry) -> str:
         {
             "ts": entry.timestamp_ns,
             "line": entry.line,
-            # Null on a product whose pods carry no release label, which is a
-            # readable deployment with attribution unavailable, not an error.
+            # Null for a pod without the label -- a datastore, or a release
+            # from before its chart rendered one -- which is not an error.
             "release": entry.labels.get(RELEASE_LABEL),
         },
         event_id=entry.timestamp_ns,

@@ -32,6 +32,7 @@ resources:
 # (helm template / lint / tests): plan is empty so the PVC falls back to storage.size,
 # and TLS is off.
 caelus:
+  releaseId: ""
   plan: {}
   ingress:
     enabled: false

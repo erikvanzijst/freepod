@@ -35,3 +35,9 @@ drift apart.
 {{- define "immich.appTag" -}}
 {{- .Values.image.tag | default .Chart.AppVersion -}}
 {{- end -}}
+
+{{- define "immich.podLabels" -}}
+{{- with .Values.caelus.releaseId -}}
+caelus.dev/release-id: {{ . | quote }}
+{{- end -}}
+{{- end -}}

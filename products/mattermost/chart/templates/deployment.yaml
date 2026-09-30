@@ -19,6 +19,7 @@ spec:
       labels:
         app.kubernetes.io/name: mattermost
         app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- include "mattermost.podLabels" . | nindent 8 }}
     spec:
       initContainers:
         - name: init-postgres

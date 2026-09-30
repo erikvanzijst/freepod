@@ -718,13 +718,12 @@ async def get_deployment_log(
       *deployment*, so a redeploy appears as a rollover rather than an ending).
     - **tail** — trailing lines to start with; bounded by the platform.
     - **release** — pin to one release by number, including one that failed and
-      whose pods were deleted. Unavailable on products whose pods carry no
-      release label, which is reported rather than answered with an empty stream.
+      whose pods were deleted.
     - **since** — inclusive resume point.
 
     ## Errors
-    - **400 Bad Request** — malformed `since`, release pinning on a product that
-      does not support it, or more concurrent streams than the platform allows.
+    - **400 Bad Request** — malformed `since`, or more concurrent streams than
+      the platform allows.
     - **403 Forbidden** — reading another account's deployment without
       administrator privileges.
     - **404 Not Found** — no such deployment, or no such release number for it.

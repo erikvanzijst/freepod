@@ -111,6 +111,7 @@ spec:
     metadata:
       labels:
         {{- include "bookstack.componentSelector" (dict "root" . "name" "bookstack") | nindent 8 }}
+        {{- include "bookstack.podLabels" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
       # Not runAsNonRoot here: the SSH sidecar in this pod runs as root.

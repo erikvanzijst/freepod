@@ -78,10 +78,10 @@ is published. To publish by hand, from the repository root:
 ./scripts/publish-charts.sh bookstack
 ```
 
-| Field               | Value                                                       |
-|---------------------|-------------------------------------------------------------|
-| Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/bookstack`       |
-| Chart version       | `0.1.5`                                                     |
+| Field               | Value                                                              |
+|---------------------|--------------------------------------------------------------------|
+| Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/bookstack`              |
+| Chart version       | `0.1.6`                                                            |
 | User values schema  | see [`products/catalog/bookstack.yaml`](../catalog/bookstack.yaml) |
 | Default Helm values | see [`products/catalog/bookstack.yaml`](../catalog/bookstack.yaml) |
 

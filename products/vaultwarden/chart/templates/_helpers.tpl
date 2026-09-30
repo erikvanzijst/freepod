@@ -55,3 +55,9 @@ token generates once and is then reused.
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "vaultwarden.podLabels" -}}
+{{- with .Values.caelus.releaseId -}}
+caelus.dev/release-id: {{ . | quote }}
+{{- end -}}
+{{- end -}}
