@@ -893,12 +893,12 @@ def announce_pending_vars(
     echo(f"This rollout will also apply {measured} pending {subject}.")
 
 
-def applied_image(deployment: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
-    """The image the deployment is running, and the build that produced it."""
+def applied_image(deployment: Dict[str, Any]) -> Optional[str]:
+    """The image the deployment is running."""
     applied = deployment.get("applied_release") or {}
     values = applied.get("values_json") or {}
     image = values.get(IMAGE_KEY)
-    return (image if isinstance(image, str) and image else None), applied.get("build_id")
+    return image if isinstance(image, str) and image else None
 
 
 def release_current(
@@ -913,9 +913,8 @@ def release_current(
 ) -> str:
     """Roll the deployment again on the image it already runs. Returns the address.
 
-    The build reference is carried forward explicitly: an update omitting it
-    writes a release with no link to the build that produced the image. See
-    design D11.
+    No build is named: the platform carries the applied release's build over
+    to a release that keeps its image.
     """
     state = preflight(api, env_name, root=root, interactive=interactive, echo=echo)
     if state.deployment is None:
@@ -923,7 +922,7 @@ def release_current(
             "this project has no deployment yet, so there is nothing to roll.\n"
             "  Run `freepod deploy` to create one."
         )
-    image, build_id = applied_image(state.deployment)
+    image = applied_image(state.deployment)
     if image is None:
         raise FreepodError(
             f"deployment '{state.deployment.get('name')}' has never completed a "
@@ -932,9 +931,7 @@ def release_current(
         )
     announce_pending_vars(api, state, echo=echo)
     echo(f"Releasing {image} again.")
-    return release(
-        api, state, image, build_id=build_id, timeout=timeout, poll=poll, echo=echo
-    )
+    return release(api, state, image, timeout=timeout, poll=poll, echo=echo)
 
 
 def deploy(

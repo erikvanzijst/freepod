@@ -244,6 +244,11 @@ Published to PyPI as `freepod`, on its own release cadence: bump
 `pyproject.toml` reads through Hatch — and push a `freepod-v*` tag. No commit
 to `master` publishes the client. See `cli/DEVELOPMENT.md` § CI and releasing.
 
+**Every change under `cli/` bumps `__version__` in the same change**, however
+small: PyPI never accepts a version twice, so an unbumped change cannot be
+released at all. Patch for fixes and internal changes, minor for new commands
+or flags. The tag is still pushed separately, after merge.
+
 ### UI (`ui/`)
 - `cd ui/`
 - Install deps: `npm install`
@@ -410,6 +415,7 @@ for a self-evident line, delete it.
 - Keep API + `caelus` CLI parity (same features and validations).
 - Extract a UI component before duplicating it. `SectionSidebar` and
   `CopyButton` exist because a second copy was about to.
+- Any change under `cli/` bumps `freepod.__version__` (see § Client CLI).
 - When an API contract changes, check whether `freepod` (`cli/`) depends on it.
   It ships on its own cadence, so it must learn values from the platform at
   runtime rather than embedding them — a constant baked into the client is

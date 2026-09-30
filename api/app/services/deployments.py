@@ -125,6 +125,38 @@ def _validate_build_reference(
         raise ValidationException("Unknown build")
 
 
+def _release_build_id(
+    session: Session,
+    deployment: DeploymentORM,
+    update: DeploymentUpdate,
+    user_values: dict[str, Any],
+) -> UUID | None:
+    """The build the new release records.
+
+    Named -- a build or an explicit `null` -- it is taken as given. Omitted, the
+    applied release's build carries over for as long as its image is still in
+    the values, so an update that says nothing about builds keeps provenance
+    and one that swaps the image does not claim a build it no longer runs. The
+    image is found by value, never by key: which value holds it is the chart's
+    business, see `_validate_build_reference`.
+    """
+    if "build_id" in update.model_fields_set:
+        return update.build_id
+    applied = deployment.applied_release
+    build = session.get(BuildORM, applied.build_id) if applied and applied.build_id else None
+    if build is None or not build.image:
+        return None
+    return build.id if _contains_string(user_values, build.image) else None
+
+
+def _contains_string(value: Any, needle: str) -> bool:
+    if isinstance(value, dict):
+        return any(_contains_string(v, needle) for v in value.values())
+    if isinstance(value, list):
+        return any(_contains_string(v, needle) for v in value)
+    return value == needle
+
+
 def _next_release_number(session: Session, *, deployment_id: UUID) -> int:
     """The next per-deployment release number, 1 for a deployment's first.
 
@@ -661,6 +693,7 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
     # A named build must be this deployment's own -- see
     # `_validate_build_reference`.
     _validate_build_reference(session, deployment_id=deployment.id, build_id=update.build_id)
+    build_id = _release_build_id(session, deployment, update, new_user_values)
 
     # Minted before the guarded UPDATE so the pointer can move in the same
     # statement; the row itself is only inserted once the guard has passed.
@@ -709,7 +742,7 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
             number=release_number,
             deployment_id=deployment.id,
             template_id=update.desired_template_id,
-            build_id=update.build_id,
+            build_id=build_id,
             values_json=new_user_values,
         )
     )

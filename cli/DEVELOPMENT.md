@@ -535,12 +535,9 @@ Vars take effect on the next release, and nothing else mints one without other
 changes. `deploy --no-build` is that primitive: it preflights, reads the
 **applied** release's image, and releases it again.
 
-It passes that release's `build_id` through explicitly. The platform writes
-`build_id` from the request unconditionally, so an update omitting it produces
-a release running built code with no link back to the build. Server-side
-inheritance is the general fix and is not this client's to make; until it
-lands, omitting it here would quietly empty the build column of every release
-`var set` creates.
+It names no build. The platform carries the applied release's `build_id` over
+to any update that omits it and keeps that build's image, so the release `var
+set` creates still links back to the build that produced the code it runs.
 
 Refused when the deployment has never completed a rollout: there is no image to
 re-release, and inventing one from the desired release would ship something

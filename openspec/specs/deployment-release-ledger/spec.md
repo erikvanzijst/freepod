@@ -99,6 +99,39 @@ reference is never rendered by any chart.
 - **WHEN** a release is applied
 - **THEN** the values passed to Helm contain no build reference
 
+### Requirement: An update that names no build keeps the applied release's build
+
+An update request that omits the build reference SHALL record on its release the build of the
+deployment's **applied** release, provided that build's recorded image still appears among the
+new release's user values. Otherwise it SHALL record no build. An explicit null SHALL record no
+build, and a named build SHALL be recorded as given.
+
+The image SHALL be matched by value, anywhere in the user values, and SHALL NOT be looked up
+under any particular value key, for the reason given in "A named build must belong to the
+deployment". The base SHALL be the applied release, not the desired one: a release that never
+applied never ran its build.
+
+#### Scenario: A configuration change keeps the build
+
+- **WHEN** a deployment whose applied release names a build is updated without naming one, and
+  the build's image is still among the user values
+- **THEN** the new release names the same build
+
+#### Scenario: A new image drops the build
+
+- **WHEN** such a deployment is updated without naming a build, with a different image
+- **THEN** the new release names no build
+
+#### Scenario: An explicit null
+
+- **WHEN** an update sets the build reference to null
+- **THEN** the new release names no build
+
+#### Scenario: A failed rollout is not the base
+
+- **WHEN** the latest release named a build but never applied, and an update names none
+- **THEN** the new release inherits from the applied release, not from the failed one
+
 ### Requirement: A named build must belong to the deployment
 
 A build reference is optional on every write. Where one is named, it SHALL exist and

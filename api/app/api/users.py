@@ -607,6 +607,9 @@ def update_deployment(
     - **deployment.user_values_json** — new configuration; when omitted the
       existing stored values are reused. When provided it is validated against
       the target template schema, and the `hostname`-titled field is re-derived.
+    - **deployment.build_id** — the build this release deploys. When omitted,
+      the applied release's build carries over as long as its image is still
+      among the user values; an explicit `null` records no build.
 
     ## Behavior
     The update is accepted only when the deployment is currently in the `ready`
