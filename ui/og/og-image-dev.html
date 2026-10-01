@@ -1,0 +1,259 @@
+<!doctype html>
+<!--
+  Source template for the /dev social preview card. Rasterized to
+  ui/public/og-image-dev.png by ui/og/generate.sh; referenced from
+  ui/src/content/pageMeta.ts. Same 1200x630 canvas and visual language as
+  og-image.html, with a terminal where that card has its logo.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @font-face {
+        font-family: 'Fraunces';
+        font-style: normal;
+        font-weight: 100 900;
+        src: url('../node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-normal.woff2')
+          format('woff2-variations');
+      }
+      @font-face {
+        font-family: 'Fraunces';
+        font-style: italic;
+        font-weight: 100 900;
+        src: url('../node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-italic.woff2')
+          format('woff2-variations');
+      }
+      @font-face {
+        font-family: 'Schibsted Grotesk';
+        font-style: normal;
+        font-weight: 100 900;
+        src: url('../node_modules/@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-normal.woff2')
+          format('woff2-variations');
+      }
+      @font-face {
+        font-family: 'Space Mono';
+        font-style: normal;
+        font-weight: 400;
+        src: url('../node_modules/@fontsource/space-mono/files/space-mono-latin-400-normal.woff2')
+          format('woff2');
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+
+      .card {
+        position: relative;
+        width: 1200px;
+        height: 630px;
+        background:
+          radial-gradient(560px 460px at 18% 40%, rgba(236, 72, 153, 0.13), transparent 70%),
+          radial-gradient(620px 480px at 80% 50%, rgba(37, 99, 235, 0.2), transparent 70%),
+          radial-gradient(600px 420px at 55% 110%, rgba(124, 91, 255, 0.12), transparent 70%),
+          linear-gradient(155deg, #070a14 0%, #0b1020 55%, #10162b 100%);
+        overflow: hidden;
+      }
+
+      .card::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+        background-size: 26px 26px;
+        mask-image: radial-gradient(circle at 50% 45%, black, transparent 78%);
+      }
+
+      .card::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 6px;
+        background: linear-gradient(90deg, #2563eb 0%, #7c5bff 50%, #ec4899 100%);
+      }
+
+      .content {
+        position: relative;
+        z-index: 2;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        gap: 52px;
+        padding: 0 72px;
+      }
+
+      .text {
+        flex: 1 1 0;
+        min-width: 0;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .brand img {
+        width: 46px;
+        height: 46px;
+        filter: drop-shadow(0 10px 24px rgba(37, 99, 235, 0.45));
+      }
+
+      .brand .name {
+        font-family: 'Fraunces', Georgia, serif;
+        font-weight: 600;
+        font-size: 34px;
+        letter-spacing: -1px;
+        color: #f4f6fb;
+      }
+
+      .brand .for {
+        font-family: 'Space Mono', monospace;
+        font-size: 14px;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: #38bdf8;
+        margin-left: 6px;
+        padding-top: 4px;
+      }
+
+      .headline {
+        font-family: 'Fraunces', Georgia, serif;
+        font-weight: 500;
+        font-size: 70px;
+        line-height: 1.02;
+        letter-spacing: -2px;
+        color: #f4f6fb;
+        margin-top: 34px;
+      }
+
+      .headline em {
+        font-style: italic;
+        color: transparent;
+        background: linear-gradient(100deg, #89a9ff 0%, #c9b3ff 50%, #f9a8d4 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        padding-right: 6px;
+      }
+
+      .desc {
+        font-family: 'Schibsted Grotesk', system-ui, sans-serif;
+        font-size: 21px;
+        line-height: 1.5;
+        color: #a6b0cc;
+        margin-top: 26px;
+      }
+
+      .terminal {
+        flex: 0 0 470px;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(9, 13, 26, 0.92);
+        box-shadow: 0 40px 90px rgba(3, 6, 16, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.4);
+      }
+
+      .terminal .bar {
+        height: 40px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        background: rgba(255, 255, 255, 0.035);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      }
+
+      .terminal .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        opacity: 0.85;
+      }
+
+      .terminal .title {
+        flex: 1;
+        text-align: center;
+        padding-right: 52px;
+        font-family: 'Space Mono', monospace;
+        font-size: 13px;
+        color: #6f7c9b;
+      }
+
+      .terminal pre {
+        font-family: 'Space Mono', monospace;
+        font-size: 17px;
+        line-height: 1.75;
+        color: #f4f6fb;
+        padding: 20px 24px 24px;
+      }
+
+      .path { color: #38bdf8; }
+      .dim { color: #6f7c9b; }
+      .ok { color: #5eead4; }
+      .link { color: #5b8cff; text-decoration: underline; text-underline-offset: 4px; }
+      .cursor {
+        display: inline-block;
+        width: 10px;
+        height: 20px;
+        vertical-align: -3px;
+        background: #f4f6fb;
+        opacity: 0.85;
+      }
+
+      .domain {
+        position: absolute;
+        right: 72px;
+        bottom: 34px;
+        z-index: 2;
+        font-family: 'Space Mono', monospace;
+        font-size: 15px;
+        letter-spacing: 1px;
+        color: #6f7c9b;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="content">
+        <div class="text">
+          <div class="brand">
+            <img src="../public/caelus.svg" alt="" />
+            <span class="name">Freepod</span>
+            <span class="for">for developers</span>
+          </div>
+          <div class="headline">Your code, live<br /><em>in one command.</em></div>
+          <div class="desc">
+            By hand or with your coding agent. Any stack, with Postgres, object
+            storage and sign-in built in.
+          </div>
+        </div>
+
+        <div class="terminal">
+          <div class="bar">
+            <span class="dot" style="background: #ff5f57"></span>
+            <span class="dot" style="background: #febc2e"></span>
+            <span class="dot" style="background: #28c840"></span>
+            <span class="title">~/myapp — zsh</span>
+          </div>
+<pre><span class="path">~/myapp</span><span class="dim"> $ </span>freepod deploy
+<span class="ok">✓</span> Uploaded   <span class="dim">14 files · 22 KB</span>
+<span class="ok">✓</span> Built      <span class="dim">node 22 · 41s</span>
+<span class="ok">✓</span> Released   <span class="dim">HTTPS ready</span>
+<span class="link">https://myapp.ada.freepod.eu</span>
+<span class="path">~/myapp</span><span class="dim"> $ </span><span class="cursor"></span></pre>
+        </div>
+      </div>
+      <div class="domain">freepod.eu/dev</div>
+    </div>
+  </body>
+</html>

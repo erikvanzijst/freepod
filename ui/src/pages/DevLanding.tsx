@@ -8,6 +8,7 @@ import DemoSection from '../components/landing/dev/DemoSection'
 import FeatureExplorer from '../components/landing/dev/FeatureExplorer'
 import EmailDialog from '../components/EmailDialog'
 import useStartSignup from '../components/landing/useStartSignup'
+import { PAGE_META } from '../content/pageMeta'
 
 const navLinks = [
   { label: 'Demo', href: '#demo' },
@@ -25,7 +26,7 @@ export function DevLanding() {
 
   useEffect(() => {
     const previous = document.title
-    document.title = 'Freepod for developers: your code, live in one command'
+    document.title = PAGE_META.dev.title
     return () => {
       document.title = previous
     }
