@@ -53,7 +53,19 @@ def prompt(slug: str) -> str:
     )
 
 
-def command(settings: Settings, skill: Path, session_dir: Path, slug: str, pi: str = "pi") -> list[str]:
+def repair_prompt(slug: str, problem: str) -> str:
+    return (
+        f"The runner could not accept your result: {problem}. Write "
+        f"$UPGRADE_OUT_DIR/{slug}/result.json again so that it follows the skill's Result files "
+        "section, with null (never an empty string) for every field that doesn't apply. Change "
+        "nothing else: not the clone, its branches, or any pull request. Then end with your "
+        "one-line run report."
+    )
+
+
+def command(settings: Settings, skill: Path, session_dir: Path, message: str, pi: str = "pi",
+            resume: Path | None = None) -> list[str]:
+    """A fresh session, or with `resume` one more turn of the session in that transcript."""
     return [
         pi,
         "--model", f"{PROVIDER}/{settings.inference_model}",
@@ -61,7 +73,8 @@ def command(settings: Settings, skill: Path, session_dir: Path, slug: str, pi: s
         "--skill", str(skill),
         "--no-context-files",
         "--session-dir", str(session_dir),
-        "-p", "--", prompt(slug),
+        *(["--session", str(resume)] if resume else []),
+        "-p", "--", message,
     ]
 
 

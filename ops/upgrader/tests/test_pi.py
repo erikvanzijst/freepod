@@ -33,13 +33,21 @@ def test_models_json_references_the_key_and_never_contains_it(tmp_path):
 
 def test_command():
     cmd = pi.command(settings(THINKING_LEVEL="high"), Path("/w/freepod/products/UPGRADING/SKILL.md"),
-                     Path("/w/session"), "immich")
+                     Path("/w/session"), pi.prompt("immich"))
     assert cmd[:2] == ["pi", "--model"] and cmd[2] == "upgrader/qwen"
     assert cmd[cmd.index("--thinking") + 1] == "high"
     assert cmd[cmd.index("--skill") + 1] == "/w/freepod/products/UPGRADING/SKILL.md"
     assert cmd[cmd.index("--session-dir") + 1] == "/w/session"
-    assert "--no-context-files" in cmd and "-p" in cmd
+    assert "--no-context-files" in cmd and "-p" in cmd and "--session" not in cmd
     assert "immich" in cmd[-1]
+
+
+def test_a_repair_command_resumes_the_transcript():
+    cmd = pi.command(settings(), Path("/w/SKILL.md"), Path("/w/session"),
+                     pi.repair_prompt("immich", "result.json is not valid JSON"),
+                     resume=Path("/w/session/s.jsonl"))
+    assert cmd[cmd.index("--session") + 1] == "/w/session/s.jsonl"
+    assert "not valid JSON" in cmd[-1] and "immich/result.json" in cmd[-1]
 
 
 def test_session_stats_from_a_trimmed_experiment_transcript():

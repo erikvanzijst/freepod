@@ -128,6 +128,13 @@ deployment's bucket under `runs/<run-id>/<slug>/`, served over signed links that
 expire in an hour. Secret values are redacted before anything is stored. Nothing
 is pruned.
 
+**A rejected result gets one more turn.** When a session ends on its own and its
+`result.json` is missing or fails the contract (`products/UPGRADING/result.schema.json`
+plus the product and mode checks), the runner resumes that same session once,
+handing it the validation error, before recording the product as `failed`. The
+repair turn shares the product's timeout and lands in the same transcript; the
+local runner does the same.
+
 **A product stuck behind a leftover branch.** An interrupted real run can leave
 an `upgrade/*` branch with no PR; the skill's duplicate check then skips that
 product every night, with the reason on the dashboard. Delete the branch and

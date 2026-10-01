@@ -1,10 +1,13 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator
 
-SCHEMA = Path(__file__).resolve().parents[3] / "products" / "UPGRADING" / "result.schema.json"
+UPGRADING = Path(__file__).resolve().parents[3] / "products" / "UPGRADING"
+SCHEMA = UPGRADING / "result.schema.json"
+SKILL_EXAMPLES = re.findall(r"```json\n(.*?)```", (UPGRADING / "SKILL.md").read_text(), re.DOTALL)
 
 
 @pytest.fixture(scope="module")
@@ -57,6 +60,7 @@ def test_accepts_each_status(validator, doc):
         result("opened", pr_url="https://example.com/x", branch="upgrade/immich-v3.2.1"),
         result("would_open"),
         result("would_open", branch="upgrade/x", pr_url="https://github.com/o/r/pull/1"),
+        result("up_to_date", target_version=None, pr_url=""),
         result("up_to_date"),
         {**result("up_to_date", target_version=None), "status": "done"},
         {k: v for k, v in result("up_to_date", target_version=None).items() if k != "dry_run"},
@@ -71,6 +75,7 @@ def test_accepts_each_status(validator, doc):
         "opened-with-foreign-url",
         "would-open-without-branch",
         "pr-url-outside-opened",
+        "empty-pr-url-outside-opened",
         "up-to-date-with-target",
         "unknown-status",
         "missing-dry-run",
@@ -79,3 +84,12 @@ def test_accepts_each_status(validator, doc):
 )
 def test_rejects(validator, doc):
     assert list(validator.iter_errors(doc)) != []
+
+
+@pytest.mark.parametrize("example", SKILL_EXAMPLES)
+def test_the_skills_examples_follow_the_contract(validator, example):
+    assert list(validator.iter_errors(json.loads(example))) == []
+
+
+def test_the_skill_has_examples():
+    assert len(SKILL_EXAMPLES) >= 2

@@ -55,18 +55,38 @@ files, never your prose report.
 
 - `result.json`, **always**, wherever the procedure stops (each stopping point
   below says which `status` to use):
+
+  | Field             | Value                                                                              |
+  |-------------------|------------------------------------------------------------------------------------|
+  | `schema_version`  | `1`                                                                                |
+  | `product`         | the slug                                                                           |
+  | `dry_run`         | `true` if `UPGRADE_DRY_RUN=1`, else `false`                                        |
+  | `status`          | `up_to_date`, `opened`, `would_open`, `skipped`, `would_skip` or `failed`          |
+  | `current_version` | the value at `version_path`                                                        |
+  | `target_version`  | the new tag, or `null` when `up_to_date`                                           |
+  | `draft`           | `true` if the PR is (or would be) a draft, else `false`                            |
+  | `pr_url`          | the PR's URL when `opened`; **`null` otherwise**                                   |
+  | `branch`          | `upgrade/<slug>-<target>` when `opened`, `would_open` or `would_skip`; else `null` |
+  | `skip_reason`     | why, when `skipped` or `would_skip`; else `null`                                   |
+  | `needs_human`     | the PR's *Needs human review* items, or `[]`                                       |
+  | `error`           | when `failed`, where and why you stopped; else `null`                              |
+
+  A field that doesn't apply is JSON `null`, never `""`: the runner rejects an
+  empty string where it expects `null`. Two examples:
   ```json
-  {"schema_version": 1, "product": "<slug>", "dry_run": <true if UPGRADE_DRY_RUN=1, else false>,
-   "status": "up_to_date | opened | would_open | skipped | would_skip | failed",
-   "current_version": "<value at version_path>", "target_version": "<tag> or null",
-   "draft": false, "pr_url": "<opened only>",
-   "branch": "<upgrade/<slug>-<target>: opened, would_open, would_skip>",
-   "skip_reason": "<skipped, would_skip>", "needs_human": [],
-   "error": "<failed only: where and why you stopped>"}
+  {"schema_version": 1, "product": "bookstack", "dry_run": false, "status": "up_to_date",
+   "current_version": "26.9.1", "target_version": null, "draft": false, "pr_url": null,
+   "branch": null, "skip_reason": null, "needs_human": [], "error": null}
+  ```
+  ```json
+  {"schema_version": 1, "product": "immich", "dry_run": false, "status": "opened",
+   "current_version": "v2.1.0", "target_version": "v2.2.0", "draft": true,
+   "pr_url": "https://github.com/erikvanzijst/freepod/pull/123",
+   "branch": "upgrade/immich-v2.2.0", "skip_reason": null,
+   "needs_human": ["The new release drops the ML_WORKERS setting"], "error": null}
   ```
   `would_skip` means a dry run that a real run would skip, and that carried on
-  anyway. When nothing more can be done, use `skipped` even in a dry run.
-  `needs_human` repeats the PR's *Needs human review* items, or is `[]`. If you
+  anyway. When nothing more can be done, use `skipped` even in a dry run. If you
   must stop for any reason the procedure doesn't list as a skip, write
   `status: failed` with an `error` saying where you stopped.
 - `body.md` (the exact PR description) and `change.patch`

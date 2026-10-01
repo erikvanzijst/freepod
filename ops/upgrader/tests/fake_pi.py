@@ -25,9 +25,10 @@ token = Path(os.environ["UPGRADER_TOKEN_FILE"]).read_text()
 
 session_dir = Path(args[args.index("--session-dir") + 1])
 session_dir.mkdir(parents=True, exist_ok=True)
-transcript = session_dir / "2026-09-15T03-00-00-000Z_fake.jsonl"
+resumed = "--session" in args
+transcript = Path(args[args.index("--session") + 1]) if resumed else session_dir / "2026-09-15T03-00-00-000Z_fake.jsonl"
 usage = {"input": 1000, "output": 200, "cacheRead": 500}
-with transcript.open("w") as f:
+with transcript.open("a" if resumed else "w") as f:
     f.write(json.dumps({"type": "session", "cwd": os.getcwd()}) + "\n")
     f.write(json.dumps({"type": "message", "message": {
         "role": "assistant", "usage": usage,
@@ -35,6 +36,7 @@ with transcript.open("w") as f:
     }}) + "\n")
     f.flush()
 print(f"env has key: {'GITHUB_APP_PRIVATE_KEY' in os.environ}; token {token}", flush=True)
+print(f"prompt: {args[-1]}", flush=True)
 Path(os.environ["FAKE_PI_ENV"]).write_text(json.dumps(dict(os.environ))) if "FAKE_PI_ENV" in os.environ else None
 
 if mode == "sleep":
@@ -46,6 +48,10 @@ result = {
     "schema_version": 1, "product": slug, "dry_run": dry, "status": "up_to_date",
     "current_version": "1.37.1", "target_version": None, "draft": False, "needs_human": [],
 }
+if mode == "repairable" and resumed:
+    mode = "result:up_to_date"
+if mode == "repairable":
+    result["pr_url"] = ""
 if mode == "none":
     sys.exit(0)
 if mode == "malformed":
