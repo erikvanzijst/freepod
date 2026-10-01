@@ -67,7 +67,7 @@ export function ValueGrid() {
             <>
               Built around a single idea:
               <br />
-              your data belongs to you
+              your data belongs to you.
             </>
           }
         />

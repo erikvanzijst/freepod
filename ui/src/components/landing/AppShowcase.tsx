@@ -139,7 +139,7 @@ export function AppShowcase() {
       <Container maxWidth="lg">
         <SectionHeading
           eyebrow="The apps"
-          title="Familiar tools, without the surveillance"
+          title="Familiar tools, without the surveillance."
           subtitle="Every Freepod app is a best-in-class open-source project, running as your own dedicated instance. Same conveniences you rely on — none of the data harvesting."
         />
 

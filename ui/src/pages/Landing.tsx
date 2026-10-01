@@ -8,6 +8,7 @@ import HowItWorks from '../components/landing/HowItWorks'
 import ValueGrid from '../components/landing/ValueGrid'
 import PricingSection from '../components/landing/PricingSection'
 import CtaBand from '../components/landing/CtaBand'
+import DevelopersBand from '../components/landing/DevelopersBand'
 import LandingFooter from '../components/landing/LandingFooter'
 import EmailDialog from '../components/EmailDialog'
 import useStartSignup from '../components/landing/useStartSignup'
@@ -38,6 +39,7 @@ export function Landing() {
         <HowItWorks />
         <ValueGrid />
         <PricingSection onSignup={start} />
+        <DevelopersBand />
         <CtaBand onSignup={start} />
       </Box>
       <LandingFooter />

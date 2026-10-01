@@ -36,13 +36,6 @@ export function LegalDoc() {
     }
   }, [doc])
 
-  // Client-side navigation preserves the window scroll offset, so a document
-  // reached from the footer would otherwise open partway down. Reset to the top
-  // whenever the document changes.
-  useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [slug])
-
   // Unknown slug → back to home rather than a blank page.
   if (!doc) return <Navigate to="/" replace />
 

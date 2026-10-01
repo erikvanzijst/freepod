@@ -6,6 +6,7 @@ import Landing from './pages/Landing'
 import Settings from './pages/Settings'
 import LegalDoc from './pages/LegalDoc'
 import DevLanding from './pages/DevLanding'
+import ScrollToTop from './components/ScrollToTop'
 import { AuthProvider, useAuth } from './state/AuthContext'
 
 // The admin area is the only consumer of Monaco (via the template tabs) and is
@@ -99,6 +100,7 @@ function AuthedApp() {
 function App() {
   return (
     <AuthProvider>
+      <ScrollToTop />
       <AuthedApp />
     </AuthProvider>
   )

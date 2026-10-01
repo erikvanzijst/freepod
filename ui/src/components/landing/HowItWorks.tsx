@@ -31,7 +31,7 @@ export function HowItWorks() {
       <Container maxWidth="lg">
         <SectionHeading
           eyebrow="How it works"
-          title="From sign-up to sovereign in minutes"
+          title="From sign-up to sovereign in minutes."
         />
 
         <Box

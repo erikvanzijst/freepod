@@ -98,8 +98,21 @@ function AppShell({ children }: PropsWithChildren) {
             </Typography>
           </Stack>
           <Box sx={{ flex: 1 }} />
-          {/* Account menu. The wordmark handles "home", so the bar carries no
-              section nav; privileged (Admin) and session actions live here. */}
+          {/* The wordmark handles "home". Besides the developer page, the bar
+              carries no section nav; Admin and session actions live in the
+              account menu. */}
+          <Box
+            component={NavLink}
+            to="/dev"
+            sx={{
+              fontSize: 15,
+              color: fg.muted,
+              transition: 'color 0.2s',
+              '&:hover': { color: fg.primary },
+            }}
+          >
+            Developers
+          </Box>
           <Button
             onClick={(e) => setMenuAnchor(e.currentTarget)}
             aria-label="Account menu"
