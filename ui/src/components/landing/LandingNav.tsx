@@ -1,18 +1,37 @@
 import { Box, Button, Container, Stack, Typography } from '@mui/material'
+import { Link as RouterLink } from 'react-router-dom'
 import { DISPLAY, fg, line } from './landingTokens'
+import { useAuth } from '../../state/AuthContext'
+
+export interface NavLink {
+  label: string
+  /** An in-page `#anchor`, or an app path routed client-side. */
+  href: string
+}
 
 interface LandingNavProps {
   onSignup: () => void
+  links?: NavLink[]
 }
 
-const navLinks = [
+const defaultLinks: NavLink[] = [
   { label: 'Apps', href: '#apps' },
   { label: 'Why Freepod', href: '#why' },
   { label: 'Pricing', href: '#pricing' },
+  { label: 'Developers', href: '/dev' },
 ]
 
-/** Sticky, translucent top navigation for the landing page. */
-export function LandingNav({ onSignup }: LandingNavProps) {
+const navLinkSx = {
+  fontSize: 15,
+  color: fg.muted,
+  transition: 'color 0.2s',
+  '&:hover': { color: fg.primary },
+}
+
+/** Sticky, translucent top navigation for the landing pages. */
+export function LandingNav({ onSignup, links = defaultLinks }: LandingNavProps) {
+  const { user } = useAuth()
+
   return (
     <Box
       component="header"
@@ -32,7 +51,7 @@ export function LandingNav({ onSignup }: LandingNavProps) {
           sx={{ height: 72, gap: 2 }}
         >
           {/* Brand */}
-          <Stack direction="row" alignItems="center" spacing={1.25}>
+          <Stack component={RouterLink} to="/" direction="row" alignItems="center" spacing={1.25}>
             <Box
               component="img"
               src="/caelus.svg"
@@ -60,41 +79,41 @@ export function LandingNav({ onSignup }: LandingNavProps) {
             spacing={3.5}
             sx={{ display: { xs: 'none', md: 'flex' }, mr: 1 }}
           >
-            {navLinks.map((link) => (
-              <Box
-                key={link.href}
-                component="a"
-                href={link.href}
-                sx={{
-                  fontSize: 15,
-                  color: fg.muted,
-                  transition: 'color 0.2s',
-                  '&:hover': { color: fg.primary },
-                }}
-              >
-                {link.label}
-              </Box>
-            ))}
+            {links.map((link) =>
+              link.href.startsWith('/') ? (
+                <Box key={link.href} component={RouterLink} to={link.href} sx={navLinkSx}>
+                  {link.label}
+                </Box>
+              ) : (
+                <Box key={link.href} component="a" href={link.href} sx={navLinkSx}>
+                  {link.label}
+                </Box>
+              ),
+            )}
           </Stack>
 
-          <Button
-            onClick={onSignup}
-            sx={{
-              color: fg.muted,
-              fontSize: 15,
-              px: 1.5,
-              '&:hover': { color: fg.primary, background: 'transparent' },
-            }}
-          >
-            Log in
-          </Button>
+          {!user && (
+            <Button
+              onClick={onSignup}
+              sx={{
+                display: { xs: 'none', sm: 'inline-flex' },
+                color: fg.muted,
+                fontSize: 15,
+                px: 1.5,
+                '&:hover': { color: fg.primary, background: 'transparent' },
+              }}
+            >
+              Log in
+            </Button>
+          )}
           <Button
             variant="contained"
-            onClick={onSignup}
+            {...(user ? { component: RouterLink, to: '/' } : { onClick: onSignup })}
             sx={{
               borderRadius: 999,
               px: 2.5,
               fontWeight: 600,
+              whiteSpace: 'nowrap',
               color: '#fff',
               background: 'linear-gradient(120deg, #2563EB, #6D5BFF)',
               boxShadow: '0 8px 24px rgba(37,99,235,0.35)',
@@ -103,7 +122,7 @@ export function LandingNav({ onSignup }: LandingNavProps) {
               },
             }}
           >
-            Create account
+            {user ? 'Dashboard' : 'Create account'}
           </Button>
         </Stack>
       </Container>

@@ -8,16 +8,17 @@ const columns = [
   {
     heading: 'Product',
     links: [
-      { label: 'Apps', href: '#apps' },
-      { label: 'Why Freepod', href: '#why' },
-      { label: 'Pricing', href: '#pricing' },
+      { label: 'Apps', href: '/#apps' },
+      { label: 'Why Freepod', href: '/#why' },
+      { label: 'Pricing', href: '/#pricing' },
+      { label: 'Developers', href: '/dev' },
     ],
   },
   {
     heading: 'Company',
     links: [
       { label: 'About', href: '#' },
-      { label: 'Mission', href: '#why' },
+      { label: 'Mission', href: '/#why' },
       { label: 'Contact', href: '#' },
     ],
   },
@@ -86,7 +87,8 @@ export function LandingFooter() {
                   {col.heading}
                 </Typography>
                 {col.links.map((link) =>
-                  link.href.startsWith('/') ? (
+                  // Router links don't scroll to a #fragment, so those stay plain anchors.
+                  link.href.startsWith('/') && !link.href.includes('#') ? (
                     <Box key={link.label} component={RouterLink} to={link.href} sx={footerLinkSx}>
                       {link.label}
                     </Box>

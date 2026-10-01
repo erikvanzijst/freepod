@@ -46,6 +46,12 @@ a {
   }
 }
 
+@keyframes lp-cursor {
+  50% {
+    opacity: 0;
+  }
+}
+
 /* Scroll-reveal: hidden until .is-visible is added by the Reveal component. */
 .lp-reveal {
   opacity: 0;
