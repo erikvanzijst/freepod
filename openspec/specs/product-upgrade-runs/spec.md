@@ -178,11 +178,21 @@ instead when:
 - its `product` is not the slug the session was started for; or
 - its `dry_run` disagrees with the mode the service ran the session in.
 
+Before recording such a failure for a session that ended on its own, the service MUST
+resume that same session once, giving it the reason the result was rejected, and judge
+the result again when that turn ends. The repair turn MUST share the product's timeout
+and cancellation, and MUST NOT be repeated.
+
 Outcomes the service assigns itself are `timed_out`, `canceled` and `interrupted`.
 
 #### Scenario: No result file
-- **WHEN** a session exits without writing `result.json`
+- **WHEN** a session exits without writing `result.json`, and still has none after its repair turn
 - **THEN** the product is recorded as `failed`, with an error saying no result was written
+
+#### Scenario: A result the repair turn fixes
+- **WHEN** a session exits with a `result.json` whose `pr_url` is `""` outside `opened`
+- **THEN** the service resumes the session once with the validation error
+- **AND** the product's outcome is the `status` of the corrected `result.json`
 
 #### Scenario: A result for the wrong product
 - **WHEN** the session for `immich` writes a `result.json` whose `product` is `nextcloud`

@@ -14,6 +14,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import BinaryIO
 
 from sqlalchemy.orm import sessionmaker
 
@@ -131,38 +132,69 @@ def _terminate(process: subprocess.Popen) -> None:
 def _run_session(deps: Deps, settings: Settings, workspace: Path, env: dict[str, str],
                  tokens: TokenFile, slug: str) -> str:
     """Run pi until it exits, times out, or the run is canceled. Returns the outcome the service
-    assigns itself, or "" when the session ended on its own."""
-    clone = workspace / "freepod"
-    cmd = pi.command(settings, clone / "products" / "UPGRADING" / "SKILL.md", workspace / "session",
-                     slug, pi=deps.pi)
+    assigns itself, or "" when the session ended on its own. A session that ends on its own
+    with an unacceptable result gets one more turn, within the same deadline, to fix it."""
+    skill = workspace / "freepod" / "products" / "UPGRADING" / "SKILL.md"
     deadline = time.monotonic() + settings.timeout_seconds
     with (workspace / "stdout.txt").open("wb") as stdout:
-        process = subprocess.Popen(cmd, cwd=workspace, env=env, stdin=subprocess.DEVNULL,
-                                   stdout=stdout, stderr=subprocess.STDOUT, start_new_session=True)
-        ended = "" if deps.cancel.watch(process) else "canceled"
-        try:
-            while not ended:
-                try:
-                    process.wait(timeout=max(0.01, min(deps.poll_seconds, deadline - time.monotonic())))
-                    break
-                except subprocess.TimeoutExpired:
-                    if deps.cancel.asked():
-                        ended = "canceled"
-                    elif time.monotonic() >= deadline:
-                        ended = "timed_out"
-                    else:
-                        try:
-                            tokens.refresh()
-                        except Exception:
-                            log.exception("could not refresh the installation token for %s", slug)
-            # A cancel ends the session itself, so the wait above returns rather than timing
-            # out: without this the product would be read as one that wrote no result.
-            if not ended and deps.cancel.asked():
-                ended = "canceled"
-        finally:
-            deps.cancel.watch(None)
-            _terminate(process)
+        cmd = pi.command(settings, skill, workspace / "session", pi.prompt(slug), pi=deps.pi)
+        ended = _run_pi(deps, workspace, env, tokens, slug, cmd, stdout, deadline)
+        if ended or not (problem := _result_problem(workspace, slug, settings.dry_run)):
+            return ended
+        transcript = _transcript(workspace)
+        if not transcript:
+            return ended
+        log.info("asking %s's session to fix its result: %s", slug, problem)
+        cmd = pi.command(settings, skill, workspace / "session", pi.repair_prompt(slug, problem),
+                         pi=deps.pi, resume=transcript)
+        return _run_pi(deps, workspace, env, tokens, slug, cmd, stdout, deadline)
+
+
+def _run_pi(deps: Deps, workspace: Path, env: dict[str, str], tokens: TokenFile, slug: str,
+            cmd: list[str], stdout: BinaryIO, deadline: float) -> str:
+    process = subprocess.Popen(cmd, cwd=workspace, env=env, stdin=subprocess.DEVNULL,
+                               stdout=stdout, stderr=subprocess.STDOUT, start_new_session=True)
+    ended = "" if deps.cancel.watch(process) else "canceled"
+    try:
+        while not ended:
+            try:
+                process.wait(timeout=max(0.01, min(deps.poll_seconds, deadline - time.monotonic())))
+                break
+            except subprocess.TimeoutExpired:
+                if deps.cancel.asked():
+                    ended = "canceled"
+                elif time.monotonic() >= deadline:
+                    ended = "timed_out"
+                else:
+                    try:
+                        tokens.refresh()
+                    except Exception:
+                        log.exception("could not refresh the installation token for %s", slug)
+        # A cancel ends the session itself, so the wait above returns rather than timing
+        # out: without this the product would be read as one that wrote no result.
+        if not ended and deps.cancel.asked():
+            ended = "canceled"
+    finally:
+        deps.cancel.watch(None)
+        _terminate(process)
     return ended
+
+
+def _schema(workspace: Path) -> Path:
+    return workspace / "freepod" / "products" / "UPGRADING" / "result.schema.json"
+
+
+def _transcript(workspace: Path) -> Path | None:
+    return next(iter(sorted((workspace / "session").rglob("*.jsonl"))), None)
+
+
+def _result_problem(workspace: Path, slug: str, dry_run: bool) -> str | None:
+    result = workspace / "out" / slug / "result.json"
+    try:
+        parse_result(result.read_bytes() if result.is_file() else None, _schema(workspace), slug, dry_run)
+    except ResultError as exc:
+        return str(exc)
+    return None
 
 
 def _store_files(deps: Deps, run_id: int, slug: str, workspace: Path,
@@ -177,7 +209,7 @@ def _store_files(deps: Deps, run_id: int, slug: str, workspace: Path,
         deps.store.put(prefix + name, data, CONTENT_TYPES[name])
         stored.append(name)
 
-    transcript = next(iter(sorted((workspace / "session").rglob("*.jsonl"))), None)
+    transcript = _transcript(workspace)
     if transcript:
         redacted = workspace / "session.redacted.jsonl"
         redacted.write_bytes(redact.bytes(transcript.read_bytes()))
@@ -236,8 +268,7 @@ def execute_product(deps: Deps, settings: Settings, run: Run, slug: str, app: Ap
             fields = {"outcome": "canceled", "error": "the run was canceled"}
         elif not fields:
             try:
-                doc = parse_result(raw, workspace / "freepod" / "products" / "UPGRADING" /
-                                   "result.schema.json", slug, settings.dry_run)
+                doc = parse_result(raw, _schema(workspace), slug, settings.dry_run)
                 fields = {
                     "outcome": doc["status"],
                     "current_version": doc.get("current_version"),

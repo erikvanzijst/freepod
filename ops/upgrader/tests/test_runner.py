@@ -175,11 +175,25 @@ def test_a_real_run_records_every_field_redacted(deps, monkeypatch, github):
 def test_a_bad_result_fails_the_product(deps, monkeypatch, mode, error):
     monkeypatch.setenv("FAKE_PI", mode)
     runner.execute_run(deps, "manual", "immich")
-    _, [p] = only_product(deps.Session)
+    run, [p] = only_product(deps.Session)
     assert p.outcome == "failed"
     assert error in p.error
+    stdout = deps.store.objects[f"runs/{run.id}/immich/stdout.txt"][0].decode()
+    assert stdout.count("prompt: ") == 2, "one repair turn, and no more"
     assert {"session.jsonl", "session.html", "stdout.txt"} <= set(p.files)
     assert list(deps.workdir.iterdir()) == []
+
+
+def test_a_bad_result_gets_one_turn_in_the_same_session_to_fix_it(deps, monkeypatch):
+    monkeypatch.setenv("FAKE_PI", "repairable")
+    runner.execute_run(deps, "manual", "bookstack")
+    run, [p] = only_product(deps.Session)
+    assert (p.outcome, p.pr_url, p.error) == ("up_to_date", None, None)
+    stdout = deps.store.objects[f"runs/{run.id}/bookstack/stdout.txt"][0].decode()
+    first, repair = stdout.split("prompt: ")[1:]
+    assert "Run the upgrade-product skill" in first
+    assert "does not follow the contract at pr_url" in repair and "bookstack/result.json" in repair
+    assert (p.input_tokens, p.output_tokens) == (2000, 400), "both turns land in one transcript"
 
 
 def test_a_timeout_terminates_the_session_and_its_children(deps, monkeypatch, tmp_path):
