@@ -5,6 +5,8 @@ import Dashboard from './pages/Dashboard'
 import Landing from './pages/Landing'
 import Settings from './pages/Settings'
 import LegalDoc from './pages/LegalDoc'
+import DevLanding from './pages/DevLanding'
+import ScrollToTop from './components/ScrollToTop'
 import { AuthProvider, useAuth } from './state/AuthContext'
 
 // The admin area is the only consumer of Monaco (via the template tabs) and is
@@ -57,6 +59,7 @@ function AppShellLayout() {
  * visitors and the provisioning dashboard to signed-in users. Legal documents
  * live at /legal/:slug and render bare (outside the AppShell/landing chrome) so
  * they print cleanly and stay reachable whether or not the visitor is signed in.
+ * The developer landing page at /dev is public in the same way.
  */
 function AuthedApp() {
   const { user, loading } = useAuth()
@@ -67,6 +70,7 @@ function AuthedApp() {
   return (
     <Routes>
       <Route path="/legal/:slug" element={<LegalDoc />} />
+      <Route path="/dev" element={<DevLanding />} />
       {user ? (
         <Route element={<AppShellLayout />}>
           <Route path="/" element={<Dashboard />} />
@@ -96,6 +100,7 @@ function AuthedApp() {
 function App() {
   return (
     <AuthProvider>
+      <ScrollToTop />
       <AuthedApp />
     </AuthProvider>
   )
