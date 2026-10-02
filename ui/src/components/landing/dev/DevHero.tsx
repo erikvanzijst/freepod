@@ -5,10 +5,9 @@ import { Link as RouterLink } from 'react-router-dom'
 import { accent, DISPLAY, fg, line, MONO, SANS } from '../landingTokens'
 import AuroraBackground from '../AuroraBackground'
 import { CopyButton } from '../../CopyButton'
-import { REPO_URL } from '../../RepoLink'
 import { useAuth } from '../../../state/AuthContext'
 
-export const CLI_DOCS_URL = `${REPO_URL}/tree/master/cli#readme`
+export const CLI_DOCS_URL = '/docs/developers'
 
 const installers = [
   { label: 'uv', command: 'uv tool install freepod' },
@@ -176,8 +175,6 @@ export function DevHero({ onSignup }: { onSignup: () => void }) {
             )}
             <Button
               href={CLI_DOCS_URL}
-              target="_blank"
-              rel="noopener noreferrer"
               sx={{
                 borderRadius: 999,
                 px: 3.5,

@@ -5,7 +5,14 @@ import { LEGAL_NAV } from '../content/legal'
 import { RepoLink } from './RepoLink'
 
 const columns = [
-  { heading: 'Product', links: [{ label: 'Developers', href: '/dev' }] },
+  {
+    heading: 'Product',
+    links: [
+      { label: 'Developers', href: '/dev' },
+      // Served by nginx, not the SPA router, so it needs a full page load.
+      { label: 'Docs', href: '/docs/', external: true },
+    ],
+  },
   {
     heading: 'Legal',
     links: LEGAL_NAV.map((doc) => ({ label: doc.title, href: `/legal/${doc.slug}` })),
@@ -84,9 +91,15 @@ export function AppFooter() {
                   {col.heading}
                 </Typography>
                 {col.links.map((link) => (
-                  <Box key={link.href} component={RouterLink} to={link.href} sx={footerLinkSx}>
-                    {link.label}
-                  </Box>
+                  'external' in link ? (
+                    <Box key={link.href} component="a" href={link.href} sx={footerLinkSx}>
+                      {link.label}
+                    </Box>
+                  ) : (
+                    <Box key={link.href} component={RouterLink} to={link.href} sx={footerLinkSx}>
+                      {link.label}
+                    </Box>
+                  )
                 ))}
               </Stack>
             ))}
