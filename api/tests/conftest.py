@@ -281,7 +281,7 @@ def _hermetic_hostname_settings(monkeypatch):
 
     Hostname validation calls the real ``get_settings()``, which loads
     ``.env`` / ``.env.local`` / ``CAELUS_*`` vars. A configured ``CAELUS_DOMAIN``
-    makes ``_check_cname`` perform real CNAME lookups against arbitrary test
+    makes ``_check_dns_target`` perform real DNS lookups against arbitrary test
     hostnames (-> ``not_resolving``), which breaks any test that creates a
     deployment. ``monkeypatch.delenv`` is not enough — the value comes from the
     ``.env.local`` *file* — so override ``get_settings`` to a blank-``domain``

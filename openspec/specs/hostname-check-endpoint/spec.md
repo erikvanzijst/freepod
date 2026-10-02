@@ -8,7 +8,7 @@ status.
 
 ## Requirements
 ### Requirement: CNAME target endpoint exposes the platform domain
-The system MUST provide a public (unauthenticated) `GET /api/cname-target` endpoint that returns the platform's CNAME target domain (`settings.domain`) as a JSON string, so the UI can render environment-correct CNAME setup instructions. It MUST return an empty string when the domain is unconfigured.
+The system MUST provide a public (unauthenticated) `GET /api/cname-target` endpoint that returns the platform's domain (`settings.domain`) as a JSON string, so the UI can render environment-correct DNS setup instructions: the CNAME target a custom hostname points at, and the name whose addresses an apex's A/AAAA records carry. It MUST return an empty string when the domain is unconfigured.
 
 #### Scenario: Returns the configured domain
 - **WHEN** a client sends `GET /api/cname-target` and `settings.domain` is `"dev.freepod.eu"`
@@ -84,8 +84,8 @@ account.
 - **WHEN** an authenticated client sends `GET /api/hostnames/smtp.freepod.eu` and the hostname is in the reserved list
 - **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "smtp.freepod.eu", "reason": "reserved"}`
 
-#### Scenario: Custom hostname does not have a CNAME to the platform domain
-- **WHEN** an authenticated client sends `GET /api/hostnames/example.com` and the FQDN has no CNAME record pointing to `settings.domain`
+#### Scenario: Custom hostname does not point at the platform domain
+- **WHEN** an authenticated client sends `GET /api/hostnames/example.com` and the FQDN has neither a CNAME record pointing to `settings.domain` nor A/AAAA records that are all among `settings.domain`'s addresses
 - **THEN** the endpoint returns HTTP 200 with body `{"fqdn": "example.com", "reason": "not_resolving"}`
 
 ### Requirement: The public route list drops the hostname check

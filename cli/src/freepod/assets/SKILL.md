@@ -493,7 +493,10 @@ printf 'myapp\n' | freepod init
 
 A bare label becomes a subdomain of the platform (`myapp` → `myapp.{user}.freepod.eu`).
 A value containing a dot is taken as already qualified, for a custom domain
-pointed at the platform with a CNAME. Certificates are issued either way.
+pointed at the platform with a CNAME to `freepod.eu` — or, for a root domain
+such as `example.com`, with A/AAAA records carrying the addresses `freepod.eu`
+resolves to (flattened CNAME or ALIAS records work too; proxying must be off).
+Certificates are issued either way.
 
 This writes `.freepod.json`, which records the hostname and — after the first
 deploy — the deployment this directory belongs to. It is meant to be committed.

@@ -231,7 +231,7 @@ def test_an_unusable_hostname_re_prompts_with_its_reason():
         ("reserved", "reserved"),
         ("invalid", "not a valid hostname"),
         ("claimed", "another account holds"),
-        ("not_resolving", "CNAME"),
+        ("not_resolving", "A/AAAA"),
     ],
 )
 def test_every_platform_reason_has_a_reading(reason, expected):

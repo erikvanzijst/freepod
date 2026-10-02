@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import re
+import ipaddress
 import logging
+import re
 from uuid import UUID
 
 import dns.exception
@@ -13,6 +14,8 @@ from app.config import CaelusSettings, get_settings
 from app.models import DeploymentORM, UserORM
 from app.services.errors import HostnameException
 from app.services.reconcile_constants import DEPLOYMENT_STATUS_DELETED
+
+IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +124,7 @@ def require_valid_subdomain(
 def _authoritative_resolver(fqdn: str) -> dns.resolver.Resolver | None:
     """Build a resolver that queries the authoritative nameservers for *fqdn*
     directly, bypassing any recursive resolver's cache — including the negative
-    cache that would otherwise pin a "no such CNAME" answer for the zone's SOA
+    cache that would otherwise pin a "no such record" answer for the zone's SOA
     negative TTL after a failed check.
 
     Returns ``None`` when the authoritative servers can't be determined (so the
@@ -152,38 +155,71 @@ def _authoritative_resolver(fqdn: str) -> dns.resolver.Resolver | None:
     return resolver
 
 
-def _check_cname(fqdn: str, settings: CaelusSettings) -> None:
+def _lookup(fqdn: str, rdtype: str, resolver: dns.resolver.Resolver | None) -> list:
+    """The *rdtype* records at *fqdn*, empty when the answer is definitively
+    that there are none.
+
+    Asks *resolver* (the authoritative servers) and falls back to the system
+    resolver only when it cannot be reached; a negative answer from it is
+    final. Raises ``HostnameException("not_resolving")`` when nothing answers.
+    """
+    try:
+        source = resolver if resolver is not None else dns.resolver
+        return list(source.resolve(fqdn, rdtype))
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return []
+    except dns.exception.DNSException:
+        if resolver is None:
+            raise HostnameException("not_resolving")
+    # Authoritative servers unreachable (e.g. egress to port 53 is blocked).
+    try:
+        return list(dns.resolver.resolve(fqdn, rdtype))
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return []
+    except dns.exception.DNSException:
+        raise HostnameException("not_resolving")
+
+
+def _addresses(fqdn: str, resolver: dns.resolver.Resolver | None) -> set[IPAddress]:
+    return {
+        ipaddress.ip_address(record.address)
+        for rdtype in ("A", "AAAA")
+        for record in _lookup(fqdn, rdtype, resolver)
+    }
+
+
+def _check_dns_target(fqdn: str, settings: CaelusSettings) -> None:
+    """Require a custom hostname to reach the platform: a CNAME to
+    ``settings.domain``, or failing that, A/AAAA records that are all among
+    ``settings.domain``'s own addresses (an apex cannot carry a CNAME).
+    """
     if not settings.domain:
         return
 
-    # Wildcard subdomains are served by platform-managed A records, not a
-    # user-delegated CNAME, so they bypass the CNAME requirement entirely.
+    # Wildcard subdomains are served by platform-managed records, not
+    # user-delegated ones, so they bypass the check entirely.
     for domain in settings.wildcard_domains:
         if fqdn == domain or fqdn.endswith(f".{domain}"):
             return
 
-    # Query the zone's authoritative nameservers directly so a user who creates
-    # the CNAME *after* a first failed check is picked up immediately, instead
-    # of waiting out a recursive resolver's negative cache.
+    # Query the zone's authoritative nameservers directly so a record created
+    # *after* a first failed check is picked up immediately, instead of waiting
+    # out a recursive resolver's negative cache.
     resolver = _authoritative_resolver(fqdn)
-    try:
-        source = resolver if resolver is not None else dns.resolver
-        answer = source.resolve(fqdn, "CNAME")
-    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
-        # Definitive answer from the authoritative server: no matching CNAME.
-        raise HostnameException("not_resolving")
-    except dns.exception.DNSException:
-        if resolver is None:
+    cname = _lookup(fqdn, "CNAME", resolver)
+    if cname:
+        target = cname[0].target.to_text().rstrip(".").lower()
+        if target != settings.domain.lower():
             raise HostnameException("not_resolving")
-        # Couldn't reach the authoritative servers (e.g. egress to port 53 is
-        # blocked); fall back to the system resolver before giving up.
-        try:
-            answer = dns.resolver.resolve(fqdn, "CNAME")
-        except dns.exception.DNSException:
-            raise HostnameException("not_resolving")
+        return
 
-    target = answer[0].target.to_text().rstrip(".").lower()
-    if target != settings.domain.lower():
+    addresses = _addresses(fqdn, resolver)
+    if not addresses:
+        raise HostnameException("not_resolving")
+    # The platform's own records, from its authoritative servers too: the
+    # cluster's resolver may answer for the platform domain differently.
+    platform = _addresses(settings.domain, _authoritative_resolver(settings.domain))
+    if not addresses <= platform:
         raise HostnameException("not_resolving")
 
 
@@ -219,7 +255,7 @@ def require_valid_hostname_for_deployment(
 
     Raises ``HostnameException(reason=...)`` on the first failing check.
     Checks run in order: format → wildcard depth → reserved → availability →
-    DNS CNAME.
+    DNS target (CNAME, or A/AAAA records on the platform's addresses).
 
     Pass *exclude_deployment_id* when updating an existing deployment so its
     own hostname doesn't trigger an "in_use" conflict.
@@ -230,7 +266,7 @@ def require_valid_hostname_for_deployment(
     _check_wildcard_depth(fqdn, settings)
     _check_reserved(fqdn, settings)
     _check_available(session, fqdn, exclude_deployment_id=exclude_deployment_id)
-    _check_cname(fqdn, settings)
+    _check_dns_target(fqdn, settings)
 
 
 def check_hostname_availability(

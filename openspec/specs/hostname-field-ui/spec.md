@@ -21,20 +21,20 @@ The component MUST call `GET /api/hostnames/{fqdn}` with approximately 400ms deb
 - **WHEN** the hostname input is empty
 - **THEN** no API call is made and no status icon is shown
 
-### Requirement: HostnameField shows CNAME setup instructions in custom domain mode
-When the component is in custom FQDN mode, it MUST display static helper text below the input instructing the user to create a CNAME record pointing their domain to the platform's CNAME target domain (fetched from `GET /api/cname-target`, falling back to `freepod.eu` when empty/unavailable). This text MUST be visible as soon as custom mode is active, regardless of validation state.
+### Requirement: HostnameField shows DNS setup instructions in custom domain mode
+When the component is in custom FQDN mode, it MUST display static helper text below the input instructing the user to create a CNAME record pointing their domain to the platform's domain, or for a root domain, A/AAAA records with that domain's addresses (the domain is fetched from `GET /api/cname-target`, falling back to `freepod.eu` when empty/unavailable). This text MUST be visible as soon as custom mode is active, regardless of validation state.
 
 #### Scenario: Helper text visible immediately on switching to custom mode
 - **WHEN** the user switches to custom domain mode and `GET /api/cname-target` returned `"dev.freepod.eu"`
-- **THEN** helper text "Point your domain at Freepod: create a CNAME record → dev.freepod.eu" is visible below the input field
+- **THEN** helper text "Point your domain at Freepod: a CNAME record → dev.freepod.eu, or for a root domain (example.com), A/AAAA records with the same addresses as dev.freepod.eu" is visible below the input field
 
 #### Scenario: Helper text visible while typing in custom mode
 - **WHEN** the user is typing a custom FQDN
-- **THEN** the CNAME instruction helper text remains visible
+- **THEN** the DNS instruction helper text remains visible
 
 #### Scenario: Helper text not shown in wildcard mode
 - **WHEN** the component is in wildcard (free domain) mode
-- **THEN** no CNAME instruction helper text is displayed
+- **THEN** no DNS instruction helper text is displayed
 
 ### Requirement: UserValuesForm detects hostname fields and renders HostnameField
 The `UserValuesForm` component MUST detect schema fields where `field.title` (case-insensitive) equals `"hostname"` and render a `<HostnameField>` component instead of a standard `<TextField>` for those fields.
@@ -144,7 +144,8 @@ a check is in flight. The tooltip MUST name the cause:
 - `"reserved"` → "Hostname is reserved"
 - `"in_use"` → "Already in use"
 - `"claimed"` → the address belongs to another account
-- `"not_resolving"` → "Create a CNAME record pointing to <cname-target>", where
+- `"not_resolving"` → "Create a CNAME record pointing to <cname-target>, or for a root
+  domain, A/AAAA records with the same addresses as <cname-target>", where
   `<cname-target>` comes from `GET /api/cname-target`, falling back to `freepod.eu` when
   empty or unavailable
 
@@ -162,9 +163,9 @@ No message for `nested_subdomain` may remain: the reason is retired.
 - **WHEN** the API returns `{"fqdn": "photos.bob.freepod.eu", "reason": "claimed"}`
 - **THEN** a red Error icon is displayed with a tooltip saying the address belongs to another account
 
-#### Scenario: Not-resolving hostname shows CNAME instruction in tooltip
+#### Scenario: Not-resolving hostname shows DNS instruction in tooltip
 - **WHEN** the API returns `{"fqdn": "myapp.example.com", "reason": "not_resolving"}` and `GET /api/cname-target` returned `"dev.freepod.eu"`
-- **THEN** a red Error icon is displayed with tooltip text "Create a CNAME record pointing to dev.freepod.eu"
+- **THEN** a red Error icon is displayed with tooltip text "Create a CNAME record pointing to dev.freepod.eu, or for a root domain, A/AAAA records with the same addresses as dev.freepod.eu"
 
 #### Scenario: A retired reason is gone
 - **WHEN** the field's reason messages are examined

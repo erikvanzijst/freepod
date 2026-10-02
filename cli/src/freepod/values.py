@@ -34,8 +34,9 @@ HOSTNAME_REASONS = {
     "claimed": "that name is beneath a domain name another account holds",
     "in_use": "that name is already taken by another deployment",
     "not_resolving": (
-        "that name does not have a CNAME pointing at the platform yet — "
-        "custom domains need the DNS record in place first"
+        "that name does not point at the platform yet — a custom domain needs "
+        "a CNAME to the platform domain, or for a root domain, A/AAAA records "
+        "with the platform domain's addresses, in place first"
     ),
 }
 
@@ -109,7 +110,7 @@ def normalize_hostname(value: str, account_fqdn: Optional[str]) -> str:
     deploy beneath.
 
     A value containing a dot is taken as already fully qualified: it may be a
-    custom domain, which the platform supports via CNAME.
+    custom domain, which the platform supports via CNAME or A/AAAA records.
     """
     candidate = value.strip().lower().rstrip(".")
     if not candidate:

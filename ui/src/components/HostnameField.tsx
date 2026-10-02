@@ -174,12 +174,12 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
     }
   }
 
-  // The CNAME target differs per environment (e.g. dev.freepod.eu vs freepod.eu),
+  // The platform domain differs per environment (e.g. dev.freepod.eu vs freepod.eu),
   // so the not_resolving message is built from the backend-provided value.
   const cnameDomain = cnameTarget || DEFAULT_CNAME_TARGET
   const reasonLabel = (reason: string) =>
     reason === 'not_resolving'
-      ? `Create a CNAME record pointing to ${cnameDomain}`
+      ? `Create a CNAME record pointing to ${cnameDomain}, or for a root domain, A/AAAA records with the same addresses as ${cnameDomain}`
       : REASON_LABELS[reason] ?? reason
 
   const statusIcon = (() => {
@@ -264,7 +264,8 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
               fullWidth
             />
             <Typography variant="caption" color="text.secondary">
-              Point your domain at Freepod: create a CNAME record → {cnameDomain}
+              Point your domain at Freepod: a CNAME record → {cnameDomain}, or for a root domain
+              (example.com), A/AAAA records with the same addresses as {cnameDomain}
             </Typography>
           </>
         )}
