@@ -1,9 +1,18 @@
 import useBaseUrl from '@docusaurus/useBaseUrl'
-import catalog from '@site/src/data/catalog.json'
+import { usePluginData } from '@docusaurus/useGlobalData'
 
-/** Icon, category and summary for a catalog product, read from the synced catalog. */
+interface Product {
+  slug: string
+  name: string
+  description: string
+  category: string | null
+  icon: string
+}
+
+/** Icon, category and summary for a catalog product, read from products/catalog. */
 export default function ProductHeader({ slug }: { slug: string }) {
-  const product = catalog.find((p) => p.slug === slug)
+  const { products } = usePluginData('freepod-catalog') as { products: Product[] }
+  const product = products.find((p) => p.slug === slug)
   const icon = useBaseUrl(product?.icon ?? '')
   if (!product) throw new Error(`unknown catalog product: ${slug}`)
   return (

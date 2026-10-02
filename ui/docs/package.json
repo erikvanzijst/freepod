@@ -7,12 +7,10 @@
   },
   "scripts": {
     "start": "docusaurus start",
-    "build": "npm run catalog:check && docusaurus build",
+    "build": "docusaurus build",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear",
     "typecheck": "tsc",
-    "catalog:sync": "node scripts/sync-catalog.mjs",
-    "catalog:check": "node scripts/sync-catalog.mjs --check",
     "cli:reference": "uv run --project ../../cli python scripts/cli_reference.py",
     "cli:check": "uv run --project ../../cli python scripts/cli_reference.py --check"
   },

@@ -396,8 +396,8 @@ Keep it current in the same change as the code:
 - A change to `freepod` commands, options or help text: run `npm run
   cli:reference` in `ui/docs` and update any guide that shows the command.
   CI fails on a stale `developers/cli-reference.md`.
-- A change to `products/catalog/`: run `npm run catalog:sync`. A new product
-  needs `apps/products/<slug>.mdx`; CI fails without one.
+- A new product in `products/catalog/` needs `apps/products/<slug>.mdx`; the
+  docs build reads the catalog directly and fails without one.
 - A change to the developer runtime contract (port, replicas, networking,
   storage, limits) or to a user-visible UI flow: update the matching page.
 

@@ -2,12 +2,14 @@ import { themes as prismThemes } from 'prism-react-renderer'
 import type { Config } from '@docusaurus/types'
 import type * as Preset from '@docusaurus/preset-classic'
 import appLinks from './src/remark/app-links.mjs'
+import catalogPlugin, { catalogDir } from './src/plugins/catalog.mjs'
 
 const config: Config = {
   title: 'Freepod Docs',
   tagline: 'Documentation for Freepod',
   favicon: 'img/freepod.svg',
   clientModules: ['./src/fonts.ts'],
+  staticDirectories: ['static', `${catalogDir(__dirname)}/icons`],
 
   url: 'https://freepod.eu',
   baseUrl: '/docs/',
@@ -54,6 +56,7 @@ const config: Config = {
   ],
 
   plugins: [
+    catalogPlugin,
     [
       '@docusaurus/plugin-content-docs',
       {

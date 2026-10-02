@@ -395,6 +395,7 @@ if [[ "$TARGET" == "both" || "$TARGET" == "all" || "$TARGET" == "ui" ]]; then
     --tag "${REGISTRY}/ui:${TAG}" \
     --tag "${REGISTRY}/ui:${BRANCH_TAG}" \
     --tag "${REGISTRY}/ui:latest" \
+    --build-context catalog=./products/catalog \
     ./ui
 fi
 

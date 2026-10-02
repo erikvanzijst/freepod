@@ -6,6 +6,10 @@ COPY docs/package*.json ./
 RUN npm ci
 
 COPY docs/ ./
+# products/catalog, outside this build context: pass it as a named context,
+# `docker buildx build --build-context catalog=products/catalog ui`.
+COPY --from=catalog . /catalog/
+ENV CATALOG_DIR=/catalog
 RUN npm run build
 
 FROM node:24-alpine AS builder

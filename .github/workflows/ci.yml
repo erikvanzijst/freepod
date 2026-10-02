@@ -32,8 +32,8 @@ jobs:
           cd ui
           npm test
 
-  # The docs site (ui/docs): its generated CLI reference and catalog copy must
-  # match their sources, and the build fails on any broken link.
+  # The docs site (ui/docs): the generated CLI reference must match the CLI,
+  # and the build fails on a broken link or a catalog product without a page.
   docs:
     runs-on: ubuntu-latest
     permissions:
