@@ -1,0 +1,157 @@
+---
+sidebar_position: 1
+title: PostgreSQL
+---
+
+import Tabs from '@theme/Tabs'
+import TabItem from '@theme/TabItem'
+
+# PostgreSQL
+
+Every deployment has its own PostgreSQL 18 database and a role that owns it.
+
+## Connecting
+
+The connection details are in the environment:
+
+| Variable | Contents |
+| --- | --- |
+| `DATABASE_URL` | `postgresql://<user>:<password>@<host>:<port>/<database>` |
+| `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` | The same, for libpq-based tools |
+
+Read them from the environment; the database and role names are not predictable, and the platform can change the password.
+
+<Tabs groupId="language" queryString>
+<TabItem value="node" label="Node.js">
+
+```js title="pg"
+import pg from 'pg'
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+await pool.query('CREATE TABLE IF NOT EXISTS visits (id serial PRIMARY KEY)')
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python title="psycopg"
+import os
+import psycopg
+
+with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+    conn.execute("CREATE TABLE IF NOT EXISTS visits (id serial PRIMARY KEY)")
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go title="pgx"
+pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+if err != nil {
+	log.Fatal(err)
+}
+defer pool.Close()
+
+_, err = pool.Exec(ctx, "CREATE TABLE IF NOT EXISTS visits (id serial PRIMARY KEY)")
+```
+
+</TabItem>
+</Tabs>
+
+## Connection pooling
+
+Connections go through a pooler in transaction mode. A server connection is assigned per transaction, not per client connection. As a result:
+
+- Session state does not persist between transactions. Do not rely on session-level `SET`, `LISTEN`/`NOTIFY`, session-level advisory locks, temporary tables or `WITH HOLD` cursors.
+- Prepared statements are supported.
+- Up to 50 client connections per database. Transactions from all of them share a small pool of server connections, so keep transactions short.
+
+## Permissions
+
+The role owns its database. It can create schemas, tables, indexes and other objects, and install trusted extensions such as `pgcrypto`, `uuid-ossp` and `citext`.
+
+It cannot create other databases, install extensions that require superuser, or connect to other databases.
+
+## Settings
+
+These settings apply to every session:
+
+| Setting | Value | Can be changed per session |
+| --- | --- | --- |
+| `statement_timeout` | 30 s | Yes |
+| `idle_in_transaction_session_timeout` | 60 s | Yes |
+| `temp_file_limit` | 64 MB | No |
+
+Because of transaction pooling, change a setting inside the transaction that needs it, with `SET LOCAL`:
+
+```sql
+BEGIN;
+SET LOCAL statement_timeout = '5min';
+-- long-running statement
+COMMIT;
+```
+
+## Migrations
+
+There is no release phase. Run migrations in the start command, before the server starts. See [Runtime contract: Processes](../runtime.mdx#processes).
+
+## Size allowance
+
+The database may use 100 MiB.
+
+| Usage | Effect |
+| --- | --- |
+| 80 %, 90 % | The account owner receives an email |
+| 100 % | The database becomes read-only; writes fail with `cannot execute INSERT in a read-only transaction` |
+| 150 % | Connections are refused |
+
+Usage is measured every minute. When usage falls below a threshold, its restriction is lifted at the next measurement.
+
+Deleting rows does not reduce the database size; `VACUUM FULL` on the affected tables does. While the database is read-only, both are refused unless the transaction is explicitly read-write:
+
+```sql
+BEGIN;
+SET TRANSACTION READ WRITE;
+DELETE FROM events WHERE created_at < now() - interval '90 days';
+COMMIT;
+```
+
+`VACUUM FULL` cannot run inside a transaction block; run it in a session that has set `default_transaction_read_only = off`.
+
+```bash
+freepod db status
+```
+
+shows the database name, role and current usage. `--show-password` prints the password.
+
+## Access from your machine
+
+These commands need a [registered SSH key](../logs-and-debugging.md) and `ssh`:
+
+| Command | Effect |
+| --- | --- |
+| `freepod shell psql` | Runs `psql` against the database; no local client needed |
+| `freepod db shell` | Interactive `psql` session |
+| `freepod db proxy` | Forwards a local port to the database and prints a connection URL, for local tools and IDEs |
+
+`psql`, `pg_dump`, `pg_restore` and `pg_isready` run on the platform when invoked through `freepod shell`, whether or not the application image contains them.
+
+## Backups
+
+Freepod has processes in place to protect the platform's data and its users' data. It does not restore individual databases or buckets on request. Deployments whose data matters should keep their own backups.
+
+To back up:
+
+```bash
+freepod shell pg_dump > backup.sql
+freepod shell pg_dump -Fc > backup.dump        # custom format
+```
+
+Restore:
+
+```bash
+freepod shell psql < backup.sql
+freepod shell 'pg_restore -d "$PGDATABASE"' < backup.dump
+```
+
+Quote arguments that reference variables, such as `$PGDATABASE`, so they are expanded on the platform rather than by the local shell.

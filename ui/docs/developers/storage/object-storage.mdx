@@ -1,0 +1,148 @@
+---
+sidebar_position: 2
+title: Object storage
+---
+
+import Tabs from '@theme/Tabs'
+import TabItem from '@theme/TabItem'
+
+# Object storage
+
+Every deployment has one private, S3-compatible bucket.
+
+## Connecting
+
+The credentials are in the environment, under the names S3 SDKs read by default:
+
+| Variable | Contents |
+| --- | --- |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Access key for the bucket |
+| `AWS_ENDPOINT_URL`, `AWS_ENDPOINT_URL_S3` | S3 endpoint |
+| `AWS_REGION`, `AWS_DEFAULT_REGION` | Signing region |
+| `S3_BUCKET`, `BUCKET_NAME` | Bucket name |
+
+SDKs do not read the bucket name from the environment; pass `S3_BUCKET` explicitly.
+
+The endpoint requires path-style addressing (`https://<endpoint>/<bucket>/<key>`). boto3 uses it automatically for a custom endpoint; the AWS SDKs for JavaScript and Go need it set explicitly.
+
+The AWS SDK for JavaScript also needs `requestChecksumCalculation: 'WHEN_REQUIRED'`. Without it, presigned upload URLs carry a checksum of an empty body and every upload through them fails with `InvalidDigest`.
+
+<Tabs groupId="language" queryString>
+<TabItem value="node" label="Node.js">
+
+```js title="@aws-sdk/client-s3"
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+
+const s3 = new S3Client({ forcePathStyle: true, requestChecksumCalculation: 'WHEN_REQUIRED' })
+await s3.send(new PutObjectCommand({ Bucket: process.env.S3_BUCKET, Key: 'hello.txt', Body: 'hello' }))
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python title="boto3"
+import os
+import boto3
+
+s3 = boto3.client("s3")
+s3.put_object(Bucket=os.environ["S3_BUCKET"], Key="hello.txt", Body=b"hello")
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go title="aws-sdk-go-v2"
+cfg, err := config.LoadDefaultConfig(ctx)
+if err != nil {
+	log.Fatal(err)
+}
+client := s3.NewFromConfig(cfg, func(o *s3.Options) { o.UsePathStyle = true })
+
+_, err = client.PutObject(ctx, &s3.PutObjectInput{
+	Bucket: aws.String(os.Getenv("S3_BUCKET")),
+	Key:    aws.String("hello.txt"),
+	Body:   strings.NewReader("hello"),
+})
+```
+
+</TabItem>
+</Tabs>
+
+## Presigned URLs
+
+The endpoint is reachable from the internet, so a presigned URL created by the application can be given to a browser or another client, which then downloads or uploads directly. The data does not pass through the application.
+
+<Tabs groupId="language" queryString>
+<TabItem value="node" label="Node.js">
+
+```js title="@aws-sdk/s3-request-presigner"
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+
+const downloadUrl = await getSignedUrl(
+  s3,
+  new GetObjectCommand({ Bucket: process.env.S3_BUCKET, Key: 'report.pdf' }),
+  { expiresIn: 900 },
+)
+
+const uploadUrl = await getSignedUrl(
+  s3,
+  new PutObjectCommand({ Bucket: process.env.S3_BUCKET, Key: 'uploads/photo.jpg' }),
+  { expiresIn: 900 },
+)
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python title="boto3"
+download_url = s3.generate_presigned_url(
+    "get_object",
+    Params={"Bucket": os.environ["S3_BUCKET"], "Key": "report.pdf"},
+    ExpiresIn=900,
+)
+
+upload_url = s3.generate_presigned_url(
+    "put_object",
+    Params={"Bucket": os.environ["S3_BUCKET"], "Key": "uploads/photo.jpg"},
+    ExpiresIn=900,
+)
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go title="aws-sdk-go-v2"
+presigner := s3.NewPresignClient(client)
+
+download, err := presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+	Bucket: aws.String(os.Getenv("S3_BUCKET")),
+	Key:    aws.String("report.pdf"),
+}, s3.WithPresignExpires(15*time.Minute))
+
+upload, err := presigner.PresignPutObject(ctx, &s3.PutObjectInput{
+	Bucket: aws.String(os.Getenv("S3_BUCKET")),
+	Key:    aws.String("uploads/photo.jpg"),
+}, s3.WithPresignExpires(15*time.Minute))
+
+// download.URL, upload.URL
+```
+
+</TabItem>
+</Tabs>
+
+- A presigned URL is valid for at most 7 days.
+- The bucket accepts cross-origin requests from any origin for `GET`, `PUT`, `POST`, `DELETE` and `HEAD`, and exposes the `ETag` header, so browsers can upload directly, including multipart uploads.
+- Each request, including an upload through a presigned URL, must transfer its body within 60 seconds. For large files, use a multipart upload with parts small enough to finish within that time on the client's connection. See [Runtime contract: Timeouts and size limits](../runtime.mdx#timeouts-and-size-limits).
+
+## Restrictions
+
+- One bucket per deployment. Creating additional buckets is not permitted.
+- The bucket is private. Objects cannot be made public: bucket and object ACLs, bucket policies and anonymous access are not available. Serve objects through the application or with presigned URLs.
+- The bucket's name is assigned by the platform and cannot be changed or aliased.
+- The bucket's CORS configuration is set by the platform and cannot be changed.
+- User metadata (`x-amz-meta-*`) is stored and returned, but keys are returned with an initial capital: `owner` is returned as `Owner`.
+
+## Size allowance
+
+The bucket may hold 1 GiB and 1,000,000 objects. Writes beyond the allowance are refused.

@@ -1,0 +1,123 @@
+---
+sidebar_position: 9
+title: Authentication
+---
+
+import Tabs from '@theme/Tabs'
+import TabItem from '@theme/TabItem'
+
+# Authentication
+
+**Sign in with Freepod** puts a sign-in in front of a deployment. Visitors sign in with a Freepod account before their requests reach the application, and the application receives their identity in request headers. The application does not handle passwords, sessions or sign-in pages.
+
+It provides authentication only. Every Freepod account can sign in to every deployment that enables it, and registration is open. Deciding what a signed-in user may do is the application's responsibility.
+
+## Enabling
+
+Add `auth` to `user_values` in `.freepod.json` and release:
+
+```json title=".freepod.json"
+"user_values": {
+  "hostname": "myapp.alice.freepod.eu",
+  "auth": {
+    "enabled": true,
+    "public": ["^/$", "^/static/"]
+  }
+}
+```
+
+```bash
+freepod deploy --no-build
+```
+
+| Field | Meaning |
+| --- | --- |
+| `enabled` | Require sign-in |
+| `public` | Paths that do not require sign-in, as [RE2](https://github.com/google/re2/wiki/Syntax) regular expressions matched against the path without the query string. Up to 32 patterns. |
+
+## Identity headers
+
+Requests from a signed-in visitor carry:
+
+| Header | Value |
+| --- | --- |
+| `X-Freepod-User` | Account identifier. Stable for the lifetime of the account; use it as the key for users. |
+| `X-Freepod-Email` | Verified email address. It can change. |
+| `X-Freepod-Name` | Display name, percent-encoded UTF-8 |
+| `Remote-User`, `X-Forwarded-User` | Same as `X-Freepod-User` |
+| `X-Forwarded-Email` | Same as `X-Freepod-Email` |
+
+The platform removes these headers from every incoming request before adding its own, so on a deployment they always come from the platform, including on public paths. On a public path they are present only when the visitor is signed in.
+
+<Tabs groupId="language" queryString>
+<TabItem value="node" label="Node.js">
+
+```js
+const userId = req.headers['x-freepod-user']
+const email = req.headers['x-freepod-email']
+const name = decodeURIComponent(req.headers['x-freepod-name'] ?? '')
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+from urllib.parse import unquote
+
+user_id = request.headers.get("X-Freepod-User")
+email = request.headers.get("X-Freepod-Email")
+name = unquote(request.headers.get("X-Freepod-Name", ""))
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go
+userID := r.Header.Get("X-Freepod-User")
+email := r.Header.Get("X-Freepod-Email")
+name, _ := url.PathUnescape(r.Header.Get("X-Freepod-Name"))
+```
+
+</TabItem>
+</Tabs>
+
+## Requests without a session
+
+For a path that is not public:
+
+- A browser page load (`Sec-Fetch-Mode: navigate`, or an `Accept` header that includes `text/html`) is redirected to sign-in, and returns to the requested URL afterwards.
+- Any other request, including `fetch` calls and form posts, receives `401` and does not reach the application. A single-page application should handle `401` by navigating to the sign-in link.
+
+## Sign-in and sign-out links
+
+Paths under `/.freepod/auth/` are handled by the platform and never reach the application.
+
+| Link | Effect |
+| --- | --- |
+| `/.freepod/auth/login?rd=/path` | Signs in, then returns to `/path` |
+| `/.freepod/auth/logout?rd=/path` | Signs out of this deployment and ends the Freepod sign-in, then returns to `/path` |
+
+`rd` must be a path on the same host; any other value returns to `/`. After signing out, the next sign-in asks for credentials, so the logout link also lets a visitor switch accounts. Sessions on other deployments are not affected.
+
+## Sessions and consent
+
+- A session lasts up to 7 days and is valid only on the hostname it was issued for.
+- The first time someone signs in to a deployment, they are asked to agree to share their name, email address and account identifier with it. The question is not asked again for that deployment.
+- The session cookie never reaches the application. Do not set cookies whose names start with `__Host-freepod_`.
+
+## Health check
+
+The [health check](runtime.mdx#health-check) requests `/` without identity headers and without passing through sign-in. If `/` is not public, it must still answer with a 2xx or 3xx status when the identity headers are absent.
+
+## Local development
+
+Sign-in is not available outside Freepod. Send the headers yourself:
+
+```bash
+curl -H 'X-Freepod-User: dev-user-1' \
+     -H 'X-Freepod-Email: dev@example.com' \
+     -H 'X-Freepod-Name: Dev%20User' \
+     http://localhost:8080/
+```
+
+Only trust the headers when the application runs on Freepod. Do not put another proxy in front of it that passes client-supplied headers through.

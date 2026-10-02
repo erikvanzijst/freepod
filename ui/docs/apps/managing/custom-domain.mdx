@@ -1,0 +1,127 @@
+---
+sidebar_position: 3
+title: Custom domain
+---
+
+import Tabs from '@theme/Tabs'
+import TabItem from '@theme/TabItem'
+
+# Custom domain
+
+An app can use a domain you own instead of a hostname under your subdomain: either a name within the domain, such as `photos.example.com`, or the domain itself, such as `example.com`.
+
+## 1. Create the DNS record
+
+The record depends on the hostname:
+
+| Hostname | Record |
+| --- | --- |
+| A name within your domain, such as `photos.example.com` | `CNAME` to `freepod.eu` |
+| The domain itself, such as `example.com` | `ALIAS`, `ANAME` or flattened `CNAME` to `freepod.eu`, if your provider offers one |
+
+### A name within your domain
+
+Create a `CNAME` record:
+
+| Field | Value |
+| --- | --- |
+| Type | `CNAME` |
+| Name | The part in front of your domain, such as `photos` for `photos.example.com` |
+| Target | `freepod.eu` |
+| TTL | Any; the provider's default is fine |
+
+<Tabs groupId="dns-provider" queryString>
+<TabItem value="cloudflare" label="Cloudflare">
+
+1. In the Cloudflare dashboard, select the domain and open **DNS → Records**.
+2. Select **Add record**.
+3. **Type**: `CNAME`. **Name**: `photos`. **Target**: `freepod.eu`.
+4. Set **Proxy status** to **DNS only** (grey cloud). Freepod cannot use a proxied record.
+5. Select **Save**.
+
+</TabItem>
+<TabItem value="godaddy" label="GoDaddy">
+
+1. In your GoDaddy account, select the domain to open its **Domain Settings**, then select **DNS**.
+2. Select **Add New Record**.
+3. **Type**: `CNAME`. **Name**: `photos`. **Value**: `freepod.eu`.
+4. Select **Save**.
+
+</TabItem>
+<TabItem value="namecheap" label="Namecheap">
+
+1. In your Namecheap account, open **Domain List** and select **Manage** next to the domain.
+2. Open the **Advanced DNS** tab and select **Add New Record** under **Host Records**.
+3. **Type**: `CNAME Record`. **Host**: `photos`. **Value**: `freepod.eu.`
+4. Select the check mark, then **Save All Changes**.
+
+</TabItem>
+<TabItem value="ovhcloud" label="OVHcloud">
+
+1. In the OVHcloud Control Panel, go to **Web Cloud → Domain names**, select the domain and open the **DNS zone** tab.
+2. Select **Add an entry** and choose **CNAME**.
+3. **Subdomain**: `photos`. **Target**: `freepod.eu.` — including the final period; without it, OVHcloud appends your own domain.
+4. Select **Next**, then **Confirm**.
+
+</TabItem>
+<TabItem value="transip" label="TransIP">
+
+1. In the TransIP control panel, select **Domain** and the domain.
+2. Under **Advanced Domain Management**, open **DNS**. If the records are hidden, turn off the **TransIP settings** switch.
+3. Add a record. **Name**: `photos`. **Type**: `CNAME`. **Value**: `freepod.eu.`
+4. Save the changes.
+
+</TabItem>
+</Tabs>
+
+Other providers have the same fields under similar names. If the provider appends your domain to the target, end the target with a period: `freepod.eu.`
+
+### The domain itself
+
+A domain itself cannot have a `CNAME` record. Some DNS providers offer an equivalent that follows `freepod.eu` automatically, called `ALIAS`, `ANAME` or `CNAME` flattening. If your provider does not, the domain itself cannot be used with Freepod; use a name within it instead, such as `www.example.com`.
+
+<Tabs groupId="dns-provider" queryString>
+<TabItem value="cloudflare" label="Cloudflare">
+
+Cloudflare flattens a `CNAME` record on the domain itself automatically.
+
+1. In the Cloudflare dashboard, select the domain and open **DNS → Records**.
+2. Select **Add record**.
+3. **Type**: `CNAME`. **Name**: `@`. **Target**: `freepod.eu`.
+4. Set **Proxy status** to **DNS only** (grey cloud).
+5. Select **Save**.
+
+</TabItem>
+<TabItem value="namecheap" label="Namecheap">
+
+1. In your Namecheap account, open **Domain List** and select **Manage** next to the domain.
+2. Open the **Advanced DNS** tab. Remove any other records for **Host** `@` of type `A`, `AAAA`, `CNAME` or **URL Redirect**.
+3. Select **Add New Record** under **Host Records**. **Type**: `ALIAS Record`. **Host**: `@`. **Value**: `freepod.eu.`
+4. Select the check mark, then **Save All Changes**.
+
+</TabItem>
+<TabItem value="transip" label="TransIP">
+
+1. In the TransIP control panel, select **Domain** and the domain.
+2. Under **Advanced Domain Management**, open **DNS**. If the records are hidden, turn off the **TransIP settings** switch.
+3. Add a record. **Name**: `@`. **Type**: `ALIAS`. **Value**: `freepod.eu.`
+4. Save the changes.
+
+</TabItem>
+</Tabs>
+
+Remove any `A` and `AAAA` records for the domain itself that do not come from the `ALIAS` or flattened record.
+
+## 2. Use the hostname
+
+1. When launching the app, or with **Edit** on an existing app, select **Custom domain** under **Hostname** and enter the full hostname, such as `photos.example.com` or `example.com`.
+2. Select **Launch** or **Update**.
+
+Freepod checks the record with your domain's own DNS servers, so a new record is seen immediately, and refuses the hostname if the record is missing or points elsewhere. Once accepted, Freepod obtains an HTTPS certificate from Let's Encrypt and renews it automatically.
+
+Keep the record in place: updates to the app and certificate renewal depend on it.
+
+## Requirements
+
+- If your DNS provider can proxy traffic, such as Cloudflare's proxied records, turn proxying off for the record. A proxied record points to the provider's addresses instead of Freepod's.
+- If your domain has `CAA` records, they must allow `letsencrypt.org`.

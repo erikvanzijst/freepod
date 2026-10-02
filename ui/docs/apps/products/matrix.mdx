@@ -1,0 +1,50 @@
+---
+title: Matrix
+---
+
+import ProductHeader from '@site/src/components/ProductHeader'
+
+<ProductHeader slug="matrix" />
+
+Matrix is a chat network. This app runs a Matrix server ([Tuwunel](https://matrix-construct.github.io/tuwunel/)) with the Element web app at its hostname.
+
+## Settings
+
+| Setting | Meaning |
+| --- | --- |
+| Hostname | The server's address, and its name on the Matrix network: user IDs are `@name:<hostname>` |
+| Registration token | Required to create an account on the server. Share it only with people you want to invite. |
+| Federation | Lets users talk to people and join rooms on other Matrix servers. On by default. |
+
+The registration token can be changed with **Edit**; the new token applies to new registrations.
+
+:::warning
+
+Do not change the hostname after the server is in use. User IDs and rooms are tied to it, and other Matrix servers do not recognize the server under a new hostname. See [Hostname](../managing/hostname.md).
+
+:::
+
+## First sign-in
+
+1. Select **Open** on the app's card to open Element.
+2. Create an account, entering the registration token when asked.
+
+Each person who should have an account on the server creates one the same way, with the token.
+
+## Apps
+
+Element and Element X are available for desktop and mobile from [element.io/download](https://element.io/download). Sign in with `https://<hostname>` as the homeserver. On a phone, opening the hostname in a browser leads to the Element X app.
+
+Voice and video calls are not available.
+
+## File access
+
+Matrix does not offer file access.
+
+## Email
+
+Matrix does not send email.
+
+## Documentation
+
+[Tuwunel documentation](https://matrix-construct.github.io/tuwunel/)

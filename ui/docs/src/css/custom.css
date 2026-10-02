@@ -1,0 +1,103 @@
+/* Palette and type follow the app (ui/src/components/landing/landingTokens.ts). */
+
+:root {
+  --ifm-font-family-base: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', system-ui, sans-serif;
+  --ifm-heading-font-family: var(--ifm-font-family-base);
+  --ifm-font-family-monospace: 'Space Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --ifm-heading-font-weight: 600;
+  --ifm-code-font-size: 90%;
+
+  --ifm-color-primary: #2563eb;
+  --ifm-color-primary-dark: #1d55d4;
+  --ifm-color-primary-darker: #1b50c8;
+  --ifm-color-primary-darkest: #1642a5;
+  --ifm-color-primary-light: #3e76ed;
+  --ifm-color-primary-lighter: #4b7fee;
+  --ifm-color-primary-lightest: #719af2;
+
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #5b8cff;
+  --ifm-color-primary-dark: #3a75ff;
+  --ifm-color-primary-darker: #2a6aff;
+  --ifm-color-primary-darkest: #004dfa;
+  --ifm-color-primary-light: #7ca3ff;
+  --ifm-color-primary-lighter: #8caeff;
+  --ifm-color-primary-lightest: #bed1ff;
+
+  --ifm-background-color: #0b1020;
+  --ifm-background-surface-color: #10162b;
+  --ifm-navbar-background-color: #0b1020;
+  --ifm-footer-background-color: #070a14;
+  --ifm-font-color-base: #f4f6fb;
+  --ifm-color-emphasis-600: #a6b0cc;
+  --ifm-toc-border-color: rgba(148, 163, 184, 0.14);
+  --ifm-hr-border-color: rgba(148, 163, 184, 0.14);
+  --ifm-color-emphasis-300: rgba(148, 163, 184, 0.24);
+  --ifm-code-background: rgba(255, 255, 255, 0.06);
+
+  --docusaurus-highlighted-code-line-bg: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='dark'] .footer--dark {
+  --ifm-footer-background-color: #070a14;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.015em;
+}
+
+/* Landing page entry points. */
+.entry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.entry-card {
+  display: block;
+  padding: 1.5rem;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 12px;
+  background: var(--ifm-background-surface-color);
+  color: inherit;
+  transition: border-color 0.15s;
+}
+
+.entry-card:hover {
+  border-color: var(--ifm-color-primary);
+  color: inherit;
+  text-decoration: none;
+}
+
+.entry-card h2 {
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.entry-card p {
+  margin: 0;
+  color: var(--ifm-color-emphasis-600);
+}
+
+/* Product page header. */
+.product-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.product-header img {
+  border-radius: 10px;
+}
+
+.product-header__category {
+  font-size: 0.875rem;
+  color: var(--ifm-color-emphasis-600);
+}

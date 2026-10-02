@@ -3,6 +3,7 @@
 This repository is a monorepo with:
 - `api/`: FastAPI + SQLModel service with a Typer CLI for provisioning.
 - `ui/`: React + TypeScript + MUI frontend for the API.
+- `ui/docs/`: Docusaurus site for end users, served at `/docs/` from the UI image.
 - `tf/`: Terraform infrastructure for deploying to Kubernetes.
 
 ## Project Goals
@@ -330,6 +331,12 @@ Prose docs point at it; they do not restate it.
   procedure an agent follows for a recurring task. Harness-agnostic; check
   here for a skill before starting such a task.
 
+- `ui/docs/` — **the public user documentation** at `freepod.eu/docs/`: what
+  a customer can do and what the platform guarantees, for two audiences —
+  catalog app users (`apps/`) and developers using `freepod` (`developers/`).
+  It describes the product, never the implementation. See § User
+  Documentation.
+
 Capability directories under `openspec/specs/` are not immutable the way
 archive paths are: `openspec sync` can rename or merge them. Renaming or
 merging a capability directory is a link-breaking operation — update the prose
@@ -362,6 +369,35 @@ one file, with the others linking to it.
 Inline comments follow the same rule. Comment what the code does when that is
 not obvious; cite the decision (`# D6`, or the capability name) instead of
 re-explaining it. The design document holds the argument.
+
+## User Documentation
+
+`ui/docs/` is its own npm project (`npm start` serves it locally). It is
+public and customer-facing, so it follows rules the internal docs do not:
+
+- Neutral and factual. No marketing, mission statements, comparisons with
+  other providers, or politics.
+- Present tense only: document what exists. State limitations flatly; no
+  "yet", no roadmap.
+- Catalog pages say **app**; developer pages say **deployment**.
+- Never mention internal environments, internal hostnames, or internal
+  components (workers, reconcilers, charts, Kubernetes).
+- No price lists: link to the pricing page. Approximate figures that help a reader
+  estimate ("about €0.35 per month") are fine.
+- Language-specific code goes in Docusaurus tabs (`<Tabs groupId="language" queryString>`)
+  with Node.js, Python and Go, in that order (`node`, `python`, `go`), in a `.mdx`
+  page. Run each snippet against a real deployment before publishing it.
+- American English.
+
+Keep it current in the same change as the code:
+
+- A change to `freepod` commands, options or help text: run `npm run
+  cli:reference` in `ui/docs` and update any guide that shows the command.
+  CI fails on a stale `developers/cli-reference.md`.
+- A change to `products/catalog/`: run `npm run catalog:sync`. A new product
+  needs `apps/products/<slug>.mdx`; CI fails without one.
+- A change to the developer runtime contract (port, replicas, networking,
+  storage, limits) or to a user-visible UI flow: update the matching page.
 
 ## Database & Migrations
 - Migrations: Alembic in `api/alembic/` with `alembic.ini`.
@@ -426,6 +462,7 @@ for a self-evident line, delete it.
   runtime rather than embedding them — a constant baked into the client is
   wrong the first time the platform retunes it.
 - Update migrations for schema changes.
+- Update `ui/docs/` when user-visible behavior changes (§ User Documentation).
 - When behavior changes, the spec is the update that matters. Touch
   api/README.md, ui/README.md, cli/DEVELOPMENT.md, tf/README.md or AGENTS.md
   only when the *workflow* changes — how to run, build, test or operate the

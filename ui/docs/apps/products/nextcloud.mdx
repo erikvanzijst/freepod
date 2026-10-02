@@ -1,0 +1,41 @@
+---
+title: Nextcloud
+---
+
+import ProductHeader from '@site/src/components/ProductHeader'
+
+<ProductHeader slug="nextcloud" />
+
+Nextcloud stores and shares files, with desktop and mobile apps that sync them.
+
+## Settings
+
+| Setting | Meaning |
+| --- | --- |
+| Hostname | The app's address |
+| Admin password | The password of the `admin` account. At least 10 characters, not starting with a hyphen. |
+
+The admin password is used once, when the app first starts. To change it later, use Nextcloud's own settings: **Personal settings → Security**. Changing **Admin password** with **Edit** afterwards has no effect.
+
+## First sign-in
+
+1. Select **Open** on the app's card.
+2. Sign in with username `admin` and the admin password.
+
+The administrator creates accounts for other people in Nextcloud's **Accounts** settings.
+
+## Desktop and mobile apps
+
+Install the Nextcloud clients from [nextcloud.com/install](https://nextcloud.com/install/) and enter `https://<hostname>` as the server address.
+
+## File access
+
+[SFTP](../file-access.md) shows Nextcloud's data folder, read-only. To work with your files, use the Nextcloud apps or the web interface.
+
+## Email
+
+Nextcloud sends email, such as share notifications and password resets, from `nextcloud@freepod.eu`. See [Email](../email.md).
+
+## Documentation
+
+[Nextcloud user manual](https://docs.nextcloud.com/server/latest/user_manual/en/)
