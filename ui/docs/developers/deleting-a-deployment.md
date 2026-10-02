@@ -11,7 +11,7 @@ freepod delete
 
 deletes the project's deployment after asking for confirmation, and waits until the deletion has finished. `--yes` skips the confirmation, and is required when there is no terminal. `--no-wait` returns once the deletion has started.
 
-A deployment can also be deleted from the [dashboard](https://freepod.eu).
+A deployment can also be deleted from the [dashboard](app:/).
 
 Deleting a deployment:
 

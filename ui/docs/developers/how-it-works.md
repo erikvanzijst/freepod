@@ -51,7 +51,7 @@ A running application on Freepod. A deployment has:
 
 The first `freepod deploy` of a project creates the deployment. Until its first build is released, it serves a placeholder page.
 
-Deployments are also listed on the [dashboard](https://freepod.eu), where they appear as apps.
+Deployments are also listed on the [dashboard](app:/), where they appear as apps.
 
 ## Build
 

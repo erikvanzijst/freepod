@@ -1,6 +1,7 @@
 import { themes as prismThemes } from 'prism-react-renderer'
 import type { Config } from '@docusaurus/types'
 import type * as Preset from '@docusaurus/preset-classic'
+import appLinks from './src/remark/app-links.mjs'
 
 const config: Config = {
   title: 'Freepod Docs',
@@ -33,11 +34,13 @@ const config: Config = {
         // The classic preset's own docs instance serves the developer section;
         // the apps section is a second instance below.
         docs: {
+          remarkPlugins: [appLinks],
           path: 'developers',
           routeBasePath: 'developers',
           sidebarPath: './sidebars/developers.ts',
         },
         blog: {
+          remarkPlugins: [appLinks],
           path: 'blog',
           routeBasePath: 'blog',
           showReadingTime: false,
@@ -55,6 +58,7 @@ const config: Config = {
       '@docusaurus/plugin-content-docs',
       {
         id: 'apps',
+        remarkPlugins: [appLinks],
         path: 'apps',
         routeBasePath: 'apps',
         sidebarPath: './sidebars/apps.ts',
@@ -87,14 +91,12 @@ const config: Config = {
       logo: {
         alt: 'Freepod',
         src: 'img/freepod.svg',
-        href: '/docs/',
-        target: '_self',
       },
       items: [
         { type: 'docSidebar', docsPluginId: 'apps', sidebarId: 'apps', label: 'Using apps', position: 'left' },
         { type: 'docSidebar', sidebarId: 'developers', label: 'Developers', position: 'left' },
         { to: '/blog', label: 'Blog', position: 'left' },
-        { href: 'https://freepod.eu/', label: 'Open Freepod', position: 'right', target: '_self' },
+        { type: 'html', position: 'right', value: '<a class="navbar__item navbar__link" href="/">Open Freepod</a>' },
       ],
     },
     footer: {
@@ -108,12 +110,19 @@ const config: Config = {
           ],
         },
         {
+          title: 'Freepod',
+          items: [
+            { html: '<a class="footer__link-item" href="/">Home</a>' },
+            { html: '<a class="footer__link-item" href="/dev">Developers</a>' },
+          ],
+        },
+        {
           title: 'Legal',
           items: [
-            { label: 'Terms of Service', href: 'https://freepod.eu/legal/terms', target: '_self' },
-            { label: 'Privacy Policy', href: 'https://freepod.eu/legal/privacy', target: '_self' },
-            { label: 'Acceptable Use Policy', href: 'https://freepod.eu/legal/aup', target: '_self' },
-            { label: 'Data Processing Agreement', href: 'https://freepod.eu/legal/dpa', target: '_self' },
+            { html: '<a class="footer__link-item" href="/legal/terms">Terms of Service</a>' },
+            { html: '<a class="footer__link-item" href="/legal/privacy">Privacy Policy</a>' },
+            { html: '<a class="footer__link-item" href="/legal/aup">Acceptable Use Policy</a>' },
+            { html: '<a class="footer__link-item" href="/legal/dpa">Data Processing Agreement</a>' },
           ],
         },
         {

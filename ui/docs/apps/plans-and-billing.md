@@ -5,7 +5,7 @@ title: Plans and billing
 
 # Plans and billing
 
-Freepod is in beta. Prices and billing are subject to change; the [pricing page](https://freepod.eu/#pricing) shows current prices.
+Freepod is in beta. Prices and billing are subject to change; the [pricing page](app:/#pricing) shows current prices.
 
 ## Catalog apps
 

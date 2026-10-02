@@ -388,6 +388,8 @@ public and customer-facing, so it follows rules the internal docs do not:
   with Node.js, Python and Go, in that order (`node`, `python`, `go`), in a `.mdx`
   page. Run each snippet against a real deployment before publishing it.
 - American English.
+- Link to pages of the app (`/`, `/legal/…`, `/#pricing`) as `app:/path`, never as
+  `https://freepod.eu/…` (always production) or `/path` (gets `/docs/` prepended).
 
 Keep it current in the same change as the code:
 
