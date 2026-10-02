@@ -396,11 +396,11 @@ def _hostname_key(schema: Dict[str, Any]) -> Optional[str]:
 
 
 def _account_fqdn(api: ApiClient) -> Optional[str]:
-    """The account's domain name, tolerating its absence.
+    """The account's subdomain, tolerating its absence.
 
     Only needed to complete a bare label into an FQDN; a deploy whose hostname
     is already qualified should not fail because this read did. A create with no
-    domain name at all was already refused in preflight.
+    subdomain at all was already refused in preflight.
     """
     try:
         return subdomain_module.held(subdomain_module.read(api))
@@ -606,7 +606,7 @@ def create_deployment(
     if response.status_code == 400 and _json_code(response) == subdomain_module.DEPLOY_REFUSAL_CODE:
         raise FreepodError(
             f"the platform refused the deployment because this account does not "
-            f"have a domain name.\n"
+            f"have a subdomain.\n"
             f"  Choose one at {api.env.api_base}, then re-run."
         )
     if response.status_code == 400 and _json_detail(response) == tos.DEPLOY_REFUSAL:

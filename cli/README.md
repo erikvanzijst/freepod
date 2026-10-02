@@ -102,8 +102,8 @@ Owners and timestamps are not preserved.
 
 ## Hostnames
 
-Your account has its own domain name, `<you>.freepod.eu`, which you choose
-once in the browser before your first deploy. Every app is served underneath
+Your account has its own subdomain, `<you>.freepod.eu`, which you choose
+once in the browser before your first deploy. Every app is served under
 it: `init` asks for a hostname, and a bare name such as `myapp` becomes
 `myapp.<you>.freepod.eu`. To use a domain of your own, point a CNAME record at
 `freepod.eu` first — or, for a root domain such as `example.com`, A/AAAA
@@ -218,5 +218,6 @@ Supported: **Claude Code**, **Codex**, **OpenCode**, **Amp**, **Gemini CLI**, **
 
 ---
 
+Documentation: [freepod.eu/docs/developers](https://freepod.eu/docs/developers).
 Deployments are listed and managed at [freepod.eu](https://freepod.eu). Source
 and issues: [github.com/erikvanzijst/freepod](https://github.com/erikvanzijst/freepod).

@@ -181,7 +181,7 @@ class Platform:
         self.tos_version = tos_version
         self.tos_current = tos_current
         self.tos_post_status = tos_post_status
-        # Held by default: a domain name is a first-deploy precondition, not the
+        # Held by default: a subdomain is a first-deploy precondition, not the
         # subject of most of these tests.
         self.subdomain = (
             {"subdomain": "erik", "fqdn": "erik.freepod.eu", "domain": "freepod.eu"}

@@ -282,7 +282,7 @@ class ApiClient:
         """`GET /api/hostnames/{fqdn}` — always 200 with `{fqdn, usable, reason}`.
 
         Authenticated: the answer depends on who is asking, since an application
-        name is only usable beneath the caller's own domain name.
+        name is only usable beneath the caller's own subdomain.
 
         Advisory only: the name is claimed when the deployment is created, so a
         usable answer here is not a reservation. Note the check runs without

@@ -31,7 +31,7 @@ HOSTNAME_TITLE = "hostname"
 HOSTNAME_REASONS = {
     "invalid": "that is not a valid hostname",
     "reserved": "that name is reserved by the platform",
-    "claimed": "that name is beneath a domain name another account holds",
+    "claimed": "that name is under another account's subdomain",
     "in_use": "that name is already taken by another deployment",
     "not_resolving": (
         "that name does not point at the platform yet — a custom domain needs "
@@ -102,7 +102,7 @@ def is_hostname_property(spec: Dict[str, Any]) -> bool:
 
 
 def normalize_hostname(value: str, account_fqdn: Optional[str]) -> str:
-    """Lowercase, and complete a bare label beneath the account's domain name.
+    """Lowercase, and complete a bare label beneath the account's subdomain.
 
     An application is addressed at `<app>.<subdomain>.<domain>`, so a bare label
     is completed with the account's own name rather than with a platform domain
@@ -124,7 +124,7 @@ def hostname_label(name: str) -> Optional[str]:
     """The DNS label closest to `name`, or None when nothing usable remains.
 
     Dots become hyphens too: a dotted suggestion would be taken as fully
-    qualified rather than completed beneath the account's domain name.
+    qualified rather than completed beneath the account's subdomain.
     """
     label = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:63].rstrip("-")
     return label or None

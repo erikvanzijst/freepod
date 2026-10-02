@@ -1,4 +1,4 @@
-"""The domain name an account is addressed under, in deploy preflight.
+"""The subdomain an account is addressed under, in deploy preflight.
 
 The client never claims one: choosing it is a one-time, irreversible decision
 whose comprehensibility rests on showing a whole address, which a terminal
@@ -47,7 +47,7 @@ def test_a_create_without_a_domain_name_stops_in_preflight(make_api, tmp_path):
     with pytest.raises(FreepodError) as raised:
         preflight(api, "prod", root=tmp_path, echo=lambda _m: None, interactive=False)
 
-    assert "does not have a domain name" in str(raised.value)
+    assert "does not have a subdomain" in str(raised.value)
 
 
 def test_nothing_is_packed_or_built(make_api, tmp_path):
@@ -66,7 +66,7 @@ def test_the_refusal_is_actionable(make_api):
     api, _, _ = make_api(without_domain())
     message = explain(api.env)
 
-    assert "does not have a domain name" in message
+    assert "does not have a subdomain" in message
     assert "permanent" in message
     assert api.env.api_base in message
     assert "Nothing has been packed, built or deployed" in message
@@ -136,7 +136,7 @@ def test_the_platforms_own_refusal_is_recognized_by_its_code():
 
 def test_login_succeeds_without_a_domain_name(make_api, tmp_path, monkeypatch):
     """Authentication also serves automation and read-only use, neither of which
-    a domain name is a precondition for."""
+    a subdomain is a precondition for."""
     platform = without_domain()
     api, _, _ = make_api(platform)
 
