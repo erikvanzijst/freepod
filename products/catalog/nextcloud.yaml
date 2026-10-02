@@ -46,8 +46,7 @@ template:
         x-caelus-target: runtime
         x-caelus-sensitive: true
         description: 'The password for the account named admin, which owns your Nextcloud and
-          can invite others. At least 10 characters, not starting with a hyphen. Store it
-          somewhere safe: it won''t be shown again. It is set on first start only; to change it
+          can invite others. It is set on first start only; to change it
           later, use Nextcloud''s own settings (Personal settings → Security).'
     required:
     - host
