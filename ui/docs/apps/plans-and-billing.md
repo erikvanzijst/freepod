@@ -18,7 +18,7 @@ To change an app's plan, or for any question about payments, contact [support@fr
 
 ## Developer deployments
 
-Deployments made with the `freepod` command-line client are billed by usage: the CPU and memory they use. Each deployment has a minimum of about €0.35 per month, based on the resources reserved for it. Builds are counted as usage of the deployment they belong to. See the [developer documentation](/developers).
+Deployments made with the `freepod` command-line client are billed by usage. See [Usage and billing](/developers/usage-and-billing) in the developer documentation.
 
 ## Usage
 
