@@ -12,7 +12,7 @@ Both are created with the deployment and need no setup; their credentials are in
 
 - Each store belongs to exactly one deployment. It cannot be shared with or reached from another deployment.
 - There is no other storage: no persistent disk, no Redis, no MySQL.
-- Deleting a deployment deletes both stores. Access ends immediately and the data is destroyed after one day. See [Deleting a deployment](../deleting-a-deployment.md).
+- Deleting a deployment deletes both stores. Access ends immediately and the data is destroyed after one day. See [Deleting a deployment](../deployments-and-releases.md#deleting-a-deployment).
 
 ## Backups
 

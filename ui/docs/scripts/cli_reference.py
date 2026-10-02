@@ -19,7 +19,6 @@ OUTPUT = Path(__file__).resolve().parent.parent / "developers" / "cli-reference.
 
 HEADER = """\
 ---
-sidebar_position: 100
 title: CLI reference
 ---
 

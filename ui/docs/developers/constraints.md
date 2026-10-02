@@ -1,9 +1,8 @@
 ---
-sidebar_position: 14
-title: Limits
+title: Constraints
 ---
 
-# Limits
+# Constraints
 
 ## Platform
 

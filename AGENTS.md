@@ -398,6 +398,8 @@ Keep it current in the same change as the code:
   CI fails on a stale `developers/cli-reference.md`.
 - A new product in `products/catalog/` needs `apps/products/<slug>.mdx`; the
   docs build reads the catalog directly and fails without one.
+- The developer sidebar is listed explicitly in `ui/docs/sidebars/developers.ts`:
+  add a new developer page there, or it builds but appears in no menu.
 - A change to the developer runtime contract (port, replicas, networking,
   storage, limits) or to a user-visible UI flow: update the matching page.
 
