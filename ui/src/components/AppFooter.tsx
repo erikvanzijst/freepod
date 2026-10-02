@@ -1,5 +1,6 @@
 import { Box, Container, Stack, Typography } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
+import { isAppRoute } from '../utils/links'
 import { DISPLAY, fg, line, MONO, SANS } from './landing/landingTokens'
 import { LEGAL_NAV } from '../content/legal'
 import { RepoLink } from './RepoLink'
@@ -9,8 +10,7 @@ const columns = [
     heading: 'Product',
     links: [
       { label: 'Developers', href: '/dev' },
-      // Served by nginx, not the SPA router, so it needs a full page load.
-      { label: 'Docs', href: '/docs/', external: true },
+      { label: 'Docs', href: '/docs/' },
     ],
   },
   {
@@ -91,12 +91,12 @@ export function AppFooter() {
                   {col.heading}
                 </Typography>
                 {col.links.map((link) => (
-                  'external' in link ? (
-                    <Box key={link.href} component="a" href={link.href} sx={footerLinkSx}>
+                  isAppRoute(link.href) ? (
+                    <Box key={link.href} component={RouterLink} to={link.href} sx={footerLinkSx}>
                       {link.label}
                     </Box>
                   ) : (
-                    <Box key={link.href} component={RouterLink} to={link.href} sx={footerLinkSx}>
+                    <Box key={link.href} component="a" href={link.href} sx={footerLinkSx}>
                       {link.label}
                     </Box>
                   )

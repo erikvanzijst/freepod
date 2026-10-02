@@ -1,5 +1,6 @@
 import { Box, Button, Container, Stack, Typography } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
+import { isAppRoute } from '../../utils/links'
 import { DISPLAY, fg, line } from './landingTokens'
 import { useAuth } from '../../state/AuthContext'
 
@@ -81,7 +82,7 @@ export function LandingNav({ onSignup, links = defaultLinks }: LandingNavProps) 
             sx={{ display: { xs: 'none', md: 'flex' }, mr: 1 }}
           >
             {links.map((link) =>
-              link.href.startsWith('/') ? (
+              isAppRoute(link.href) ? (
                 <Box key={link.href} component={RouterLink} to={link.href} sx={navLinkSx}>
                   {link.label}
                 </Box>
