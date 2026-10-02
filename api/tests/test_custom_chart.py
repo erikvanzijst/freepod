@@ -466,16 +466,20 @@ def test_the_pod_must_stay_ready_before_counting_as_available():
     assert deployment["spec"]["minReadySeconds"] == 10
 
 
-def test_no_readiness_probe_is_declared():
-    """Deliberate, and worth asserting so it is not added casually.
+def test_readiness_probe_is_get_slash_on_the_http_port():
+    """The documented health check: `GET /` answers 2xx or 3xx.
 
-    Binding `$PORT` is a convention most applications follow, not a
-    requirement, and a headless workload would have nothing to probe. A real
-    readiness contract needs designing on its own terms rather than being
-    inferred from the HTTP case.
+    Supersedes the no-probe floor of add-deployment-logs D15 now that the
+    platform is web-only: it gates traffic and the rollout. No liveness or
+    startup probe, so an app that is slow on `/` is left running, out of
+    rotation, rather than restarted.
     """
     container = _app_container(_render(**BASE))
-    assert "readinessProbe" not in container
+    probe = container["readinessProbe"]
+    assert probe["httpGet"] == {"path": "/", "port": "http"}
+    assert probe["periodSeconds"] == 5
+    assert probe["timeoutSeconds"] == 5
+    assert probe["failureThreshold"] == 3
     assert "livenessProbe" not in container
     assert "startupProbe" not in container
 
