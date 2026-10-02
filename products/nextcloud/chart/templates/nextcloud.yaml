@@ -3,7 +3,23 @@ Nextcloud app (official apache image). Owns the data PVC via subPath mounts and
 carries the read-only SFTP sidecar (RWO volume shared in-pod). An init container
 blocks startup until Postgres answers. fsGroup 33 (www-data) so the app and the
 uid-33 SFTP user can both read the files.
+
+<release>-admin exists only for a standalone install. Under Caelus the tenant
+supplies NEXTCLOUD_ADMIN_PASSWORD as a required sensitive var, and this would be
+a second, unused copy of a credential that is write-only everywhere else.
 */}}
+{{- if not .Values.caelus.vars.secretName }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-admin
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  NEXTCLOUD_ADMIN_PASSWORD: {{ include "nextcloud.stableSecret" (dict "root" . "secret" "admin" "key" "NEXTCLOUD_ADMIN_PASSWORD" "value" .Values.admin.password) | quote }}
+---
+{{- end }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -13,7 +29,6 @@ metadata:
 type: Opaque
 data:
   admin-username: {{ .Values.admin.username | b64enc | quote }}
-  admin-password: {{ .Values.admin.password | b64enc | quote }}
   smtp-host: {{ .Values.smtp.host | b64enc | quote }}
   smtp-username: {{ .Values.smtp.username | b64enc | quote }}
   smtp-password: {{ .Values.smtp.password | b64enc | quote }}
@@ -80,7 +95,16 @@ spec:
             - name: http
               containerPort: 80
               protocol: TCP
+          # The tenant's vars come first: a later envFrom source overrides an
+          # earlier one, and no var may displace a credential or the config.
           envFrom:
+            {{- with .Values.caelus.vars.secretName }}
+            - secretRef:
+                name: {{ . | quote }}
+            {{- else }}
+            - secretRef:
+                name: {{ $.Release.Name }}-admin
+            {{- end }}
             # POSTGRES_DB/USER/PASSWORD -- same keys the nextcloud image expects.
             - secretRef:
                 name: {{ .Release.Name }}-db
@@ -93,9 +117,6 @@ spec:
             - name: NEXTCLOUD_ADMIN_USER
               valueFrom:
                 secretKeyRef: { name: {{ .Release.Name }}-app, key: admin-username }
-            - name: NEXTCLOUD_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef: { name: {{ .Release.Name }}-app, key: admin-password }
             {{- if .Values.smtp.host }}
             - name: SMTP_HOST
               valueFrom:
