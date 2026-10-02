@@ -47,12 +47,11 @@
         },
         "password": {
           "type": "string",
-          "minLength": 1
+          "description": "Empty auto-generates a stable password for a standalone install; under Caelus the NEXTCLOUD_ADMIN_PASSWORD var is used instead"
         }
       },
       "required": [
-        "username",
-        "password"
+        "username"
       ],
       "additionalProperties": false
     },
@@ -291,6 +290,16 @@
                 }
               },
               "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "vars": {
+          "type": "object",
+          "description": "Name of the Secret holding this deployment's runtime vars; the application reads it with envFrom.",
+          "properties": {
+            "secretName": {
+              "type": "string"
             }
           },
           "additionalProperties": true

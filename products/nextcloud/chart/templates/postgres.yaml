@@ -6,7 +6,7 @@ Caelus-native: the password is generated and stable, PGDATA is the conventional
 pgdata subdir, and the image runs as its own user. A StatefulSet is the right
 controller for a stateful datastore (stable identity + PVC lifecycle).
 */}}
-{{- $pw := include "nextcloud.postgresPassword" . -}}
+{{- $pw := include "nextcloud.stableSecret" (dict "root" . "secret" "db" "key" "POSTGRES_PASSWORD" "value" .Values.postgresql.auth.password) -}}
 apiVersion: v1
 kind: Secret
 metadata:

@@ -21,24 +21,24 @@ Resolved Nextcloud image tag: explicit image.tag wins, otherwise
 {{- end -}}
 
 {{/*
-Bundled-Postgres password: generated once, then stable across upgrades.
-  1. reuse the value already in the <release>-db Secret if present, so a helm
-     upgrade never rotates a live DB credential;
-  2. else honour an explicit postgresql.auth.password from values;
+A chart-generated credential, stable across upgrades:
+  1. reuse the value already in the <release>-<secret> Secret if present, so a
+     helm upgrade never rotates a live credential;
+  2. else honor an explicit value from values;
   3. else generate a fresh randAlphaNum.
 lookup returns empty under `helm template`/`--dry-run`, so a dry-run with no
-explicit password renders a throwaway value; the reconciler always performs real
-installs, so in practice the password generates once and is then reused. The
+explicit value renders a throwaway one; the reconciler always performs real
+installs, so in practice the value generates once and is then reused. The
 hasKey guard keeps `b64dec nil` from hard-failing if the Secret ever lacks the key.
 */}}
-{{- define "nextcloud.postgresPassword" -}}
-{{- $existing := lookup "v1" "Secret" .Release.Namespace (printf "%s-db" .Release.Name) -}}
+{{- define "nextcloud.stableSecret" -}}
+{{- $existing := lookup "v1" "Secret" .root.Release.Namespace (printf "%s-%s" .root.Release.Name .secret) -}}
 {{- $data := dict -}}
 {{- if $existing }}{{- $data = $existing.data -}}{{- end -}}
-{{- if hasKey $data "POSTGRES_PASSWORD" -}}
-{{- index $data "POSTGRES_PASSWORD" | b64dec -}}
-{{- else if .Values.postgresql.auth.password -}}
-{{- .Values.postgresql.auth.password -}}
+{{- if hasKey $data .key -}}
+{{- index $data .key | b64dec -}}
+{{- else if .value -}}
+{{- .value -}}
 {{- else -}}
 {{- randAlphaNum 24 -}}
 {{- end -}}

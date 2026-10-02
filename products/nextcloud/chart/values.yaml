@@ -13,10 +13,12 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
-# Admin bootstrap account (only consumed on first init).
+# Admin bootstrap account (only consumed on first init). Blank password
+# generates one into <release>-admin; a tenant-supplied NEXTCLOUD_ADMIN_PASSWORD
+# var overrides it.
 admin:
   username: admin
-  password: changeme
+  password: ""
 
 # Wrapper ingress. TLS injected per-deployment by the Caelus reconciler.
 ingress:
@@ -53,7 +55,7 @@ postgresql:
   auth:
     username: nextcloud
     # Empty = auto-generate a strong password on first install and reuse it from
-    # the <release>-db Secret on upgrade (see nextcloud.postgresPassword). Set a
+    # the <release>-db Secret on upgrade (see nextcloud.stableSecret). Set a
     # literal value only to pin an explicit password.
     password: ""
     database: nextcloud
@@ -80,5 +82,6 @@ caelus:
   ingress:
     enabled: false
     tls: {}
+  vars: {}
 
 sshSidecarImage: ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2
