@@ -34,7 +34,7 @@ import click
 
 from . import FreepodError
 from .api import ApiClient
-from .config import Environment
+from .config import Environment, login_command
 
 ACCEPTANCE_PATH = "/api/me/tos-acceptance"
 
@@ -205,7 +205,7 @@ def explain(status: str, env: Environment) -> str:
         return (
             f"this account has not accepted the Freepod terms, and there is no "
             f"terminal to ask on.\n"
-            f"  Run `freepod login --env {env.name}` from a terminal, or accept "
+            f"  Run `{login_command(env.name)}` from a terminal, or accept "
             f"them at {env.api_base}, then re-run."
         )
     return (

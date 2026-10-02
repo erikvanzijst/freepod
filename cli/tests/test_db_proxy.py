@@ -316,8 +316,8 @@ def test_db_proxy_explains_a_refused_forward(
     assert main(["db", "proxy", "--port", "5432"]) == EXIT_ERROR
     err = capsys.readouterr().err
     # Named as a destination refusal, and said not to be an authentication failure.
-    assert "not permitted" in err
-    assert "not an authentication failure" in err
+    assert "refused to forward" in err
+    assert "not an authentication problem" in err
 
 
 def test_db_proxy_does_not_misread_an_auth_failure_as_a_refused_forward(
@@ -341,7 +341,7 @@ def test_db_proxy_does_not_misread_an_auth_failure_as_a_refused_forward(
     assert exc.value.code == 255
     err = capsys.readouterr().err
     assert "Permission denied" in err
-    assert "not permitted" not in err
+    assert "refused to forward" not in err
 
 
 # --- pre-flight refusals, as with every other connecting command ---

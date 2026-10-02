@@ -152,7 +152,7 @@ Spec: [cli-environments](../openspec/specs/cli-environments/spec.md) · Rational
 | `log`    | Stream the project deployment's application output.                                                          | `-f`, `-n`, `-r`, `-t`              |
 | `db`     | Group holding the deployment's database. `db status` reports identity, credential (masked), and quota state. | `--show-password` (status)          |
 
-Global: `--env`, `--verbose`, `--quiet`, `--timeout`, `--version`, `-h/--help`.
+Global: `--env` (hidden from `--help`, as is `FREEPOD_ENV`), `--verbose`, `--quiet`, `--timeout`, `--version`, `-h/--help`.
 `--verbose` and `--quiet` together are a usage error.
 
 > **A negative flag needs `is_flag=True` and an inverted variable, not
@@ -550,7 +550,6 @@ that has never run.
 ```json
 {
   "version": 1,
-  "env": "prod",
   "deployment": {"id": "40bd8dea-…", "name": "custom-app-d8dtx4"},
   "user_values": {"hostname": "myapp.freepod.eu"}
 }
@@ -566,6 +565,11 @@ in a file that is committed and diffed.
 
 Spec: [cli-project-file](../openspec/specs/cli-project-file/spec.md) · Rationale:
 [add-freepod-cli](../openspec/changes/archive/2026-08-15-add-freepod-cli/design.md)
+
+`env` is written only for a non-default environment; absent means `prod`, so
+a production user's file never mentions one. `init` writes it when the
+environment it ran against is not `prod`, whether chosen by `--env` or by
+`FREEPOD_ENV`. An existing `"env": "prod"` is read and preserved as is.
 
 `env` is both a record and an instruction: it says which environment the
 recorded deployment was minted on, and it is the environment every command run

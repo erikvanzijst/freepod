@@ -8,9 +8,11 @@ anything a deploy would have to rewrite.
 ### Requirement: A project is described by a committed JSON file
 
 The client SHALL record a project's deployment intent in a file named `.freepod.json`
-at the project root, in JSON. The file SHALL carry a format version, the environment it
-belongs to, a deployment pointer, and the user-supplied configuration values for the
-deployment.
+at the project root, in JSON. The file SHALL carry a format version, a deployment pointer, and the user-supplied
+configuration values for the deployment. It SHALL name the environment it belongs to
+only when that is not the default (`prod`); a file that names none belongs to the
+default environment, and a file that names `prod` explicitly SHALL keep working and
+keep that entry.
 
 The file SHALL contain no credentials or other secrets, so that committing it to version
 control is safe and expected.
@@ -18,8 +20,9 @@ control is safe and expected.
 #### Scenario: The file describes a project before its first deploy
 
 - **WHEN** a project has been initialized but never deployed
-- **THEN** `.freepod.json` carries its format version, environment, and user values
+- **THEN** `.freepod.json` carries its format version and user values
 - **AND** its deployment pointer is empty
+- **AND** it names an environment only if the project is on a non-default one
 
 #### Scenario: The file is safe to commit
 
@@ -46,9 +49,9 @@ root for every subsequent operation.
 
 ### Requirement: The recorded environment selects the target
 
-The project file SHALL record the environment its deployment belongs to, and that record
-SHALL be the environment every command run from the project targets unless one is
-selected explicitly.
+The environment the project file records — the default one when it names none — SHALL
+be the environment every command run from the project targets unless one is selected
+explicitly.
 
 A command that targets another environment SHALL NOT be refused for disagreeing with the
 file. It SHALL be refused only where the recorded deployment would be stranded by

@@ -235,7 +235,7 @@ def test_an_interrupt_is_not_reported_as_a_crash(monkeypatch, capsys):
 def test_the_timeout_help_names_all_three_operations(capsys):
     main(["--help"])
     out = capsys.readouterr().out
-    assert "whichever operation is in progress" in out
+    assert "how long to wait for the current operation" in out
     for default in ("300s", "1800s", "600s"):
         assert default in out
 

@@ -41,15 +41,15 @@ from .config import (
     CUSTOM_PRODUCT_SLUG,
     DEFAULT_HTTP_TIMEOUT,
     ENVIRONMENTS,
-    ENV_VAR,
     LOGIN_WAIT_SECONDS,
     ROLLOUT_WAIT_SECONDS,
     cache_path_hint,
+    env_suffix,
     environment_names,
     resolve_environment,
     wait_seconds,
 )
-from .project import PROJECT_FILE, find_project_root, load
+from .project import DEFAULT_ENV, PROJECT_FILE, find_project_root, load
 from . import subdomain
 from .values import ValueCollector, hostname_label
 
@@ -121,10 +121,9 @@ class Context:
     "--env",
     "env_name",
     metavar="NAME",
-    help=f"target environment: {environment_names()} (default: the environment "
-    f"recorded in {PROJECT_FILE}, else {ENV_VAR}, else prod)",
+    hidden=True,
 )
-@click.option("--verbose", is_flag=True, help="show extra detail, including token claims")
+@click.option("--verbose", is_flag=True, help="show extra detail")
 @click.option(
     "--quiet",
     is_flag=True,
@@ -134,9 +133,9 @@ class Context:
     "--timeout",
     type=int,
     metavar="SECONDS",
-    help="override the wait for whichever operation is in progress — it means "
-    f"something different per command (login {LOGIN_WAIT_SECONDS}s, build "
-    f"{BUILD_WAIT_SECONDS}s, rollout {ROLLOUT_WAIT_SECONDS}s by default)",
+    help="how long to wait for the current operation before giving up (defaults: "
+    f"login {LOGIN_WAIT_SECONDS}s, build {BUILD_WAIT_SECONDS}s, rollout "
+    f"{ROLLOUT_WAIT_SECONDS}s)",
 )
 @click.version_option(package_name="freepod")
 @click.pass_context
@@ -170,12 +169,26 @@ def cli(
 
 
 @cli.command()
-@click.option("--loopback", "flow", flag_value="loopback", help="force the browser flow")
-@click.option("--device", "flow", flag_value="device", help="force the device flow")
-@click.option("--force", is_flag=True, help="ignore any cached credential and re-authenticate")
+@click.option(
+    "--loopback",
+    "flow",
+    flag_value="loopback",
+    help="sign in through a browser on this machine",
+)
+@click.option(
+    "--device",
+    "flow",
+    flag_value="device",
+    help="sign in by opening a URL on any device, for machines without a browser",
+)
+@click.option("--force", is_flag=True, help="sign in again even if a stored credential is valid")
 @click.pass_obj
 def login(context: Context, flow: Optional[str], force: bool) -> None:
-    """Authenticate against Freepod and cache the credential."""
+    """Sign in to Freepod and store the credential on this machine.
+
+    Opens a browser when one is available; otherwise prints a URL to open on
+    any device.
+    """
     session = context.session(force_flow=flow)
     session.authenticate(force_login=force)
 
@@ -183,8 +196,8 @@ def login(context: Context, flow: Optional[str], force: bool) -> None:
         me = api.me()
 
         context.say(
-            f"Authenticated as {me.get('email')} (user id {me.get('id')}) on "
-            f"'{context.env.name}'."
+            f"Signed in as {me.get('email')} (user id {me.get('id')})"
+            f"{env_suffix(context.env.name)}."
         )
         context.say(f"  flow       : {session.flow_used or 'none — reused a cached credential'}")
         context.say(f"  credential : {session.credential_source}")
@@ -209,23 +222,27 @@ def login(context: Context, flow: Optional[str], force: bool) -> None:
 @cli.command()
 @click.pass_obj
 def logout(context: Context) -> None:
-    """Discard the cached credential for the selected environment."""
+    """Remove the stored credential from this machine.
+
+    The credential stays valid until it expires or is revoked from your
+    account settings.
+    """
     name = context.env.name
+    scope = env_suffix(name, "for")
     if forget_environment(name):
-        context.say(f"Discarded the cached credential for '{name}' from {cache_path_hint()}.")
+        context.say(f"Removed the stored credential{scope} from {cache_path_hint()}.")
     else:
-        context.say(f"No cached credential for '{name}' in {cache_path_hint()}.")
+        context.say(f"No stored credential{scope} in {cache_path_hint()}.")
     context.say(
-        "Note: this only forgets the local copy. The credential remains valid on "
-        "the platform until it is revoked there — use the Keycloak account console "
-        "(Applications -> offline sessions)."
+        "Note: this only removes the local copy. The credential stays valid until "
+        f"you revoke it under Applications at {context.env.issuer}/account"
     )
 
 
 @cli.command()
 @click.pass_obj
 def whoami(context: Context) -> None:
-    """Report who the cached credential authenticates as."""
+    """Show the account you are signed in as."""
     session = context.session()
     # Never start a login from `whoami`: a command that merely reports identity
     # should say "not authenticated" rather than opening a browser.
@@ -238,7 +255,6 @@ def whoami(context: Context) -> None:
     click.echo(f"user id: {me.get('id')}")
     if me.get("is_admin"):
         click.echo("admin:   yes")
-    context.say(f"Environment '{context.env.name}' ({context.env.api_base}).")
     if context.verbose and session.access_token:
         context.say(format_claims(session.access_token))
 
@@ -247,12 +263,17 @@ def whoami(context: Context) -> None:
 @click.option(
     "--force",
     is_flag=True,
-    help=f"overwrite an existing {PROJECT_FILE}, discarding its deployment pointer",
+    help=f"overwrite an existing {PROJECT_FILE}; its deployment keeps running "
+    "but is no longer linked to this project",
 )
 @click.pass_obj
 def init(context: Context, force: bool) -> None:
     """Set up the current directory as a Freepod project.
 
+    Asks for the project's settings, such as its hostname, and writes them to
+    .freepod.json, which is meant to be committed. Nothing is deployed until
+    you run `freepod deploy`.
+    \f
     Reads only. No deployment is created — that is `freepod deploy`'s job, so
     that a failure writing the project file cannot leave behind a provisioned
     resource the user cannot see.
@@ -263,8 +284,8 @@ def init(context: Context, force: bool) -> None:
     if target.exists() and not force:
         raise UsageError(
             f"{target} already exists. Re-run with --force to discard it and start "
-            f"over — note that this also discards the deployment pointer, so the "
-            f"existing deployment would be orphaned.\n"
+            f"over. Its deployment would keep running, but this project could no "
+            f"longer update or delete it.\n"
             f"  To change a value, edit {PROJECT_FILE} directly; `freepod deploy` "
             f"asks for anything required that is missing."
         )
@@ -272,9 +293,9 @@ def init(context: Context, force: bool) -> None:
         existing = project.load(root)
         if existing.deployment_name:
             context.say(
-                f"Warning: --force discards the pointer to deployment "
-                f"'{existing.deployment_name}'. It will keep running, and this "
-                f"project will no longer be able to update it."
+                f"Warning: --force unlinks deployment "
+                f"'{existing.deployment_name}' from this project. It keeps "
+                f"running, and this project can no longer update it."
             )
 
     session = context.session()
@@ -301,7 +322,8 @@ def init(context: Context, force: bool) -> None:
                 f"platform problem, please report it."
             )
 
-        context.say(f"Product '{product.get('name')}' (template {template.get('id')}).")
+        if context.verbose:
+            context.say(f"Product '{product.get('name')}' (template {template.get('id')}).")
 
         collector = ValueCollector(
             schema,
@@ -311,13 +333,17 @@ def init(context: Context, force: bool) -> None:
         )
         values = collector.collect()
 
-    new = project.Project(root=root, env=context.env.name, user_values=values)
+    # The file names an environment only when it is not the default, so a
+    # project initialized against `FREEPOD_ENV=dev` still stays on dev.
+    declared = None if context.env.name == DEFAULT_ENV else context.env.name
+    new = project.Project(root=root, env=declared, user_values=values)
     new.save()
 
     # The path is the result; everything else is commentary.
     click.echo(str(target))
     context.say(
-        f"Initialized for '{context.env.name}'. Run `freepod deploy` to build and release."
+        f"Initialized{env_suffix(context.env.name, 'for')}. Run `freepod deploy` "
+        f"to build and release."
     )
 
 
@@ -325,35 +351,39 @@ def init(context: Context, force: bool) -> None:
 @click.option(
     "--recreate",
     is_flag=True,
-    help="discard the recorded deployment pointer and create a new deployment",
+    help="create a new deployment instead of updating the current one, which "
+    "keeps running",
 )
+# A negated `is_flag`, not `flag_value=False`; see cli/DEVELOPMENT.md.
 @click.option(
     "--no-gitignore",
     "no_gitignore",
     is_flag=True,
-    help="pack the tree without applying .gitignore rules",
+    help="also upload files that .gitignore excludes",
 )
 @click.option(
     "--no-build",
     "no_build",
     is_flag=True,
-    help="release the image already running, without packing or building",
+    help="redeploy the current image without building, e.g. to apply staged vars",
 )
 @click.pass_obj
 def deploy(context: Context, recreate: bool, no_gitignore: bool, no_build: bool) -> None:
     """Build the current project and release it to its deployment.
 
+    Uploads the project directory, builds an image from it and releases it.
+    The first deploy also creates the deployment, which shows a placeholder
+    page until the first build is live. Settings are checked before anything
+    is uploaded, so most mistakes are reported in seconds rather than after a
+    build.
+
+    The live address is the only output on stdout; build output and progress
+    go to stderr, so `URL=$(freepod deploy)` captures the address.
+    \f
     Preflight, then — on a first deploy — create the deployment, then pack,
     upload, build and release, in that order: everything a cheap read can refuse
     is refused before anything is created or built, and a build always belongs
-    to a deployment that already exists. Until the first build is released, a
-    new deployment serves the product's placeholder page.
-
-    `--no-gitignore` is an `is_flag` option negated here rather than a
-    `flag_value=False` one, because click stopped honoring a `True` default
-    alongside a `False` flag value in 8.3 and silently inverted it — which is
-    the kind of default that fails by packing more than the user asked for.
-    `tests/test_cli.py` pins it.
+    to a deployment that already exists.
     """
     if no_build and recreate:
         raise UsageError("--no-build releases an existing deployment; --recreate makes a new one")
@@ -399,23 +429,23 @@ def deploy(context: Context, recreate: bool, no_gitignore: bool, no_build: bool)
     "-y",
     "assume_yes",
     is_flag=True,
-    help="skip the confirmation prompt — the only way to delete unattended",
+    help="skip the confirmation prompt (required when not run from a terminal)",
 )
 @click.option(
     "--no-wait",
     "no_wait",
     is_flag=True,
-    help="return once the teardown is scheduled instead of following it",
+    help="return once the deletion has started instead of waiting for it to finish",
 )
 @click.pass_obj
 def delete(context: Context, assume_yes: bool, no_wait: bool) -> None:
     """Delete this project's deployment and everything it stores.
 
-    The teardown is followed to completion by default: the hostname stays
-    claimed until it lands, so a `delete` that returned early would collide
-    with itself on the next `freepod deploy`.
+    Asks for confirmation first, then waits until the deletion has finished;
+    the hostname cannot be reused before then.
 
-    Nothing is written to stdout — a deletion has no result to pipe.
+    .freepod.json keeps its settings, so a later `freepod deploy` creates a
+    new deployment under the same hostname.
     """
     session = context.session()
     session.authenticate(interactive=False)
@@ -448,12 +478,8 @@ def delete(context: Context, assume_yes: bool, no_wait: bool) -> None:
 def builds(context: Context, limit: int, show_all: bool) -> None:
     """List this project's builds, most recent first.
 
-    A build belongs to the project's deployment, so these are that
-    deployment's builds and no others — including after the deployment has been
-    deleted. The build the deployment is running is marked.
-
-    The table is the result and goes to stdout; `--verbose` prints image
-    references in full rather than abbreviating their digests.
+    The build the deployment is currently running is marked with `*`.
+    `--verbose` shows image references in full.
     """
     if limit <= 0 and not show_all:
         raise UsageError("--limit must be a positive number of builds")
@@ -499,14 +525,12 @@ def builds(context: Context, limit: int, show_all: bool) -> None:
 @click.option("--all", "show_all", is_flag=True, help="show every release, ignoring --limit")
 @click.pass_obj
 def releases(context: Context, limit: int, show_all: bool) -> None:
-    """List this project's deployment's releases, most recent first.
+    """List this project's releases, most recent first.
 
-    A release is one rollout of one deployment, so this needs a project that
-    has deployed — unlike `freepod builds`, there is no account-wide listing to
-    fall back on. The release the deployment is currently running is marked.
-
-    The table is the result and goes to stdout; `--verbose` prints image
-    references in full rather than abbreviating their digests.
+    A release is one rollout of the deployment: a new build, changed vars, or
+    changed settings. The release currently running is marked with `*`, and
+    its number is what `freepod log -r` takes. `--verbose` shows image
+    references in full.
     """
     if limit <= 0 and not show_all:
         raise UsageError("--limit must be a positive number of releases")
@@ -542,8 +566,8 @@ def releases(context: Context, limit: int, show_all: bool) -> None:
 
     if not records:
         context.say(
-            f"Deployment '{project_file.deployment_name}' has no releases on "
-            f"'{context.env.name}'."
+            f"Deployment '{project_file.deployment_name}' has no releases"
+            f"{env_suffix(context.env.name)}."
         )
         return
 
@@ -605,8 +629,8 @@ def _refuse_unreachable(deployment, project_file, env_name) -> dict:
     name = project_file.deployment_name
     if deployment is None:
         raise FreepodError(
-            f"deployment '{name}' no longer exists on '{env_name}' — it may have "
-            f"been deleted. Run `freepod deploy` to create a new one."
+            f"deployment '{name}' no longer exists{env_suffix(env_name)} — it may "
+            f"have been deleted. Run `freepod deploy` to create a new one."
         )
     status = deployment.get("status")
     if status not in deploy_module.SETTLED_STATUSES:
@@ -661,8 +685,7 @@ def _connection_setup(
             if database is None:
                 raise FreepodError(
                     f"deployment '{project_file.deployment_name}' has no database, so "
-                    f"there is nothing to connect to. The platform provisions one for "
-                    f"products with relational storage; check `freepod db status`."
+                    f"there is nothing to connect to. Check `freepod db status`."
                 )
         edge = api.ssh_edge()
         host, port, known_hosts = ssh_module.pin_edge(edge)
@@ -787,26 +810,25 @@ def _connection_url(database: dict, host: str, port: int) -> str:
 
 @cli.group()
 def var() -> None:
-    """Read and change the environment your application runs with.
+    """Manage your app's environment variables.
 
-    A var is one environment variable in the running container. Setting one
-    rolls the deployment, because that is what makes it take effect; `--stage`
-    records it for the next rollout instead.
+    Setting or removing a var redeploys the app so the change takes effect;
+    `--stage` saves the change for the next deploy instead.
 
-    A var marked secret is write-only: the platform never returns it, so it
-    lists with its value hidden and no command can print it back.
+    A var set with `--secret` is write-only: it is listed with its value
+    hidden, and no command can print it back.
     """
 
 
 @var.command("list")
-@click.option("--json", "as_json", is_flag=True, help="emit the platform's wire shape")
+@click.option("--json", "as_json", is_flag=True, help="print the vars as JSON")
 @click.pass_obj
 def var_list(context: Context, as_json: bool) -> None:
     """List this deployment's vars.
 
-    `--json` prints exactly what the platform returned, which is what makes it
-    safe to pipe back into `freepod var set -f -`: a secret comes back with no
-    value, and an entry with no value leaves that var alone.
+    The `--json` output can be piped back into `freepod var set -f -`. Secrets
+    appear without a value, and an entry without a value leaves that var
+    unchanged.
     """
     project_file = _project_deployment(context)
     session = context.session()
@@ -824,7 +846,7 @@ def var_list(context: Context, as_json: bool) -> None:
     else:
         context.say("No vars are set.")
     if payload.get("pending"):
-        context.say("Some vars are not running yet. Apply them with `freepod deploy --no-build`.")
+        context.say("Some vars are not applied yet. Apply them with `freepod deploy --no-build`.")
 
 
 @var.command("get")
@@ -833,8 +855,7 @@ def var_list(context: Context, as_json: bool) -> None:
 def var_get(context: Context, key: str) -> None:
     """Print one var's value.
 
-    A secret has no value to print, and the command says so rather than
-    printing something that could be mistaken for one.
+    Fails for a secret var, whose value cannot be read back.
     """
     project_file = _project_deployment(context)
     session = context.session()
@@ -847,7 +868,7 @@ def var_get(context: Context, key: str) -> None:
     if entry is None:
         raise UsageError(f"{key} is not set on this deployment")
     if "value" not in entry:
-        raise UsageError(f"{key} is secret, so the platform does not return its value")
+        raise UsageError(f"{key} is secret, so its value cannot be read back")
     click.echo(entry["value"])
 
 
@@ -859,9 +880,10 @@ def var_get(context: Context, key: str) -> None:
     "--file",
     "source",
     metavar="FILE",
-    help="read vars from FILE (wire shape or KEY=VALUE lines); '-' is stdin",
+    help="read vars from FILE: KEY=VALUE lines, or JSON as printed by "
+    "`var list --json`; '-' reads stdin",
 )
-@click.option("--stage", is_flag=True, help="record the vars without rolling the deployment")
+@click.option("--stage", is_flag=True, help="save the vars without redeploying")
 @click.pass_obj
 def var_set(
     context: Context,
@@ -870,13 +892,13 @@ def var_set(
     source: Optional[str],
     stage: bool,
 ) -> None:
-    """Set vars and roll the deployment so they take effect.
+    """Set vars and redeploy so they take effect.
 
     Accepts `KEY=VALUE` pairs, a bare `KEY` to be prompted for without echo,
-    or `-f FILE`. Several vars in one invocation produce one rollout.
+    or `-f FILE`. Several vars in one command are applied in one redeploy.
 
-    `--stage` records them for the next rollout instead, which is the only
-    form that works while a rollout is already in flight.
+    `--stage` saves them without redeploying, which also works while a deploy
+    is in progress. `freepod deploy --no-build` applies staged vars.
     """
     if not assignments and not source:
         raise UsageError("give KEY=VALUE pairs, a bare KEY to be prompted for, or -f FILE")
@@ -914,10 +936,10 @@ def var_set(
 
 @var.command("rm")
 @click.argument("keys", nargs=-1, required=True)
-@click.option("--stage", is_flag=True, help="record the removal without rolling the deployment")
+@click.option("--stage", is_flag=True, help="save the removal without redeploying")
 @click.pass_obj
 def var_rm(context: Context, keys: tuple, stage: bool) -> None:
-    """Remove vars and roll the deployment.
+    """Remove vars and redeploy.
 
     Removing a var that is not set succeeds and changes nothing.
     """
@@ -950,23 +972,23 @@ def _finish_var_write(
     """
     subject = "var" if count == 1 else "vars"
     if stage:
-        context.say(f"Recorded {count} {subject}, not applied yet.")
+        context.say(f"Saved {count} {subject}, not applied yet.")
         context.say("Apply them with `freepod deploy --no-build`.")
         return
     if not payload.get("pending"):
-        context.say(f"Recorded {count} {subject}; nothing changed, so nothing to roll.")
+        context.say(f"Saved {count} {subject}; nothing changed, so nothing to redeploy.")
         return
 
     if deployment.get("status") not in deploy_module.SETTLED_STATUSES:
         raise FreepodError(
             f"deployment '{deployment.get('name')}' is {deployment.get('status')}, "
-            f"so it cannot be rolled right now.\n"
-            f"  The {subject} {'is' if count == 1 else 'are'} recorded. Apply "
+            f"so it cannot be redeployed right now.\n"
+            f"  The {subject} {'is' if count == 1 else 'are'} saved. Apply "
             f"{'it' if count == 1 else 'them'} with `freepod deploy --no-build` "
-            f"once the rollout finishes, or pass --stage to skip this step."
+            f"once the current rollout finishes, or pass --stage to skip this step."
         )
 
-    context.say(f"Recorded {count} {subject}. Rolling the deployment...")
+    context.say(f"Saved {count} {subject}. Redeploying...")
     try:
         address = deploy_module.release_current(
             api,
@@ -979,7 +1001,7 @@ def _finish_var_write(
         # flattened into the generic failure code by this re-raise.
         raise type(error)(
             f"{error}\n"
-            f"  The vars are recorded. Re-run with --stage to skip the rollout, "
+            f"  The vars are saved. Re-run with --stage to skip the redeploy, "
             f"or apply them later with `freepod deploy --no-build`."
         ) from error
     click.echo(address)
@@ -989,15 +1011,13 @@ def _finish_var_write(
 def db() -> None:
     """Your app's PostgreSQL database.
 
-    `db status` reports which database and role your deployment owns, its
-    password, and how much of its allowance it is using. `db shell` opens an
-    interactive session in the database, running server-side. `db proxy`
-    forwards a local port to it and prints a connection URL for the local end.
+    `db status` shows the database and role name, the password, and storage
+    usage. `db shell` opens an interactive psql session. `db proxy` forwards a
+    local port to the database and prints a connection URL for it.
 
-    The database is reachable from your running app, which already has these
-    details in its environment. It is not reachable from this machine directly,
-    so `db status` reports no address; `db proxy` and `db shell` reach it over
-    the SSH edge instead.
+    Your running app already has the connection details in its environment
+    (`DATABASE_URL`, `PG*`). The database is not reachable from this machine
+    directly; `db shell` and `db proxy` connect over SSH.
     """
 
 
@@ -1005,12 +1025,9 @@ def db() -> None:
 @click.option("--show-password", is_flag=True, help="print the password instead of masking it")
 @click.pass_obj
 def db_status(context: Context, show_password: bool) -> None:
-    """Report this deployment's database and how much room is left.
+    """Show this deployment's database, role, password and storage usage.
 
-    The password is masked unless you ask for it. Nothing is withheld from you
-    — the platform returns it to the owner and you are the owner — but the
-    usual reason to run this is to ask how much room is left, and that should
-    not write a live credential into your scrollback.
+    The password is masked unless `--show-password` is given.
     """
     project_file = _project_deployment(context)
     session = context.session()
@@ -1032,12 +1049,11 @@ def db_status(context: Context, show_password: bool) -> None:
 @db.command("shell")
 @click.pass_obj
 def db_shell(context: Context) -> None:
-    """Open an interactive session in this deployment's database.
+    """Open an interactive psql session in this deployment's database.
 
-    The session runs server-side, in the platform's own PostgreSQL client, so
-    nothing needs to be installed on this machine. It reaches the database even
-    when the application container is down, because the platform connects, not
-    your app. The command's exit code is the session's.
+    psql runs on the platform, so no PostgreSQL client is needed on this
+    machine, and the session works even when your app is down. Exits with
+    psql's exit code.
     """
     project_file = _project_deployment(context)
     args = _connection_args(context, project_file, command=["psql"], require_database=True)
@@ -1049,19 +1065,16 @@ def db_shell(context: Context) -> None:
     "--port",
     type=int,
     metavar="PORT",
-    help="the local port to bind (default: a free one, preferring the conventional "
-    f"{CONVENTIONAL_DB_PORT})",
+    help=f"the local port to listen on (default: {CONVENTIONAL_DB_PORT}, or a free "
+    "port if that one is in use)",
 )
 @click.pass_obj
 def db_proxy(context: Context, port: Optional[int]) -> None:
-    """Forward a local port to this deployment's database and print a connection URL.
+    """Forward a local port to the database and print a connection URL.
 
-    The tunnel runs in the foreground until you interrupt it, and the local port
-    it binds is released when it closes. The URL it prints addresses the local
-    end of the tunnel, so a client on this machine can use it without knowing how
-    the database is spelled inside the cluster. The URL goes to stdout and
-    everything this client says goes to stderr, so capturing stdout yields the
-    URL and nothing else.
+    The tunnel runs in the foreground until you press Ctrl+C. The URL points at
+    the local end of the tunnel, so any client on this machine can use it. It
+    is the only output on stdout.
     """
     project_file = _project_deployment(context)
     local_port = choose_local_port(port)
@@ -1095,10 +1108,9 @@ def db_proxy(context: Context, port: Optional[int]) -> None:
             # so is the difference between a user debugging their key and one
             # reporting a platform mismatch.
             raise FreepodError(
-                "the edge refused the forward: the destination was not permitted. "
-                "This is not an authentication failure — the key was accepted, but "
-                "the address the platform reports is not in this deployment's "
-                "allowlist. Please report this; the platform should know the answer."
+                "the SSH server accepted your key but refused to forward to the "
+                "database. This is not an authentication problem but a platform "
+                "fault; please report it."
             )
         if proc.stderr:
             sys.stderr.write(proc.stderr.decode("utf-8", "replace"))
@@ -1109,14 +1121,12 @@ def db_proxy(context: Context, port: Optional[int]) -> None:
 def key() -> None:
     """Register the SSH public keys that identify you to the platform.
 
-    A key belongs to your account, not to one deployment, and applies to every
-    deployment you own. Registering one records which local key is this
-    machine's, so later connections offer exactly that key rather than trying
-    each in turn.
+    `shell`, `cp`, `db shell` and `db proxy` connect over SSH and need a
+    registered key. A key belongs to your account and works for every
+    deployment you own. Removing a key revokes its access.
 
-    These keys are the SSH credential: the edge resolves every connection to a
-    deployment against them, so `shell`, `db shell`, and `db proxy` need one
-    registered. Removing a key withdraws that access.
+    Registering a key also makes it the one this machine uses, so connections
+    offer exactly that key.
     """
 
 
@@ -1125,8 +1135,7 @@ def key() -> None:
 def key_list(context: Context) -> None:
     """List the keys registered on your account.
 
-    The key this machine can offer is marked with `*` — a record naming a file
-    that is gone is not one, so it is not marked.
+    The key this machine uses is marked with `*`.
     """
     session = context.session()
     session.authenticate(interactive=False)
@@ -1146,17 +1155,17 @@ def key_list(context: Context) -> None:
 
 @key.command("add")
 @click.argument("path", required=False, type=click.Path(path_type=Path))
-@click.option("--label", help="how this key is listed; defaults to its comment")
+@click.option("--label", help="the name `key list` shows (default: the key's comment)")
 @click.pass_obj
 def key_add(context: Context, path: Optional[Path], label: Optional[str]) -> None:
-    """Register a public key, generating one if you name no file.
+    """Register a public key, generating one if no PATH is given.
 
-    With no argument, generates an Ed25519 key in this client's own
-    configuration directory — not in `~/.ssh` — and registers it. With a path,
-    registers that **public** key file and records it as this machine's.
+    With no PATH, generates an Ed25519 key in freepod's configuration directory
+    (not `~/.ssh`) and registers it. With a PATH, registers that public key
+    file. Either way, the key becomes the one this machine uses.
 
-    Naming a key the account already holds records it as this machine's rather
-    than failing: that is how an ambiguous machine is pointed at one key.
+    Naming a key that is already registered makes it this machine's key
+    without registering it again.
     """
     env_name = context.env.name
     session = context.session()
@@ -1193,18 +1202,15 @@ def key_add(context: Context, path: Optional[Path], label: Optional[str]) -> Non
             context.say(str(duplicate))
             click.echo(fingerprint)
             context.say(
-                f"This machine now offers it on {env_name} for shell, db shell, "
-                "and db proxy."
+                f"This machine now uses it{env_suffix(env_name)} for shell, cp, "
+                "db shell, and db proxy."
             )
             return
 
     keys_module.remember(env_name, stored["fingerprint"], source)
-    context.say(f"Registered {stored['label']!r} on {env_name}.")
+    context.say(f"Registered {stored['label']!r}{env_suffix(env_name)}.")
     click.echo(stored["fingerprint"])
-    context.say(
-        "This key is now the SSH credential for shell, db shell, and db proxy "
-        "on this environment."
-    )
+    context.say("This machine now uses it for shell, cp, db shell, and db proxy.")
 
 
 @key.command("rm")
@@ -1213,8 +1219,7 @@ def key_add(context: Context, path: Optional[Path], label: Optional[str]) -> Non
 def key_rm(context: Context, fingerprint: str) -> None:
     """Revoke a key by the fingerprint `freepod key list` shows.
 
-    Works for keys this machine does not hold — revoking a lost laptop is done
-    from a different machine, which is the point.
+    Works for keys this machine does not hold, such as one on a lost laptop.
     """
     session = context.session()
     session.authenticate(interactive=False)
@@ -1233,14 +1238,9 @@ def key_rm(context: Context, fingerprint: str) -> None:
 def skill() -> None:
     """Install the deployment instructions for your coding agents.
 
-    The client ships a skill file describing this platform's contract — bind
-    `$PORT`, no disk, no database, S3 for state, configuration through
-    `freepod var` — which is what a coding agent needs before it can deploy
-    anything here successfully. It is packaged with the client so the two
-    versions cannot drift apart.
-
-    `SKILL.md` is a format every supported agent reads, so one file serves all
-    of them and only the destination differs.
+    The skill is a SKILL.md file that tells a coding agent what an app needs to
+    run on Freepod and how to deploy it with this CLI. It ships with the CLI,
+    so it always matches the installed version.
     """
 
 
@@ -1271,19 +1271,18 @@ def skill_install(
     project: bool,
     dest: Optional[Path],
 ) -> None:
-    """Write the packaged skill where a coding agent will find it.
+    """Install the skill where your coding agents will find it.
 
-    With no options it installs for every supported agent it can see on this
-    machine, which it decides by looking for each one's configuration
-    directory. `--agent` and `--all` override that; `--dest` bypasses the
-    table entirely.
+    With no options, installs for every supported agent whose configuration
+    directory exists on this machine. `--agent` and `--all` choose agents
+    explicitly; `--dest` writes the file to an exact path.
 
-    Existing copies are replaced without asking. The file is generated, the
-    path belongs to this client, and a newer client's skill has to be able to
-    supersede an older one for `pip install --upgrade` to mean anything.
-
-    The installed paths are the result and go to stdout, one per line; which
-    agent each belongs to goes to stderr like every other diagnostic.
+    Existing copies are replaced, so upgrading freepod and re-running this
+    updates the skill. The installed paths are printed to stdout, one per line.
+    \f
+    Replaced without asking because the file is generated and the path belongs
+    to this client: a newer client's skill has to supersede an older one for
+    `pip install --upgrade` to mean anything.
     """
     if dest is not None:
         if names or everything or project:
@@ -1344,8 +1343,8 @@ def skill_install(
 def skill_show() -> None:
     """Print the packaged skill to stdout.
 
-    For any agent runtime that is not Claude Code, or to read what `install`
-    would write before it writes it.
+    Use it for an agent `install` does not support, or to read the skill
+    before installing it.
     """
     click.echo(skill_module.read_skill(), nl=False)
 
@@ -1389,7 +1388,7 @@ if __name__ == "__main__":  # pragma: no cover
 @click.option("-f", "--follow", is_flag=True, help="keep the stream open and print lines as they arrive")
 @click.option(
     "-n", "--tail", type=int, metavar="LINES",
-    help="how many trailing lines to start with (default: the platform's)",
+    help="how many recent lines to show first (default: set by the platform)",
 )
 @click.option(
     "-r", "--release", type=int, metavar="NUMBER",
@@ -1407,15 +1406,12 @@ def log_command(
     release: Optional[int],
     timestamps: bool,
 ) -> None:
-    """Stream this project's application output.
+    """Print this project's application output.
 
-    Log lines go to stdout and everything this client says goes to stderr, so
-    `freepod log > app.log` captures the application and nothing else. That is
-    the opposite split from `deploy`, where the build log is the platform
-    narrating and the address is the result.
+    Application output goes to stdout and freepod's own messages to stderr, so
+    `freepod log > app.log` captures only your app's output.
 
-    With `-f` the stream stays open across a redeploy, because you are watching
-    an application rather than a container.
+    With `-f` the stream stays open, including across redeploys.
     """
     session = context.session()
     session.authenticate(interactive=False)
@@ -1503,7 +1499,7 @@ def cp(context: Context, source: str, destination: str) -> None:
 @click.argument("command", nargs=-1, type=click.UNPROCESSED)
 @click.pass_obj
 def shell(context: Context, force_tty: bool, command: tuple) -> None:
-    """Open a shell in this deployment's application container, or run COMMAND in it.
+    """Open a shell in the app's container, or run COMMAND in it.
 
     With no COMMAND the session runs on your own terminal and stays until you
     leave it. This is the command for a deployment that is up but misbehaving —

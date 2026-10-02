@@ -14,11 +14,9 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from . import UsageError, __version__
-from .project import PROJECT_FILE
+from .project import DEFAULT_ENV, PROJECT_FILE
 
 ISSUER = "https://keycloak.freepod.eu/realms/freepod"
-
-DEFAULT_ENV = "prod"
 
 #: Selects the environment when no explicit choice is made.
 ENV_VAR = "FREEPOD_ENV"
@@ -128,6 +126,20 @@ ENVIRONMENTS: Dict[str, Environment] = {
 def environment_names() -> str:
     """The accepted values, for use in a usage error."""
     return ", ".join(sorted(ENVIRONMENTS))
+
+
+def env_suffix(name: str, preposition: str = "on") -> str:
+    """` on 'dev'` for a non-default environment, nothing for the default one.
+
+    The default environment is the only one end users have, so messages name an
+    environment only when another one is in use.
+    """
+    return "" if name == DEFAULT_ENV else f" {preposition} '{name}'"
+
+
+def login_command(name: str) -> str:
+    """The `freepod login` invocation that authenticates against `name`."""
+    return "freepod login" if name == DEFAULT_ENV else f"freepod --env {name} login"
 
 
 def resolve_environment(

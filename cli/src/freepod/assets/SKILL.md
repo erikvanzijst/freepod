@@ -503,9 +503,9 @@ discard the deployment pointer and orphan the running deployment.
 
 ### 3. Verify locally — this step is not optional
 
-**The platform offers no runtime logs.** There is no `freepod logs`. Once the
-container is running, the only thing you can observe from outside is its HTTP
-responses. Every bug you do not catch locally becomes a bug you diagnose by
+**Every round trip through the platform costs minutes.** `freepod log` shows
+what the app printed, but each fix found that way needs another build and
+rollout. Every bug you do not catch locally becomes a bug you diagnose by
 redeploying.
 
 So run the app the way the platform will, and exercise it:
@@ -525,9 +525,10 @@ serialization and error handling before a build is spent on it.
 freepod deploy
 ```
 
-Preflight, create the pod, pack, upload, build, release. **Allow several minutes** — builds
-typically run one to three minutes and the client waits up to 1800s for the
-build and 600s for the rollout, so set a generous timeout on whatever runs it.
+Check the settings, create the deployment (first deploy only), pack, upload,
+build, release. **Allow several minutes** — builds typically run one to three
+minutes and the client waits up to 1800s for the build and 600s for the
+rollout, so set a generous timeout on whatever runs it.
 The build log streams to stderr. Stdout carries exactly one line, the live
 address:
 

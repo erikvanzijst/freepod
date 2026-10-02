@@ -71,11 +71,36 @@ reports the problem itself.
   with no explicit selection
 - **THEN** the client targets the environment the project file records
 
+#### Scenario: A project file that names no environment is on production
+
+- **WHEN** `FREEPOD_ENV` names `dev` and the project file names no environment, with no
+  explicit selection
+- **THEN** the client targets the production environment
+
 #### Scenario: An unusable project file does not refuse the command
 
 - **WHEN** a command that does not require a project runs where the project file cannot
   be read or records an unrecognized environment
 - **THEN** the client targets the default environment and the command proceeds
+
+### Requirement: Only the default environment is visible to users
+
+Production is the only environment end users have. The explicit environment selection
+SHALL work but SHALL NOT appear in `--help`, and neither SHALL `FREEPOD_ENV`. Output,
+prompts, and errors SHALL name an environment only when a non-default one is in use, so
+a user on production never sees one named.
+
+#### Scenario: The selection is absent from help but still accepted
+
+- **WHEN** `freepod --help` is shown
+- **THEN** it mentions neither `--env` nor `FREEPOD_ENV`
+- **AND** `freepod --env dev <command>` still targets the development environment
+
+#### Scenario: Production output names no environment
+
+- **WHEN** any command runs against the production environment
+- **THEN** its output names no environment, and any `freepod login` it suggests carries
+  no `--env`
 
 ### Requirement: State is never shared between environments
 

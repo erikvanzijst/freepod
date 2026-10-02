@@ -203,9 +203,31 @@ def test_invalid_json_is_reported_with_the_path(tmp_path):
         load(tmp_path)
 
 
-def test_a_missing_environment_is_reported(tmp_path):
+def test_a_missing_environment_means_prod_and_stays_missing(tmp_path):
     (tmp_path / PROJECT_FILE).write_text(json.dumps({"version": 1}), encoding="utf-8")
-    with pytest.raises(FreepodError, match="which environment"):
+    project = load(tmp_path)
+    assert project.env == "prod"
+
+    project.record_deployment("40bd8dea", "custom-d8dtx4")
+    assert "env" not in json.loads((tmp_path / PROJECT_FILE).read_text())
+
+
+def test_an_explicit_prod_environment_is_kept(tmp_path):
+    (tmp_path / PROJECT_FILE).write_text(
+        json.dumps({"version": 1, "env": "prod"}), encoding="utf-8"
+    )
+    project = load(tmp_path)
+    assert project.env == "prod"
+
+    project.record_deployment("40bd8dea", "custom-d8dtx4")
+    assert json.loads((tmp_path / PROJECT_FILE).read_text())["env"] == "prod"
+
+
+def test_an_empty_environment_is_rejected(tmp_path):
+    (tmp_path / PROJECT_FILE).write_text(
+        json.dumps({"version": 1, "env": ""}), encoding="utf-8"
+    )
+    with pytest.raises(FreepodError, match="'env'"):
         load(tmp_path)
 
 
