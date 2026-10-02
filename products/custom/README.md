@@ -6,12 +6,9 @@ tenant only picks a hostname and a few settings. Here the tenant picks the image
 too — it is whatever they built — and the chart's job is to run it without
 letting them run somebody else's.
 
-Unlike the curated products, this one is **database-managed**: there is no
-`products/catalog/custom.yaml`, because the build subsystem that feeds it is still
-being iterated on and pinning it to a rollout-reconciled catalog file would
-freeze decisions that are not settled. The product, template, and plan rows are
-seeded by hand — see [Caelus product template](#caelus-product-template) for the
-values to paste.
+Like the curated products, its product and template come from the catalog:
+[`products/catalog/custom.yaml`](../catalog/custom.yaml) pins the chart version,
+the system values, and the user values schema that drives the deployment form.
 
 ## What it deploys
 
@@ -105,7 +102,7 @@ endpoint and needs nothing. The JavaScript v3 client does not — it needs one
 flag:
 
 ```javascript
-new S3Client({ forcePathStyle: true })     // endpoint/region come from the env
+new S3Client({ forcePathStyle: true, requestChecksumCalculation: 'WHEN_REQUIRED' })  // endpoint/region from env; checksum: see SKILL.md
 ```
 
 ## Database
@@ -367,54 +364,17 @@ is published. To publish by hand, from the repository root:
 ./scripts/publish-charts.sh custom
 ```
 
-## Caelus product template
+## Catalog entry
 
-| Field               | Value                                                                                                                                              |
-|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|
-| Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/custom`                                                                                                 |
-| Chart version       | `0.10.3`                                                                                                                                           |
-| Default Helm values | `{}` — the chart's own defaults already carry `registry`, `placeholderImage`, and `containerPort`. Set them here only to override per environment. |
-| User values schema  | see below                                                                                                                                          |
+[`products/catalog/custom.yaml`](../catalog/custom.yaml). Its `values_schema` is
+a **different, much smaller** schema than `chart/values.schema.json`: that one
+validates the fully merged values Helm-side, this one defines the fields a
+tenant may set and drives the deployment form. Two of its choices are
+load-bearing:
 
-### User values schema
-
-The `values_schema_json` for the template row. This is a **different, much
-smaller** schema than `chart/values.schema.json`: that one validates the fully
-merged values Helm-side, this one defines the two fields a tenant may set and
-drives the deployment form.
-
-Two values are required:
-
-- `hostname` carries `"title": "hostname"`. `_iter_hostname_paths` /
+- `hostname` carries `title: hostname`. `_iter_hostname_paths` /
   `normalize_and_return_hostname` (`api/app/services/deployments.py`) scan the
   schema for that title (case-insensitively) to derive and claim the deployment's
   hostname. Without it, hostname claiming silently does nothing.
 - `image` is **not** in `required`. The deployment is created before any build
   exists; requiring it would make `freepod init` impossible.
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "hostname": {
-      "type": "string",
-      "title": "hostname",
-      "description": "The domain name your application is served on",
-      "minLength": 1,
-      "maxLength": 253,
-      "pattern": "^((?!-)(xn--)?[a-z0-9][a-z0-9-_]{0,61}[a-z0-9]?\\.)+(xn--)?[a-z0-9-]{2,}$"
-    },
-    "image": {
-      "type": "string",
-      "title": "Image",
-      "description": "The build to run, as \"{user_id}@{digest}\". Leave empty to serve the placeholder page until your first build is released.",
-      "pattern": "^[0-9]+@sha256:[a-f0-9]{64}$"
-    }
-  },
-  "required": [
-    "hostname"
-  ],
-  "additionalProperties": false
-}
-```
