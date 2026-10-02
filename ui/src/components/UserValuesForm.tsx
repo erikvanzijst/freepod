@@ -431,7 +431,7 @@ export function UserValuesForm({
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        Configure application values:
+        App settings:
       </Typography>
       {unmatchedErrors.length > 0 && (
         <Box sx={{ p: 1, bgcolor: 'error.light', borderRadius: 1 }}>

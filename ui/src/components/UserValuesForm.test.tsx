@@ -79,7 +79,7 @@ describe('UserValuesForm', () => {
       { wrapper: Wrapper },
     )
 
-    expect(screen.getByText('Configure application values:')).toBeInTheDocument()
+    expect(screen.getByText('App settings:')).toBeInTheDocument()
     expect(screen.getAllByText('Domain name').length).toBeGreaterThan(0)
   })
 

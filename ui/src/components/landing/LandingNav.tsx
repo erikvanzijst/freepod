@@ -19,6 +19,7 @@ const defaultLinks: NavLink[] = [
   { label: 'Why Freepod', href: '#why' },
   { label: 'Pricing', href: '#pricing' },
   { label: 'Developers', href: '/dev' },
+  { label: 'Docs', href: '/docs/' },
 ]
 
 const navLinkSx = {

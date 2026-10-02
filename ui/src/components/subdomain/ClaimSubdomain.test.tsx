@@ -67,7 +67,7 @@ describe('ClaimSubdomain', () => {
     checkHostnameMock.mockResolvedValue({ fqdn: '', usable: true, reason: null })
     renderClaim()
 
-    expect(screen.getByLabelText('Your domain name')).toHaveValue('adalovelace')
+    expect(screen.getByLabelText('Your subdomain')).toHaveValue('adalovelace')
   })
 
   it('shows an unavailable prefill as refused, choosing no substitute', async () => {
@@ -77,7 +77,7 @@ describe('ClaimSubdomain', () => {
     await waitFor(() =>
       expect(screen.getByText('Taken. Try adding a word or a number.')).toBeInTheDocument(),
     )
-    expect(screen.getByLabelText('Your domain name')).toHaveValue('adalovelace')
+    expect(screen.getByLabelText('Your subdomain')).toHaveValue('adalovelace')
     expect(screen.getByRole('button', { name: 'Claim this name' })).toBeDisabled()
   })
 
@@ -113,7 +113,7 @@ describe('ClaimSubdomain', () => {
     checkHostnameMock.mockResolvedValue({ fqdn: '', usable: true, reason: null })
     renderClaim()
 
-    const input = screen.getByLabelText('Your domain name')
+    const input = screen.getByLabelText('Your subdomain')
     fireEvent.change(input, { target: { value: 'grace' } })
     const claim = screen.getByRole('button', { name: 'Claim this name' })
     await waitFor(() => expect(claim).toBeEnabled())
@@ -121,7 +121,7 @@ describe('ClaimSubdomain', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
 
-    expect(screen.getByLabelText('Your domain name')).toHaveValue('grace')
+    expect(screen.getByLabelText('Your subdomain')).toHaveValue('grace')
   })
 
   it('stays put when the claim loses a race', async () => {
@@ -139,7 +139,7 @@ describe('ClaimSubdomain', () => {
       expect(screen.getAllByText('Taken. Try adding a word or a number.').length).toBeGreaterThan(0),
     )
     expect(props.onDismiss).not.toHaveBeenCalled()
-    expect(screen.getByLabelText('Your domain name')).toHaveValue('adalovelace')
+    expect(screen.getByLabelText('Your subdomain')).toHaveValue('adalovelace')
   })
 })
 
@@ -160,7 +160,7 @@ describe('ClaimSubdomain, by context', () => {
   it('is ready to type into on the dashboard', () => {
     renderClaim({ context: 'account', autoSelect: true })
 
-    const input = screen.getByLabelText('Your domain name') as HTMLInputElement
+    const input = screen.getByLabelText('Your subdomain') as HTMLInputElement
     expect(input).toHaveFocus()
     expect(input.selectionEnd).toBe(input.value.length)
   })
@@ -175,13 +175,13 @@ describe('ClaimSubdomain, by context', () => {
     const { unmount } = render(
       wrap(<ClaimSubdomain domain="freepod.eu" email="a@b.com" onDismiss={vi.fn()} context="account" />),
     )
-    expect(screen.getByText(/Your own corner of Freepod/)).toBeInTheDocument()
+    expect(screen.getByText(/Nobody else can use it/)).toBeInTheDocument()
     unmount()
 
     renderClaim({ context: 'deploy' })
     expect(
       screen.getByText(
-        'Your application will then get a name underneath this personal subdomain name.',
+        'Your app gets a hostname under this subdomain.',
       ),
     ).toBeInTheDocument()
   })

@@ -29,7 +29,7 @@ describe('SubdomainField', () => {
   it('shows the whole address, with only the label editable', () => {
     render(<SubdomainField value="ada" onChange={vi.fn()} domain="freepod.eu" />)
 
-    expect(screen.getByLabelText('Your domain name')).toHaveValue('ada')
+    expect(screen.getByLabelText('Your subdomain')).toHaveValue('ada')
     expect(screen.getByText('.freepod.eu')).toBeInTheDocument()
     // The reel's home slot, and no second input beside it.
     expect(screen.getAllByText('your app').length).toBeGreaterThan(0)
@@ -83,7 +83,7 @@ describe('SubdomainField', () => {
     const onChange = vi.fn()
     render(<SubdomainField value="" onChange={onChange} domain="freepod.eu" />)
 
-    fireEvent.change(screen.getByLabelText('Your domain name'), { target: { value: 'ada.love' } })
+    fireEvent.change(screen.getByLabelText('Your subdomain'), { target: { value: 'ada.love' } })
 
     expect(onChange).toHaveBeenCalledWith('adalove')
   })
@@ -101,7 +101,7 @@ describe('SubdomainField', () => {
   it('selects the prefill so typing replaces it', () => {
     render(<SubdomainField value="adalovelace" onChange={vi.fn()} domain="freepod.eu" autoSelect />)
 
-    const input = screen.getByLabelText('Your domain name') as HTMLInputElement
+    const input = screen.getByLabelText('Your subdomain') as HTMLInputElement
     expect(input).toHaveFocus()
     expect(input.selectionStart).toBe(0)
     expect(input.selectionEnd).toBe('adalovelace'.length)

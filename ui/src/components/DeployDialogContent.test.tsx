@@ -59,7 +59,7 @@ describe('DeployDialogContent', () => {
       />,
     )
 
-    expect(screen.getByText('Configure application values:')).toBeInTheDocument()
+    expect(screen.getByText('App settings:')).toBeInTheDocument()
   })
 
   it('does not render Launch button when onLaunch is not provided', () => {

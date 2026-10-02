@@ -186,7 +186,7 @@ export function SubdomainField({
           disabled={disabled}
           spellCheck={false}
           autoComplete="off"
-          aria-label="Your domain name"
+          aria-label="Your subdomain"
           aria-describedby="subdomain-field-message"
           onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
             onChange(event.target.value.replace(/\./g, ''))

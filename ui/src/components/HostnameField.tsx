@@ -21,7 +21,7 @@ const REASON_LABELS: Record<string, string> = {
   invalid: 'Invalid hostname format',
   reserved: 'Hostname is reserved',
   in_use: 'Already in use',
-  claimed: 'That domain name belongs to another account',
+  claimed: "That hostname is under another account's subdomain",
 }
 
 // Shown when the platform's CNAME target is unknown (endpoint unconfigured).

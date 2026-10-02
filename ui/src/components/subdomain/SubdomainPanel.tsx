@@ -21,9 +21,9 @@ export function SubdomainPanel() {
     <Card sx={{ p: 3 }}>
       <Stack spacing={2}>
         <Box>
-          <Typography variant="h6">Your domain name</Typography>
+          <Typography variant="h6">Your subdomain</Typography>
           <Typography color="text.secondary" sx={{ fontSize: 14 }}>
-            Every application you deploy sits underneath this domain name.
+            Every app you deploy gets a hostname under this subdomain.
           </Typography>
         </Box>
 
@@ -46,17 +46,17 @@ export function SubdomainPanel() {
               }}
             >
               <Box sx={{ flex: 1 }}>{fqdn}</Box>
-              <CopyButton value={fqdn} label="domain name" />
+              <CopyButton value={fqdn} label="subdomain" />
             </Stack>
             <Typography color="text.secondary" sx={{ fontSize: 13 }}>
-              Chosen once and kept: a domain name cannot be changed or released, because
+              Chosen once and kept: a subdomain cannot be changed or released, because
               everything issued against it — links, certificates, other people's DNS caches
               — outlives the change.
             </Typography>
           </>
         ) : (
           <Alert severity="info" sx={{ borderRadius: '11px' }}>
-            You haven't claimed a domain name yet. You'll be asked for one on the dashboard, or
+            You haven't claimed a subdomain yet. You'll be asked for one on the dashboard, or
             the first time you deploy.
           </Alert>
         )}

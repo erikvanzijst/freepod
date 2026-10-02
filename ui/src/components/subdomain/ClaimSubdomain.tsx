@@ -145,7 +145,7 @@ export function ClaimSubdomain({
           severity="warning"
           sx={{ mt: 1.5, mb: 2.75, borderRadius: '11px' }}
         >
-          Your home domain name can't be changed or released. Support can't move one for you later.
+          Your subdomain can't be changed or released. Support can't move one for you later.
         </Alert>
 
         <Stack direction="row" spacing={1.25} justifyContent={deploying ? 'flex-end' : 'center'}>
@@ -171,12 +171,12 @@ export function ClaimSubdomain({
         mx: 'auto',
       }}
     >
-      {eyebrow('Your domain')}
-      {heading('Claim your free domain')}
+      {eyebrow('Your subdomain')}
+      {heading('Claim your free subdomain')}
       <Typography sx={{ fontSize: 14.5, color: 'text.secondary', mb: 3, maxWidth: '54ch' }}>
         {deploying
-          ? 'Your application will then get a name underneath this personal subdomain name.'
-          : 'Your own corner of Freepod. It will be the home for all your applications and nobody else can use it.'}
+          ? 'Your app gets a hostname under this subdomain.'
+          : 'Every app you deploy gets a hostname under this subdomain. Nobody else can use it.'}
       </Typography>
 
       <SubdomainField

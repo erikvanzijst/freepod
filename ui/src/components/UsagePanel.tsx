@@ -24,8 +24,8 @@ export function UsagePanel() {
   const breakdowns: UsageBreakdownOption[] = [
     {
       dimension: 'deployment',
-      label: 'By application',
-      heading: 'Application',
+      label: 'By app',
+      heading: 'App',
       keyColumn: 'deployment_id',
       labeler: (report) => {
         const fromReport = deploymentLabeler(report)
@@ -39,7 +39,7 @@ export function UsagePanel() {
   return (
     <UsageExplorer
       title="Usage"
-      description="The CPU and memory your applications used, and what it costs. Measured hourly; times are UTC and amounts exclude VAT."
+      description="The CPU and memory your apps used, and what it costs. Measured hourly; times are UTC and amounts exclude VAT."
       scope={['user', user?.id]}
       enabled={Boolean(user?.id)}
       fetchReport={(query) => getUsage(user!.id, query)}

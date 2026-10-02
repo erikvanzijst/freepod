@@ -225,7 +225,7 @@ export function SshKeysPanel() {
           <Typography variant="h6">SSH keys</Typography>
           <Typography color="text.secondary" variant="body2" sx={{ mt: 0.5 }}>
             Public keys that identify you to the platform. They belong to your
-            account and apply to every application you own.
+            account and apply to every app you own.
           </Typography>
         </Box>
         {keys.length > 0 && (
