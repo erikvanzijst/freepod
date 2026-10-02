@@ -249,13 +249,19 @@ describe('HostnameField', () => {
 
       // Custom-mode helper text reflects the environment-specific target
       expect(
-        screen.getByText('Point your domain at Freepod: create a CNAME record → dev.freepod.eu'),
+        screen.getByText(
+          'Point your domain at Freepod: a CNAME record → dev.freepod.eu, or for a root domain (example.com), A/AAAA records with the same addresses as dev.freepod.eu',
+        ),
       ).toBeInTheDocument()
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'app.example.com' } })
 
       await waitFor(() => {
-        expect(screen.getByText('Create a CNAME record pointing to dev.freepod.eu')).toBeInTheDocument()
+        expect(
+          screen.getByText(
+            'Create a CNAME record pointing to dev.freepod.eu, or for a root domain, A/AAAA records with the same addresses as dev.freepod.eu',
+          ),
+        ).toBeInTheDocument()
       })
     })
 
@@ -268,7 +274,11 @@ describe('HostnameField', () => {
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'app.example.com' } })
 
       await waitFor(() => {
-        expect(screen.getByText('Create a CNAME record pointing to freepod.eu')).toBeInTheDocument()
+        expect(
+          screen.getByText(
+            'Create a CNAME record pointing to freepod.eu, or for a root domain, A/AAAA records with the same addresses as freepod.eu',
+          ),
+        ).toBeInTheDocument()
       })
     })
   })

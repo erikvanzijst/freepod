@@ -364,7 +364,7 @@ Without it, one account can address an application beneath another's name: the t
 links and the certificate all say the name belongs to somebody who did not deploy it.
 
 Hostnames outside every configured wildcard domain are the user's own DNS and are not
-subject to this rule; they remain governed by the CNAME check.
+subject to this rule; they remain governed by the DNS check.
 
 #### Scenario: A deployment beneath the owner's own subdomain is accepted
 

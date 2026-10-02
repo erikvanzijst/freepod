@@ -13,7 +13,7 @@ from app.services.hostnames import (
     _check_wildcard_depth,
     _check_reserved,
     _check_available,
-    _check_cname,
+    _check_dns_target,
     require_valid_hostname_for_deployment,
 )
 from app.db import get_session
@@ -200,7 +200,7 @@ class TestCheckAvailable:
         _check_available(db_session, "recycled.example.com")
 
 
-# ── DNS CNAME check ──────────────────────────────────────────────────
+# ── DNS target check ──────────────────────────────────────────────────
 
 
 def _cname_answer(target: str):
@@ -226,7 +226,7 @@ class TestCheckCname:
             "app.services.hostnames.dns.resolver.resolve",
             return_value=_cname_answer("freepod.eu"),
         ):
-            _check_cname("good.example.com", _settings(domain="freepod.eu"))
+            _check_dns_target("good.example.com", _settings(domain="freepod.eu"))
 
     def test_fails_when_cname_points_to_subdomain_of_domain(self, no_authoritative):
         with patch(
@@ -234,15 +234,15 @@ class TestCheckCname:
             return_value=_cname_answer("ingress.freepod.eu"),
         ):
             with pytest.raises(HostnameException, match="not_resolving"):
-                _check_cname("sub.example.com", _settings(domain="freepod.eu"))
+                _check_dns_target("sub.example.com", _settings(domain="freepod.eu"))
 
-    def test_fails_when_a_record_only_no_cname(self, no_authoritative):
+    def test_fails_when_no_records_at_all(self, no_authoritative):
         with patch(
             "app.services.hostnames.dns.resolver.resolve",
             side_effect=dns.resolver.NoAnswer,
         ):
             with pytest.raises(HostnameException, match="not_resolving"):
-                _check_cname("arecord.example.com", _settings(domain="freepod.eu"))
+                _check_dns_target("empty.example.com", _settings(domain="freepod.eu"))
 
     def test_fails_when_cname_points_to_wrong_target(self, no_authoritative):
         with patch(
@@ -250,7 +250,7 @@ class TestCheckCname:
             return_value=_cname_answer("somewhere-else.example.net"),
         ):
             with pytest.raises(HostnameException, match="not_resolving"):
-                _check_cname("wrong.example.com", _settings(domain="freepod.eu"))
+                _check_dns_target("wrong.example.com", _settings(domain="freepod.eu"))
 
     def test_fails_on_nxdomain(self, no_authoritative):
         with patch(
@@ -258,7 +258,7 @@ class TestCheckCname:
             side_effect=dns.resolver.NXDOMAIN,
         ):
             with pytest.raises(HostnameException, match="not_resolving"):
-                _check_cname("nxdomain.example.com", _settings(domain="freepod.eu"))
+                _check_dns_target("nxdomain.example.com", _settings(domain="freepod.eu"))
 
     def test_fails_on_timeout(self, no_authoritative):
         with patch(
@@ -266,14 +266,14 @@ class TestCheckCname:
             side_effect=dns.exception.Timeout,
         ):
             with pytest.raises(HostnameException, match="not_resolving"):
-                _check_cname("slow.example.com", _settings(domain="freepod.eu"))
+                _check_dns_target("slow.example.com", _settings(domain="freepod.eu"))
 
     def test_skipped_when_domain_empty(self):
         # Should not raise or even query DNS when domain is unconfigured
         with patch("app.services.hostnames._authoritative_resolver") as mock_auth, patch(
             "app.services.hostnames.dns.resolver.resolve"
         ) as mock_resolve:
-            _check_cname("nonexistent.example.test", _settings(domain=""))
+            _check_dns_target("nonexistent.example.test", _settings(domain=""))
         mock_auth.assert_not_called()
         mock_resolve.assert_not_called()
 
@@ -281,7 +281,7 @@ class TestCheckCname:
         with patch("app.services.hostnames._authoritative_resolver") as mock_auth, patch(
             "app.services.hostnames.dns.resolver.resolve"
         ) as mock_resolve:
-            _check_cname(
+            _check_dns_target(
                 "foo.freepod.eu",
                 _settings(domain="freepod.eu", wildcard_domains=["freepod.eu"]),
             )
@@ -296,7 +296,7 @@ class TestCheckCname:
         with patch(
             "app.services.hostnames._authoritative_resolver", return_value=auth
         ), patch("app.services.hostnames.dns.resolver.resolve") as module_resolve:
-            _check_cname("good.example.com", _settings(domain="freepod.eu"))
+            _check_dns_target("good.example.com", _settings(domain="freepod.eu"))
         auth.resolve.assert_called_once_with("good.example.com", "CNAME")
         module_resolve.assert_not_called()
 
@@ -309,7 +309,7 @@ class TestCheckCname:
             "app.services.hostnames._authoritative_resolver", return_value=auth
         ), patch("app.services.hostnames.dns.resolver.resolve") as module_resolve:
             with pytest.raises(HostnameException, match="not_resolving"):
-                _check_cname("nope.example.com", _settings(domain="freepod.eu"))
+                _check_dns_target("nope.example.com", _settings(domain="freepod.eu"))
         module_resolve.assert_not_called()
 
     def test_falls_back_to_system_resolver_when_authoritative_unreachable(self):
@@ -323,7 +323,140 @@ class TestCheckCname:
             "app.services.hostnames.dns.resolver.resolve",
             return_value=_cname_answer("freepod.eu"),
         ):
-            _check_cname("good.example.com", _settings(domain="freepod.eu"))
+            _check_dns_target("good.example.com", _settings(domain="freepod.eu"))
+
+
+PLATFORM_V4 = "185.142.224.235"
+PLATFORM_V6 = "2001:db8::1"
+
+
+def _address_answer(*addresses: str):
+    return [Mock(address=a) for a in addresses]
+
+
+def _fake_dns(records: dict[tuple[str, str], list[str]]):
+    """A ``resolve`` side effect answering from *records*, keyed by (name,
+    type); A/AAAA values are addresses, a CNAME value is its target. Anything
+    absent is a definitive NoAnswer, as an authoritative server would say."""
+
+    def resolve(name, rdtype):
+        values = records.get((name, rdtype))
+        if not values:
+            raise dns.resolver.NoAnswer
+        if rdtype == "CNAME":
+            return _cname_answer(values[0])
+        return _address_answer(*values)
+
+    return resolve
+
+
+class TestCheckAddressRecords:
+    """Apex domains cannot carry a CNAME; A/AAAA records on the platform's own
+    addresses are accepted instead."""
+
+    def _check(self, fqdn: str, records: dict, *, platform: dict | None = None):
+        platform = platform if platform is not None else {("freepod.eu", "A"): [PLATFORM_V4]}
+        with patch(
+            "app.services.hostnames.dns.resolver.resolve",
+            side_effect=_fake_dns({**platform, **records}),
+        ):
+            _check_dns_target(fqdn, _settings(domain="freepod.eu"))
+
+    def test_apex_a_record_on_platform_address_passes(self, no_authoritative):
+        self._check("example.com", {("example.com", "A"): [PLATFORM_V4]})
+
+    def test_a_and_aaaa_both_on_platform_pass(self, no_authoritative):
+        self._check(
+            "example.com",
+            {("example.com", "A"): [PLATFORM_V4], ("example.com", "AAAA"): [PLATFORM_V6]},
+            platform={("freepod.eu", "A"): [PLATFORM_V4], ("freepod.eu", "AAAA"): [PLATFORM_V6]},
+        )
+
+    def test_ipv4_only_passes_when_platform_is_dual_stack(self, no_authoritative):
+        self._check(
+            "example.com",
+            {("example.com", "A"): [PLATFORM_V4]},
+            platform={("freepod.eu", "A"): [PLATFORM_V4], ("freepod.eu", "AAAA"): [PLATFORM_V6]},
+        )
+
+    def test_ipv6_only_passes_when_on_platform(self, no_authoritative):
+        self._check(
+            "example.com",
+            {("example.com", "AAAA"): ["2001:DB8:0::1"]},
+            platform={("freepod.eu", "A"): [PLATFORM_V4], ("freepod.eu", "AAAA"): [PLATFORM_V6]},
+        )
+
+    def test_platform_reached_through_a_cname_chain(self, no_authoritative):
+        """dev.freepod.eu is itself a CNAME; its addresses are what resolve
+        returns after following it."""
+        with patch(
+            "app.services.hostnames.dns.resolver.resolve",
+            side_effect=_fake_dns({
+                ("dev.freepod.eu", "A"): [PLATFORM_V4],
+                ("example.com", "A"): [PLATFORM_V4],
+            }),
+        ):
+            _check_dns_target("example.com", _settings(domain="dev.freepod.eu"))
+
+    def test_a_record_elsewhere_fails(self, no_authoritative):
+        with pytest.raises(HostnameException, match="not_resolving"):
+            self._check("example.com", {("example.com", "A"): ["203.0.113.9"]})
+
+    def test_one_foreign_address_among_several_fails(self, no_authoritative):
+        with pytest.raises(HostnameException, match="not_resolving"):
+            self._check("example.com", {("example.com", "A"): [PLATFORM_V4, "203.0.113.9"]})
+
+    def test_aaaa_elsewhere_fails_even_with_matching_a(self, no_authoritative):
+        """IPv6 clients (and Let's Encrypt, which prefers IPv6) would reach the
+        foreign address, so a matching A record does not redeem it."""
+        with pytest.raises(HostnameException, match="not_resolving"):
+            self._check(
+                "example.com",
+                {("example.com", "A"): [PLATFORM_V4], ("example.com", "AAAA"): ["2001:db8::dead"]},
+            )
+
+    def test_no_records_fails(self, no_authoritative):
+        with pytest.raises(HostnameException, match="not_resolving"):
+            self._check("example.com", {})
+
+    def test_fails_when_platform_has_no_addresses(self, no_authoritative):
+        with pytest.raises(HostnameException, match="not_resolving"):
+            self._check("example.com", {("example.com", "A"): [PLATFORM_V4]}, platform={})
+
+    def test_cname_elsewhere_is_not_rescued_by_addresses(self, no_authoritative):
+        with pytest.raises(HostnameException, match="not_resolving"):
+            self._check(
+                "www.example.com",
+                {("www.example.com", "CNAME"): ["kube.freepod.eu"], ("www.example.com", "A"): [PLATFORM_V4]},
+            )
+
+    def test_cname_to_domain_passes_without_address_lookups(self, no_authoritative):
+        resolve = Mock(side_effect=_fake_dns({("www.example.com", "CNAME"): ["freepod.eu"]}))
+        with patch("app.services.hostnames.dns.resolver.resolve", resolve):
+            _check_dns_target("www.example.com", _settings(domain="freepod.eu"))
+        resolve.assert_called_once_with("www.example.com", "CNAME")
+
+    def test_timeout_on_address_lookup_fails(self, no_authoritative):
+        def resolve(name, rdtype):
+            if rdtype == "AAAA":
+                raise dns.exception.Timeout
+            return _fake_dns({("example.com", "A"): [PLATFORM_V4]})(name, rdtype)
+
+        with patch("app.services.hostnames.dns.resolver.resolve", side_effect=resolve):
+            with pytest.raises(HostnameException, match="not_resolving"):
+                _check_dns_target("example.com", _settings(domain="freepod.eu"))
+
+    def test_both_names_queried_at_their_authoritative_servers(self):
+        customer, platform = Mock(), Mock()
+        customer.resolve.side_effect = _fake_dns({("example.com", "A"): [PLATFORM_V4]})
+        platform.resolve.side_effect = _fake_dns({("freepod.eu", "A"): [PLATFORM_V4]})
+        with patch(
+            "app.services.hostnames._authoritative_resolver",
+            side_effect=lambda name: platform if name == "freepod.eu" else customer,
+        ), patch("app.services.hostnames.dns.resolver.resolve") as module_resolve:
+            _check_dns_target("example.com", _settings(domain="freepod.eu"))
+        module_resolve.assert_not_called()
+        assert {c.args[0] for c in platform.resolve.call_args_list} == {"freepod.eu"}
 
 
 # ── Orchestration (short-circuit behavior) ────────────────────────────

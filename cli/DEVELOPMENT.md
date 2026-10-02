@@ -599,7 +599,7 @@ runtime, so a newly required property appears without a client release. Today
 `"title": "hostname"`, case-insensitively — the same rule the platform and the
 UI use. A bare label is completed with the platform's first wildcard domain; a
 value containing a dot is taken as already qualified, since it may be a custom
-domain served via CNAME.
+domain served via CNAME or A/AAAA records.
 
 ## Packing
 

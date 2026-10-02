@@ -28,7 +28,8 @@ class HostnameCheck(BaseModel):
       a platform wildcard domain), ``reserved`` (reserved by the platform),
       ``claimed`` (a subdomain another account holds, or an application under
       one), ``in_use`` (already in use by another deployment), or
-      ``not_resolving`` (no CNAME record pointing at the platform CNAME target).
+      ``not_resolving`` (neither a CNAME to the platform domain nor A/AAAA
+      records on that domain's addresses).
     """
 
     fqdn: str
@@ -94,8 +95,10 @@ def check_hostname(
     - `claimed` — a subdomain another account holds, or an application name
       placed under somebody else's subdomain.
     - `in_use` — the hostname is already in use by another deployment.
-    - `not_resolving` — the hostname has no CNAME record pointing at the
-      platform CNAME target (see `GET /cname-target`). Not applicable to a name
+    - `not_resolving` — the hostname neither has a CNAME record pointing at
+      the platform domain (see `GET /cname-target`) nor A/AAAA records that
+      are all among that domain's own addresses, the form a domain apex takes
+      (including flattened CNAMEs and ALIAS records). Not applicable to a name
       under a platform wildcard domain, or when no platform domain is
       configured.
 
@@ -123,8 +126,9 @@ def cname_target() -> str:
     """Return the platform domain that custom hostnames must point to.
 
     To use your own domain with a deployment, create a CNAME record for it
-    whose target is exactly this value. The hostname check
-    (`GET /hostnames/{fqdn}`) verifies that this record exists.
+    whose target is exactly this value, or, for a domain apex, A/AAAA records
+    with the addresses this domain resolves to. The hostname check
+    (`GET /hostnames/{fqdn}`) verifies that the records exist.
 
     ## Authorization
     Public — no authentication required.
@@ -132,7 +136,7 @@ def cname_target() -> str:
     ## Behavior
     Returns the CNAME target domain. Returns an
     empty string when no platform domain is configured, in which case custom
-    hostnames are not subject to the CNAME check.
+    hostnames are not subject to the DNS check.
 
     ## Errors
     - Always **200**.
