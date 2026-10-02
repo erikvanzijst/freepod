@@ -33,7 +33,7 @@ import httpx
 
 from . import AuthenticationError, FreepodError, PermissionError_
 from .auth import Session
-from .config import DEFAULT_HTTP_TIMEOUT, USER_AGENT, Environment
+from .config import DEFAULT_HTTP_TIMEOUT, USER_AGENT, Environment, login_command
 
 #: Methods whose repetition cannot create or duplicate state.
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -143,8 +143,8 @@ class ApiClient:
                     # Bounded refresh: a second 403 is reported, never retried.
                     raise PermissionError_(
                         f"403 from {url} even after refreshing — the token is still not "
-                        f"verifiable. Run `freepod login --env {self.env.name}` to "
-                        f"re-authenticate from scratch."
+                        f"verifiable. Run `{login_command(self.env.name)}` to "
+                        f"sign in again."
                     )
                 refreshed = True
                 self._renew()
@@ -177,7 +177,7 @@ class ApiClient:
         is already in memory, while this yields one whose body is still
         arriving and must be consumed inside the `with`.
 
-        The contract itself is *not* reimplemented -- 401, the two flavours of
+        The contract itself is *not* reimplemented -- 401, the two flavors of
         403, and the platform's odd 404 are decided by the same rules, and a
         refresh still happens at most once. What differs is the mechanics: the
         stream has to be opened to see the status at all, so a refusal means
@@ -220,8 +220,8 @@ class ApiClient:
                     if refreshed:
                         raise PermissionError_(
                             f"403 from {url} even after refreshing — the token is still "
-                            f"not verifiable. Run `freepod login --env {self.env.name}` "
-                            f"to re-authenticate from scratch."
+                            f"not verifiable. Run `{login_command(self.env.name)}` "
+                            f"to sign in again."
                         )
                     refreshed = True
                     self._renew()
@@ -403,7 +403,7 @@ class ApiClient:
             )
         return (
             f"401 from {url} — no credential reached the API.\n"
-            f"  Run `freepod login --env {self.env.name}` to authenticate."
+            f"  Run `{login_command(self.env.name)}` to sign in."
         )
 
     @staticmethod

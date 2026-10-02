@@ -198,7 +198,7 @@ def test_generation_never_writes_to_dot_ssh(run_key, isolated_home):
 
 def test_add_states_the_key_is_the_ssh_credential(run_key, isolated_home, capsys):
     run_key(Platform([]), ["key", "add"])
-    assert "SSH credential" in capsys.readouterr().err
+    assert "This machine now uses it for shell" in capsys.readouterr().err
 
 
 def test_rerunning_add_does_not_generate_a_second_key(run_key, isolated_home, capsys):

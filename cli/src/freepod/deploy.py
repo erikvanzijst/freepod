@@ -43,7 +43,13 @@ from .api import ApiClient, _json_code, _json_detail
 from .archive import packed_archive, report
 from .build import build_image
 from . import vars as vars_module
-from .config import BUILD_WAIT_SECONDS, CUSTOM_PRODUCT_SLUG, ROLLOUT_WAIT_SECONDS
+from .config import (
+    BUILD_WAIT_SECONDS,
+    CUSTOM_PRODUCT_SLUG,
+    ROLLOUT_WAIT_SECONDS,
+    env_suffix,
+    login_command,
+)
 from .project import PROJECT_FILE, Project, require_project
 from .values import (
     HOSTNAME_REASONS,
@@ -183,9 +189,9 @@ def preflight(
 
     if recreate and project.deployment:
         echo(
-            f"--recreate: discarding the pointer to deployment "
-            f"'{project.deployment_name}' ({project.deployment_id}). It is not "
-            f"deleted — if it still exists, it keeps running unattended."
+            f"--recreate: unlinking deployment '{project.deployment_name}' "
+            f"({project.deployment_id}) from this project. It is not deleted — "
+            f"if it still exists, it keeps running."
         )
         # The pointer stays on the project until the replacement exists.
         # Clearing it here would be persisted by any save between now and the
@@ -278,7 +284,7 @@ def _read_deployment(
         raise FreepodError(
             f"{project.path} points at deployment {deployment_id}"
             f"{f' (' + project.deployment_name + ')' if project.deployment_name else ''}, "
-            f"which no longer exists on '{project.env}'.\n"
+            f"which no longer exists{env_suffix(project.env)}.\n"
             f"  It was deleted outside this project. Run `freepod deploy --recreate` "
             f"to create a new deployment and re-point {PROJECT_FILE} at it."
         )
@@ -553,7 +559,7 @@ def _conflict(
 
 
 def describe_move(from_id: Optional[int], to_template: Dict[str, Any]) -> Optional[str]:
-    """`4 → 5 (chart custom 0.1.0 → 0.2.0)`, or None when nothing moved."""
+    """`4 → 5`, or None when nothing moved."""
     to_id = to_template.get("id")
     if from_id is None or from_id == to_id:
         return None
@@ -572,8 +578,7 @@ def _announce_move(
     now = preflight_result.template
     detail = ""
     if was.get("chart_version") and was.get("chart_version") != now.get("chart_version"):
-        chart = str(now.get("chart_ref", "")).rsplit("/", 1)[-1]
-        detail = f" (chart {chart} {was['chart_version']} → {now['chart_version']})"
+        detail = f" (version {was['chart_version']} → {now['chart_version']})"
     echo(f"Product template {move}{detail}.")
     return move
 
@@ -612,7 +617,7 @@ def create_deployment(
         raise FreepodError(
             f"the platform refused the deployment because this account has not "
             f"accepted its terms.\n"
-            f"  Run `freepod login --env {api.env.name}` to accept them, or accept "
+            f"  Run `{login_command(api.env.name)}` to accept them, or accept "
             f"them at {api.env.api_base}, then re-run."
         )
     if response.status_code != 201:

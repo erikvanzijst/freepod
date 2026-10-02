@@ -33,7 +33,7 @@ import click
 
 from . import FreepodError, UsageError
 from .api import ApiClient, _json_detail
-from .config import ROLLOUT_WAIT_SECONDS
+from .config import ROLLOUT_WAIT_SECONDS, env_suffix
 from .deploy import describe_conflict
 from .project import PROJECT_FILE, Project, require_project
 
@@ -103,7 +103,7 @@ def present(deployment: Dict[str, Any], env_name: str, echo: Callable[[str], Non
     part a user actually knows.
     """
     echo("")
-    echo(f"About to delete deployment '{deployment.get('name')}' on '{env_name}':")
+    echo(f"About to delete deployment '{deployment.get('name')}'{env_suffix(env_name)}:")
     live = address(deployment)
     if live:
         echo(f"  address  {live}")
@@ -278,7 +278,7 @@ def delete(
         name = project.deployment_name
         echo(
             f"Deployment {deployment_id}{f' ({name})' if name else ''} no longer "
-            f"exists on '{env_name}'; nothing to delete."
+            f"exists{env_suffix(env_name)}; nothing to delete."
         )
         _forget(project, echo)
         return False
@@ -328,4 +328,4 @@ def delete(
 
 def _forget(project: Project, echo: Callable[[str], None]) -> None:
     project.forget_deployment()
-    echo(f"Cleared the deployment pointer in {project.path}.")
+    echo(f"Removed the deployment from {project.path}.")

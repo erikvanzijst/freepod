@@ -123,19 +123,19 @@ def test_logout_discards_the_cached_credential(capsys):
     assert main(["logout"]) == EXIT_OK
 
     assert load_refresh_token("prod") is None
-    assert "Discarded" in capsys.readouterr().err
+    assert "Removed the stored credential from" in capsys.readouterr().err
 
 
 def test_logout_with_nothing_cached_says_so(capsys):
     assert main(["logout"]) == EXIT_OK
-    assert "No cached credential" in capsys.readouterr().err
+    assert "No stored credential in" in capsys.readouterr().err
 
 
 def test_logout_states_that_it_revokes_nothing(capsys):
     main(["logout"])
     stderr = capsys.readouterr().err
-    assert "remains valid on the platform" in stderr
-    assert "Keycloak account console" in stderr
+    assert "stays valid until you revoke it" in stderr
+    assert "https://keycloak.freepod.eu/realms/freepod/account" in stderr
 
 
 def test_logout_targets_only_the_selected_environment(capsys):
@@ -185,6 +185,23 @@ def test_an_explicit_env_overrides_the_project_file(capsys, tmp_path, monkeypatc
     capsys.readouterr()
 
 
+def test_a_project_file_without_an_environment_stays_on_prod(capsys, tmp_path, monkeypatch):
+    """Absent means prod, so the variable cannot pull the project elsewhere."""
+    from freepod.project import Project
+
+    store_refresh_token("prod", "freepod-cli-prod", "prod-refresh")
+    store_refresh_token("dev", "freepod-cli-dev", "dev-refresh")
+    Project(root=tmp_path, user_values={"hostname": "a.freepod.eu"}).save()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("FREEPOD_ENV", "dev")
+
+    assert main(["logout"]) == EXIT_OK
+
+    assert load_refresh_token("prod") is None
+    assert load_refresh_token("dev") == "dev-refresh"
+    capsys.readouterr()
+
+
 def test_a_broken_project_file_does_not_break_a_command_without_one(capsys, tmp_path, monkeypatch):
     """Inference is best-effort: `logout` has no business in the project, so a
     broken file falls back to the ordinary default rather than failing."""
@@ -192,7 +209,7 @@ def test_a_broken_project_file_does_not_break_a_command_without_one(capsys, tmp_
     monkeypatch.chdir(tmp_path)
 
     assert main(["logout"]) == EXIT_OK
-    assert "No cached credential for 'prod'" in capsys.readouterr().err
+    assert "No stored credential in" in capsys.readouterr().err
 
 
 def test_an_unknown_environment_in_the_file_does_not_break_other_commands(
@@ -207,7 +224,7 @@ def test_an_unknown_environment_in_the_file_does_not_break_other_commands(
     monkeypatch.chdir(tmp_path)
 
     assert main(["logout"]) == EXIT_OK
-    assert "No cached credential for 'prod'" in capsys.readouterr().err
+    assert "No stored credential in" in capsys.readouterr().err
 
 
 def test_an_empty_env_is_a_usage_error(capsys, tmp_path, monkeypatch):
@@ -258,8 +275,27 @@ def test_whoami_keeps_diagnostics_off_stdout(stub_api, cached_credential, capsys
     main(["whoami"])
 
     captured = capsys.readouterr()
-    assert "Environment" not in captured.out
-    assert "Environment 'prod'" in captured.err
+    assert captured.out == "erik@example.com\nuser id: 7\n"
+
+
+def test_whoami_does_not_name_the_environment(stub_api, cached_credential, capsys):
+    stub_api(sequence(json_response(200, ME)))
+
+    main(["whoami"])
+
+    captured = capsys.readouterr()
+    assert "prod" not in captured.out + captured.err
+
+
+def test_the_env_option_is_hidden_but_still_accepted(capsys):
+    main(["--help"])
+    out = capsys.readouterr().out
+    assert "--env" not in out
+    assert "FREEPOD_ENV" not in out
+    assert "dev" not in out
+
+    assert main(["--env", "dev", "logout"]) == EXIT_OK
+    assert "for 'dev'" in capsys.readouterr().err
 
 
 def test_whoami_surfaces_a_401_as_not_authenticated(stub_api, cached_credential, capsys):
@@ -285,7 +321,7 @@ def test_login_reuses_a_valid_cached_credential(stub_api, cached_credential, mon
     assert main(["login"]) == EXIT_OK
 
     stderr = capsys.readouterr().err
-    assert "Authenticated as erik@example.com" in stderr
+    assert "Signed in as erik@example.com" in stderr
     assert "cached refresh token" in stderr
 
 

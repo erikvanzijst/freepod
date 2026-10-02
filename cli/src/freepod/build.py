@@ -300,12 +300,12 @@ def follow_build(
                 offset += len(chunk)
 
             if status in TERMINAL_STATUSES:
-                # The status travelled with the bytes, so stopping here needs
+                # The status traveled with the bytes, so stopping here needs
                 # no further request.
                 return status
 
             if status == STATUS_QUEUED and not announced_queued:
-                echo("  Queued — waiting for a build worker...")
+                echo("  Queued — waiting for the build to start...")
                 announced_queued = True
 
             if time.monotonic() >= deadline:

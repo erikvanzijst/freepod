@@ -1007,7 +1007,7 @@ def test_a_template_move_is_announced(make_api, tmp_path):
     run(make_api, platform, tmp_path, echo=said.append)
 
     assert any("Product template 49 → 51" in line for line in said)
-    assert any("chart custom 0.1.0 → 0.2.0" in line for line in said)
+    assert any("version 0.1.0 → 0.2.0" in line for line in said)
 
 
 def test_an_unchanged_template_is_not_announced(make_api, tmp_path):

@@ -122,7 +122,7 @@ def pin_edge(edge: dict) -> tuple[str, int, Path]:
     host_key = edge.get("host_key") or {}
     if not host_key:
         raise FreepodError(
-            "this environment has not published an SSH host key, so the edge "
+            "the platform has not published an SSH host key, so the edge "
             "cannot be verified. No connection was attempted. Please report "
             "this — the platform should know the answer."
         )
@@ -242,7 +242,7 @@ def is_host_key_mismatch(stderr: Optional[object]) -> bool:
     """Whether ssh's failure was a host-key mismatch, not an auth or network one.
 
     Takes whatever `subprocess` hands back — a str, bytes, or None when stderr
-    was not captured — and recognises the mismatch in any of them.
+    was not captured — and recognizes the mismatch in any of them.
     """
     if stderr is None:
         return False

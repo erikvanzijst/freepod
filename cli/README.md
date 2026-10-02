@@ -13,7 +13,7 @@ pip install freepod                       # Mac, Linux, Windows
 cd myapp
 freepod login      # sign in through the browser
 freepod init       # choose a hostname for this project
-freepod deploy     # https://myapp.freepod.eu
+freepod deploy     # https://myapp.<you>.freepod.eu
 ```
 
 `deploy` packs the working tree, uploads it, builds a container image on the
@@ -102,8 +102,10 @@ Owners and timestamps are not preserved.
 
 ## Hostnames
 
-`init` asks for one. A bare name becomes a subdomain of the platform: `myapp` is
-served at `myapp.freepod.eu`. To use a domain of your own, point a CNAME at
+Your account has its own domain name, `<you>.freepod.eu`, which you choose
+once in the browser before your first deploy. Every app is served underneath
+it: `init` asks for a hostname, and a bare name such as `myapp` becomes
+`myapp.<you>.freepod.eu`. To use a domain of your own, point a CNAME record at
 `freepod.eu` first, then give `init` the full name. Certificates are issued and
 renewed for you either way.
 

@@ -42,6 +42,8 @@ from .config import (
     USER_AGENT,
     Environment,
     ensure_config_dir,
+    env_suffix,
+    login_command,
     token_cache_path,
 )
 
@@ -431,8 +433,8 @@ def device_flow(env: Environment, verbose: bool = False) -> dict:
     log("\nTo sign in, open this URL in any browser — on this machine or another:\n")
     if complete_uri:
         log(f"    {complete_uri}\n")
-        log(f"  That link already carries the code {user_code}, so Keycloak will")
-        log("  not ask you for it. To type it in by hand instead, open")
+        log(f"  That link already carries the code {user_code}, so you will not")
+        log("  be asked for it. To type it in by hand instead, open")
         log(f"  {verification_uri} and enter {user_code}\n")
     else:
         log(f"    {verification_uri}\n")
@@ -519,24 +521,24 @@ class Session:
             cached = load_refresh_token(self.env.name)
             if cached:
                 if self.verbose:
-                    log(f"Found a cached refresh token for '{self.env.name}'; refreshing.")
+                    log(f"Found a cached refresh token{env_suffix(self.env.name, 'for')}; refreshing.")
                 self.refresh_token = cached
                 if self.refresh():
                     self.credential_source = "cached refresh token"
                     return
                 if not interactive:
                     raise AuthenticationError(
-                        f"the cached credential for '{self.env.name}' is no longer valid — "
-                        f"run `freepod --env {self.env.name} login`"
+                        f"the cached credential{env_suffix(self.env.name, 'for')} is no "
+                        f"longer valid — run `{login_command(self.env.name)}`"
                     )
                 log("Refresh failed; falling back to a full login.")
             else:
                 if not interactive:
                     raise AuthenticationError(
-                        f"not authenticated for '{self.env.name}' — "
-                        f"run `freepod --env {self.env.name} login`"
+                        f"not authenticated{env_suffix(self.env.name, 'for')} — "
+                        f"run `{login_command(self.env.name)}`"
                     )
-                log(f"No cached credential for '{self.env.name}'.")
+                log(f"No cached credential{env_suffix(self.env.name, 'for')}.")
 
         self.login()
         self.credential_source = "fresh login"

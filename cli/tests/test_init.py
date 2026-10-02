@@ -152,6 +152,46 @@ def test_init_writes_the_project_file(dev_api, credential, answers, in_tmp_dir, 
     capsys.readouterr()
 
 
+def test_a_plain_init_records_no_environment(
+    dev_api, credential, answers, in_tmp_dir, capsys
+):
+    store_refresh_token("prod", "freepod-cli-prod", "prod-refresh")
+    dev_api()
+    answers("myapp")
+
+    assert main(["init"]) == EXIT_OK
+
+    document = json.loads((in_tmp_dir / PROJECT_FILE).read_text())
+    assert "env" not in document
+    assert load(in_tmp_dir).env == "prod"
+    assert "prod" not in capsys.readouterr().err
+
+
+def test_a_non_default_environment_is_recorded(dev_api, credential, answers, in_tmp_dir, capsys):
+    dev_api()
+    answers("myapp")
+
+    assert main(["--env", "dev", "init"]) == EXIT_OK
+
+    assert json.loads((in_tmp_dir / PROJECT_FILE).read_text())["env"] == "dev"
+    capsys.readouterr()
+
+
+def test_an_environment_chosen_by_the_variable_is_recorded(
+    dev_api, credential, answers, in_tmp_dir, monkeypatch, capsys
+):
+    """Otherwise the project would silently fall back to prod the moment the
+    variable is unset, with hostnames minted on dev."""
+    monkeypatch.setenv("FREEPOD_ENV", "dev")
+    dev_api()
+    answers("myapp")
+
+    assert main(["init"]) == EXIT_OK
+
+    assert json.loads((in_tmp_dir / PROJECT_FILE).read_text())["env"] == "dev"
+    capsys.readouterr()
+
+
 def test_a_missing_custom_product_is_explained_in_the_users_terms(
     dev_api, credential, answers, capsys
 ):
@@ -296,7 +336,7 @@ def test_force_warns_that_it_discards_the_deployment_pointer(
 
     stderr = capsys.readouterr().err
     assert "custom-old99" in stderr
-    assert "discards" in stderr
+    assert "unlinks deployment" in stderr
 
     project = load(in_tmp_dir)
     assert project.deployment is None, "--force discards the whole file, pointer included"

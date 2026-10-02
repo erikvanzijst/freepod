@@ -30,6 +30,7 @@ from .config import (
     LOG_RECONNECT_ATTEMPTS,
     LOG_RECONNECT_BACKOFF_SECONDS,
     LOG_STREAM_READ_TIMEOUT,
+    env_suffix,
 )
 from .project import find_project_root, load
 
@@ -88,8 +89,8 @@ def resolve_deployment(root: Path, env_name: str) -> str:
         )
     if not project.deployment_id:
         raise FreepodError(
-            f"this project has no deployment on '{env_name}' yet — there is nothing to "
-            f"read.\n"
+            f"this project has no deployment{env_suffix(env_name)} yet — there is "
+            f"nothing to read.\n"
             f"  Run `freepod deploy` first."
         )
     return project.deployment_id
@@ -266,7 +267,7 @@ def stream_once(
             )
         if response.status_code == 404:
             raise FreepodError(
-                f"no such deployment or release on '{api.env.name}'.\n"
+                f"no such deployment or release{env_suffix(api.env.name)}.\n"
                 f"  {_detail(response)}"
             )
         if not response.is_success:

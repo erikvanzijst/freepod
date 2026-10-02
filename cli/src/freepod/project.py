@@ -1,7 +1,8 @@
 """The `.freepod.json` project file: load, save, and project-root discovery.
 
-The file holds intent — the environment, the deployment pointer, and the user
-values — and nothing a deploy would rewrite. In particular the build's `image`
+The file holds intent — the deployment pointer, the user values, and, for a
+project on a non-default environment, that environment — and nothing a deploy
+would rewrite. In particular the build's `image`
 is never written to it: it is a build output, not intent, and persisting it
 would mean a rewritten committed file on every deploy, which is git churn and a
 merge conflict for any team of two. See design D4.
@@ -9,13 +10,13 @@ merge conflict for any team of two. See design D4.
 ```json
 {
   "version": 1,
-  "env": "prod",
   "deployment": {"id": "40bd8dea-…", "name": "custom-d8dtx4"},
   "user_values": {"hostname": "myapp.freepod.eu"}
 }
 ```
 
-Before the first deploy, `deployment` is `null`.
+Before the first deploy, `deployment` is `null`. An absent `env` means
+`DEFAULT_ENV`; it is written only for a project on another environment.
 """
 
 from __future__ import annotations
@@ -28,6 +29,10 @@ from typing import Any, Dict, Optional
 from . import FreepodError, UsageError
 
 PROJECT_FILE = ".freepod.json"
+
+#: The environment a project file with no `env` belongs to. Defined here rather
+#: than in `config`, which imports this module.
+DEFAULT_ENV = "prod"
 
 #: Bumped when the on-disk format changes incompatibly.
 FORMAT_VERSION = 1
@@ -47,16 +52,25 @@ class Project:
     def __init__(
         self,
         root: Path,
-        env: str,
+        env: Optional[str] = None,
         user_values: Optional[Dict[str, Any]] = None,
         deployment: Optional[Dict[str, str]] = None,
         version: int = FORMAT_VERSION,
     ):
         self.root = Path(root)
-        self.env = env
+        # As declared in the file: None is written as no key at all.
+        self.declared_env = env
         self.user_values = dict(user_values or {})
         self.deployment = dict(deployment) if deployment else None
         self.version = version
+
+    @property
+    def env(self) -> str:
+        return self.declared_env or DEFAULT_ENV
+
+    @env.setter
+    def env(self, name: str) -> None:
+        self.declared_env = name
 
     # -- location ---------------------------------------------------------
 
@@ -81,12 +95,12 @@ class Project:
 
     def to_document(self) -> Dict[str, Any]:
         values = {k: v for k, v in self.user_values.items() if k not in BUILD_OUTPUT_KEYS}
-        return {
-            "version": self.version,
-            "env": self.env,
-            "deployment": dict(self.deployment) if self.deployment else None,
-            "user_values": values,
-        }
+        document: Dict[str, Any] = {"version": self.version}
+        if self.declared_env is not None:
+            document["env"] = self.declared_env
+        document["deployment"] = dict(self.deployment) if self.deployment else None
+        document["user_values"] = values
+        return document
 
     def save(self) -> None:
         """Write the file, atomically, with a trailing newline.
@@ -167,8 +181,8 @@ def load(root: Path) -> Project:
         )
 
     env = document.get("env")
-    if not isinstance(env, str) or not env:
-        raise FreepodError(f"{path} does not record which environment it belongs to")
+    if env is not None and (not isinstance(env, str) or not env):
+        raise FreepodError(f"{path}: 'env' must be a non-empty string")
 
     user_values = document.get("user_values")
     if user_values is None:
