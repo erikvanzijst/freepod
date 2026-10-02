@@ -1,11 +1,18 @@
 import { Box, Container, Stack, Typography } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
+import { isAppRoute } from '../utils/links'
 import { DISPLAY, fg, line, MONO, SANS } from './landing/landingTokens'
 import { LEGAL_NAV } from '../content/legal'
 import { RepoLink } from './RepoLink'
 
 const columns = [
-  { heading: 'Product', links: [{ label: 'Developers', href: '/dev' }] },
+  {
+    heading: 'Product',
+    links: [
+      { label: 'Developers', href: '/dev' },
+      { label: 'Docs', href: '/docs/' },
+    ],
+  },
   {
     heading: 'Legal',
     links: LEGAL_NAV.map((doc) => ({ label: doc.title, href: `/legal/${doc.slug}` })),
@@ -84,9 +91,15 @@ export function AppFooter() {
                   {col.heading}
                 </Typography>
                 {col.links.map((link) => (
-                  <Box key={link.href} component={RouterLink} to={link.href} sx={footerLinkSx}>
-                    {link.label}
-                  </Box>
+                  isAppRoute(link.href) ? (
+                    <Box key={link.href} component={RouterLink} to={link.href} sx={footerLinkSx}>
+                      {link.label}
+                    </Box>
+                  ) : (
+                    <Box key={link.href} component="a" href={link.href} sx={footerLinkSx}>
+                      {link.label}
+                    </Box>
+                  )
                 ))}
               </Stack>
             ))}

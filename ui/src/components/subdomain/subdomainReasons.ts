@@ -15,5 +15,5 @@ export const CLAIM_REASONS: Record<string, string> = {
 }
 
 export function claimReasonText(reason: string): string {
-  return CLAIM_REASONS[reason] ?? 'That domain name cannot be used.'
+  return CLAIM_REASONS[reason] ?? 'That subdomain cannot be used.'
 }

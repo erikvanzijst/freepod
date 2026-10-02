@@ -17,14 +17,17 @@ freepod init       # choose a hostname, writes .freepod.json
 freepod deploy     # pack, upload, build, release
 ```
 
+The full documentation, including the CLI reference, is at
+https://freepod.eu/docs/developers.
+
 Deployment is not the hard part. **Fitting the platform's constraints is**, and
 they are strict enough to rule some applications out entirely. Read the next
 section before you write or port any code.
 
 ## Does the app fit? Check before writing code
 
-Five constraints. Each one silently produces a deployment that builds fine and
-then does not work.
+Six constraints. Each one produces a deployment that builds fine and then does
+not work.
 
 **1. The app must bind `0.0.0.0:$PORT`.** The platform assigns the port and
 passes it in the environment. An app that hardcodes a port receives no traffic.
@@ -77,6 +80,12 @@ yours is silently overridden. Never set them.
 **5. One HTTP service per deployment.** No sidecars, no worker processes, no
 scheduled jobs. If the app is a stack of cooperating services, only one of them
 can live here.
+
+**6. `GET /` must answer 2xx or 3xx.** The platform's health check requests `/`
+on `$PORT`, without sign-in headers. A release takes traffic only once it
+passes, and one that never passes is rolled back and the deploy fails. An API
+whose `/` is a 404, or an app that answers `/` with a 401, needs a `/` route
+that returns 200 or a redirect.
 
 If the app fails any of these and cannot be adapted, say so before building
 anything. That is a more useful answer than a deployment that comes up broken.
@@ -275,14 +284,15 @@ Three things worth knowing:
 
 - **Path-style addressing.** The endpoint serves `…/bucket/key`, not
   `bucket.host/key`. boto3 selects this automatically for a custom endpoint.
-  The JavaScript v3 client does not: pass `forcePathStyle: true`.
+  The JavaScript v3 client does not: pass `forcePathStyle: true`, and also
+  `requestChecksumCalculation: 'WHEN_REQUIRED'` — without it every presigned
+  upload URL carries an empty-body checksum and uploads fail with `InvalidDigest`.
 - **Presigned URLs work in a browser.** The endpoint is publicly reachable, so
   a URL the app signs can go straight to an end user for download or upload,
   and the bytes never pass through the container. CORS is preconfigured,
   including the `ETag` exposure that multipart uploads need.
-- **User metadata does not survive.** Garage does not return `Metadata` on
-  `GetObject`. Use the object's `LastModified`, or store what you need in the
-  object body or the key.
+- **User metadata keys come back capitalized.** `Metadata={"owner": "alice"}`
+  is returned as `{"Owner": "alice"}`; read keys case-insensitively.
 
 ## Signing users in: "Sign in with Freepod"
 
@@ -626,9 +636,9 @@ Two things logs cannot tell you, because they are not the application's output:
 whether the container is running at all, and what the platform did. For those,
 `freepod deploy`'s own error and the deployment status are the record.
 
-Give every app a `/healthz` from the start. It costs three lines and it
-separates "the container is not running" from "the container is running and the
-app is wrong."
+Give every app a `/healthz` from the start, in addition to the `/` the platform
+checks. It costs three lines and it separates "the container is not running"
+from "the container is running and the app is wrong."
 
 ### Reading the running container
 

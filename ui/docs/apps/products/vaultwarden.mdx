@@ -1,0 +1,45 @@
+---
+title: Vaultwarden
+---
+
+import ProductHeader from '@site/src/components/ProductHeader'
+
+<ProductHeader slug="vaultwarden" />
+
+Vaultwarden is a password manager compatible with the Bitwarden apps and browser extensions.
+
+## Settings
+
+| Setting | Meaning |
+| --- | --- |
+| Hostname | The app's address |
+| Allow open registration | Lets anyone who knows the address create an account. Off by default. |
+| Require email verification on signups | New accounts must confirm their email address before signing in. On by default. |
+
+## First sign-in
+
+Your account is created for you, for the email address of your Freepod account:
+
+1. After the app starts, you receive an invitation email from `vaultwarden@freepod.eu`.
+2. Open the link in the email. It is valid for 5 days.
+3. Choose a master password of at least 12 characters, and select **Create account**.
+
+**The master password cannot be recovered.** If it is lost, the passwords stored in the vault are lost with it.
+
+Invite other people from the web vault. If the invitation does not arrive, check your spam folder or contact [support@freepod.eu](mailto:support@freepod.eu).
+
+## Apps and browser extensions
+
+Use the [Bitwarden apps and browser extensions](https://bitwarden.com/download/). When signing in, choose a self-hosted server and enter `https://<hostname>` as the server URL.
+
+## File access
+
+[SFTP](../file-access.md) shows Vaultwarden's data folder, read-only. Vault contents are encrypted; use Bitwarden's export feature for a usable copy of your passwords.
+
+## Email
+
+Vaultwarden sends email, such as invitations and verification messages, from `vaultwarden@freepod.eu`. See [Email](../email.md).
+
+## Documentation
+
+[Vaultwarden wiki](https://github.com/dani-garcia/vaultwarden/wiki) · [Bitwarden help](https://bitwarden.com/help/)

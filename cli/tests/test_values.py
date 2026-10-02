@@ -230,7 +230,7 @@ def test_an_unusable_hostname_re_prompts_with_its_reason():
         ("in_use", "already taken"),
         ("reserved", "reserved"),
         ("invalid", "not a valid hostname"),
-        ("claimed", "another account holds"),
+        ("claimed", "another account's subdomain"),
         ("not_resolving", "A/AAAA"),
     ],
 )

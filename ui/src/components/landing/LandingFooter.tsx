@@ -1,5 +1,6 @@
 import { Box, Container, Stack, Typography } from '@mui/material'
 import { Link as RouterLink } from 'react-router-dom'
+import { isAppRoute } from '../../utils/links'
 import { DISPLAY, fg, line, MONO, SANS } from './landingTokens'
 import { LEGAL_NAV } from '../../content/legal'
 import { RepoLink } from '../RepoLink'
@@ -12,6 +13,7 @@ const columns = [
       { label: 'Why Freepod', href: '/#why' },
       { label: 'Pricing', href: '/#pricing' },
       { label: 'Developers', href: '/dev' },
+      { label: 'Docs', href: '/docs/' },
     ],
   },
   {
@@ -87,8 +89,7 @@ export function LandingFooter() {
                   {col.heading}
                 </Typography>
                 {col.links.map((link) =>
-                  // Router links don't scroll to a #fragment, so those stay plain anchors.
-                  link.href.startsWith('/') && !link.href.includes('#') ? (
+                  isAppRoute(link.href) ? (
                     <Box key={link.label} component={RouterLink} to={link.href} sx={footerLinkSx}>
                       {link.label}
                     </Box>

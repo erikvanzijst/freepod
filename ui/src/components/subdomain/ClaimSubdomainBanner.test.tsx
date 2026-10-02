@@ -7,7 +7,7 @@ describe('ClaimSubdomainBanner', () => {
     const onChoose = vi.fn()
     render(<ClaimSubdomainBanner onChoose={onChoose} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Claim your free domain name' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Claim your free subdomain' }))
 
     expect(onChoose).toHaveBeenCalled()
   })

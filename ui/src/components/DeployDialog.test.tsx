@@ -159,7 +159,7 @@ describe('DeployDialog', () => {
 
     // Wait for the template query to resolve and the form to render
     await waitFor(() => {
-      expect(screen.getByText('Configure application values:')).toBeInTheDocument()
+      expect(screen.getByText('App settings:')).toBeInTheDocument()
     })
 
     const hostnameInput = screen.getByRole('textbox', { name: /hostname/i })
@@ -209,7 +209,7 @@ describe('DeployDialog', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Configure application values:')).toBeInTheDocument()
+      expect(screen.getByText('App settings:')).toBeInTheDocument()
     })
 
     // No agreement checkbox is shown once the user has accepted.
@@ -248,7 +248,7 @@ describe('DeployDialog', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Configure application values:')).toBeInTheDocument()
+      expect(screen.getByText('App settings:')).toBeInTheDocument()
     })
 
     const hostnameInput = screen.getByRole('textbox', { name: /hostname/i })
@@ -275,7 +275,7 @@ describe('DeployDialog', () => {
     renderWithQuery(<DeployDialog product={helloWorld} userId={1} onClose={vi.fn()} />)
 
     await waitFor(() => {
-      expect(screen.getByText('Configure application values:')).toBeInTheDocument()
+      expect(screen.getByText('App settings:')).toBeInTheDocument()
     })
 
     const hostnameInput = screen.getByRole('textbox', { name: /hostname/i })
@@ -348,7 +348,7 @@ describe('DeployDialog', () => {
 
     // The form should render using the deployment's template schema
     await waitFor(() => {
-      expect(screen.getByText('Configure application values:')).toBeInTheDocument()
+      expect(screen.getByText('App settings:')).toBeInTheDocument()
     })
 
     // Hostname should be pre-populated from deployment.user_values_json
@@ -426,7 +426,7 @@ describe('DeployDialog', () => {
     renderWithQuery(<DeployDialog product={varsProduct} userId={1} onClose={vi.fn()} />)
 
     await waitFor(() => {
-      expect(screen.getByText('Configure application values:')).toBeInTheDocument()
+      expect(screen.getByText('App settings:')).toBeInTheDocument()
     })
 
     fireEvent.change(screen.getByRole('textbox', { name: /hostname/i }), {
@@ -465,7 +465,7 @@ describe('DeployDialog', () => {
     renderWithQuery(<DeployDialog product={varsProduct} userId={1} onClose={vi.fn()} />)
 
     await waitFor(() => {
-      expect(screen.getByText('Configure application values:')).toBeInTheDocument()
+      expect(screen.getByText('App settings:')).toBeInTheDocument()
     })
     const hint = 'Fill in every field marked * to continue.'
 

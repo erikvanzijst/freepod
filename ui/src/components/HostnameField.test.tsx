@@ -219,7 +219,7 @@ describe('HostnameField', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText('That domain name belongs to another account'),
+          screen.getByText("That hostname is under another account's subdomain"),
         ).toBeInTheDocument()
       })
     })

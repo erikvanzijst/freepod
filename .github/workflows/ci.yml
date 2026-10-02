@@ -32,6 +32,38 @@ jobs:
           cd ui
           npm test
 
+  # The docs site (ui/docs): the generated CLI reference must match the CLI,
+  # and the build fails on a broken link or a catalog product without a page.
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/docs/package-lock.json
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Check the generated CLI reference
+        run: |
+          cd ui/docs
+          npm ci
+          npm run cli:check
+
+      - name: Build the docs site
+        run: |
+          cd ui/docs
+          npm run typecheck
+          npm run build
+
   # Validates products/catalog/ using the files alone — no database and no
   # cluster access — so a malformed catalog is caught in review rather than by
   # the catalog init container during a rollout.
@@ -126,7 +158,7 @@ jobs:
   publish-images:
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    needs: [ui-test, api-test, catalog-lint, cli, ssh-sidecar-test, ssh-auth-test, app-auth-test, upgrader-test]
+    needs: [ui-test, docs, api-test, catalog-lint, cli, ssh-sidecar-test, ssh-auth-test, app-auth-test, upgrader-test]
     permissions:
       contents: read
       packages: write

@@ -98,7 +98,7 @@ function AppShell({ children }: PropsWithChildren) {
             </Typography>
           </Stack>
           <Box sx={{ flex: 1 }} />
-          {/* The wordmark handles "home". Besides the developer page, the bar
+          {/* The wordmark handles "home". Besides the developer page and docs, the bar
               carries no section nav; Admin and session actions live in the
               account menu. */}
           <Box
@@ -112,6 +112,18 @@ function AppShell({ children }: PropsWithChildren) {
             }}
           >
             Developers
+          </Box>
+          <Box
+            component="a"
+            href="/docs/"
+            sx={{
+              fontSize: 15,
+              color: fg.muted,
+              transition: 'color 0.2s',
+              '&:hover': { color: fg.primary },
+            }}
+          >
+            Docs
           </Box>
           <Button
             onClick={(e) => setMenuAnchor(e.currentTarget)}

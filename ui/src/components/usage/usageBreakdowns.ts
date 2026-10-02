@@ -24,8 +24,8 @@ export const byResource: UsageBreakdownOption = {
 
 export const byApplication: UsageBreakdownOption = {
   dimension: 'deployment',
-  label: 'By application',
-  heading: 'Application',
+  label: 'By app',
+  heading: 'App',
   keyColumn: 'deployment_id',
   labeler: deploymentLabeler,
 }

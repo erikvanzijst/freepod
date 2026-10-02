@@ -1,0 +1,186 @@
+---
+slug: /
+title: Get started
+---
+
+import Tabs from '@theme/Tabs'
+import TabItem from '@theme/TabItem'
+
+# Get started
+
+Deploy a web application from a local directory with the `freepod` command-line client. Freepod builds a container image from the source and serves it on its own hostname.
+
+```bash
+freepod login     # once per machine
+freepod init      # once per project
+freepod deploy    # every release
+```
+
+## Requirements
+
+- A Freepod account. `freepod login` opens the sign-in page, which also offers registration.
+- An application that serves HTTP on the port in the `PORT` environment variable and answers `GET /`. See [Runtime contract](runtime.mdx).
+- `ssh` and `sftp`, only for `freepod shell`, `freepod cp` and `freepod db shell|proxy`.
+
+## 1. Install the client
+
+```bash
+uv tool install freepod                 # macOS, Linux, Windows
+pip install freepod                     # macOS, Linux, Windows
+brew install erikvanzijst/tap/freepod   # macOS, Linux
+```
+
+Check the installation:
+
+```bash
+freepod --version
+```
+
+## 2. Sign in
+
+```bash
+freepod login
+```
+
+The client opens a browser to the Freepod sign-in page. On a machine without a browser, it prints a URL and a code to enter on another device. The credential is stored locally; `freepod logout` removes it.
+
+Deploying requires acceptance of the [Terms of Service](app:/legal/terms). `freepod login` asks for it, and `freepod deploy` asks again before it creates the first deployment if it has not been accepted.
+
+## 3. Choose your subdomain
+
+Every deployment's hostname sits under your account's subdomain, for example `alice.freepod.eu`. You choose it once, in the browser:
+
+1. Open [freepod.eu](app:/) and sign in.
+2. The dashboard asks for a subdomain. Enter one and select **Claim this name**.
+
+The name is 2 to 63 characters of lowercase letters, digits and hyphens, and starts and ends with a letter or digit. It cannot be changed or released later.
+
+**Not now** postpones the choice. Until a subdomain is chosen, `freepod init` and `freepod deploy` stop with an error that links to the dashboard. The choice is also available under **Settings → Subdomain**.
+
+## 4. Initialize the project
+
+In the root of the project:
+
+```bash
+freepod init
+```
+
+`init` asks for a hostname and suggests one based on the directory name. A single label is completed under your subdomain: `myapp` becomes `myapp.alice.freepod.eu`. A name that contains a dot is used as entered, for a [custom domain](hostnames-and-custom-domains.md).
+
+`init` writes `.freepod.json`. Commit it: it records the hostname and, after the first deploy, which deployment the project belongs to. Every later `freepod deploy` from a checkout of the project, on any machine, updates that same deployment.
+
+`init` creates nothing on the platform.
+
+## 5. Deploy
+
+```bash
+freepod deploy
+```
+
+`deploy` runs these steps:
+
+1. Packs the project directory, excluding `.git/`, files matched by `.gitignore`, and common build output.
+2. On the first deploy, creates the deployment.
+3. Uploads the archive and builds a container image. The build log streams to the terminal.
+4. Releases the image to the deployment and waits until the new version is running.
+
+A first deploy typically takes a few minutes. When it finishes, the application is live at its hostname and the address is printed:
+
+```
+https://myapp.alice.freepod.eu
+```
+
+The address is the only output on stdout, so scripts can capture it with `URL=$(freepod deploy)`. Progress and the build log go to stderr.
+
+## 6. Release changes
+
+Run `freepod deploy` again. Each successful deploy is a new [release](deployments-and-releases.md).
+
+## Example application
+
+A minimal application that meets the runtime contract:
+
+<Tabs groupId="language" queryString>
+<TabItem value="node" label="Node.js">
+
+```js title="server.js"
+const http = require('node:http')
+
+const port = process.env.PORT || 8080
+
+http
+  .createServer((req, res) => {
+    res.end('Hello from Freepod\n')
+  })
+  .listen(port, '0.0.0.0')
+```
+
+```json title="package.json"
+{
+  "name": "hello",
+  "scripts": { "start": "node server.js" }
+}
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python title="main.py"
+from fastapi import FastAPI
+
+app = FastAPI()
+
+
+@app.get("/")
+def index():
+    return {"hello": "freepod"}
+```
+
+```text title="requirements.txt"
+fastapi
+uvicorn
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go title="main.go"
+package main
+
+import (
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+)
+
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "Hello from Freepod")
+	})
+	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, nil))
+}
+```
+
+```text title="go.mod"
+module example.com/hello
+
+go 1.25
+```
+
+</TabItem>
+</Tabs>
+
+With these files in a directory, `freepod init` and `freepod deploy` produce a running deployment. See [Builds](builds/index.md) for how the image is built.
+
+## Next steps
+
+- [How it works](how-it-works.md): projects, deployments, builds and releases.
+- [Runtime contract](runtime.mdx): what the application must do, and what the platform provides.
+- [Variables and secrets](variables-and-secrets.md): configure the running application.
+- [Storage](storage/index.md): PostgreSQL and object storage.
+- [Logs and debugging](logs-and-debugging.md): application output, shell access, file copy.

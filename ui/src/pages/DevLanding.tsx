@@ -13,6 +13,7 @@ import { PAGE_META } from '../content/pageMeta'
 const navLinks = [
   { label: 'Demo', href: '#demo' },
   { label: 'Features', href: '#features' },
+  { label: 'Docs', href: '/docs/developers' },
   { label: 'Apps', href: '/' },
 ]
 

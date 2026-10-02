@@ -147,8 +147,8 @@ function Dashboard() {
     <Stack spacing={4}>
       <PageHeading
         eyebrow="Your space"
-        title="Your applications"
-        subtitle="Spin up new products and keep track of your live environments."
+        title="Your apps"
+        subtitle="Launch apps and manage the ones you run."
       />
 
       {claimPending && invitationDismissed && (
@@ -174,9 +174,9 @@ function Dashboard() {
           <Grid size={{ xs: 12 }}>
             <Card sx={{ p: 4 }}>
               <Stack spacing={1}>
-                <Typography variant="h6">No applications yet</Typography>
+                <Typography variant="h6">No apps yet</Typography>
                 <Typography color="text.secondary">
-                  Choose an application below to launch your first instance.
+                  Choose an app below to launch it.
                 </Typography>
               </Stack>
             </Card>
@@ -185,9 +185,9 @@ function Dashboard() {
       </Grid>
 
       <Box>
-        <Typography variant="h5">Available applications</Typography>
+        <Typography variant="h5">Available apps</Typography>
         <Typography color="text.secondary" sx={{ mb: 2 }}>
-          Click an app to launch your own instance.
+          Select an app to launch it.
         </Typography>
         <ProductList
           products={deployableProducts}

@@ -1,4 +1,4 @@
-"""The domain name an account is addressed under.
+"""The subdomain an account is addressed under.
 
 Every application a user deploys sits beneath one — `<app>.<subdomain>.<domain>`
 — so a deploy needs two things from it: the suffix that completes a bare
@@ -23,7 +23,7 @@ from .config import Environment
 
 SUBDOMAIN_PATH = "/api/me/subdomain"
 
-#: The code the platform's create refuses with when no domain name is held.
+#: The code the platform's create refuses with when no subdomain is held.
 #: Matched as a backstop for the race where one is somehow absent between
 #: preflight and the create request.
 DEPLOY_REFUSAL_CODE = "subdomain_required"
@@ -43,8 +43,8 @@ def held(record: Dict[str, Any]) -> Optional[str]:
 def explain(env: Environment) -> str:
     """Why the deploy cannot proceed, and what would fix it."""
     return (
-        f"this account does not have a domain name yet.\n"
-        f"  Every app you deploy is addressed underneath one. Choosing it is a\n"
+        f"this account does not have a subdomain yet.\n"
+        f"  Every app you deploy gets a hostname under it. Choosing it is a\n"
         f"  one-time, permanent decision, so it is made in the browser:\n"
         f"  {env.api_base}\n"
         f"  Run this again once you have chosen. Nothing has been packed, built "
@@ -53,7 +53,7 @@ def explain(env: Environment) -> str:
 
 
 def require(api: ApiClient) -> str:
-    """The account's domain name, or refuse the deploy before anything is spent."""
+    """The account's subdomain, or refuse the deploy before anything is spent."""
     fqdn = held(read(api))
     if fqdn is None:
         raise FreepodError(explain(api.env))

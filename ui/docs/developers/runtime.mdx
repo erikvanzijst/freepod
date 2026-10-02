@@ -1,0 +1,144 @@
+---
+title: Runtime contract
+---
+
+import Tabs from '@theme/Tabs'
+import TabItem from '@theme/TabItem'
+
+# Runtime contract
+
+What the platform provides to a running deployment, and what the application must do to receive traffic.
+
+## Summary
+
+| | |
+| --- | --- |
+| Processes | One container, one replica |
+| Inbound | HTTPS on the deployment's hostname, forwarded as HTTP to `$PORT` |
+| Health check | `GET /` must answer with a 2xx or 3xx status |
+| Outbound | Public internet |
+| Filesystem | Writable, not persistent |
+| Persistent state | [PostgreSQL](storage/postgresql.mdx) and [object storage](storage/object-storage.mdx) |
+| Configuration | Environment variables |
+
+## Port
+
+The platform sets the `PORT` environment variable. The application must listen on `0.0.0.0:$PORT`.
+
+- Read the port from the environment. Do not hardcode it; the value can change.
+- Bind `0.0.0.0`, not `127.0.0.1` or `localhost`. A server bound to the loopback interface receives no traffic.
+
+<Tabs groupId="language" queryString>
+<TabItem value="node" label="Node.js">
+
+```js
+server.listen(process.env.PORT, '0.0.0.0')
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+uvicorn.run(app, host="0.0.0.0", port=int(os.environ["PORT"]))
+```
+
+</TabItem>
+<TabItem value="go" label="Go">
+
+```go
+http.ListenAndServe("0.0.0.0:"+os.Getenv("PORT"), handler)
+```
+
+</TabItem>
+</Tabs>
+
+## Health check
+
+The platform sends `GET /` to `$PORT` every 5 seconds. The check passes when the response status is from 200 to 399 within 5 seconds, and fails after 3 consecutive failures.
+
+- A container receives traffic only while the check passes.
+- A release completes only when the new container passes the check. See [Releases](#releases).
+- The request has no sign-in headers, also when [Sign in with Freepod](authentication.mdx) is enabled. `/` must not require authentication at the application level; redirecting to a login page is a 3xx and passes.
+- A failing check does not restart the container. Use `freepod log` and `freepod shell` to investigate.
+
+## Processes
+
+A deployment runs one container with one replica.
+
+- One process serves HTTP. There are no separate worker processes, sidecars or scheduled jobs.
+- There is no release phase or init container. Run one-time startup tasks, such as database migrations, in the start command before the server starts. For example, in a `Procfile`:
+
+  ```procfile title="Procfile"
+  web: sh -c 'alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT'
+  ```
+
+  See [Builds](builds/index.md) for how the start command is determined.
+
+- If the process exits, the container is restarted.
+
+## Inbound traffic
+
+- Each deployment has one hostname. See [Hostnames and custom domains](hostnames-and-custom-domains.md).
+- Clients connect over HTTPS, with HTTP/1.1 or HTTP/2. Freepod terminates TLS and issues and renews certificates. The application receives plain HTTP/1.1.
+- Plain HTTP requests are redirected to HTTPS with status `308`.
+- Responses carry `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`.
+- WebSockets are supported.
+- Only HTTP is routed. Inbound TCP or UDP on other ports is not possible.
+
+### Request headers
+
+The platform adds these headers to every request:
+
+| Header | Value |
+| --- | --- |
+| `X-Forwarded-For`, `X-Real-Ip` | Client IP address |
+| `X-Forwarded-Proto` | `https` |
+| `X-Forwarded-Host` | The requested hostname |
+| `X-Forwarded-Port` | `443` |
+
+### Timeouts and size limits
+
+| | Limit |
+| --- | --- |
+| Request body upload | Must complete within 60 seconds; slower uploads fail with `502` |
+| Request body size | None |
+| Response time | None |
+| Idle connection, such as a stream or WebSocket with no traffic | None |
+
+The upload limit also applies to [object storage](storage/object-storage.mdx). For large files from clients on slow connections, upload in parts: a multipart upload sends each part as a separate request.
+
+## Outbound traffic
+
+- The application can connect to any host on the public internet.
+- Deployments cannot connect to each other directly, including deployments on the same account.
+
+## Filesystem
+
+The container's filesystem is writable and not persistent. Files written at runtime are lost when the container restarts and at every release.
+
+Store state in the deployment's [PostgreSQL database](storage/postgresql.mdx) or [object storage bucket](storage/object-storage.mdx). Applications that depend on local files, such as SQLite databases, local file uploads or on-disk session stores, do not work.
+
+## Environment
+
+The platform sets these variables:
+
+| Variable | Contents |
+| --- | --- |
+| `PORT` | Port to listen on |
+| `DATABASE_URL`, `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` | PostgreSQL connection. See [PostgreSQL](storage/postgresql.mdx). |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL`, `AWS_ENDPOINT_URL_S3`, `AWS_REGION`, `AWS_DEFAULT_REGION`, `S3_BUCKET`, `BUCKET_NAME` | Object storage. See [Object storage](storage/object-storage.mdx). |
+
+Set your own variables with `freepod var`. See [Variables and secrets](variables-and-secrets.md). These names are reserved and cannot be set: `PORT`, `BUCKET_NAME`, and names starting with `AWS_`, `S3_`, `CAELUS_` or `RAILPACK_`.
+
+## Releases
+
+On a release, the new container starts next to the running one, which keeps serving traffic:
+
+1. The new container starts receiving traffic once it passes the [health check](#health-check).
+2. After it has passed for 10 seconds, the previous container receives `SIGTERM` and is stopped 30 seconds later if it has not exited.
+
+A new container that does not pass the health check within the release timeout, or that exits, fails the release. The previous version keeps serving. See [Deployments and releases](deployments-and-releases.md).
+
+## Logs
+
+Everything the application writes to stdout and stderr is captured. Read it with `freepod log`. See [Logs and debugging](logs-and-debugging.md).

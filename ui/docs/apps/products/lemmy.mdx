@@ -1,0 +1,48 @@
+---
+title: Lemmy
+---
+
+import ProductHeader from '@site/src/components/ProductHeader'
+
+<ProductHeader slug="lemmy" />
+
+Lemmy hosts link-sharing and discussion communities, and connects to other Lemmy servers through federation.
+
+## Settings
+
+| Setting | Meaning |
+| --- | --- |
+| Hostname | The app's address, and its identity on the federated network |
+| Instance name | Name shown in the header and to other servers. At most 20 characters. |
+| Admin password | The password of the `admin` account. 10 to 60 characters. |
+
+The instance name and admin password are used once, when the app first starts. To change them later, use Lemmy's own settings. Changing them with **Edit** afterwards has no effect.
+
+:::warning
+
+Do not change the hostname after the app is in use. Every user and community address includes it, and other Lemmy servers do not recognize the app under a new hostname. See [Hostname](../managing/hostname.md).
+
+:::
+
+## First sign-in
+
+1. Select **Open** on the app's card.
+2. Sign in with username `admin` and the admin password.
+
+Configure registration, the site description and other options in Lemmy's **Admin settings**.
+
+## Apps
+
+Lemmy works in a browser and with third-party apps; see [join-lemmy.org/apps](https://join-lemmy.org/apps).
+
+## File access
+
+[SFTP](../file-access.md) shows Lemmy's uploaded images and media, read-only.
+
+## Email
+
+Lemmy sends email, such as verification messages and password resets, from `lemmy@freepod.eu`. See [Email](../email.md).
+
+## Documentation
+
+[join-lemmy.org/docs](https://join-lemmy.org/docs/)

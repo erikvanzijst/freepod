@@ -13,23 +13,9 @@ spec:
   replicas: {{ .Values.replicas }}
   {{- /*
   How long a new pod must stay Ready before it counts as available, and
-  therefore before `helm upgrade --wait` will call the rollout done.
-
-  Without it, `--wait` accepts a container that starts and immediately dies.
-  This chart declares no readiness probe, so a container is Ready the instant
-  it runs; an application that crashes on startup was briefly Ready, Helm saw
-  an available ReplicaSet, and the rollout was reported successful. The pod
-  then crash-looped behind a deployment the platform had already recorded as
-  `ready`, `--atomic` never rolled anything back, and the user was told their
-  broken application was live.
-
-  Ten seconds is a floor, not a health check. It catches a process that exits
-  soon after starting, which is the common shape of a broken deploy, and
-  nothing else: an application that stays alive without ever serving anything
-  still passes. A real readiness contract is deliberately not attempted here --
-  binding $PORT is a convention that most applications follow rather than a
-  requirement, and headless workloads would have nothing to probe. Liveness
-  wants revisiting on its own terms.
+  therefore before `helm upgrade --wait` will call the rollout done. The
+  readiness probe below decides when it is Ready; this floor additionally
+  catches an application that answers once and then crashes.
   */}}
   minReadySeconds: 10
   selector:
@@ -67,6 +53,20 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.containerPort }}
+          {{- /*
+          The platform's health check, documented to tenants as "GET / answers
+          2xx or 3xx". It gates traffic, so a new release takes requests only
+          once it serves them, and the rollout, so one that never does is rolled
+          back. No liveness probe: restarting an app that is slow on / would be
+          worse than leaving it out of rotation.
+          */}}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
           env:
             # The platform tells the app which port to bind, rather than the app
             # being required to know. This is Railway's convention, which the
