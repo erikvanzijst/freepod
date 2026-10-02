@@ -29,12 +29,12 @@ Each of these creates one numbered release. One release runs at a time per deplo
 
 A release replaces the running container. The sequence is described under [Runtime contract: Releases](runtime.mdx#releases):
 
-- The previous version serves traffic until the new container passes the [health check](runtime.mdx#health-check).
+- The previous version serves traffic until the new container passes the [readiness check](runtime.mdx#readiness).
 - Connections still open to the previous container, such as WebSockets or streaming responses, are closed when it stops.
 
 ## Failed releases
 
-A release fails when the new container does not pass the health check within 5 minutes, for example because it exits at startup or does not listen on `$PORT`. The previous release keeps serving traffic.
+A release fails when the new container does not pass the readiness check within 5 minutes, for example because it exits at startup or does not listen on `$PORT`. The previous release keeps serving traffic.
 
 `freepod deploy` prints the platform's error and the last lines of the failed container's output. The full output of any release, including a failed one, is available with `freepod log -r <release>`.
 
@@ -59,7 +59,7 @@ The release marked `*` is the one serving traffic. After a failed release, that 
 | `queued` | Waiting to start |
 | `in_flight` | Rolling out |
 | `succeeded` | Rolled out |
-| `failed` | Did not pass the health check in time; see [Failed releases](#failed-releases) |
+| `failed` | Did not pass the readiness check in time; see [Failed releases](#failed-releases) |
 | `abandoned` | Interrupted by a platform fault |
 
 `--all` lists every release; `--verbose` prints full image references.

@@ -54,15 +54,15 @@ spec:
             - name: http
               containerPort: {{ .Values.containerPort }}
           {{- /*
-          The platform's health check, documented to tenants as "GET / answers
-          2xx or 3xx". It gates traffic, so a new release takes requests only
-          once it serves them, and the rollout, so one that never does is rolled
-          back. No liveness probe: restarting an app that is slow on / would be
-          worse than leaving it out of rotation.
+          The platform's readiness check, documented to tenants as "listens on
+          $PORT". It gates traffic, so a new release takes requests only once it
+          accepts connections, and the rollout, so one that never does is rolled
+          back. TCP, not HTTP: an app behind Sign in with Freepod answers an
+          anonymous request with 401, which an HTTP probe counts as a failure.
+          No liveness probe.
           */}}
           readinessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: http
             periodSeconds: 5
             timeoutSeconds: 5

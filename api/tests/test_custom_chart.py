@@ -456,8 +456,8 @@ def test_the_release_number_is_declared_in_values_and_schema():
 def test_the_pod_must_stay_ready_before_counting_as_available():
     """`helm upgrade --wait` otherwise accepts a container that dies on startup.
 
-    This chart declares no readiness probe, so a container is Ready the instant
-    it runs. An application crashing on startup was briefly Ready, Helm saw an
+    Without minReadySeconds a container is Ready as soon as it accepts
+    connections. An application crashing on startup was briefly Ready, Helm saw an
     available ReplicaSet and reported success, `--atomic` rolled nothing back,
     and the platform recorded a crash-looping deployment as `ready`. Observed
     on dev before this was added.
@@ -466,17 +466,18 @@ def test_the_pod_must_stay_ready_before_counting_as_available():
     assert deployment["spec"]["minReadySeconds"] == 10
 
 
-def test_readiness_probe_is_get_slash_on_the_http_port():
-    """The documented health check: `GET /` answers 2xx or 3xx.
+def test_readiness_probe_is_tcp_on_the_http_port():
+    """The documented readiness check: the app accepts connections on $PORT.
 
     Supersedes the no-probe floor of add-deployment-logs D15 now that the
-    platform is web-only: it gates traffic and the rollout. No liveness or
-    startup probe, so an app that is slow on `/` is left running, out of
-    rotation, rather than restarted.
+    platform is web-only: it gates traffic and the rollout. TCP rather than
+    HTTP, because an app behind Sign in with Freepod answers an anonymous
+    request with 401. No liveness or startup probe.
     """
     container = _app_container(_render(**BASE))
     probe = container["readinessProbe"]
-    assert probe["httpGet"] == {"path": "/", "port": "http"}
+    assert probe["tcpSocket"] == {"port": "http"}
+    assert "httpGet" not in probe
     assert probe["periodSeconds"] == 5
     assert probe["timeoutSeconds"] == 5
     assert probe["failureThreshold"] == 3

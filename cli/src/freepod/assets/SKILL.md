@@ -26,7 +26,7 @@ section before you write or port any code.
 
 ## Does the app fit? Check before writing code
 
-Six constraints. Each one produces a deployment that builds fine and then does
+Five constraints. Each one produces a deployment that builds fine and then does
 not work.
 
 **1. The app must bind `0.0.0.0:$PORT`.** The platform assigns the port and
@@ -80,12 +80,6 @@ yours is silently overridden. Never set them.
 **5. One HTTP service per deployment.** No sidecars, no worker processes, no
 scheduled jobs. If the app is a stack of cooperating services, only one of them
 can live here.
-
-**6. `GET /` must answer 2xx or 3xx.** The platform's health check requests `/`
-on `$PORT`, without sign-in headers. A release takes traffic only once it
-passes, and one that never passes is rolled back and the deploy fails. An API
-whose `/` is a 404, or an app that answers `/` with a 401, needs a `/` route
-that returns 200 or a redirect.
 
 If the app fails any of these and cannot be adapted, say so before building
 anything. That is a more useful answer than a deployment that comes up broken.
@@ -636,9 +630,9 @@ Two things logs cannot tell you, because they are not the application's output:
 whether the container is running at all, and what the platform did. For those,
 `freepod deploy`'s own error and the deployment status are the record.
 
-Give every app a `/healthz` from the start, in addition to the `/` the platform
-checks. It costs three lines and it separates "the container is not running"
-from "the container is running and the app is wrong."
+Give every app a `/healthz` from the start. It costs three lines and it
+separates "the container is not running" from "the container is running and
+the app is wrong."
 
 ### Reading the running container
 

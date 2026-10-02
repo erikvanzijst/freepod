@@ -104,10 +104,6 @@ Paths under `/.freepod/auth/` are handled by the platform and never reach the ap
 - The first time someone signs in to a deployment, they are asked to agree to share their name, email address and account identifier with it. The question is not asked again for that deployment.
 - The session cookie never reaches the application. Do not set cookies whose names start with `__Host-freepod_`.
 
-## Health check
-
-The [health check](runtime.mdx#health-check) requests `/` without identity headers and without passing through sign-in. If `/` is not public, it must still answer with a 2xx or 3xx status when the identity headers are absent.
-
 ## Local development
 
 Sign-in is not available outside Freepod. Send the headers yourself:

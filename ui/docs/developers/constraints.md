@@ -21,8 +21,8 @@ title: Constraints
 | Hostnames per deployment | 1 | [Hostnames](hostnames-and-custom-domains.md) |
 | Custom domains | `CNAME` to `freepod.eu`; domains themselves only with `ALIAS`, `ANAME` or `CNAME` flattening | [Custom domains](hostnames-and-custom-domains.md#custom-domains) |
 | Request body upload | 60 seconds | [Runtime contract](runtime.mdx#timeouts-and-size-limits) |
-| Health check | `GET /` returns 2xx or 3xx within 5 seconds | [Runtime contract](runtime.mdx#health-check) |
-| Release | Passes the health check within 5 minutes | [Deployments and releases](deployments-and-releases.md#failed-releases) |
+| Readiness | Accepts connections on `$PORT` | [Runtime contract](runtime.mdx#readiness) |
+| Release | Passes the readiness check within 5 minutes | [Deployments and releases](deployments-and-releases.md#failed-releases) |
 | Upload for a build | 100 MB, compressed | [Builds](builds/index.md#limits) |
 | Build | 1 hour, 2 vCPU, 6 GiB memory | [Builds](builds/index.md#limits) |
 | Variables | 256 per deployment, 8 KiB each, 128 KiB total | [Variables and secrets](variables-and-secrets.md#rules-and-limits) |

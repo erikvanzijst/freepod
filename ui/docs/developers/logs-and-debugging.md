@@ -45,7 +45,7 @@ freepod shell -t top                   # allocate a tty for full-screen programs
 
 - The shell starts in the application's working directory, with the application's environment.
 - The exit code is the remote command's. `127` means the image does not contain the command. `255` can also mean `ssh` itself failed.
-- The shell works while the application is failing its health check, as long as the container is running.
+- The shell works while the application is failing its readiness check, as long as the container is running.
 - Changes made in the container are lost at the next restart or release. Fix problems in the source and redeploy.
 
 ## Copying files
@@ -63,7 +63,7 @@ The deployment side is marked with a leading `:`. A relative remote path is rela
 | Symptom | Check |
 | --- | --- |
 | `freepod deploy` exits with code `4` | The build log printed by `deploy`; `freepod builds` |
-| `freepod deploy` exits with code `5` | The output printed by `deploy`; `freepod log -r <release>`. Usually the server does not listen on `0.0.0.0:$PORT`, or `/` does not return 2xx or 3xx. |
+| `freepod deploy` exits with code `5` | The output printed by `deploy`; `freepod log -r <release>`. Usually the server exits at startup or does not listen on `0.0.0.0:$PORT`. |
 | Requests fail, logs look normal | `freepod releases`: a failed release leaves the previous one running |
 | Configuration seems wrong | `freepod shell env` shows the environment the application receives |
 | Files seem missing | `freepod shell ls -la` shows what the image contains; see [Builds: What is uploaded](builds/index.md#what-is-uploaded) |
