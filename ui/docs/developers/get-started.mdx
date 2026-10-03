@@ -30,19 +30,13 @@ pip install freepod                     # macOS, Linux, Windows
 brew install erikvanzijst/tap/freepod   # macOS, Linux
 ```
 
-Check the installation:
-
-```bash
-freepod --version
-```
-
 ## 2. Sign in
 
 ```bash
 freepod login
 ```
 
-The client opens a browser to the Freepod sign-in page. On a machine without a browser, it prints a URL and a code to enter on another device. The credential is stored locally; `freepod logout` removes it.
+The client opens a browser to the Freepod sign-in page. On a machine without a browser, it prints a URL and a code to enter on another device.
 
 Deploying requires acceptance of the [Terms of Service](app:/legal/terms). `freepod login` asks for it, and `freepod deploy` asks again before it creates the first deployment if it has not been accepted.
 
@@ -176,6 +170,8 @@ go 1.25
 </Tabs>
 
 With these files in a directory, `freepod init` and `freepod deploy` produce a running deployment. See [Builds](builds/index.md) for how the image is built.
+
+Freepod uses Railpack to build your project, which recognizes a lot more languages and tech stacks automatically than just Node, Python and Go. See [Railpack](https://railpack.com/getting-started) for the full list.
 
 ## Next steps
 
