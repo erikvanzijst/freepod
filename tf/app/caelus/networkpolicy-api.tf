@@ -1,21 +1,5 @@
-# Ingress jail for the platform API.
-#
-# The API authorizes on the `X-Auth-Request-Email` header that forward-auth
-# injects (deps.get_current_user) and has no way to tell a header the edge set
-# from one a caller forged. The only thing that makes that safe is that nothing
-# but the edge can open a connection to the API: reach its ClusterIP directly
-# and you are any user you name, including an admin.
-#
-# Until now that depended entirely on every *other* namespace's egress policy
-# denying the service CIDR. That is one control, and it fails open in the window
-# between a tenant pod getting its IP and k3s's policy controller programming the
-# pod's rules -- a brand-new tenant pod can reach the API for a beat at startup
-# and forge an admin identity. This policy closes the hole on the receiving
-# side, where there is no such race: the API pod is long-lived, so its ingress
-# rules are programmed long before any attacker pod is created.
-#
-# Ingress-only: the API's egress (database, Keycloak, Mollie, object storage)
-# is deliberately left unrestricted here.
+# Ingress jail for the platform API so it cannot be reached from any tenant
+# pod, or other in-cluster component.
 #
 # The sole legitimate in-cluster client is Traefik. Every public route to the
 # API -- the authenticated `/api` (forward-auth middleware), `/api/webhooks`,
