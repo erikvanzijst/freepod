@@ -28,7 +28,7 @@ CONTAINER_NAME = "caelus-egress-gate"
 PLUGIN_NAME = "egress-gate"
 
 # KUBERNETES_SERVICE_HOST/PORT are injected by kubelet into every container,
-# regardless of enableServiceLinks. Several consecutive refusals rather than
+# regardless of enableServiceLinks. Two consecutive refusals rather than
 # one, so a single transient failure is not mistaken for the jail.
 GATE_SCRIPT = r"""
 set -u
@@ -36,11 +36,11 @@ target="${KUBERNETES_SERVICE_HOST:?}/${KUBERNETES_SERVICE_PORT:?}"
 deadline=$((SECONDS + GATE_DEADLINE_SECONDS))
 refused=0
 while (( SECONDS < deadline )); do
-  if timeout 1 bash -c "exec 3<>/dev/tcp/${target}" 2>/dev/null; then
+  if timeout 0.5 bash -c "exec 3<>/dev/tcp/${target}" 2>/dev/null; then
     refused=0
   else
     refused=$((refused + 1))
-    if (( refused >= 3 )); then
+    if (( refused >= 2 )); then
       echo "egress-gate: ${target/\//:} denied after ${SECONDS}s; egress is jailed"
       exit 0
     fi

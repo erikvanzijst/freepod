@@ -27,7 +27,7 @@ The reconciler MUST apply the namespace isolation guardrails after ensuring the 
 ### Requirement: Tenant containers start only once egress isolation is enforced
 A `NetworkPolicy` existing is not the same as it being enforced: the cluster's policy controller programs a new pod's rules asynchronously, after the pod has its address and its containers are running. The platform MUST therefore inject a gate into every pod template of a deployment's Helm release as the pod's first init container, so that none of the chart's own containers start until the baseline egress policy is enforced for that pod. The gate MUST be injected by the platform at render time, independent of chart content, so that no product chart, chart upgrade or user-supplied value can omit, reorder or replace it.
 
-The gate MUST probe a destination that is always listening and that the baseline policy denies (the Kubernetes API server, through the address the kubelet supplies to every container), and MUST complete only after that destination has refused it several consecutive times. If the destination is still reachable when the gate's deadline expires, the gate MUST fail, so that the pod does not start rather than starting unjailed.
+The gate MUST probe a destination that is always listening and that the baseline policy denies (the Kubernetes API server, through the address the kubelet supplies to every container), and MUST complete only after that destination has refused it at least twice in a row. If the destination is still reachable when the gate's deadline expires, the gate MUST fail, so that the pod does not start rather than starting unjailed.
 
 #### Scenario: Every pod template carries the gate
 - **WHEN** the reconciler installs or upgrades a deployment's Helm release
