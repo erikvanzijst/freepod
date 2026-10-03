@@ -24,6 +24,29 @@ The reconciler MUST apply the namespace isolation guardrails after ensuring the 
 - **WHEN** the reconciler applies a deployment
 - **THEN** it ensures the namespace exists, then applies tenant isolation, then performs the Helm install/upgrade, in that order
 
+### Requirement: Tenant containers start only once egress isolation is enforced
+A `NetworkPolicy` existing is not the same as it being enforced: the cluster's policy controller programs a new pod's rules asynchronously, after the pod has its address and its containers are running. The platform MUST therefore inject a gate into every pod template of a deployment's Helm release as the pod's first init container, so that none of the chart's own containers start until the baseline egress policy is enforced for that pod. The gate MUST be injected by the platform at render time, independent of chart content, so that no product chart, chart upgrade or user-supplied value can omit, reorder or replace it.
+
+The gate MUST probe a destination that is always listening and that the baseline policy denies (the Kubernetes API server, through the address the kubelet supplies to every container), and MUST complete only after that destination has refused it several consecutive times. If the destination is still reachable when the gate's deadline expires, the gate MUST fail, so that the pod does not start rather than starting unjailed.
+
+#### Scenario: Every pod template carries the gate
+- **WHEN** the reconciler installs or upgrades a deployment's Helm release
+- **THEN** every rendered pod template (Deployment, StatefulSet, DaemonSet, Job, CronJob, Pod), including Helm hooks, has the gate as its first init container
+- **AND** the rendered manifests are otherwise unchanged
+
+#### Scenario: A chart cannot supply its own gate
+- **WHEN** a chart renders an init container with the gate's name
+- **THEN** it is replaced by the platform's gate
+
+#### Scenario: The application starts after the jail
+- **WHEN** a new pod starts in a deployment namespace while its egress rules are not yet programmed
+- **THEN** the gate keeps running while the Kubernetes API server is reachable
+- **AND** the pod's other containers start only after it has been refused
+
+#### Scenario: The jail never arrives
+- **WHEN** the Kubernetes API server is still reachable from a new pod when the gate's deadline expires
+- **THEN** the gate exits non-zero and the pod's other containers do not start
+
 ### Requirement: Ingress restricted to the shared edge and the deployment's own namespace
 The baseline policy MUST permit ingress only from the shared ingress controller (Traefik), from the platform SFTP router (sshpiper), and from pods within the same namespace. The ingress allowance for the shared edge MUST NOT restrict ports, so that products may expose their service on any port without per-product configuration. The ingress allowance for the SFTP router MUST be restricted to the SFTP sidecar port (2222/TCP) only. All other ingress MUST be denied.
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
+from app import egress_gate
 from app.config import get_settings
 from app.network_policy import TENANT_NAMESPACE_LABELS, build_tenant_baseline_policy
 from app.proc import AdapterCommandError, CommandRunner, run_command
@@ -285,6 +286,13 @@ class HelmAdapter:
             ]
             if not chart_digest:
                 cmd.extend(["--version", chart_version])
+            settings = get_settings()
+            cmd.extend([
+                "--post-renderer", egress_gate.PLUGIN_NAME,
+                "--post-renderer-args", f"--image={settings.egress_gate_image}",
+                "--post-renderer-args",
+                f"--deadline-seconds={settings.egress_gate_deadline_seconds}",
+            ])
             if atomic:
                 cmd.append("--atomic")
             if wait:

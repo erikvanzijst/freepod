@@ -63,6 +63,17 @@ reach the platform's own services or other tenants' workloads.
 - **WHEN** a build installs dependencies from public package registries
 - **THEN** those requests succeed
 
+#### Scenario: The restriction holds from the build's first instruction
+
+- **WHEN** a build pod starts before the cluster has programmed its network policy
+- **THEN** the platform's egress gate (see `deployment-network-isolation`) runs as the pod's first init container and the build container does not start until platform services are refused
+
+#### Scenario: A gate that gives up fails the build with a reason
+
+- **WHEN** the egress gate reaches its deadline and the build container never starts
+- **THEN** the build fails
+- **AND** its log ends with a line saying the build could not start because its network isolation was not ready, without naming internal addresses
+
 ### Requirement: The artifact is retrieved with a time-limited credential
 
 The build container SHALL retrieve its project archive using a credential supplied to it

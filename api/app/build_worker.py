@@ -99,6 +99,13 @@ def truncate_log(data: bytes, *, cap: int) -> bytes:
     return data[:keep] + marker[: cap - keep]
 
 
+# The gate's own message names cluster internals; the tenant gets this.
+GATE_FAILURE_LOG_LINE = (
+    b"freepod: the build could not start because its network isolation was not"
+    b" ready in time. This is a platform problem, not your code; start the build again.\n"
+)
+
+
 def merge_log(stored: bytes, fresh: bytes | None, *, cap: int) -> bytes:
     """The log to store, given what is already stored and what was just read.
 
@@ -280,9 +287,18 @@ def _advance_build(
         return
 
     if job_is_failed(job):
+        gate_failure = client.read_gate_failure(str(build.id))
+        if gate_failure is not None:
+            stored = bytes(build.log or b"")
+            separator = b"\n" if stored and not stored.endswith(b"\n") else b""
+            build.log = stored + separator + GATE_FAILURE_LOG_LINE
         _finish(
             session, build, status=BUILD_STATUS_FAILED, now=now,
-            reason="Job terminated unsuccessfully",
+            reason=(
+                f"egress gate failed: {gate_failure}"
+                if gate_failure is not None
+                else "Job terminated unsuccessfully"
+            ),
             usage=parse_usage_from_termination_message(
                 client.read_termination_message(str(build.id))
             ),
