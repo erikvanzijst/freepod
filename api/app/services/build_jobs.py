@@ -22,6 +22,7 @@ from tempfile import NamedTemporaryFile
 from typing import Any, Protocol
 from uuid import UUID
 
+from app import egress_gate
 from app.config import CaelusSettings
 from app.proc import run_command
 from app.services import registry_tokens
@@ -119,6 +120,8 @@ def build_job_manifest(
       as uid 1000 with no host mounts and no host network.
     - ``backoffLimit: 0`` — a failed build is terminal and is never retried
       automatically. Recovery is creating a new build.
+    - The egress gate runs first, so no build step runs before the namespace's
+      NetworkPolicy is enforced for the pod (``app/egress_gate.py``).
     - ``activeDeadlineSeconds`` puts the deadline where Kubernetes will enforce
       it even if no worker is alive; the worker only intervenes past a grace
       period, as a backstop.
@@ -131,7 +134,7 @@ def build_job_manifest(
 
     name = job_name(build_id)
     capability = build_capability(build_id=build_id, user_id=user_id, settings=settings)
-    return {
+    manifest = {
         "apiVersion": "batch/v1",
         "kind": "Job",
         "metadata": {
@@ -211,6 +214,16 @@ def build_job_manifest(
             },
         },
     }
+    # Builds run tenant code with network access, and are created by kubectl
+    # rather than Helm, so the post-renderer never sees them.
+    egress_gate.inject(
+        manifest,
+        egress_gate.gate_container(
+            image=settings.egress_gate_image,
+            deadline_seconds=settings.egress_gate_deadline_seconds,
+        ),
+    )
+    return manifest
 
 
 class BuildJobClient(Protocol):
@@ -229,6 +242,8 @@ class BuildJobClient(Protocol):
     def read_log(self, build_id: str) -> bytes | None: ...
 
     def read_termination_message(self, build_id: str) -> str | None: ...
+
+    def read_gate_failure(self, build_id: str) -> str | None: ...
 
 
 class KubectlBuildJobClient:
@@ -297,6 +312,7 @@ class KubectlBuildJobClient:
                 "kubectl", "logs",
                 "-n", self._namespace,
                 "-l", f"{BUILD_ID_LABEL}={build_id}",
+                "-c", "build",
                 "--tail=-1",
                 # Without this kubectl prints only the first pod's logs silently;
                 # with backoffLimit 0 there is only ever one, but be explicit.
@@ -309,8 +325,7 @@ class KubectlBuildJobClient:
             return None
         return completed.stdout
 
-    def read_termination_message(self, build_id: str) -> str | None:
-        """The build container's termination message, if it has terminated."""
+    def _pods(self, build_id: str) -> list[dict[str, Any]]:
         completed = subprocess.run(
             [
                 "kubectl", "get", "pods",
@@ -323,16 +338,32 @@ class KubectlBuildJobClient:
             check=False,
         )
         if completed.returncode != 0:
-            return None
+            return []
         try:
-            payload = json.loads(completed.stdout)
+            return json.loads(completed.stdout).get("items", [])
         except json.JSONDecodeError:
-            return None
-        for pod in payload.get("items", []):
+            return []
+
+    def read_termination_message(self, build_id: str) -> str | None:
+        """The build container's termination message, if it has terminated."""
+        for pod in self._pods(build_id):
             for status in pod.get("status", {}).get("containerStatuses", []):
                 terminated = status.get("state", {}).get("terminated")
                 if terminated and terminated.get("message"):
                     return terminated["message"]
+        return None
+
+    def read_gate_failure(self, build_id: str) -> str | None:
+        """Why the egress gate failed the pod, if it did."""
+        for pod in self._pods(build_id):
+            for status in pod.get("status", {}).get("initContainerStatuses", []):
+                if status.get("name") != egress_gate.CONTAINER_NAME:
+                    continue
+                terminated = status.get("state", {}).get("terminated") or {}
+                if terminated.get("exitCode", 0) != 0:
+                    return (terminated.get("message") or "").strip() or terminated.get(
+                        "reason", "failed"
+                    )
         return None
 
 

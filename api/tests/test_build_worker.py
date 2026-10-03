@@ -16,7 +16,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlmodel import select
 
-from app import build_worker
+from app import build_worker, egress_gate
 from app.build_worker import merge_log, run_pass, truncate_log
 from app.config import CaelusSettings
 from app.models import BuildORM, UsageSampleORM, UsageSubjectORM
@@ -52,6 +52,7 @@ class FakeCluster:
         self.jobs: dict[str, dict] = {}
         self.logs: dict[str, bytes] = {}
         self.termination: dict[str, str] = {}
+        self.gate_failures: dict[str, str] = {}
         self.created: list[dict] = []
         self.deleted: list[str] = []
         self.create_error: Exception | None = None
@@ -77,6 +78,9 @@ class FakeCluster:
     def read_termination_message(self, build_id: str) -> str | None:
         return self.termination.get(build_id)
 
+    def read_gate_failure(self, build_id: str) -> str | None:
+        return self.gate_failures.get(build_id)
+
     # -- test helpers -----------------------------------------------------
     def complete(
         self, build_id: UUID, *, image: str | None = IMAGE, usage: dict | None = None
@@ -96,6 +100,11 @@ class FakeCluster:
             self.termination[str(build_id)] = json.dumps(
                 {"error": error, **({"usage": usage} if usage else {})}
             )
+
+    def fail_gate(self, build_id: UUID, *, message: str = "egress-gate: still reachable") -> None:
+        """The egress gate gave up, so the build container never ran."""
+        self.jobs[job_name(build_id)]["status"] = {"failed": 1}
+        self.gate_failures[str(build_id)] = message
 
 
 @pytest.fixture
@@ -315,6 +324,54 @@ def test_an_unsuccessful_job_fails_the_build(db_session, cluster, settings):
     assert result.failed == [build.id]
     assert build.status == BUILD_STATUS_FAILED
     assert build.image is None
+
+
+def test_a_failed_egress_gate_fails_the_build_and_says_so_in_its_log(
+    db_session, cluster, settings
+):
+    user = _user(db_session)
+    build = _queued(db_session, user.id)
+    run_pass(db_session, client=cluster, settings=settings)
+    db_session.refresh(build)
+    cluster.fail_gate(build.id, message="egress-gate: 10.43.0.1:443 still reachable")
+
+    result = run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert result.failed == [build.id]
+    assert build.status == BUILD_STATUS_FAILED
+    assert bytes(build.log) == build_worker.GATE_FAILURE_LOG_LINE
+    assert b"10.43" not in bytes(build.log)
+
+
+def test_the_gate_failure_line_follows_existing_output_on_its_own_line(
+    db_session, cluster, settings
+):
+    user = _user(db_session)
+    build = _queued(db_session, user.id)
+    run_pass(db_session, client=cluster, settings=settings)
+    db_session.refresh(build)
+    cluster.logs[str(build.id)] = b"partial"
+    cluster.fail_gate(build.id)
+
+    run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert bytes(build.log) == b"partial\n" + build_worker.GATE_FAILURE_LOG_LINE
+
+
+def test_an_ordinary_failure_adds_no_gate_line(db_session, cluster, settings):
+    user = _user(db_session)
+    build = _queued(db_session, user.id)
+    run_pass(db_session, client=cluster, settings=settings)
+    db_session.refresh(build)
+    cluster.logs[str(build.id)] = b"npm ERR!\n"
+    cluster.fail(build.id)
+
+    run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert bytes(build.log) == b"npm ERR!\n"
 
 
 def test_success_reporting_no_image_fails_the_build(db_session, cluster, settings):
@@ -745,6 +802,21 @@ def test_the_job_manifest_carries_the_security_posture(settings):
     assert pod["securityContext"]["appArmorProfile"]["type"] == "Unconfined"
 
 
+def test_the_job_manifest_runs_the_egress_gate_first(settings):
+    manifest = build_job_manifest(
+        build_id=uuid4(), user_id=7, artifact_url="https://x/y", settings=settings
+    )
+    pod = manifest["spec"]["template"]["spec"]
+
+    assert pod["initContainers"] == [
+        egress_gate.gate_container(
+            image=settings.egress_gate_image,
+            deadline_seconds=settings.egress_gate_deadline_seconds,
+        )
+    ]
+    assert [c["name"] for c in pod["containers"]] == ["build"]
+
+
 def test_the_job_manifest_bounds_its_resources(settings):
     manifest = build_job_manifest(
         build_id=uuid4(), user_id=7, artifact_url="https://x/y", settings=settings
@@ -883,3 +955,53 @@ def test_a_job_is_refused_when_no_builder_image_is_configured(settings):
 )
 def test_termination_message_parsing(message, expected):
     assert build_jobs.parse_image_from_termination_message(message) == expected
+
+
+# ---------------------------------------------------------------------------
+# kubectl client
+# ---------------------------------------------------------------------------
+
+
+def _kubectl(monkeypatch, *, stdout: str | bytes, returncode: int = 0) -> list[list[str]]:
+    calls: list[list[str]] = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        return build_jobs.subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(build_jobs.subprocess, "run", run)
+    return calls
+
+
+def _pod(init_statuses: list[dict]) -> str:
+    return json.dumps({"items": [{"status": {"initContainerStatuses": init_statuses}}]})
+
+
+def test_the_gate_failure_is_read_from_its_init_status(monkeypatch):
+    _kubectl(monkeypatch, stdout=_pod([{
+        "name": egress_gate.CONTAINER_NAME,
+        "state": {"terminated": {"exitCode": 1, "reason": "Error", "message": "still reachable\n"}},
+    }]))
+    assert build_jobs.KubectlBuildJobClient(namespace="b").read_gate_failure("x") == "still reachable"
+
+
+@pytest.mark.parametrize(
+    "statuses",
+    [
+        [{"name": egress_gate.CONTAINER_NAME, "state": {"terminated": {"exitCode": 0}}}],
+        [{"name": egress_gate.CONTAINER_NAME, "state": {"running": {}}}],
+        [{"name": "other", "state": {"terminated": {"exitCode": 1, "message": "x"}}}],
+        [],
+    ],
+    ids=["passed", "running", "not-the-gate", "none"],
+)
+def test_no_gate_failure_unless_the_gate_exited_non_zero(monkeypatch, statuses):
+    _kubectl(monkeypatch, stdout=_pod(statuses))
+    assert build_jobs.KubectlBuildJobClient(namespace="b").read_gate_failure("x") is None
+
+
+def test_the_build_log_is_read_from_the_build_container_only(monkeypatch):
+    calls = _kubectl(monkeypatch, stdout=b"out")
+    build_jobs.KubectlBuildJobClient(namespace="b").read_log("x")
+    cmd = calls[0]
+    assert cmd[cmd.index("-c") + 1] == "build"

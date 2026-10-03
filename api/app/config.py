@@ -83,6 +83,11 @@ class CaelusSettings(BaseSettings):
     tenant_db_pooler_namespace: str = ""
     tenant_db_pooler_pod_label: str = "caelus-tenant-pooler"
     sftp_sidecar_port: int = 2222
+    # The egress gate (app/egress_gate.py) holds every tenant pod until the
+    # policy above is enforced. Any image with bash and coreutils' `timeout`
+    # serves; the SSH sidecar's is reused because tenant nodes already hold it.
+    egress_gate_image: str = "ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2"
+    egress_gate_deadline_seconds: int = 60
     sftp_host: str = "freepod.eu"
     sftp_port: int = 22
 

@@ -568,7 +568,11 @@ Spec: [build-api](../openspec/specs/build-api/spec.md),
 `app/provisioner.py` is the boundary to external systems.
 
 - `KubeAdapter`: namespace existence/create/delete via `kubectl`.
-- `HelmAdapter`: install/upgrade/uninstall/status via `helm`.
+- `HelmAdapter`: install/upgrade/uninstall/status via `helm`. Every upgrade
+  post-renders through the `egress-gate` Helm plugin (`helm-plugins/`), which
+  the image finds through `HELM_PLUGINS=/app/helm-plugins`. A worker run from
+  a checkout needs the same: `export HELM_PLUGINS=$PWD/helm-plugins` from
+  `api/`, with the venv's `python` first on `PATH`.
 - `Provisioner`: facade used by reconciler.
 
 Important:
