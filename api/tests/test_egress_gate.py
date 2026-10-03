@@ -158,8 +158,8 @@ def test_helm_upgrade_always_post_renders_through_the_gate():
 
 def _normalized(doc):
     """Drop what legitimately differs between two renders: random secrets
-    (and the checksums of them), and the empty maps Helm 4 strips from any
-    post-renderer's output."""
+    (and the checksums of them), and the empty maps and trailing newlines
+    Helm 4 may strip from any post-renderer's output."""
     if isinstance(doc, dict):
         if doc.get("kind") == "Secret":
             doc = {k: v for k, v in doc.items() if k not in ("data", "stringData")}
@@ -169,6 +169,8 @@ def _normalized(doc):
         }
     if isinstance(doc, list):
         return [_normalized(v) for v in doc]
+    if isinstance(doc, str):
+        return doc.rstrip("\n")
     return doc
 
 
