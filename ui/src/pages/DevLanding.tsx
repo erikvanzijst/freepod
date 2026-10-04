@@ -3,7 +3,7 @@ import { Box } from '@mui/material'
 import { fg, ink, SANS } from '../components/landing/landingTokens'
 import LandingNav from '../components/landing/LandingNav'
 import LandingFooter from '../components/landing/LandingFooter'
-import DevHero from '../components/landing/dev/DevHero'
+import DevHero, { DevActions } from '../components/landing/dev/DevHero'
 import DemoSection from '../components/landing/dev/DemoSection'
 import FeatureExplorer from '../components/landing/dev/FeatureExplorer'
 import EmailDialog from '../components/EmailDialog'
@@ -40,6 +40,7 @@ export function DevLanding() {
         <DevHero onSignup={start} />
         <DemoSection />
         <FeatureExplorer />
+        <DevActions onSignup={start} sx={{ mt: { xs: -3, md: -6 }, pb: { xs: 9, md: 12 } }} />
       </Box>
       <LandingFooter />
 

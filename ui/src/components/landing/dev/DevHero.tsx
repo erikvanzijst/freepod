@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Box, Button, Chip, Container, Stack, Typography } from '@mui/material'
+import { Box, Button, Chip, Container, Stack, Typography, type SxProps, type Theme } from '@mui/material'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import { Link as RouterLink } from 'react-router-dom'
 import { accent, DISPLAY, fg, line, MONO, SANS } from '../landingTokens'
@@ -99,9 +99,42 @@ function InstallCommand() {
   )
 }
 
-export function DevHero({ onSignup }: { onSignup: () => void }) {
+/** The signup/dashboard and docs buttons, shown in the hero and again at the end of the page. */
+export function DevActions({ onSignup, sx }: { onSignup: () => void; sx?: SxProps<Theme> }) {
   const { user } = useAuth()
 
+  return (
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" sx={sx}>
+      {user ? (
+        <Button component={RouterLink} to="/" endIcon={<ArrowForwardRoundedIcon />} sx={primaryButtonSx}>
+          Open your dashboard
+        </Button>
+      ) : (
+        <Button onClick={onSignup} endIcon={<ArrowForwardRoundedIcon />} sx={primaryButtonSx}>
+          Create your account
+        </Button>
+      )}
+      <Button
+        href={CLI_DOCS_URL}
+        sx={{
+          borderRadius: 999,
+          px: 3.5,
+          py: 1.5,
+          fontSize: 17,
+          fontWeight: 600,
+          color: fg.primary,
+          border: '1px solid rgba(255,255,255,0.18)',
+          background: 'rgba(255,255,255,0.03)',
+          '&:hover': { background: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.3)' },
+        }}
+      >
+        Read the docs
+      </Button>
+    </Stack>
+  )
+}
+
+export function DevHero({ onSignup }: { onSignup: () => void }) {
   return (
     <Box component="section" sx={{ position: 'relative', overflow: 'hidden' }}>
       <AuroraBackground />
@@ -163,33 +196,7 @@ export function DevHero({ onSignup }: { onSignup: () => void }) {
         </Box>
 
         <Box sx={reveal(4)}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" sx={{ mt: 4 }}>
-            {user ? (
-              <Button component={RouterLink} to="/" endIcon={<ArrowForwardRoundedIcon />} sx={primaryButtonSx}>
-                Open your dashboard
-              </Button>
-            ) : (
-              <Button onClick={onSignup} endIcon={<ArrowForwardRoundedIcon />} sx={primaryButtonSx}>
-                Create your account
-              </Button>
-            )}
-            <Button
-              href={CLI_DOCS_URL}
-              sx={{
-                borderRadius: 999,
-                px: 3.5,
-                py: 1.5,
-                fontSize: 17,
-                fontWeight: 600,
-                color: fg.primary,
-                border: '1px solid rgba(255,255,255,0.18)',
-                background: 'rgba(255,255,255,0.03)',
-                '&:hover': { background: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.3)' },
-              }}
-            >
-              Read the docs
-            </Button>
-          </Stack>
+          <DevActions onSignup={onSignup} sx={{ mt: 4 }} />
         </Box>
 
         <Box sx={reveal(5)}>
