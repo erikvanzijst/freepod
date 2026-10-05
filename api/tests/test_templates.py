@@ -21,6 +21,7 @@ from app.services.templates import create_template
 # `strng` is a typo for `string`, which makes the document itself invalid.
 MALFORMED_SCHEMA = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {"host": {"type": "strng"}},
 }
 
@@ -82,6 +83,7 @@ def test_create_template_honors_declared_2020_12_dialect(db_session):
     good = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
+        "additionalProperties": False,
         "properties": {"ports": {"type": "array", "prefixItems": [{"type": "integer"}]}},
     }
     template = create_template(db_session, _payload(product_id, good))
@@ -125,6 +127,7 @@ def test_create_template_accepts_a_legal_routing_marker(db_session):
             {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "host": {"type": "string"},
                     "ADMIN_TOKEN": {

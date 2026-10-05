@@ -28,7 +28,7 @@ def _create_deployment(client, db_session, *, user_id: int) -> str:
         json={
             "chart_ref": "registry.home/files/",
             "chart_version": "1.0.0",
-            "values_schema_json": {"type": "object", "properties": {}},
+            "values_schema_json": {"type": "object", "additionalProperties": False, "properties": {}},
         },
     ).json()["id"]
     client.put(f"/api/products/{product_id}", json={"template_id": template_id})
@@ -166,7 +166,7 @@ def test_admin_receives_no_credential_either(client, db_session, stub_sftp):
     ).json()["id"]
     template_id = client.post(
         f"/api/products/{product_id}/templates",
-        json={"chart_ref": "r/", "chart_version": "1.0.0", "values_schema_json": {"type": "object", "properties": {}}},
+        json={"chart_ref": "r/", "chart_version": "1.0.0", "values_schema_json": {"type": "object", "additionalProperties": False, "properties": {}}},
     ).json()["id"]
     client.put(f"/api/products/{product_id}", json={"template_id": template_id})
     ptv_id = create_free_plan_template(db_session, product_id)
@@ -190,7 +190,7 @@ def test_the_key_reported_is_the_owners_not_the_readers(client, db_session, stub
     product_id = client.post("/api/products", json={"name": "b", "description": "b"}).json()["id"]
     template_id = client.post(
         f"/api/products/{product_id}/templates",
-        json={"chart_ref": "r/", "chart_version": "1.0.0", "values_schema_json": {"type": "object", "properties": {}}},
+        json={"chart_ref": "r/", "chart_version": "1.0.0", "values_schema_json": {"type": "object", "additionalProperties": False, "properties": {}}},
     ).json()["id"]
     client.put(f"/api/products/{product_id}", json={"template_id": template_id})
     ptv_id = create_free_plan_template(db_session, product_id)

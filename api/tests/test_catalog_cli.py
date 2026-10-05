@@ -17,7 +17,7 @@ from sqlmodel import select
 from app.models import ProductORM, ProductTemplateVersionORM
 from tests.test_catalog_format import document, make_icon
 
-VALUES_SCHEMA = '{"type": "object", "properties": {"host": {"type": "string"}}}'
+VALUES_SCHEMA = '{"type": "object", "additionalProperties": false, "properties": {"host": {"type": "string"}}}'
 SYSTEM_VALUES = '{"image": {"tag": "v3.0.3"}}'
 
 

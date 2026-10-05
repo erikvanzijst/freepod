@@ -17,7 +17,7 @@ from app.models import (
     UserORM,
 )
 from app.services.errors import NotFoundException, IntegrityException, ValidationException
-from app.services.template_values import check_var_markers
+from app.services.template_values import check_var_markers, derive_projections
 from app.services.products import _assert_deletable, _assert_mutable
 
 
@@ -47,6 +47,16 @@ def _check_values_schema(schema: dict[str, Any] | None) -> None:
     a deployment. The routing markers are checked for the same reason: an
     illegal one fails here rather than at the next deployment of a template
     that tenants are, by then, already pointing at.
+
+    The chart projection must be closed (`additionalProperties: false`). Its
+    values are what a tenant POSTs directly, so an open projection would let one
+    submit undeclared keys that flow into the Helm release as chart values --
+    securityContext, image, extra hosts. This governs only the user-submitted
+    chart values; the platform's own `caelus.*` overrides are merged in after
+    validation and are never checked against this schema, so new `caelus.*`
+    features need no template change. The vars projection's openness is
+    deliberately untouched (it is `x-caelus-vars-additional`'s to decide, which
+    is how `custom` accepts arbitrary environment).
     """
     if schema is None:
         return
@@ -56,6 +66,14 @@ def _check_values_schema(schema: dict[str, Any] | None) -> None:
     except SchemaError as exc:
         raise ValidationException(f"values_schema_json is not a valid JSON Schema: {exc.message}") from exc
     check_var_markers(schema)
+
+    chart = derive_projections(schema).chart
+    if chart is not None and chart.get("additionalProperties") is not False:
+        raise ValidationException(
+            "values_schema_json must set additionalProperties: false at the root: its "
+            "chart values are tenant-submitted, so undeclared keys must be rejected rather "
+            "than passed through to the Helm release"
+        )
 
 
 def create_template(

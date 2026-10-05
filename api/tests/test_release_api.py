@@ -33,7 +33,7 @@ from tests.conftest import (  # noqa: F401
     make_deployment_with_release,
 )
 
-SCHEMA = {"type": "object", "properties": {"image": {"type": "string"}}}
+SCHEMA = {"type": "object", "additionalProperties": False, "properties": {"image": {"type": "string"}}}
 
 
 def _template(client, name):

@@ -45,6 +45,7 @@ def _setup_product_and_template(client):
             "chart_version": "1.0.0",
             "values_schema_json": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "user": {
                         "type": "object",

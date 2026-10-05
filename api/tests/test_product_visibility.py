@@ -208,6 +208,7 @@ def test_withdrawing_a_product_leaves_existing_deployments_untouched(client, db_
             "chart_version": "1.0.0",
             "values_schema_json": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "ingress": {
                         "type": "object",

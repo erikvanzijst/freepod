@@ -55,7 +55,7 @@ def document(**overrides) -> dict:
             "chart_ref": "oci://registry.home:80/helm/immich",
             "chart_version": "1.0.0",
             "system_values": {"image": {"tag": "v3.0.3"}},
-            "values_schema": {"type": "object", "properties": {}},
+            "values_schema": {"type": "object", "additionalProperties": False, "properties": {}},
         },
     }
     for path, value in overrides.items():

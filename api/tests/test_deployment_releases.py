@@ -28,9 +28,12 @@ from tests.conftest import create_free_plan_template, create_user, make_bare_dep
 
 SCHEMA = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "host": {"type": "string", "title": "hostname"},
         "image": {"type": "string"},
+        # The image can live anywhere in user values, not just under `image`.
+        "workers": {"type": "array"},
     },
 }
 

@@ -17,7 +17,7 @@ def test_product_template_v2_fields_supported() -> None:
             "chart_ref": "oci://registry.example.com/hello-static",
             "chart_version": "0.1.0",
             "system_values_json": {"user": {"message": "hello"}},
-            "values_schema_json": {"type": "object"},
+            "values_schema_json": {"type": "object", "additionalProperties": False},
         }
     )
     assert payload.chart_ref == "oci://registry.example.com/hello-static"
