@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # The local runner: the upgrade-product skill once per curated product, each in its own fresh
-# pi session and clone, behind the service's guards.
+# pi session and clone, behind the service's guards. Dry runs only: real pull requests come from
+# the service, which runs sessions as a user that holds no credentials. Here a session runs as
+# you, with whatever your shell can reach.
 #
 #   upgrade_products.sh [slug ...]    # default: every product with a real upstream
 #
-# Env: MODEL, THINKING, UPGRADE_DRY_RUN (default 1), UPGRADE_OUT_DIR (a temp dir if unset),
+# Env: MODEL, THINKING, UPGRADE_OUT_DIR (a temp dir if unset),
 # REPO_URL (what each product clones; default GitHub, or a local fixture for a scenario).
 # Products run one after another: the inference server serves a single session at a time.
 set -uo pipefail
@@ -16,7 +18,11 @@ SCHEMA="$root/products/UPGRADING/result.schema.json"
 MODEL="${MODEL:-deprutser/qwen3.8-27b-q4}"
 THINKING="${THINKING:-medium}"
 REPO_URL="${REPO_URL:-https://github.com/erikvanzijst/freepod.git}"
-export UPGRADE_DRY_RUN="${UPGRADE_DRY_RUN:-1}"
+if [ "${UPGRADE_DRY_RUN:-1}" = 0 ]; then
+  echo "upgrade_products.sh runs dry runs only; real pull requests come from the upgrade service" >&2
+  exit 2
+fi
+export UPGRADE_DRY_RUN=1
 export UPGRADE_OUT_DIR="${UPGRADE_OUT_DIR:-$(mktemp -d)}"
 mkdir -p "$UPGRADE_OUT_DIR"
 work=$(mktemp -d)
@@ -45,8 +51,8 @@ run_pi() {
 }
 
 check() {
-  uv run --directory "$here" --no-sync python -m upgrader.result "$SCHEMA" \
-    "$UPGRADE_OUT_DIR/$slug/result.json" "$slug" "$dry"
+  uv run --directory "$here" --no-sync python -m upgrader.proposal "$SCHEMA" \
+    "$UPGRADE_OUT_DIR" "$slug" "$REPO_URL"
 }
 
 failed=0
@@ -55,7 +61,6 @@ for slug in "${slugs[@]}"; do
   git clone -q --depth 1 --branch master "$REPO_URL" "$work/$slug/freepod" || { failed=1; continue; }
   : >"$UPGRADE_OUT_DIR/$slug.stdout.txt"
   run_pi "Run the upgrade-product skill for the $slug product only. The repository is already cloned at ./freepod: work in that clone and do not clone it again. Read the skill file in full before you start."
-  dry=$([ "$UPGRADE_DRY_RUN" = 0 ] && echo 0 || echo 1)
   # Like the service: an unacceptable result gets one more turn in the same session.
   verdict=$(check); ok=$?
   echo "$verdict"

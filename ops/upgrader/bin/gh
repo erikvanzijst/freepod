@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # The gh an agent session finds first on its PATH (product-upgrade-guardrails). It keeps the
-# normal path to reading and opening; the App's permissions and the rulesets are the limit (D8).
+# normal path to reading; the session's read-only token is the limit, and the service alone
+# opens pull requests.
 REAL="${UPGRADER_REAL_GH:-/usr/bin/gh}"
 deny() { echo "gh: refused by the upgrade service's guard: gh $*" >&2; exit 1; }
-dry_run() { [ "${UPGRADE_DRY_RUN:-1}" != 0 ]; }
 
 if [ -n "${UPGRADER_TOKEN_FILE:-}" ] && [ -r "$UPGRADER_TOKEN_FILE" ]; then
   GH_TOKEN="$(cat "$UPGRADER_TOKEN_FILE")"
@@ -21,13 +21,11 @@ case "${1:-}" in
   pr)
     case "${2:-}" in
       list|view|diff|checks|status) exec "$REAL" "$@" ;;
-      create) dry_run && deny "$@"; exec "$REAL" "$@" ;;
       *) deny "$@" ;;
     esac ;;
   label)
     case "${2:-}" in
       list) exec "$REAL" "$@" ;;
-      create) dry_run && deny "$@"; exec "$REAL" "$@" ;;
       *) deny "$@" ;;
     esac ;;
   issue|release|run|workflow|cache)

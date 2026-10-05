@@ -1,6 +1,9 @@
+import ipaddress
+import os
 import threading
 import time
 from datetime import timedelta
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -9,6 +12,7 @@ from fastapi.testclient import TestClient
 from upgrader import db
 from upgrader.cancel import Cancellation
 from upgrader.github import PullRequests
+from upgrader.peers import local
 from upgrader.live import Live
 from upgrader.live import Session as LiveSession
 from upgrader.redact import Redactor
@@ -50,12 +54,15 @@ def scheduler(calls, release):
 CATALOG = ("immich", "nextcloud", "vaultwarden")
 
 
+POD = "10.42.0.17"
+
+
 def client(Session, scheduler, github, allowed=("Owner@example.com",), store=None, choices=CATALOG, live=None,
-           cancel=None):
+           cancel=None, peer="10.42.0.9"):
     app = create_app(Session, store or MemoryStore(), scheduler,
                      PullRequests(None, http=github.client()), allowed, lambda: list(choices), live=live,
-                     cancel=cancel)
-    return TestClient(app)
+                     cancel=cancel, is_local=local(frozenset({ipaddress.ip_address(POD)})))
+    return TestClient(app, client=(peer, 50000))
 
 
 def add_run(Session, *products, scope=None, finished=True, **fields):
@@ -78,6 +85,39 @@ def product(slug, outcome="up_to_date", finished=True, **fields):
 
 def test_healthz_needs_no_credentials(Session, scheduler, github):
     assert client(Session, scheduler, github).get("/healthz").status_code == 200
+
+
+@pytest.mark.parametrize("peer", ["127.0.0.1", "::1", "::ffff:127.0.0.1", POD, "0.0.0.0"])
+def test_a_request_from_the_pod_itself_is_refused(Session, scheduler, github, calls, peer):
+    """An agent session reaches uvicorn without passing the platform, so a header it sends
+    proves nothing."""
+    c = client(Session, scheduler, github, peer=peer)
+    for method, path in (("GET", "/"), ("GET", "/logbook"), ("POST", "/runs")):
+        assert c.request(method, path, headers=AUTH).status_code == 403, (method, path)
+    time.sleep(0.1)
+    assert calls == []
+    assert c.get("/healthz").status_code == 200
+
+
+def test_uvicorn_does_not_take_the_client_from_a_header():
+    """Otherwise a session on localhost sends X-Forwarded-For and is no longer local."""
+    dockerfile = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text()
+    [cmd] = [line for line in dockerfile.splitlines() if line.startswith("CMD ")]
+    assert "--no-proxy-headers" in cmd
+
+
+def test_the_pods_own_addresses_are_read_from_the_kernel(tmp_path):
+    from upgrader.peers import own_addresses
+
+    (tmp_path / "fib_trie").write_text(
+        "Main:\n  +-- 0.0.0.0/0 3 0 5\n     |-- 10.42.0.17\n        /32 host LOCAL\n"
+        "     |-- 10.42.0.0\n        /24 link UNICAST\n")
+    (tmp_path / "if_inet6").write_text("fe80000000000000a8c0fffeaa000011 02 40 20 80 eth0\n"
+                                       "00000000000000000000000000000001 01 80 10 80 lo\n")
+    found = own_addresses(tmp_path)
+    assert {ipaddress.ip_address("10.42.0.17"), ipaddress.ip_address("fe80::a8c0:fffe:aa00:11"),
+            ipaddress.ip_address("::1")} <= found
+    assert ipaddress.ip_address("10.42.0.0") not in found
 
 
 def test_forbidden_is_html_and_uncacheable(Session, scheduler, github):
@@ -249,7 +289,7 @@ def running(Session, tmp_path, *texts):
     directory.mkdir()
     (directory / "s.jsonl").write_text("".join(transcript_line(t) for t in texts))
     registry = Live()
-    registry.start(LiveSession(running_product.id, directory, Redactor({"INFERENCE_API_KEY": "sk-live"})))
+    registry.start(LiveSession(running_product.id, tmp_path, Redactor({"INFERENCE_API_KEY": "sk-live"}), os.getuid()))
     return running_product.id, directory / "s.jsonl", registry
 
 

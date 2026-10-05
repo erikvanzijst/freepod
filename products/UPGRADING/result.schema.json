@@ -14,33 +14,22 @@
     "needs_human"
   ],
   "properties": {
-    "schema_version": { "const": 1 },
+    "schema_version": { "const": 2 },
     "product": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
     "dry_run": { "type": "boolean" },
     "status": {
-      "enum": ["up_to_date", "opened", "would_open", "skipped", "would_skip", "failed"]
+      "enum": ["up_to_date", "would_open", "skipped", "would_skip", "failed"]
     },
     "current_version": { "type": ["string", "null"] },
     "target_version": { "type": ["string", "null"] },
     "draft": { "type": "boolean" },
-    "pr_url": { "type": ["string", "null"] },
+    "pr_url": false,
     "branch": { "type": ["string", "null"] },
     "skip_reason": { "type": ["string", "null"] },
     "needs_human": { "type": "array", "items": { "type": "string" } },
     "error": { "type": ["string", "null"] }
   },
   "allOf": [
-    {
-      "if": { "properties": { "status": { "const": "opened" } } },
-      "then": {
-        "required": ["pr_url", "branch"],
-        "properties": {
-          "pr_url": { "type": "string", "pattern": "^https://github\\.com/[^/]+/[^/]+/pull/[0-9]+$" },
-          "branch": { "type": "string", "pattern": "^upgrade/" }
-        }
-      },
-      "else": { "properties": { "pr_url": { "type": "null" } } }
-    },
     {
       "if": { "properties": { "status": { "enum": ["would_open", "would_skip"] } } },
       "then": {

@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy import select
 
 from upgrader import db, runner
+from upgrader.agent import Agent
 from upgrader.catalog import eligible
 from upgrader.config import Settings
 from upgrader.github import App
@@ -74,6 +75,7 @@ def deps(Session, origin, github, tmp_path, monkeypatch):
         workdir=tmp_path / "work",
         state_dir=tmp_path / "state",
         poll_seconds=0.05,
+        agent=Agent.same_user(),
     )
     d.env = env
     return d
@@ -102,7 +104,7 @@ def test_a_catalog_run_covers_the_eligible_products_in_order(deps, monkeypatch):
 
 
 def test_would_open_stores_every_file_and_redacts(deps, monkeypatch, github):
-    monkeypatch.setenv("FAKE_PI", "result:would_open")
+    monkeypatch.setenv("FAKE_PI", "propose:ok")
     runner.execute_run(deps, "manual", "vaultwarden")
     run, [p] = only_product(deps.Session)
     assert (p.outcome, p.target_version, p.branch, p.draft) == ("would_open", "1.37.3", "upgrade/vaultwarden-1.37.3", True)
@@ -117,6 +119,7 @@ def test_would_open_stores_every_file_and_redacts(deps, monkeypatch, github):
     assert b"[redacted:INFERENCE_API_KEY]" in deps.store.objects[f"runs/{run.id}/vaultwarden/session.jsonl"][0]
     assert deps.store.objects[f"runs/{run.id}/vaultwarden/session.html"][1].startswith("text/html")
     assert set(github.mint_bodies()[0]["permissions"].values()) == {"read"}
+    assert github.opened == [], "a dry run publishes nothing"
 
 
 def test_the_session_environment(deps, monkeypatch, tmp_path):
@@ -131,7 +134,10 @@ def test_the_session_environment(deps, monkeypatch, tmp_path):
     assert env["UPGRADE_RUN_URL"] == f"https://upgrader.test/runs/{run_id}#immich"
     assert env["UPGRADE_OUT_DIR"].startswith(str(deps.workdir))
     assert env["PATH"].split(os.pathsep)[0] == str(runner.HERE / "bin")
-    assert env["PI_CODING_AGENT_DIR"] == str(deps.state_dir / "pi-agent")
+    workspace = Path(env["UPGRADE_OUT_DIR"]).parent
+    assert env["PI_CODING_AGENT_DIR"] == str(workspace / "agent")
+    assert env["UPGRADER_TOKEN_FILE"] == str(deps.state_dir / "tokens" / "immich")
+    assert env["HOME"] == deps.agent.home
     assert env["INFERENCE_API_KEY"] == "sk-inference-secret"
     for private in ("GITHUB_APP_PRIVATE_KEY", "SMTP_PASS", "DATABASE_URL", "AWS_SECRET_ACCESS_KEY", "GH_TOKEN"):
         assert private not in env
@@ -146,19 +152,119 @@ def test_a_deployment_with_no_public_url_names_no_run(deps, monkeypatch, tmp_pat
     assert json.loads((tmp_path / "env.json").read_text())["UPGRADE_RUN_URL"] == ""
 
 
-def test_a_real_run_records_every_field_redacted(deps, monkeypatch, github):
+def git_out(origin, *args):
+    return subprocess.run([GIT, *args], cwd=origin.removeprefix("file://"), capture_output=True,
+                          text=True).stdout.strip()
+
+
+def test_a_real_run_publishes_the_proposal(deps, monkeypatch, github, origin):
     deps.env["UPGRADE_DRY_RUN"] = "0"
-    monkeypatch.setenv("FAKE_PI", "result:opened")
+    monkeypatch.setenv("FAKE_PI", "propose:ok")
+    argvs = []
+
+    class Recording(subprocess.Popen):
+        def __init__(self, args, *a, **kw):
+            argvs.append(" ".join(map(str, args)) if isinstance(args, (list, tuple)) else str(args))
+            super().__init__(args, *a, **kw)
+
+    monkeypatch.setattr(subprocess, "Popen", Recording)
     runner.execute_run(deps, "manual", "vaultwarden")
+    assert any(" push " in a for a in argvs)
+    assert not [a for a in argvs if "ghs_minted" in a], "a token is never on a command line"
     run, [p] = only_product(deps.Session)
     assert run.dry_run is False
-    assert p.outcome == "opened"
-    assert p.pr_url == "https://github.com/erikvanzijst/freepod/pull/200"
+    assert (p.outcome, p.error) == ("opened", None)
+    assert p.pr_url == "https://github.com/erikvanzijst/freepod/pull/300"
     assert (p.current_version, p.target_version, p.branch, p.draft) == ("1.37.1", "1.37.3", "upgrade/vaultwarden-1.37.3", True)
     assert p.needs_human == ["Check the invite fix"]
-    assert p.error == "CI pending; token [redacted:github-token]"
     assert p.started_at and p.finished_at and p.commit
-    assert github.mint_bodies()[0]["permissions"]["contents"] == "write"
+    [pull] = github.opened
+    assert (pull["head"], pull["base"], pull["draft"], pull["labels"]) == (
+        "upgrade/vaultwarden-1.37.3", "master", True, ["product-upgrade"])
+    assert pull["title"] == "Vaultwarden: Upgrade to 1.37.3"
+    assert "ghs_minted" not in pull["body"] and "[redacted:github-token]" in pull["body"]
+    # The sessions' tokens read; only the one the service minted to publish writes.
+    perms = [b["permissions"] for b in github.mint_bodies()]
+    assert all(set(pm.values()) == {"read"} for pm in perms[:-1])
+    assert perms[-1]["contents"] == "write" and pull["token"] == f"token ghs_minted{len(perms)}"
+    # The pushed branch is the patch, authored as the bot, whatever the patch said.
+    ref = "refs/heads/upgrade/vaultwarden-1.37.3"
+    assert git_out(origin, "log", "-1", "--format=%an <%ae>|%cn", ref) == (
+        "freepod-upgrader[bot] <4242+freepod-upgrader[bot]@users.noreply.github.com>|freepod-upgrader[bot]")
+    assert git_out(origin, "diff", "--name-only", f"master..{ref}") == "products/catalog/vaultwarden.yaml"
+    assert git_out(origin, "log", "-1", "--format=%s", ref) == "vaultwarden: Upgrade to 1.37.3"
+
+
+def test_a_branch_that_already_exists_fails_the_product(deps, monkeypatch, github, origin):
+    git_out(origin, "branch", "upgrade/vaultwarden-1.37.3", "master")
+    deps.env["UPGRADE_DRY_RUN"] = "0"
+    monkeypatch.setenv("FAKE_PI", "propose:ok")
+    runner.execute_run(deps, "manual", "vaultwarden")
+    _, [p] = only_product(deps.Session)
+    assert p.outcome == "failed" and p.pr_url is None
+    assert "publishing the pull request failed" in p.error and "push failed" in p.error
+    assert github.opened == []
+    git_out(origin, "branch", "-D", "upgrade/vaultwarden-1.37.3")
+
+
+@pytest.mark.parametrize("dry", ["1", "0"])
+@pytest.mark.parametrize(
+    "kind, reason",
+    [
+        ("other-product", "changes products/catalog/nextcloud.yaml, outside"),
+        ("workflow", "changes .github/workflows/ci.yml, outside"),
+        ("link", "links an issue or pull request"),
+        ("mention", "has an @ outside backticks"),
+        ("symlink-body", "body.md is missing"),
+    ],
+)
+def test_a_refused_proposal_gets_the_repair_turn(deps, monkeypatch, github, origin, tmp_path, dry, kind, reason):
+    secret = tmp_path / "service-secret"
+    secret.write_text("GITHUB_APP_PRIVATE_KEY=the-key")
+    monkeypatch.setenv("FAKE_PI_SECRET", str(secret))
+    deps.env["UPGRADE_DRY_RUN"] = dry
+    monkeypatch.setenv("FAKE_PI", f"propose:{kind}")
+    runner.execute_run(deps, "manual", "vaultwarden")
+    run, [p] = only_product(deps.Session)
+    stdout = deps.store.objects[f"runs/{run.id}/vaultwarden/stdout.txt"][0].decode()
+    first, repair = stdout.split("prompt: ")[1:]
+    assert reason in repair
+    assert p.outcome == ("would_open" if dry == "1" else "opened"), "the repaired proposal is accepted"
+    assert len(github.opened) == (0 if dry == "1" else 1)
+    assert git_out(origin, "branch", "--list", "upgrade/*") == ("" if dry == "1" else "upgrade/vaultwarden-1.37.3")
+    git_out(origin, "branch", "-D", "upgrade/vaultwarden-1.37.3")
+    for data, _ in deps.store.objects.values():
+        assert b"the-key" not in data
+    assert secret.read_text() == "GITHUB_APP_PRIVATE_KEY=the-key"
+
+
+def test_a_session_cannot_loosen_the_contract_in_its_clone(deps, monkeypatch):
+    monkeypatch.setenv("FAKE_PI", "tampered-schema")
+    runner.execute_run(deps, "manual", "immich")
+    _, [p] = only_product(deps.Session)
+    assert p.outcome == "failed" and "does not follow the contract" in p.error
+
+
+def test_a_session_never_reports_opened(deps, monkeypatch, github):
+    deps.env["UPGRADE_DRY_RUN"] = "0"
+    monkeypatch.setenv("FAKE_PI", "opened")
+    runner.execute_run(deps, "manual", "immich")
+    _, [p] = only_product(deps.Session)
+    assert p.outcome == "failed" and p.pr_url is None
+    assert github.opened == []
+
+
+def test_a_workspace_the_session_locked_is_still_deleted(deps, monkeypatch):
+    monkeypatch.setenv("FAKE_PI", "unwritable")
+    runner.execute_run(deps, "manual", "immich")
+    _, [p] = only_product(deps.Session)
+    assert p.outcome == "up_to_date"
+    assert list(deps.workdir.iterdir()) == []
+
+
+def test_the_bots_identity_is_configured(deps, monkeypatch):
+    monkeypatch.setenv("FAKE_PI", "result:up_to_date")
+    runner.execute_run(deps, "manual", "immich")
     name, email = (subprocess.run([GIT, "config", "--file", str(deps.git_config), k], capture_output=True,
                                   text=True).stdout.strip() for k in ("user.name", "user.email"))
     assert (name, email) == ("freepod-upgrader[bot]", "4242+freepod-upgrader[bot]@users.noreply.github.com")
@@ -193,7 +299,7 @@ def test_a_bad_result_gets_one_turn_in_the_same_session_to_fix_it(deps, monkeypa
     stdout = deps.store.objects[f"runs/{run.id}/bookstack/stdout.txt"][0].decode()
     first, repair = stdout.split("prompt: ")[1:]
     assert "Run the upgrade-product skill" in first
-    assert "does not follow the contract at pr_url" in repair and "bookstack/result.json" in repair
+    assert "does not follow the contract at schema_version" in repair and "bookstack/result.json" in repair
     assert (p.input_tokens, p.output_tokens) == (2000, 400), "both turns land in one transcript"
 
 

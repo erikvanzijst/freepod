@@ -1,6 +1,6 @@
 ---
 name: upgrade-product
-description: For one named Freepod curated product (products/catalog/<slug>.yaml with an upstream block), detect a new upstream release, review what changed in how upstream deploys it, and open one reviewed pull request. Runs unattended, one product per session; supports a dry run.
+description: For one named Freepod curated product (products/catalog/<slug>.yaml with an upstream block), detect a new upstream release, review what changed in how upstream deploys it, and propose one reviewed pull request, which the runner opens. Runs unattended, one product per session; supports a dry run.
 ---
 
 # Freepod product upgrade
@@ -13,18 +13,19 @@ Each curated product pins an upstream application version.
 **Your job on each run:** handle **one** curated product, the catalog slug given
 in `$UPGRADE_PRODUCT` or named by the task that invoked you. Find out whether a
 newer upstream release exists. If one does, work out everything that has to
-change for Freepod to ship it safely, and open **one pull request** with that
-change and a thorough description. Other products get their own runs, so leave
-them alone.
+change for Freepod to ship it safely, and propose **one pull request** with that
+change and a thorough description. You never write to GitHub yourself: you leave
+the commits, the description and a result file, and the runner checks them and
+opens the pull request. Other products get their own runs, so leave them alone.
 
 Nobody will answer questions while you run. When something can't be settled
-with the tools you have, don't guess: open the PR as a **draft** and state
+with the tools you have, don't guess: make the PR a **draft** and state
 exactly what a human has to decide (see *Escalation*).
 
 ## Tooling
 
-All of these are installed, and the `gh` CLI comes already authenticated:
-`git`, `gh`, `curl`, `jq`, `python3`, `uv`, `helm`. Use `jq` or `gh`'s built-in
+All of these are installed, and the `gh` CLI comes already authenticated with
+a read-only token: `git`, `gh`, `curl`, `jq`, `python3`, `uv`, `helm`. Use `jq` or `gh`'s built-in
 `--jq`/`-q` for JSON. You have no access to the Kubernetes cluster and don't
 need any.
 
@@ -32,20 +33,14 @@ need any.
 
 Whether this is a dry run is decided by the environment variable
 `UPGRADE_DRY_RUN` alone: `1` means a dry run, `0` means a real run. Nothing else
-changes that. Check it once, at the start, and keep to it. A dry run does every
-step exactly as a real run does, except the ones that change anything on GitHub:
+changes that. Check it once, at the start, and keep to it.
 
-- **Don't** push branches, create labels, or open PRs. Do still branch and
-  commit **locally**, because the patch below comes from those commits.
-- If the product would get a PR, also write `<slug>/meta.json` beside the
-  result files (see *Result files*):
-  `{"title", "branch", "base": "master", "draft": bool, "labels": [...]}`
-- **Run the duplicate checks in step 2.5, but don't let them stop you.** Record
-  what a real run would have done in `meta.json` (`"would_skip": "<reason>"`),
-  in `result.json` and in the report.
-- Run whatever local validation is available. For CI, write "not run (dry
-  run)".
-- Start the run report with `DRY RUN — output in <dir>`.
+Neither mode writes to GitHub: you branch and commit **locally**, and the
+runner publishes your proposal in a real run. A dry run differs in one thing:
+**it runs the duplicate checks in step 2.5 but doesn't let them stop it.** It
+records what a real run would have done in `meta.json`
+(`"would_skip": "<reason>"`), in `result.json` and in the report, and carries
+on. Start a dry run's report with `DRY RUN — output in <dir>`.
 
 ## Result files
 
@@ -58,15 +53,14 @@ files, never your prose report.
 
   | Field             | Value                                                                              |
   |-------------------|------------------------------------------------------------------------------------|
-  | `schema_version`  | `1`                                                                                |
+  | `schema_version`  | `2`                                                                                |
   | `product`         | the slug                                                                           |
   | `dry_run`         | `true` if `UPGRADE_DRY_RUN=1`, else `false`                                        |
-  | `status`          | `up_to_date`, `opened`, `would_open`, `skipped`, `would_skip` or `failed`          |
+  | `status`          | `up_to_date`, `would_open`, `skipped`, `would_skip` (dry run only) or `failed`     |
   | `current_version` | the value at `version_path`                                                        |
   | `target_version`  | the new tag, or `null` when `up_to_date`                                           |
-  | `draft`           | `true` if the PR is (or would be) a draft, else `false`                            |
-  | `pr_url`          | the PR's URL when `opened`; **`null` otherwise**                                   |
-  | `branch`          | `upgrade/<slug>-<target>` when `opened`, `would_open` or `would_skip`; else `null` |
+  | `draft`           | `true` if the PR should be a draft, else `false`                                   |
+  | `branch`          | `upgrade/<slug>-<target>` when `would_open` or `would_skip`; else `null`           |
   | `skip_reason`     | why, when `skipped` or `would_skip`; else `null`                                   |
   | `needs_human`     | the PR's *Needs human review* items, or `[]`                                       |
   | `error`           | when `failed`, where and why you stopped; else `null`                              |
@@ -74,35 +68,38 @@ files, never your prose report.
   A field that doesn't apply is JSON `null`, never `""`: the runner rejects an
   empty string where it expects `null`. Two examples:
   ```json
-  {"schema_version": 1, "product": "bookstack", "dry_run": false, "status": "up_to_date",
-   "current_version": "26.9.1", "target_version": null, "draft": false, "pr_url": null,
+  {"schema_version": 2, "product": "bookstack", "dry_run": false, "status": "up_to_date",
+   "current_version": "26.9.1", "target_version": null, "draft": false,
    "branch": null, "skip_reason": null, "needs_human": [], "error": null}
   ```
   ```json
-  {"schema_version": 1, "product": "immich", "dry_run": false, "status": "opened",
+  {"schema_version": 2, "product": "immich", "dry_run": false, "status": "would_open",
    "current_version": "v2.1.0", "target_version": "v2.2.0", "draft": true,
-   "pr_url": "https://github.com/erikvanzijst/freepod/pull/123",
    "branch": "upgrade/immich-v2.2.0", "skip_reason": null,
    "needs_human": ["The new release drops the ML_WORKERS setting"], "error": null}
   ```
+  There is no `pr_url` and no `opened`: the runner opens the pull request and
+  records its URL itself.
   `would_skip` means a dry run that a real run would skip, and that carried on
   anyway. When nothing more can be done, use `skipped` even in a dry run. If you
   must stop for any reason the procedure doesn't list as a skip, write
   `status: failed` with an `error` saying where you stopped.
-- `body.md` (the exact PR description) and `change.patch`
-  (`git format-patch --stdout origin/master..HEAD`) whenever a PR is opened or
-  would be, in real runs as well as dry runs.
+- `body.md` (the exact PR description), `change.patch`
+  (`git format-patch --stdout origin/master..HEAD`) and `meta.json`
+  (`{"title": "<Product>: Upgrade to <target>"}`, plus `"would_skip"` in a dry
+  run that would skip) whenever the status is `would_open` or `would_skip`, in
+  real runs as well as dry runs. See step 8 for what the runner checks.
 
 ---
 
 ## Hard rules
 
-1. **Never merge, never push to `master`, never deploy.** Your output is pull
-   requests and a run report.
-2. **Never close, edit, comment on or force-push an existing PR or branch,**
-   whoever created it, earlier runs of yours included. Existing PRs belong to
-   the operator. The only things you create are new `upgrade/<slug>-<version>`
-   branches and the PRs for them.
+1. **Never write to GitHub.** No push, no label, no PR, no comment, no merge.
+   Your output is local commits, the result files and a run report; the runner
+   decides what reaches GitHub.
+2. **Only your product's files.** Your commits change
+   `products/catalog/<slug>.yaml` and files under `products/<slug>/`, nothing
+   else. The runner refuses a patch that touches anything outside them.
 3. **Never republish a chart version.** CI publishes a product chart only when
    its `Chart.yaml` `version` is new. Any change to a chart therefore needs a
    version bump in `Chart.yaml` and the same version in the catalog's
@@ -172,7 +169,6 @@ way, start from a clean, current `master`:
 gh repo clone erikvanzijst/freepod && cd freepod      # skip if already in a clone
 git fetch origin && git checkout -q master && git reset -q --hard origin/master
 git branch --list 'upgrade/*' | xargs -r git branch -D   # stale local branches from earlier runs
-gh auth setup-git                                     # lets git push with gh's credentials
 scratch=$(mktemp -d)                                  # upstream clones, PR bodies
 ```
 
@@ -232,9 +228,9 @@ Work in this one clone (the `/workspace/trees` worktree convention in
      merging**, meaning a human declined it; or
    - the branch `upgrade/<slug>-<target>` already exists on the remote.
 
-   An open PR for a **different** version of the product doesn't stop you. Open
-   yours alongside it, leave it alone, and list it under *Overlapping PRs* in
-   your description.
+   An open PR for a **different** version of the product doesn't stop you.
+   Propose yours alongside it, leave it alone, and list it under *Overlapping
+   PRs* in your description.
 
    **In a dry run, a skip doesn't stop you:** set `status: would_skip` with its
    `skip_reason`, keep that status to the end, and do every remaining step for
@@ -260,7 +256,7 @@ curl -s -H "Authorization: Bearer $tok" \
       | if length == 0 then "NOT FOUND" else join(" ") end'
 ```
 
-A missing image means you don't open a PR: write `result.json` as `skipped`,
+A missing image means you don't propose a PR: write `result.json` as `skipped`,
 with a `skip_reason` naming the image (in a dry run, `would_skip`, and carry
 on). Report it too: upstream sometimes tags before the images finish publishing.
 
@@ -365,9 +361,11 @@ Branch from a fresh `origin/master`: `upgrade/<slug>-<target-version>`.
   Every application workload's pod template keeps
   `{{- include "<chart>.podLabels" . | nindent 8 }}` beside its other pod
   labels, including any workload you add. A new database or cache gets no
-  include; add it to `DATASTORES` in
-  `api/tests/test_chart_release_label_contract.py` instead. Follow the repo's
-  comment rules: comment only a non-obvious *why*. Open the PR as a **draft**.
+  include; it belongs in `DATASTORES` in
+  `api/tests/test_chart_release_label_contract.py`, which is outside your
+  product's files, so name that edit under *Needs human review* instead of
+  making it. Follow the repo's comment rules: comment only a non-obvious
+  *why*. Make the PR a **draft**.
 - **README "Upstream references" fixes** (step 5) go in the same PR, as a
   separate commit (`<Product>: Update upstream references`).
 - Commit subject: `<Product>: Upgrade to <version>` (e.g.
@@ -381,24 +379,33 @@ Branch from a fresh `origin/master`: `upgrade/<slug>-<target-version>`.
   tests/test_chart_release_label_contract.py`, `helm lint` and
   `helm template t products/<slug>/chart --set host=example.test`, and read the
   rendered output for the change you made.
-- Except in a dry run: push, open the PR (step 8), and wait for CI with
-  `gh pr checks <n> --watch` (checks take a minute or two to register). If a
-  check fails because of your change, fix it on **your branch**; otherwise say
-  so in the report, with the failing job's URL.
+- CI runs once the runner opens the PR, after your session has ended. The
+  *Verification* section lists what you ran here.
 
-### 8. Open the PR (in a dry run, write the output files instead)
+### 8. Write the proposal
 
 ```bash
-gh label create product-upgrade --color 0E8A16 --description "Automated product version upgrade" 2>/dev/null || true
-git push -u origin upgrade/<slug>-<version>
-gh pr create --base master --label product-upgrade [--draft] \
-  --title '<Product>: Upgrade to <version>' --body-file "$UPGRADE_OUT_DIR/<slug>/body.md"
+out="$UPGRADE_OUT_DIR/<slug>"
+git format-patch --stdout origin/master..HEAD > "$out/change.patch"
+jq -n --arg title '<Product>: Upgrade to <version>' '{title: $title}' > "$out/meta.json"
 ```
 
-Then write `change.patch` and `result.json` as `opened`, with `pr_url`,
-`branch` and `draft`. In a dry run, skip the commands above and write
-`result.json` as `would_open` (or keep `would_skip`), with `branch` and
-`draft`, plus `body.md`, `change.patch` and `meta.json`.
+Write `body.md` (see *PR description template*), then `result.json` as
+`would_open` (or keep `would_skip`), with `branch` and `draft`. The runner
+opens the PR from exactly these files, labeled `product-upgrade`, against
+`master`, as a draft when `draft` is true. Before it does, it refuses a
+proposal when:
+
+- the patch doesn't apply to the current `master`, holds no commits, changes a
+  path outside `products/catalog/<slug>.yaml` and `products/<slug>/`, or adds a
+  symbolic link or submodule;
+- `branch` isn't `upgrade/<slug>-<target_version>`;
+- the title isn't one line reading `<Product>: Upgrade to <target_version>`;
+- `body.md` is over 65,536 characters, links an issue or PR on GitHub, or has
+  an `@` outside backticks (see *Changelog sanitization*).
+
+A refusal comes back to you as one more turn, naming the problem. The runner
+records the PR's URL itself.
 
 ---
 
@@ -474,13 +481,14 @@ Do this with a script, never by hand. Then check the result.
   only the main repository's entries for each release and link the release page
   for the rest. Decide this once, from the measured size; don't trim by trial.
 
-## Escalation: when to open a draft
+## Escalation: when to make it a draft
 
-Open the PR as a **draft**, with a filled-in *Needs human review* section,
+Make the PR a **draft**, with a filled-in *Needs human review* section,
 when any of these is true:
 
 - The major version changes.
 - The PR changes a chart.
+- The upgrade needs an edit outside your product's files.
 - The release notes list a manual step, a data migration, or a required
   database or extension upgrade.
 - A companion image our chart pins has to change.
@@ -491,7 +499,7 @@ when any of these is true:
   don't say the default is safe.
 - In-flight work on the same chart blocks the change you'd need.
 
-Don't open a PR at all, and put it in the report instead, when a required image
+Don't propose a PR at all, and put it in the report instead, when a required image
 is missing, the upstream source can't be reached, or one of the duplicate checks
 in step 2.5 applies. Write `result.json` as `skipped` with a `skip_reason`. A
 dry run writes `would_skip` and still does the work and all its output files,
@@ -503,10 +511,10 @@ that stays `skipped`.
 Write `result.json` first (see *Result files*): the runner reads that file,
 not this report. Then end the run with a one-line report as your final message:
 
-`<slug>: <current> → <target> — <up to date | PR #n (ready|draft), CI <pass|fail|pending> | skipped: <reason>>`
+`<slug>: <current> → <target> — <up to date | would open (ready|draft) | skipped: <reason>>`
 
-In a dry run, start with `DRY RUN — output in <dir>`, and put `would open
-(ready|draft)` or `would skip: <reason>` in place of the PR status.
+In a dry run, start with `DRY RUN — output in <dir>`, and put `would skip:
+<reason>` in place of `skipped` for a duplicate check.
 
-Then list anything a human should look at: failing CI, escalated decisions,
-overlapping PRs.
+Then list anything a human should look at: escalated decisions, overlapping
+PRs.

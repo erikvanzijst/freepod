@@ -19,7 +19,7 @@ def validator():
 
 def result(status, **fields):
     base = {
-        "schema_version": 1,
+        "schema_version": 2,
         "product": "immich",
         "dry_run": status.startswith("would"),
         "status": status,
@@ -33,14 +33,13 @@ def result(status, **fields):
 
 VALID = [
     result("up_to_date", target_version=None),
-    result("opened", pr_url="https://github.com/erikvanzijst/freepod/pull/120",
-           branch="upgrade/immich-v3.2.1", draft=True, needs_human=["x86-64-v2 on the node"]),
-    result("would_open", branch="upgrade/immich-v3.2.1"),
+    result("would_open", branch="upgrade/immich-v3.2.1", draft=True,
+           needs_human=["x86-64-v2 on the node"]),
     result("skipped", skip_reason="ghcr.io/immich-app/immich-server:v3.2.1 has no amd64 build"),
     result("would_skip", branch="upgrade/immich-v3.2.1", skip_reason="PR #118 sets v3.2.1"),
     result("failed", error="step 2: upstream.source is the OWNER/REPO placeholder",
            current_version=None, target_version=None),
-    result("up_to_date", target_version=None, pr_url=None, branch=None, skip_reason=None, error=None),
+    result("up_to_date", target_version=None, branch=None, skip_reason=None, error=None),
 ]
 
 
@@ -57,25 +56,25 @@ def test_accepts_each_status(validator, doc):
         result("skipped"),
         result("would_skip", branch="upgrade/immich-v3.2.1"),
         result("opened", branch="upgrade/immich-v3.2.1"),
-        result("opened", pr_url="https://example.com/x", branch="upgrade/immich-v3.2.1"),
+        result("opened", pr_url="https://github.com/o/r/pull/1", branch="upgrade/immich-v3.2.1"),
         result("would_open"),
         result("would_open", branch="upgrade/x", pr_url="https://github.com/o/r/pull/1"),
-        result("up_to_date", target_version=None, pr_url=""),
+        result("up_to_date", target_version=None, pr_url=None),
         result("up_to_date"),
         {**result("up_to_date", target_version=None), "status": "done"},
         {k: v for k, v in result("up_to_date", target_version=None).items() if k != "dry_run"},
-        result("up_to_date", target_version=None, schema_version=2),
+        result("up_to_date", target_version=None, schema_version=1),
     ],
     ids=[
         "failed-without-error",
         "failed-empty-error",
         "skipped-without-skip-reason",
         "would-skip-without-skip-reason",
-        "opened-without-pr-url",
-        "opened-with-foreign-url",
+        "opened-by-a-session",
+        "opened-with-a-url",
         "would-open-without-branch",
-        "pr-url-outside-opened",
-        "empty-pr-url-outside-opened",
+        "pr-url-on-would-open",
+        "null-pr-url",
         "up-to-date-with-target",
         "unknown-status",
         "missing-dry-run",

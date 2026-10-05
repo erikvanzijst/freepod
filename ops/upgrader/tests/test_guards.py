@@ -112,11 +112,12 @@ def test_gh_refuses(args, dry, fake):
     [["pr", "create", "--base", "master", "--draft"], ["label", "create", "product-upgrade"]],
     ids=" ".join,
 )
-def test_gh_opens_only_in_real_runs(args, fake):
-    assert call(GH, args, fake, UPGRADE_DRY_RUN="0").returncode == 0
-    refused = call(GH, args, fake, UPGRADE_DRY_RUN="1")
-    assert refused.returncode != 0 and "refused" in refused.stderr
-    assert call(GH, args, fake).returncode != 0
+@pytest.mark.parametrize("dry", ["1", "0", None])
+def test_gh_never_opens_anything(args, dry, fake):
+    """The service opens pull requests; a session never does, in either mode."""
+    out = call(GH, args, fake, **({} if dry is None else {"UPGRADE_DRY_RUN": dry}))
+    assert out.returncode != 0 and "refused" in out.stderr
+    assert "REAL" not in out.stdout
 
 
 def test_gh_auth_setup_git_is_a_no_op(fake):
@@ -218,25 +219,12 @@ def remote_refs(remote):
     return set(out.stdout.split())
 
 
-def test_hook_lets_a_real_run_push_an_upgrade_branch(clone):
+@pytest.mark.parametrize("dry", ["0", "1", "", "false"])
+@pytest.mark.parametrize("ref", ["refs/heads/upgrade/immich-v3.2.1", "refs/heads/master", "refs/tags/v1"])
+def test_hook_refuses_every_push(clone, dry, ref):
     remote, work = clone
-    assert push(work, "HEAD:refs/heads/upgrade/immich-v3.2.1", "0").returncode == 0
-    assert "refs/heads/upgrade/immich-v3.2.1" in remote_refs(remote)
-
-
-@pytest.mark.parametrize("ref", ["refs/heads/master", "refs/heads/nextcloud-34.0.4", "refs/tags/v1"])
-def test_hook_refuses_other_refs(clone, ref):
-    remote, work = clone
-    out = push(work, f"HEAD:{ref}", "0")
-    assert out.returncode != 0 and "refused" in out.stderr
-    assert ref not in remote_refs(remote)
-
-
-@pytest.mark.parametrize("dry", ["1", "", "false"])
-def test_hook_refuses_every_push_in_a_dry_run(clone, dry):
-    remote, work = clone
-    out = push(work, "HEAD:refs/heads/upgrade/vaultwarden-1.37.3", dry)
-    assert out.returncode != 0 and "dry run" in out.stderr
+    out = push(work, f"HEAD:{ref}", dry)
+    assert out.returncode != 0 and "sessions push nothing" in out.stderr
     assert remote_refs(remote) == set()
 
 

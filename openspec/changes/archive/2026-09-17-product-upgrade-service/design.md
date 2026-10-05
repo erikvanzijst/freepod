@@ -281,6 +281,10 @@ Each session runs with `-p` and the prototype's prompt, plus:
 
 ### D8: The App's permissions and the rulesets bound GitHub access; the guards keep the normal path inside that bound
 
+*Superseded in part by `upgrader-session-isolation`: sessions now run as a separate user that
+cannot reach the private key, hold only read-only tokens, and never write to GitHub; the
+service publishes their proposals. The App, its permissions and the rulesets below still hold.*
+
 The agent runs shell commands, it reads untrusted content, and the pod can reach the
 whole public internet. Nothing inside the container can stop a sufficiently misled agent
 from calling GitHub directly, with `curl` or the real `gh` binary. So the bound is set on
@@ -565,7 +569,8 @@ and the owner who canceled the run already knows how it ended.
   and no secrets. Publishing needs a push to `master` or a tag, which the rulesets
   refuse the App, and without the Workflows permission a branch cannot change the
   workflows.
-- [The private key is readable by the agent, and does not expire] → An agent that reads it
+- [The private key is readable by the agent, and does not expire] (closed by
+  `upgrader-session-isolation`) → An agent that reads it
   can mint tokens with the App's full permissions, which the rulesets still bound (D8).
   Rotating the key, or suspending the installation, revokes it at once.
 - [Memory pressure from large clones] → On the development machine, blobless-clone

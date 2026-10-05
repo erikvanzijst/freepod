@@ -13,7 +13,6 @@ from sqlalchemy.engine import make_url
 from upgrader import db
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = ROOT.parents[1]
 _NO_URL = """\
 UPGRADER_TEST_DATABASE_URL is not set.
 

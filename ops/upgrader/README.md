@@ -21,10 +21,11 @@ Spec:
 
 | Path                              |                                                                                                                                   |
 |-----------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
-| `upgrader/`                       | the service: `web.py` (dashboard), `scheduler.py`, `runner.py` (per-product execution), `github.py`, `pi.py`, `store.py`, `db.py` |
+| `upgrader/`                       | the service: `web.py` (dashboard), `scheduler.py`, `runner.py` (per-product execution), `agent.py` (the session user), `proposal.py` (checking and publishing a proposal), `untrusted.py` (reading what a session wrote), `github.py`, `pi.py`, `store.py`, `db.py` |
 | `migrations/`                     | Alembic, applied at container start                                                                                               |
 | `bin/gh`, `bin/git`, `bin/docker` | the guards, first on a session's `PATH`                                                                                           |
 | `hooks/pre-push`                  | installed through the system `core.hooksPath`                                                                                     |
+| `sudoers`                         | lets the service, as `node`, run sessions as `agent`                                                                              |
 | `upgrade_products.sh`             | the local runner                                                                                                                  |
 | `Dockerfile`                      | the image; pins node, pi, `gh`, `helm`, python, `uv`, `jq`, `curl`, `tini`                                                        |
 | `.freepod.json`                   | the deployment every `freepod deploy` from here updates                                                                           |
@@ -46,17 +47,25 @@ Needs a reachable PostgreSQL. `UPGRADER_TEST_DATABASE_URL` is set for you inside
 the devcontainer; outside it, point it at a server whose user holds `CREATEDB` —
 the suite creates and migrates the database itself.
 
+`tests/test_isolation.py` needs the image's `agent` user and is skipped
+elsewhere. To run it, and an end-to-end run through that user, build the image
+and run it there (see the file's docstring).
+
 The local runner, the skill once per product in a fresh pi session and clone,
-behind the same guards:
+behind the same guards and the service's proposal checks:
 
 ```sh
 ./upgrade_products.sh                 # every eligible product
 ./upgrade_products.sh vaultwarden     # one
 ```
 
-Env: `MODEL`, `THINKING`, `UPGRADE_DRY_RUN` (default `1`), `UPGRADE_OUT_DIR`,
-`REPO_URL`. Products run one after another: the inference backend serves a
-single session at a time.
+It runs dry runs only and refuses `UPGRADE_DRY_RUN=0`: real pull requests come
+from the service. A local session runs as you, so it can reach whatever your
+shell can (`gh` auth, SSH keys, kube config). Only point it at products whose
+upstream you are prepared to trust with that.
+
+Env: `MODEL`, `THINKING`, `UPGRADE_OUT_DIR`, `REPO_URL`. Products run one after
+another: the inference backend serves a single session at a time.
 
 ## Deploying
 
@@ -118,8 +127,17 @@ address in `ALLOWED_EMAILS` gets in; any other account gets a 403. `/healthz` is
 open. It lists runs, streams the running session, shows each product's files and
 each PR's GitHub state, and carries "Run now", "Run one product" and cancel.
 
-**Dry run ↔ real PRs.** The service ships dry: read-only tokens, guards refusing
-writes, and the would-be PRs on the dashboard.
+**Sessions and secrets.** Each session runs as the `agent` user, through
+`sudo -u agent`. That user can read neither the service's environment (the App's
+private key, the bucket and database credentials) nor its files. It holds a
+read-only installation token and `INFERENCE_API_KEY`, nothing else. A session
+never writes to GitHub. It leaves commits, `body.md`, `change.patch` and
+`meta.json`, and in a real run the service checks them, pushes
+`upgrade/<slug>-<target>` built from the patch, and opens the PR with a token
+only it holds. The dashboard refuses requests from inside its own pod.
+
+**Dry run ↔ real PRs.** The service ships dry: the proposals are checked and
+shown on the dashboard, and nothing is published.
 
 ```sh
 freepod var set UPGRADE_DRY_RUN=0     # real pull requests
@@ -161,4 +179,7 @@ Suspending the App's installation revokes its access at once, without a deploy.
 
 **Logs and a shell.** `freepod log -f`, `freepod shell`. The guards are on a
 session's `PATH`, not on the shell's: probe them at `/app/bin/gh`,
-`/app/bin/git`.
+`/app/bin/git`. To see what a session can reach, become its user:
+`sudo -u agent cat /proc/$(pgrep -x tini)/environ` and
+`sudo -u agent curl -s -o /dev/null -w '%{http_code}' -H 'X-Freepod-Email: <allowed>' localhost:8080/`
+must both be refused: the first with "Permission denied", the second with 403.

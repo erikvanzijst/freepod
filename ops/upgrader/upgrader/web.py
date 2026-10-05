@@ -22,6 +22,7 @@ from .db import ProductResult, Run, make_sessionmaker, now
 from .github import App, PullRequests
 from .live import Live
 from .live import read as read_live
+from .peers import local, own_addresses
 from .schedule import next_run
 from .scheduler import Scheduler
 
@@ -84,7 +85,8 @@ class _HeadAllowed(APIRoute):
 def create_app(Session: sessionmaker, store, scheduler: Scheduler, prs: PullRequests,
                allowed_emails: Collection[str], choices: Callable[[], list[str]], live: Live | None = None,
                cancel: Cancellation | None = None,
-               settings: Callable[[], Settings] = Settings.from_env, lifespan=None) -> FastAPI:
+               settings: Callable[[], Settings] = Settings.from_env, lifespan=None,
+               is_local: Callable[[str | None], bool] | None = None) -> FastAPI:
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.router.route_class = _HeadAllowed
 
@@ -100,10 +102,14 @@ def create_app(Session: sessionmaker, store, scheduler: Scheduler, prs: PullRequ
     cancel = cancel or Cancellation()
 
     allowed = frozenset(e.lower() for e in allowed_emails)
+    is_local = is_local or local(own_addresses())
 
     # Sign in with Freepod authenticates and strips any client-sent copy of the header;
-    # authorization is ours. Without the header the platform did not sign anyone in.
-    def authenticated(email: str | None = Header(None, alias="X-Freepod-Email")) -> None:
+    # authorization is ours. Without the header the platform did not sign anyone in. A request
+    # from the pod itself, such as an agent session's, never passed the platform at all.
+    def authenticated(request: Request, email: str | None = Header(None, alias="X-Freepod-Email")) -> None:
+        if is_local(request.client.host if request.client else None):
+            raise HTTPException(403)
         if not email:
             raise HTTPException(401)
         if email.strip().lower() not in allowed:

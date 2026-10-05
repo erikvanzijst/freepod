@@ -51,9 +51,14 @@ The image adds a system user `agent` (uid 1001, no login shell needed) and insta
 `sudo`. The sudoers file `/etc/sudoers.d/upgrader` holds:
 
 ```
-Defaults:node !requiretty, !secure_path, !env_reset
+Defaults:node !env_reset, !secure_path, !use_pty, !lecture, !syslog
 node ALL=(agent) NOPASSWD: ALL
 ```
+
+`node` also joins the `agent` group, so it can hand the token file and the workspace to
+that group alone. `use_pty` is off because Debian turns it on by default, and a pty would
+come between pi and the stdout file the service hands it. `syslog` is off because the
+container has no syslog.
 
 `node` may run anything as `agent`. That is safe because `agent` is the less privileged
 user: becoming it gains `node` nothing. `agent` has no sudoers entry at all. Turning off
@@ -62,7 +67,10 @@ user: becoming it gains `node` nothing. `agent` has no sudoers entry at all. Tur
 place that decides what a session sees.
 
 The service starts each session as `sudo -n -u agent -- pi …`. Everything else it does as
-`agent` uses the same form: creating the session's clone, cleaning up, killing.
+`agent` uses the same form: creating the session's clone, cleaning up, killing. One `Agent`
+value (`upgrader/agent.py`) holds that prefix and always passes an explicit environment.
+The test suite uses an `Agent` with an empty prefix, which means the service and the
+session share a user. `tests/test_isolation.py` covers the real user in the image.
 
 *Alternatives considered:*
 
@@ -79,25 +87,32 @@ The service starts each session as `sudo -n -u agent -- pi …`. Everything else
 ### D2: Workspace layout and ownership
 
 ```
-<workdir>/<slug>-XXXX/               node 0711   (the service's)
-├── service/                         node 0700   the service's own clone of master
-├── session/                         agent       pi's session dir and agent dir
-│   └── agent/models.json            copied in as agent
-├── freepod/                         agent       the session's clone, made with sudo -u agent git clone
-└── out/                             agent       UPGRADE_OUT_DIR
+<workdir>/<slug>-XXXX/        node:agent 1770  sticky: the session can add, not replace
+├── runner/                   node       0700  the service's own: its clone, stdout, renders
+│   └── freepod/                               the service's clone of master
+├── agent/                    node:agent 2770  PI_CODING_AGENT_DIR; models.json (0644) by the
+│                                              service, pi's auth.json by the session
+├── session/                  node:agent 2770  pi's --session-dir
+├── out/                      node:agent 2770  UPGRADE_OUT_DIR
+└── freepod/                  agent            the session's clone, made with sudo -u agent git clone
 ```
 
-- **Two clones.** The service clones first and records the commit. The session's clone is
-  made as `agent`, at that same commit. Both are shallow, so the extra clone costs seconds.
+- **The shared directories belong to the service.** The session fills them but cannot
+  swap one for a link, and the sticky root keeps it from replacing anything the service
+  created. All of them exist before any process of the session user starts. pi writes
+  `auth.json` into its agent directory, so that directory is shared rather than read-only.
+- **Two clones.** The service clones first and records the commit for the dashboard. The
+  session clones `master` as `agent`, and the skill resets to `origin/master` anyway, so
+  the two can differ by whatever merged in between. Both are shallow.
 - **The service's clone** supplies `result.schema.json` and is where the patch is applied.
-  The session cannot write to it.
+  The session cannot read or write it.
 - **The token file** moves to `<state>/tokens/<slug>`, in a directory owned by `node:agent`
   with mode `0750`. The file itself is `node:agent`, mode `0640`, so the session can read
   it but not replace it. The `upgrader` group trick is unnecessary: `agent`'s primary
   group serves.
-- **Cleanup.** `sudo -u agent rm -rf` removes `freepod/`, `session/` and `out/`. Then the
-  service removes the rest with `shutil.rmtree`. This also handles directories the
-  session made unwritable.
+- **Cleanup.** As `agent`, the service makes every directory `agent` owns writable and
+  deletes everything `agent` owns. Then it removes the rest with `shutil.rmtree`. This
+  also handles directories the session made unwritable.
 
 ### D3: Reading untrusted files: openat walk plus an owner check
 
@@ -109,44 +124,52 @@ Anything else counts as missing.
 - **Why the owner check.** It closes the hard-link variant: a link to a file `node` owns
   keeps `node` as its owner. With the check, the service only ever reads bytes `agent`
   could have written.
-- **Where it is used.** `_store_files`, `_result_problem`, the transcript, and `live.py`'s
-  tail. `live.py` keeps its descriptor open between polls, so a file that is swapped
-  under it is not followed.
+- **Where it is used.** `_store_files`, judging the result, the proposal's files, the
+  transcript, and `live.py`'s tail. Finding the transcript walks `session/` the same way,
+  with `os.scandir` on a descriptor. `live.py` opens the transcript through the helper on
+  every poll, so a file swapped between polls is not followed either.
 
 *Alternative considered:* reading through `sudo -u agent cat`. This is equally safe, but it
 costs a process per read, and the live tail polls.
 
 ### D4: The service publishes; the session proposes
 
-After an accepted `would_open` in a real run, `publish()` does the following in the
-service's clone, as `node`:
+For a `would_open` result, the service does the following in its own clone, as `node`:
 
 1. **Check the patch.**
-   - It must apply cleanly to the recorded commit: `git apply --check` with the
-     `--numstat`/`--summary` output parsed.
-   - Every path must be `products/catalog/<slug>.yaml` or start with `products/<slug>/`.
-   - No mode `120000` (symlink) or `160000` (gitlink) entries.
-   - No paths with `..`. `git apply` already refuses these, and the check repeats it.
+   - Fetch `master` and `git am` the patch onto it, on the branch `upgrade/<slug>-<target>`,
+     with hooks off. The skill resets to `origin/master` at its start, so `master` as it is
+     now is the base the session worked from, give or take a merge.
+   - `git am` is the check: it applies a multi-commit mbox the way the commits were made,
+     where `git apply --check` on the whole file would trip over a second commit touching
+     the same lines.
+   - Then `git diff --raw --no-renames base..HEAD` lists what changed. Every path must be
+     `products/catalog/<slug>.yaml` or start with `products/<slug>/`, and no entry may have
+     mode `120000` (symlink) or `160000` (gitlink). `git am` already refuses paths with
+     `..` or inside `.git`.
 2. **Check the metadata.**
    - The branch is `upgrade/<slug>-<target_version>`, and
      `git check-ref-format --branch` accepts it.
    - The title matches `^[^\n]{1,200}: Upgrade to <re.escape(target)>$`.
    - `body.md` is at most 65,536 characters.
-   - The sanitization greps from the skill:
-     `github\.com/[^ ]+/(pull|issues)/[0-9]+` and `(^|[\s(])@[A-Za-z0-9-]+\b`. The
-     second exempts email addresses by requiring no preceding word character.
-3. **Commit.** `git am --committer-date-is-author-date` on a branch at the recorded
-   commit. Then rewrite authorship with `GIT_AUTHOR_*` and `GIT_COMMITTER_*` set to the
-   bot, through `git rebase --exec 'git commit --amend --no-edit --reset-author'`.
+   - The skill's sanitization rules:
+     - no match of `github\.com/[^ ]+/(pull|issues)/[0-9]+` anywhere;
+     - no `@` outside backticks. After removing fenced blocks and code spans, nothing may
+       match `(?<![\w`])@[A-Za-z0-9]`, which exempts email addresses.
+3. **Author as the bot.** `git rebase --force-rebase --exec 'git commit --amend --no-edit
+   --reset-author'`, with `GIT_AUTHOR_*` and `GIT_COMMITTER_*` set to the bot.
 4. **Publish.**
    - Mint a write token.
-   - Push, with the token passed through `GIT_CONFIG_COUNT` as an `http.extraHeader`, never
-     in argv, and without `--force`.
-   - Create the label if missing, then open the PR, both through `httpx` with the same
-     token.
-   - Drop the token.
+   - `git ls-remote` refuses an existing branch. Then push with
+     `--force-with-lease=<ref>:`, which also refuses one that appeared in between. The
+     explicit check exists because git skips the lease when the push would change nothing.
+   - The token reaches git through `GIT_CONFIG_COUNT` as an `http.extraHeader`, never in
+     argv, with the credential helper cleared.
+   - Redact the title and body as stored files are redacted. Create the label if missing,
+     open the PR, and label it, all through `httpx` with the same token. A failed label is
+     logged, not fatal: the PR exists by then.
 
-Steps 1–2 run as part of `_result_problem`, in both modes. A refusal therefore gets the
+Steps 1–2 run when the result is judged, in both modes. A refusal therefore gets the
 existing repair turn, and a dry run surfaces it too. Steps 3–4 run only in a real run.
 Their failures, such as a push rejected because the branch exists or a network error,
 record `failed`.
@@ -233,6 +256,6 @@ Follow D8. Rollback means redeploying the previous image and reverting the skill
 commit on `master`, together. Neither involves data migration. After deploying, verify
 from `freepod shell`:
 
-- `sudo -u agent cat /proc/1/environ` is refused, and the same holds for tini's pid.
+- `sudo -u agent cat /proc/$(pgrep -x tini)/environ` is refused, and the same holds for uvicorn.
 - `sudo -u agent curl -s -o /dev/null -w '%{http_code}' -H 'X-Freepod-Email: <allowed>'
   localhost:8080/` gives 403.

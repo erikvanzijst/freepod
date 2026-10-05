@@ -3,6 +3,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -16,6 +17,7 @@ if args[:1] == ["--export"]:
     Path(args[2]).write_text("<html>" + Path(args[1]).read_text() + "</html>")
     sys.exit(0)
 
+GIT = shutil.which("git", path="/usr/local/bin:/usr/bin")
 mode = os.environ.get("FAKE_PI", "result:up_to_date")
 slug = os.environ["UPGRADE_PRODUCT"]
 dry = os.environ["UPGRADE_DRY_RUN"] != "0"
@@ -38,20 +40,58 @@ with transcript.open("a" if resumed else "w") as f:
 print(f"env has key: {'GITHUB_APP_PRIVATE_KEY' in os.environ}; token {token}", flush=True)
 print(f"prompt: {args[-1]}", flush=True)
 Path(os.environ["FAKE_PI_ENV"]).write_text(json.dumps(dict(os.environ))) if "FAKE_PI_ENV" in os.environ else None
+if "FAKE_PI_STAT" in os.environ:
+    seen = {name: [os.stat(name).st_uid, os.stat(name).st_gid, oct(os.stat(name).st_mode & 0o7777)]
+            for name in (".", "runner", "agent", "session", "out", "freepod")}
+    try:
+        os.listdir("runner")
+        seen["runner_listed"] = True
+    except PermissionError:
+        seen["runner_listed"] = False
+    Path(os.environ["FAKE_PI_STAT"]).write_text(json.dumps(seen))
 
 if mode == "sleep":
     child = subprocess.Popen(["sleep", "600"])
     Path(os.environ["FAKE_PI_CHILD"]).write_text(str(child.pid))
     time.sleep(600)
+if mode == "unwritable":
+    locked = Path("out") / "locked"
+    locked.mkdir()
+    (locked / "inside").write_text("x")
+    locked.chmod(0o500)
+    mode = "result:up_to_date"
+
+
+def git(*a):
+    subprocess.run([GIT, "-c", "user.name=Erik", "-c", "user.email=erik@example.com", *a],
+                   cwd="freepod", check=True, capture_output=True)
+
+
+def propose(path, body):
+    """Commit a change to `path` in the session's clone and write the would-be pull request."""
+    git("checkout", "-q", "-f", "-B", f"upgrade/{slug}-1.37.3", "master")
+    target = Path("freepod") / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a") as f:
+        f.write("# upgraded\n")
+    git("add", path)
+    git("commit", "-q", "-m", f"{slug}: Upgrade to 1.37.3")
+    patch = subprocess.run([GIT, "format-patch", "--stdout", "HEAD~1..HEAD"], cwd="freepod",
+                           check=True, capture_output=True).stdout
+    (out / "change.patch").write_bytes(patch)
+    (out / "body.md").unlink(missing_ok=True)
+    (out / "body.md").write_text(body)
+    (out / "meta.json").write_text(json.dumps({"title": f"{slug.capitalize()}: Upgrade to 1.37.3"}))
+
 
 result = {
-    "schema_version": 1, "product": slug, "dry_run": dry, "status": "up_to_date",
+    "schema_version": 2, "product": slug, "dry_run": dry, "status": "up_to_date",
     "current_version": "1.37.1", "target_version": None, "draft": False, "needs_human": [],
 }
 if mode == "repairable" and resumed:
     mode = "result:up_to_date"
 if mode == "repairable":
-    result["pr_url"] = ""
+    result["schema_version"] = 1
 if mode == "none":
     sys.exit(0)
 if mode == "malformed":
@@ -61,17 +101,39 @@ if mode == "wrong-product":
     result["product"] = "nextcloud"
 if mode == "dry-mismatch":
     result["dry_run"] = not dry
+if mode == "opened":
+    result.update(status="opened", target_version="1.37.3", branch=f"upgrade/{slug}-1.37.3",
+                  pr_url="https://github.com/erikvanzijst/freepod/pull/200")
+if mode == "tampered-schema":
+    schema = Path("freepod/products/UPGRADING/result.schema.json")
+    schema.write_text(json.dumps({"type": "object"}))
+    result.update(status="opened", pr_url="https://github.com/erikvanzijst/freepod/pull/200")
+if mode.startswith("propose:"):
+    kind = mode.split(":", 1)[1]
+    if resumed:
+        kind = "ok"
+    path, body = f"products/catalog/{slug}.yaml", f"## Summary\nUpgrade {slug}. token {token}\n"
+    if kind == "other-product":
+        path = "products/catalog/nextcloud.yaml"
+    if kind == "workflow":
+        path = ".github/workflows/ci.yml"
+    if kind == "link":
+        body += "Fixes https://github.com/dani-garcia/vaultwarden/issues/123\n"
+    if kind == "mention":
+        body += "Thanks @dani-garcia, and `@bitwarden/sdk` is fine.\n"
+    propose(path, body)
+    if kind == "symlink-body":
+        (out / "body.md").unlink()
+        (out / "body.md").symlink_to(os.environ["FAKE_PI_SECRET"])
+    result.update(status="would_open", target_version="1.37.3", branch=f"upgrade/{slug}-1.37.3",
+                  draft=True, needs_human=["Check the invite fix"])
 if mode.startswith("result:"):
     status = mode.split(":", 1)[1]
     result["status"] = status
-    if status in ("would_open", "would_skip", "opened"):
-        result.update(target_version="1.37.3", branch=f"upgrade/{slug}-1.37.3", draft=True,
-                      needs_human=["Check the invite fix"])
-        (out / "body.md").write_text(f"## Summary\nUpgrade {slug}. token {token}\n")
-        (out / "change.patch").write_text("diff --git a/x b/x\n")
-    if status == "opened":
-        result.update(pr_url="https://github.com/erikvanzijst/freepod/pull/200",
-                      error=f"CI pending; token {token}", skip_reason=None)
     if status == "would_skip":
-        result["skip_reason"] = "PR #150 already sets 1.37.3"
+        propose(f"products/catalog/{slug}.yaml", f"## Summary\nUpgrade {slug}.\n")
+        result.update(target_version="1.37.3", branch=f"upgrade/{slug}-1.37.3", draft=True,
+                      skip_reason="PR #150 already sets 1.37.3")
+    if status == "skipped":
+        result["skip_reason"] = f"no image; token {token}"
 (out / "result.json").write_text(json.dumps(result))

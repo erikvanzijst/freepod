@@ -16,6 +16,7 @@ RUN apt-get update \
       curl=7.88.1-10+deb12u15 \
       git=1:2.39.5-0+deb12u3 \
       jq=1.6-2.1+deb12u2 \
+      sudo=1.9.13p3-1+deb12u4 \
       tini=0.19.0-1+b3 \
       htop \
       procps \
@@ -46,6 +47,16 @@ RUN UV_PYTHON_DOWNLOADS=automatic uv python install "${PYTHON_VERSION}" \
 COPY . .
 RUN uv sync --frozen --no-dev --python "${PYTHON_VERSION}"
 
+# Sessions run as `agent`, which can read none of the service's secrets (D1). The service, as
+# `node`, may become `agent`; `agent` may become no one. `node` joins the group so that it can
+# share the token file and the workspace with sessions and with no one else.
+RUN groupadd --system --gid 1001 agent \
+ && useradd --system --uid 1001 --gid agent --create-home --home-dir /home/agent \
+      --shell /usr/sbin/nologin agent \
+ && usermod -aG agent node \
+ && install -m 0440 /app/sudoers /etc/sudoers.d/upgrader \
+ && visudo -cf /etc/sudoers.d/upgrader
+
 # product-upgrade-guardrails: every clone gets the push hook and the token helper. The bot's
 # identity is added at run time, and git locks a config file by creating one beside it, so the
 # system config lives in a directory the service user owns.
@@ -62,4 +73,6 @@ ENV PATH=/app/.venv/bin:$PATH \
 # -s: in a pod whose containers share one process namespace, tini is not PID 1, so it registers as
 # a subreaper to still collect what a terminated session leaves behind (D1).
 ENTRYPOINT ["/usr/bin/tini", "-s", "--"]
-CMD ["bash", "-c", "alembic upgrade head && exec uvicorn --factory upgrader.web:build --host 0.0.0.0 --port \"${PORT:-8080}\" --workers 1"]
+# --no-proxy-headers: uvicorn otherwise takes X-Forwarded-For from 127.0.0.1 as the client, and a
+# session on localhost could pose as any address to the dashboard's local-peer check (D6).
+CMD ["bash", "-c", "alembic upgrade head && exec uvicorn --factory upgrader.web:build --host 0.0.0.0 --port \"${PORT:-8080}\" --workers 1 --no-proxy-headers"]

@@ -25,6 +25,8 @@ class FakeGitHub:
         self.minted = 0
         self.token_lifetime = token_lifetime
         self.pulls: dict[int, dict] = {}
+        self.labels: set[str] = set()
+        self.opened: list[dict] = []
         self.down = False
 
     def handler(self, request: httpx.Request) -> httpx.Response:
@@ -45,6 +47,24 @@ class FakeGitHub:
             return httpx.Response(200, json={"slug": "freepod-upgrader"})
         if path in ("/users/freepod-upgrader[bot]", "/users/freepod-upgrader%5Bbot%5D"):
             return httpx.Response(200, json={"id": 4242, "login": "freepod-upgrader[bot]"})
+        if request.method == "POST" and path == "/repos/erikvanzijst/freepod/labels":
+            name = json.loads(request.content)["name"]
+            if name in self.labels:
+                return httpx.Response(422, json={"message": "Validation Failed"})
+            self.labels.add(name)
+            return httpx.Response(201, json={"name": name})
+        if request.method == "POST" and path == "/repos/erikvanzijst/freepod/pulls":
+            number = 300 + len(self.opened)
+            pull = {**json.loads(request.content), "number": number, "labels": [],
+                    "html_url": f"https://github.com/erikvanzijst/freepod/pull/{number}",
+                    "token": request.headers["Authorization"]}
+            self.opened.append(pull)
+            return httpx.Response(201, json=pull)
+        if request.method == "POST" and path.endswith("/labels") and "/issues/" in path:
+            number = int(path.split("/")[-2])
+            pull = next(p for p in self.opened if p["number"] == number)
+            pull["labels"] += json.loads(request.content)["labels"]
+            return httpx.Response(200, json=[])
         if path.startswith("/repos/erikvanzijst/freepod/pulls/"):
             number = int(path.rsplit("/", 1)[1])
             if number in self.pulls:

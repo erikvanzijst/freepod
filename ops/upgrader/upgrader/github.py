@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import logging
 import os
 import re
 import threading
@@ -19,10 +20,13 @@ from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 from .config import REPO
 
+log = logging.getLogger(__name__)
+
 API = "https://api.github.com"
 READ_WRITE = {"contents": "write", "pull_requests": "write", "metadata": "read"}
 READ_ONLY = {"contents": "read", "pull_requests": "read", "metadata": "read"}
 PULL_REQUESTS_READ = {"pull_requests": "read"}
+LABEL = {"name": "product-upgrade", "color": "0E8A16", "description": "Automated product version upgrade"}
 
 
 def load_private_key(private_key_b64: str) -> str:
@@ -80,6 +84,25 @@ class App:
         expires = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00"))
         return Token(data["token"], expires)
 
+    def _as_installation(self, token: str, method: str, path: str, **kwargs) -> httpx.Response:
+        return self.http.request(method, path, headers={"Authorization": f"token {token}"}, **kwargs)
+
+    def open_pull_request(self, token: str, branch: str, title: str, body: str, draft: bool) -> str:
+        """Open the pull request for a pushed branch, labeled, and return its URL (D4)."""
+        labels = self._as_installation(token, "POST", f"/repos/{self.repo}/labels", json=LABEL)
+        if labels.status_code != 422:  # 422: the label exists
+            labels.raise_for_status()
+        response = self._as_installation(token, "POST", f"/repos/{self.repo}/pulls", json={
+            "title": title, "head": branch, "base": "master", "body": body, "draft": draft})
+        response.raise_for_status()
+        pull = response.json()
+        try:
+            self._as_installation(token, "POST", f"/repos/{self.repo}/issues/{pull['number']}/labels",
+                                  json={"labels": [LABEL["name"]]}).raise_for_status()
+        except httpx.HTTPError:
+            log.exception("could not label %s", pull["html_url"])
+        return pull["html_url"]
+
     def identity(self) -> tuple[str, str]:
         """The bot user's commit name and noreply address."""
         login = f"{self._as_app('GET', '/app')['slug']}[bot]"
@@ -89,14 +112,16 @@ class App:
 
 
 class TokenFile:
-    """The current installation token for one session, replaced before it expires (D8)."""
+    """The current installation token for one session, replaced before it expires (D8). `share`
+    makes the file and its directory readable to the session user, and to no one else."""
 
     def __init__(self, app: App, path: Path, permissions: dict[str, str],
                  on_mint: Callable[[str], None] = lambda token: None,
                  margin: timedelta = timedelta(minutes=10),
-                 clock: Callable[[], datetime] = lambda: datetime.now(UTC)):
+                 clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+                 share: Callable[[Path, int], None] = lambda path, mode: path.chmod(mode)):
         self.app, self.path, self.permissions = app, path, permissions
-        self.on_mint, self.margin, self.clock = on_mint, margin, clock
+        self.on_mint, self.margin, self.clock, self.share = on_mint, margin, clock, share
         self.token: Token | None = None
 
     def refresh(self) -> None:
@@ -105,9 +130,13 @@ class TokenFile:
         self.token = self.app.mint(self.permissions)
         self.on_mint(self.token.value)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.share(self.path.parent, 0o750)
         staged = self.path.with_suffix(".new")
-        staged.write_text(self.token.value)
-        staged.chmod(0o600)
+        staged.unlink(missing_ok=True)
+        fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(self.token.value)
+        self.share(staged, 0o640)
         os.replace(staged, self.path)
 
     def remove(self) -> None:

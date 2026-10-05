@@ -67,7 +67,9 @@ def test_token_file_is_replaced_before_it_expires(app, github, tmp_path):
     tokens.refresh()
     assert (tmp_path / "token").read_text() == "ghs_minted2"
     assert minted == ["ghs_minted1", "ghs_minted2"]
-    assert (tmp_path / "token").stat().st_mode & 0o077 == 0
+    # Readable to the session user's group alone, never to everyone (D2).
+    assert (tmp_path / "token").stat().st_mode & 0o777 == 0o640
+    assert tmp_path.stat().st_mode & 0o777 == 0o750
     tokens.remove()
     assert not (tmp_path / "token").exists()
 
@@ -124,3 +126,36 @@ def test_unreachable_github_is_unknown(app, github):
     prs = PullRequests(app)
     github.down = True
     assert prs.state(URL.format(9)) == "unknown"
+
+
+@pytest.mark.parametrize("draft", [True, False])
+def test_a_pull_request_is_opened_labeled(app, github, draft):
+    url = app.open_pull_request("ghs_write", "upgrade/immich-v3.2.1", "Immich: Upgrade to v3.2.1",
+                                "## Summary", draft)
+    [pull] = github.opened
+    assert url == pull["html_url"]
+    assert (pull["head"], pull["base"], pull["draft"], pull["labels"]) == (
+        "upgrade/immich-v3.2.1", "master", draft, ["product-upgrade"])
+    assert pull["token"] == "token ghs_write"
+    assert github.labels == {"product-upgrade"}
+
+
+def test_an_existing_label_is_reused(app, github):
+    github.labels.add("product-upgrade")
+    app.open_pull_request("ghs_write", "upgrade/immich-v3.2.1", "t", "b", False)
+    assert github.opened[0]["labels"] == ["product-upgrade"]
+
+
+def test_a_failed_label_still_reports_the_pull_request(github):
+    import httpx
+
+    def no_labels(request):
+        if "/issues/" in request.url.path:
+            return httpx.Response(500)
+        return github.handler(request)
+
+    app = App("123", KEY_B64, http=httpx.Client(base_url="https://api.github.com",
+                                                 transport=httpx.MockTransport(no_labels)))
+    url = app.open_pull_request("ghs_write", "upgrade/immich-v3.2.1", "t", "b", False)
+    assert url == github.opened[0]["html_url"]
+    assert github.opened[0]["labels"] == []

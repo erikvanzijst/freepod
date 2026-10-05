@@ -1,0 +1,3 @@
+# The service runs sessions as `agent` with exactly the environment it builds for them (D1).
+Defaults:node !env_reset, !secure_path, !use_pty, !lecture, !syslog
+node ALL=(agent) NOPASSWD: ALL

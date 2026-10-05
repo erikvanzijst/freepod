@@ -4,8 +4,8 @@
 When a real run's session ends with an accepted result whose `status` is `would_open`, the
 service MUST publish the proposal itself:
 
-1. Apply the session's `change.patch` to the service's own clone, on top of the
-   commit the session started from.
+1. Apply the session's `change.patch` to the service's own clone, on top of
+   `master` as it is when the service checks the proposal.
 2. Push the result as `upgrade/<slug>-<target_version>`, without force.
 3. Create the `product-upgrade` label if it is missing.
 4. Open a pull request against `master` with that label, the title from `meta.json`,
@@ -29,6 +29,9 @@ Those checks are part of judging the result. A refusal is handled like any other
 result: it gets the one repair turn, and the product is recorded as `failed` if the
 corrected proposal is still refused. The refusal's reason is what the repair turn is
 given.
+
+The title and description MUST be redacted like every stored file before they are sent,
+so that no secret the session could see reaches the public pull request.
 
 If GitHub refuses the push or the pull request, or cannot be reached, the product MUST
 be recorded as `failed` with GitHub's reason. A branch that already exists counts as such
@@ -76,7 +79,7 @@ Otherwise the service MUST treat the file as missing. This applies to `result.js
 transcript.
 
 The service MUST judge a result against `products/UPGRADING/result.schema.json` from its
-own clone of the commit the session started from, never from the session's clone.
+own clone of `master`, made before the session started, never from the session's clone.
 
 #### Scenario: A result file links to a secret
 - **WHEN** a session makes `out/<slug>/body.md` a symbolic link to `/proc/<service pid>/environ`
@@ -166,7 +169,7 @@ Outcomes the service assigns itself are `opened`, `timed_out`, `canceled` and
 - **THEN** the product is recorded as `failed`, with an error saying no result was written
 
 #### Scenario: A result the repair turn fixes
-- **WHEN** a session exits with a `result.json` whose `branch` is `""` for `up_to_date`
+- **WHEN** a session exits with a `result.json` whose `schema_version` is `1`
 - **THEN** the service resumes the session once with the validation error
 - **AND** the product's outcome comes from the corrected `result.json`
 

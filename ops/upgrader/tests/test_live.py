@@ -1,4 +1,5 @@
 import json
+import os
 
 from upgrader import live
 from upgrader.live import Live, Session, Step, read, steps_of
@@ -23,7 +24,7 @@ def write(path, *entries, partial=b""):
 def session(tmp_path, redact=None):
     directory = tmp_path / "session"
     directory.mkdir(exist_ok=True)
-    return Session(7, directory, redact or Redactor()), directory / "2026-09-15_x.jsonl"
+    return Session(7, tmp_path, redact or Redactor(), os.getuid()), directory / "2026-09-15_x.jsonl"
 
 
 def test_no_file_yet(tmp_path):
@@ -123,7 +124,7 @@ def test_how_entries_become_steps():
 
 def test_the_registry_only_answers_for_the_running_product(tmp_path):
     registry = Live()
-    s = Session(3, tmp_path, Redactor())
+    s = Session(3, tmp_path, Redactor(), os.getuid())
     assert registry.current(3) is None
     registry.start(s)
     assert registry.current(3) is s and registry.current(4) is None
@@ -131,3 +132,27 @@ def test_the_registry_only_answers_for_the_running_product(tmp_path):
     assert registry.current(3) is s
     registry.stop(3)
     assert registry.current(3) is None
+
+
+def test_a_transcript_that_is_a_link_is_not_followed(tmp_path):
+    secret = tmp_path / "service-secret.jsonl"
+    write(secret, assistant_text("GITHUB_APP_PRIVATE_KEY=abc"))
+    s, path = session(tmp_path)
+    path.symlink_to(secret)
+    assert read(s, None) == ([], 0)
+
+
+def test_a_session_dir_that_is_a_link_is_not_followed(tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    write(elsewhere / "x.jsonl", assistant_text("not the session's"))
+    (tmp_path / "session").symlink_to(elsewhere)
+    s = Session(7, tmp_path, Redactor(), os.getuid())
+    assert read(s, None) == ([], 0)
+
+
+def test_a_transcript_someone_else_owns_is_not_read(tmp_path):
+    s, path = session(tmp_path)
+    write(path, assistant_text("step"))
+    s = Session(7, tmp_path, Redactor(), os.getuid() + 1)
+    assert read(s, None) == ([], 0)

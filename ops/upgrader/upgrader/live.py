@@ -4,10 +4,12 @@ what is new (product-upgrade-dashboard, D13)."""
 from __future__ import annotations
 
 import json
+import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import untrusted
 from .redact import Redactor
 
 TAIL_BYTES = 64 * 1024
@@ -24,9 +26,13 @@ class Step:
 
 @dataclass(frozen=True)
 class Session:
+    """A session's transcript lives under `workspace/session`, which the session user can write:
+    it is read the way the runner reads every file the session left (D3)."""
+
     result_id: int
-    directory: Path
+    workspace: Path
     redact: Redactor
+    owner: int
 
 
 class Live:
@@ -114,20 +120,19 @@ def _parse(data: bytes, redact: Redactor) -> list[Step]:
     return steps
 
 
-def transcript(directory: Path) -> Path | None:
-    if not directory.is_dir():
-        return None
-    return next(iter(sorted(directory.rglob("*.jsonl"))), None)
+def transcript(session: Session) -> int | None:
+    found = untrusted.find(session.workspace, "session", ".jsonl", session.owner)
+    return untrusted.open_file(session.workspace, found[0], session.owner) if found else None
 
 
 def read(session: Session, offset: int | None) -> tuple[list[Step], int]:
     """The steps written after `offset`, and the offset to ask for next. Without an offset (a panel
     that just opened), or past the end (the file was rewritten), the latest few steps. Every call
     reads a bounded number of bytes, however long the transcript is."""
-    path = transcript(session.directory)
-    if path is None:
+    fd = transcript(session)
+    if fd is None:
         return [], 0
-    with path.open("rb") as f:
+    with os.fdopen(fd, "rb") as f:
         size = f.seek(0, 2)
         if offset is None or offset > size:
             start = max(0, size - TAIL_BYTES)

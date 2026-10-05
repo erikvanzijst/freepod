@@ -1,16 +1,6 @@
 #!/usr/bin/env bash
-# Installed through the system core.hooksPath (product-upgrade-guardrails). The branch ruleset
-# enforces the same rule on GitHub's side; this refuses before contacting it, and explains why.
-if [ "${UPGRADE_DRY_RUN:-1}" != 0 ]; then
-  echo "pre-push: refused by the upgrade service: this is a dry run, and a dry run pushes nothing" >&2
-  exit 1
-fi
-while read -r _local_ref _local_sha remote_ref _remote_sha; do
-  case "$remote_ref" in
-    refs/heads/upgrade/*) ;;
-    *)
-      echo "pre-push: refused by the upgrade service: $remote_ref is outside refs/heads/upgrade/" >&2
-      exit 1 ;;
-  esac
-done
-exit 0
+# Installed through the system core.hooksPath (product-upgrade-guardrails). A session holds only
+# a read-only token, so GitHub would refuse the push anyway; this refuses before contacting it,
+# and explains why.
+echo "pre-push: refused by the upgrade service: sessions push nothing; leave your commits and result files, and the service opens the pull request" >&2
+exit 1
