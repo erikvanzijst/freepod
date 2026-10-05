@@ -27,6 +27,9 @@ FENCE = re.compile(r"^(```|~~~).*?^\1", re.S | re.M)
 CODE_SPAN = re.compile(r"(`+)(?!`).*?(?<!`)\1(?!`)", re.S)
 MENTION = re.compile(r"(?<![\w`])@[A-Za-z0-9]")
 SPECIAL_MODES = {"120000": "a symbolic link", "160000": "a submodule"}
+# `git am` needs a committer even where none is configured; publishing re-authors the commits.
+CHECK_COMMITTER = {"GIT_COMMITTER_NAME": "upgrade proposal",
+                   "GIT_COMMITTER_EMAIL": "proposal@upgrader.invalid"}
 
 
 @dataclass(frozen=True)
@@ -105,7 +108,8 @@ class Clone:
         self.run("checkout", "-q", "-f", "-B", p.branch, base)
         applied = subprocess.run(
             [self.git, "-c", "core.hooksPath=/dev/null", "am", "-q", "--no-3way", "--keep-cr"],
-            cwd=self.path, input=p.patch, capture_output=True, timeout=600, env=self.env)
+            cwd=self.path, input=p.patch, capture_output=True, timeout=600,
+            env={**self.env, **CHECK_COMMITTER})
         if applied.returncode:
             self.run("am", "--abort", check=False)
             detail = (applied.stdout + applied.stderr).decode(errors="replace").strip()[-400:]
