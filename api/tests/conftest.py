@@ -9,10 +9,13 @@ See openspec/changes/drop-sqlite-support/design.md for why the reset is
 DELETE rather than TRUNCATE, and why isolation is not rollback-per-test.
 """
 
+import atexit
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -54,12 +57,26 @@ def _resolve_test_database_url() -> str:
 
 TEST_DATABASE_URL = _resolve_test_database_url()
 
+# Under pytest-xdist each worker gets its own database (`caelus_test_gw0`, ...),
+# created and migrated by that worker's session fixture below.
+if _worker := os.environ.get("PYTEST_XDIST_WORKER"):
+    _url = make_url(TEST_DATABASE_URL)
+    TEST_DATABASE_URL = _url.set(database=f"{_url.database}_{_worker}").render_as_string(
+        hide_password=False
+    )
+
 # Point every engine in the process at the test database *before* any app
 # module is imported. `app.db.get_engine()`, the `caelus` CLI, and the Alembic
 # subprocess all resolve their URL from this one variable, so this single
 # assignment is what keeps the suite off the dev database -- and what removed
 # the `importlib.reload(app.db)` ritual the CLI fixture used to need.
 os.environ["CAELUS_DATABASE_URL"] = TEST_DATABASE_URL
+
+# Uploaded icons are named by content hash, so workers sharing `api/static/`
+# would overwrite each other's files mid-read.
+_STATIC_DIR = tempfile.mkdtemp(prefix="caelus-test-static-")
+atexit.register(shutil.rmtree, _STATIC_DIR, ignore_errors=True)
+os.environ["CAELUS_STATIC_PATH"] = _STATIC_DIR
 
 from cryptography.fernet import Fernet  # noqa: E402
 from starlette.testclient import TestClient  # noqa: E402
@@ -244,6 +261,36 @@ def test_database() -> TestDatabase:
         yield TestDatabase(engine=engine, tables=tables, sequences=sequences)
     finally:
         engine.dispose()
+
+
+# Modules that share state per-worker databases do not isolate, each kept on one
+# worker by `--dist loadgroup`: `tenant_cluster` creates and drops `dpl_*` roles
+# and databases server-wide, and `helm_charts` runs `helm dependency build`,
+# which rewrites the vendored `charts/*.tgz` under `products/` in place.
+_XDIST_GROUPS = {
+    "tenant_cluster": {"test_db_worker", "test_postgres_admin", "test_relational_storage"},
+    "helm_charts": {
+        "test_bookstack_chart",
+        "test_chart_release_label_contract",
+        "test_custom_chart",
+        "test_custom_ssh_sidecar",
+        "test_egress_gate",
+        "test_lemmy_chart",
+        "test_mattermost_chart",
+        "test_nextcloud_chart",
+        "test_photoprism_chart",
+        "test_ssh_chart_contract",
+    },
+}
+
+
+@pytest.hookimpl(tryfirst=True)  # before xdist reads the markers
+def pytest_collection_modifyitems(items):
+    for item in items:
+        module = item.module.__name__.rsplit(".", 1)[-1]
+        for group, modules in _XDIST_GROUPS.items():
+            if module in modules:
+                item.add_marker(pytest.mark.xdist_group(group))
 
 
 # The current ToS version, used to pre-accept test users so deployment tests

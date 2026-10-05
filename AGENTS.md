@@ -411,8 +411,9 @@ Keep it current in the same change as the code:
   `tests/conftest.py` creates and migrates with the Alembic chain, then
   empties before every test. It needs `CAELUS_TEST_DATABASE_URL` (already
   set by `docker-compose.yml`) and a user holding `CREATEDB`; a run without
-  a reachable Postgres fails rather than skipping. See `api/README.md`
-  § Testing.
+  a reachable Postgres fails rather than skipping. It runs on eight
+  `pytest-xdist` workers, each with its own database; `-n 0` runs serially.
+  See `api/README.md` § Testing.
 - CLI tests use `typer.testing.CliRunner`.
 - UI uses Vite with Vitest + Testing Library (`cd ui && npm test`).
 

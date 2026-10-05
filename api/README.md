@@ -664,8 +664,18 @@ with an explanatory error rather than skipping tests or reporting a false pass.
 The test database is separate from the dev `caelus` database and is wiped
 constantly, so never point the variable at a database you care about.
 
-Test execution is serial: one shared test database, one cleaner. `pytest-xdist`
-is not supported as-is.
+The suite runs in parallel: `addopts` passes `-n 8 --dist loadgroup` to
+`pytest-xdist`. Each worker creates and migrates its own database, named after
+the configured one plus the worker id (`caelus_test_gw0` … `caelus_test_gw7`),
+and uploads icons to its own temporary static directory. Two kinds of state
+are server- or checkout-wide and stay serial instead: tests that create `dpl_*`
+roles and databases on the Postgres server, and tests that run
+`helm dependency build` into `products/`. `_XDIST_GROUPS` in `conftest.py`
+pins each set to one worker, so a new module of either kind belongs there.
+
+Pass `-n 0` to run serially against the configured database alone. A
+single test starts faster that way, since it skips spawning and migrating
+eight workers.
 
 ### What lives where
 
