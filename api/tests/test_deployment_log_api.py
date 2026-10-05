@@ -25,6 +25,7 @@ from tests.conftest import create_free_plan_template, create_user
 
 SCHEMA = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {"host": {"type": "string", "title": "hostname"}},
 }
 

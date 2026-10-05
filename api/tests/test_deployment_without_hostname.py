@@ -36,6 +36,7 @@ def _template_without_hostname(db_session):
             chart_version="1.0.0",
             values_schema_json={
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {"replicas": {"type": "integer", "title": "replicas"}},
             },
         ),

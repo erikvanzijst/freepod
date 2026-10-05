@@ -58,6 +58,7 @@ def _seed_deployment_via_services() -> tuple[int, int]:
                 chart_version="1.0.0",
                 values_schema_json={
                     "type": "object",
+                    "additionalProperties": False,
                     "properties": {"domain": {"type": "string", "title": "hostname"}},
                 },
             ),
@@ -322,7 +323,7 @@ def test_cli_create_template_supports_rest_extra_fields(cli_runner, tmp_path):
     assert create_res.exit_code == 0
 
     values_schema_file = tmp_path / "values-schema.json"
-    values_schema_file.write_text(json.dumps({"type": "object", "properties": {"message": {"type": "string"}}}))
+    values_schema_file.write_text(json.dumps({"type": "object", "additionalProperties": False, "properties": {"message": {"type": "string"}}}))
 
     template_res = runner.invoke(
         app,
@@ -348,7 +349,7 @@ def test_cli_create_template_supports_rest_extra_fields(cli_runner, tmp_path):
     template = _get_template_from_services(1, template_id)
     assert template.chart_digest == "sha256:abc123"
     assert template.system_values_json == {"message": "hello"}
-    assert template.values_schema_json == {"type": "object", "properties": {"message": {"type": "string"}}}
+    assert template.values_schema_json == {"type": "object", "additionalProperties": False, "properties": {"message": {"type": "string"}}}
 
 
 def test_cli_create_template_invalid_json_returns_stable_error(cli_runner):
@@ -521,7 +522,7 @@ def test_cli_get_product_and_template_commands(cli_runner):
             "--chart-version",
             "1.0.0",
             "--values-schema-json",
-            '{"type":"object","properties":{"user":{"type":"object"}}}',
+            '{"type":"object","additionalProperties":false,"properties":{"user":{"type":"object"}}}',
         ],
     )
     assert template_res.exit_code == 0
@@ -578,7 +579,7 @@ def test_cli_create_deployment_uses_current_payload_shape(cli_runner):
             "--chart-version",
             "1.0.0",
             "--values-schema-json",
-            '{"type":"object","properties":{"domain":{"type":"string","title":"hostname"}}}',
+            '{"type":"object","additionalProperties":false,"properties":{"domain":{"type":"string","title":"hostname"}}}',
         ],
     )
     assert template_res.exit_code == 0
@@ -629,7 +630,7 @@ def test_cli_create_deployment_accepts_user_values_json(cli_runner):
             "--chart-version",
             "1.0.0",
             "--values-schema-json",
-            '{"type":"object","properties":{"domain":{"type":"string","title":"hostname"},"message":{"type":"string"}}}',
+            '{"type":"object","additionalProperties":false,"properties":{"domain":{"type":"string","title":"hostname"},"message":{"type":"string"}}}',
         ],
     )
     assert template_res.exit_code == 0
@@ -681,7 +682,7 @@ def test_cli_create_deployment_requires_tos_acceptance(cli_runner):
             "--chart-version",
             "1.0.0",
             "--values-schema-json",
-            '{"type":"object","properties":{"domain":{"type":"string","title":"hostname"}}}',
+            '{"type":"object","additionalProperties":false,"properties":{"domain":{"type":"string","title":"hostname"}}}',
         ],
     )
     assert template_res.exit_code == 0
@@ -738,7 +739,7 @@ def test_cli_create_deployment_accepts_user_values_file(cli_runner, tmp_path):
             "--chart-version",
             "1.0.0",
             "--values-schema-json",
-            '{"type":"object","properties":{"domain":{"type":"string","title":"hostname"},"replicas":{"type":"integer"},"feature":{"type":"object"}}}',
+            '{"type":"object","additionalProperties":false,"properties":{"domain":{"type":"string","title":"hostname"},"replicas":{"type":"integer"},"feature":{"type":"object"}}}',
         ],
     )
     assert template_res.exit_code == 0
@@ -880,7 +881,7 @@ def test_cli_upgrade_deployment_and_delete_enqueue_jobs(cli_runner):
             "--chart-version",
             "1.0.0",
             "--values-schema-json",
-            '{"type":"object","properties":{"domain":{"type":"string","title":"hostname"}}}',
+            '{"type":"object","additionalProperties":false,"properties":{"domain":{"type":"string","title":"hostname"}}}',
         ],
     )
     assert tmpl1_res.exit_code == 0
@@ -897,7 +898,7 @@ def test_cli_upgrade_deployment_and_delete_enqueue_jobs(cli_runner):
             "--chart-version",
             "2.0.0",
             "--values-schema-json",
-            '{"type":"object","properties":{"domain":{"type":"string","title":"hostname"}}}',
+            '{"type":"object","additionalProperties":false,"properties":{"domain":{"type":"string","title":"hostname"}}}',
         ],
     )
     assert tmpl2_res.exit_code == 0

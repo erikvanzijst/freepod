@@ -419,3 +419,49 @@ def test_non_boolean_markers_are_rejected():
                 },
             }
         )
+
+
+# --- create_template meta-validation: the chart projection must be closed ---
+# The chart projection's values are tenant-submitted (POST /deployments), so an
+# open one is a Helm-value injection vector. `caelus.*` is merged in after
+# validation and never checked here, so this does not constrain platform features.
+from app.services.templates import _check_values_schema  # noqa: E402
+
+
+def test_check_values_schema_rejects_an_open_chart_projection() -> None:
+    for schema in (
+        {"type": "object", "properties": {"host": {"type": "string"}}},  # no additionalProperties
+        {"type": "object"},  # open and property-less
+    ):
+        with pytest.raises(ValidationException):
+            _check_values_schema(schema)
+
+
+def test_check_values_schema_accepts_a_closed_chart_projection() -> None:
+    _check_values_schema(
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"host": {"type": "string"}},
+        }
+    )  # no raise
+
+
+def test_check_values_schema_closed_chart_still_allows_open_vars() -> None:
+    # `custom`'s shape: chart closed at the root, vars left open to accept the
+    # arbitrary environment its tenant code needs.
+    _check_values_schema(
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "x-caelus-vars-additional": True,
+            "properties": {
+                "hostname": {"type": "string", "title": "hostname"},
+                "DEBUG": {"type": "string", "x-caelus-target": "runtime"},
+            },
+        }
+    )  # no raise
+
+
+def test_check_values_schema_allows_no_schema() -> None:
+    _check_values_schema(None)  # a template that takes no user values

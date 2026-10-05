@@ -584,6 +584,7 @@ class TestHostnameCheckEndpoint:
                 "chart_version": "1.0.0",
                 "values_schema_json": {
                     "type": "object",
+                    "additionalProperties": False,
                     "properties": {
                         "host": {"type": "string", "title": "hostname"},
                     },
@@ -699,6 +700,7 @@ class TestServerSideEnforcement:
                 "chart_version": "1.0.0",
                 "values_schema_json": {
                     "type": "object",
+                    "additionalProperties": False,
                     "properties": {"host": {"type": "string", "title": "hostname"}},
                 },
             },
@@ -730,6 +732,7 @@ class TestServerSideEnforcement:
                 "chart_version": "1.0.0",
                 "values_schema_json": {
                     "type": "object",
+                    "additionalProperties": False,
                     "properties": {"host": {"type": "string", "title": "hostname"}},
                 },
             },
@@ -775,6 +778,7 @@ class TestServerSideEnforcement:
                 "chart_version": "1.0.0",
                 "values_schema_json": {
                     "type": "object",
+                    "additionalProperties": False,
                     "properties": {"message": {"type": "string"}},
                 },
             },
@@ -802,6 +806,7 @@ class TestServerSideEnforcement:
         product_id = product.json()["id"]
         schema = {
             "type": "object",
+            "additionalProperties": False,
             "properties": {"host": {"type": "string", "title": "hostname"}},
         }
         tmpl1 = client.post(

@@ -47,6 +47,7 @@ def test_delete_deployment_flow(client, db_session):
             "chart_version": "1.0.0",
             "values_schema_json": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "ingress": {
                         "type": "object",
@@ -126,6 +127,7 @@ def test_upgrade_deployment_endpoint_sets_state_and_enqueues_job(client, db_sess
             "chart_version": "1.0.0",
             "values_schema_json": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "user": {
                         "type": "object",
@@ -148,6 +150,7 @@ def test_upgrade_deployment_endpoint_sets_state_and_enqueues_job(client, db_sess
             "chart_version": "2.0.0",
             "values_schema_json": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "user": {
                         "type": "object",
@@ -206,7 +209,7 @@ def test_create_deployment_user_values_with_empty_schema(client, db_session):
         json={
             "chart_ref": "oci://example/chart",
             "chart_version": "1.0.0",
-            "values_schema_json": {"type": "object"},
+            "values_schema_json": {"type": "object", "additionalProperties": False},
         },
     )
     assert tmpl_resp.status_code == 201
@@ -221,7 +224,8 @@ def test_create_deployment_user_values_with_empty_schema(client, db_session):
         f"/api/users/{user_id}/deployments",
         json={
             "desired_template_id": tmpl_id,
-            "user_values_json": {"message": "hello"},
+            # A closed, property-less schema accepts empty user values.
+            "user_values_json": {},
             "plan_template_id": ptv_id,
         },
     )
@@ -292,6 +296,7 @@ def test_create_deployment_derives_hostname_recursively_case_insensitive_and_fir
             "chart_version": "1.0.0",
             "values_schema_json": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "outer_first": {"type": "string", "title": "Hostname"},
                     "nested": {
@@ -335,6 +340,7 @@ def test_update_deployment_rederives_hostname_from_user_values(client, db_sessio
 
     schema = {
         "type": "object",
+        "additionalProperties": False,
         "properties": {
             "domain": {"type": "string", "title": "hostname"},
             "user": {"type": "object"},
@@ -386,6 +392,7 @@ def test_same_version_update_with_new_values(client, db_session):
 
     schema = {
         "type": "object",
+        "additionalProperties": False,
         "properties": {
             "domain": {"type": "string", "title": "hostname"},
             "color": {"type": "string"},
@@ -432,6 +439,7 @@ def test_update_deployment_rejects_non_ready_status(client, db_session):
 
     schema = {
         "type": "object",
+        "additionalProperties": False,
         "properties": {"domain": {"type": "string", "title": "hostname"}},
     }
     tmpl_resp = client.post(
@@ -471,6 +479,7 @@ def test_update_deployment_rejects_non_ready_error_status(client, db_session):
 
     schema = {
         "type": "object",
+        "additionalProperties": False,
         "properties": {"domain": {"type": "string", "title": "hostname"}},
     }
     tmpl_resp = client.post(
@@ -515,7 +524,7 @@ def _create_deployment_for_user(client, db_session, user_id, product_suffix=""):
         json={
             "chart_ref": "oci://example/chart",
             "chart_version": "1.0.0",
-            "values_schema_json": {"type": "object"},
+            "values_schema_json": {"type": "object", "additionalProperties": False},
         },
     )
     tmpl_id = tmpl_resp.json()["id"]

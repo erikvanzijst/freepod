@@ -65,6 +65,7 @@ def authz_setup(db_session):
                 "chart_version": "1.0.0",
                 "values_schema_json": {
                     "type": "object",
+                    "additionalProperties": False,
                     "properties": {
                         "user": {
                             "type": "object",
@@ -140,7 +141,7 @@ def _product_mutation_endpoints(product_id, template_id):
         ("POST", f"/api/products/{product_id}/templates", {
             "chart_ref": "oci://example/new",
             "chart_version": "2.0.0",
-            "values_schema_json": {"type": "object"},
+            "values_schema_json": {"type": "object", "additionalProperties": False},
         }),
         ("DELETE", f"/api/products/{product_id}/templates/{template_id}", None),
     ]

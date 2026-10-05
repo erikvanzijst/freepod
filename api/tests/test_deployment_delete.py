@@ -24,6 +24,7 @@ def test_delete_deployment_flow(client, db_session):
             "chart_version": "1.0.0",
             "values_schema_json": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {"domain": {"type": "string", "title": "hostname"}},
             },
         },

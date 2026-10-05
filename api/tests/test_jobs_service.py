@@ -28,6 +28,7 @@ def _seed_deployment(db_session, *, token: str = "jobs"):
             chart_version="1.0.0",
             values_schema_json={
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {"domain": {"type": "string", "title": "hostname"}},
             },
         ),
@@ -420,6 +421,7 @@ def _seed_deployments_on_engine(engine, *, count: int) -> None:
                 chart_version="1.0.0",
                 values_schema_json={
                     "type": "object",
+                    "additionalProperties": False,
                     "properties": {"domain": {"type": "string", "title": "hostname"}},
                 },
             ),

@@ -75,6 +75,7 @@ def test_deployment_unique_constraint(db_session):
             chart_version="1.0.0",
             values_schema_json={
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {"domain": {"type": "string", "title": "hostname"}},
             },
         )
@@ -143,6 +144,7 @@ def test_hostname_active_unique_constraint_across_non_deleted_deployments(db_ses
             chart_version="1.0.0",
             values_schema_json={
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {"domain": {"type": "string", "title": "hostname"}},
             },
         ),
@@ -155,6 +157,7 @@ def test_hostname_active_unique_constraint_across_non_deleted_deployments(db_ses
             chart_version="2.0.0",
             values_schema_json={
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {"domain": {"type": "string", "title": "hostname"}},
             },
         ),
@@ -228,6 +231,7 @@ def test_deployment_active_unique_constraint_ignores_deleted_status_rows(db_sess
             chart_version="1.0.0",
             values_schema_json={
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {"domain": {"type": "string", "title": "hostname"}},
             },
         ),

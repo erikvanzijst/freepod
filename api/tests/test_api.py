@@ -196,6 +196,7 @@ def test_user_deployment_flow(client, db_session):
             "chart_version": "1.0.0",
             "values_schema_json": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "user": {
                         "type": "object",
@@ -302,6 +303,7 @@ def test_deployment_write_contract_rejects_hostname(client, db_session):
             "chart_version": "1.0.0",
             "values_schema_json": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {"user": {"type": "object"}},
             },
         },
@@ -319,6 +321,7 @@ def test_deployment_write_contract_rejects_hostname(client, db_session):
             "chart_version": "2.0.0",
             "values_schema_json": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {"user": {"type": "object"}},
             },
         },

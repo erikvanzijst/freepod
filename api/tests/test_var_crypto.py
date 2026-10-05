@@ -283,6 +283,7 @@ def test_verify_fails_on_an_empty_keyring_when_a_template_declares_vars(
         chart_version="1.0.0",
         values_schema_json={
             "type": "object",
+            "additionalProperties": False,
             "properties": {"ADMIN_TOKEN": {"type": "string", "x-caelus-target": "runtime"}},
         },
     )
@@ -310,7 +311,7 @@ def test_empty_keyring_is_fine_when_no_template_declares_vars(
             product_id=product.id,
             chart_ref="oci://example/chart",
             chart_version="1.0.0",
-            values_schema_json={"type": "object", "properties": {"replicas": {"type": "integer"}}},
+            values_schema_json={"type": "object", "additionalProperties": False, "properties": {"replicas": {"type": "integer"}}},
         )
     )
     db_session.commit()
@@ -331,6 +332,7 @@ def test_a_deleted_template_does_not_force_a_keyring(db_session, keyring_setting
             deleted_at=_utcnow(),
             values_schema_json={
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {"ADMIN_TOKEN": {"type": "string", "x-caelus-target": "runtime"}},
             },
         )

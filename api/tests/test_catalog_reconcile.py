@@ -101,7 +101,7 @@ def make_template(session, product: ProductORM, **kwargs) -> ProductTemplateVers
         chart_version="1.0.0",
         chart_digest=None,
         system_values_json={"image": {"tag": "v3.0.3"}},
-        values_schema_json={"type": "object", "properties": {}},
+        values_schema_json={"type": "object", "additionalProperties": False, "properties": {}},
     )
     template = ProductTemplateVersionORM(product_id=product.id, **{**defaults, **kwargs})
     session.add(template)

@@ -47,6 +47,7 @@ def _setup_product_template_plan(client, db_session, name):
             "chart_version": "1.0.0",
             "values_schema_json": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "ingress": {
                         "type": "object",

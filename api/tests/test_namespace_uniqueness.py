@@ -31,7 +31,7 @@ def scenario(db_session: Session):
         product_id=product.id,
         chart_ref="oci://example/chart",
         chart_version="1.0.0",
-        values_schema_json={"type": "object"},
+        values_schema_json={"type": "object", "additionalProperties": False},
         created_at=_utcnow(),
     )
     db_session.add(template)

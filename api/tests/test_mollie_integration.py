@@ -63,7 +63,7 @@ def _setup_product_and_template(client):
         json={
             "chart_ref": "oci://test/chart",
             "chart_version": "1.0.0",
-            "values_schema_json": {"type": "object"},
+            "values_schema_json": {"type": "object", "additionalProperties": False},
         },
     )
     assert template.status_code == 201
