@@ -7,7 +7,6 @@ import logging
 import os
 import shutil
 import signal
-import smtplib
 import subprocess
 import tempfile
 import time
@@ -33,7 +32,9 @@ from .store import CONTENT_TYPES, product_prefix
 log = logging.getLogger(__name__)
 
 HERE = Path(__file__).resolve().parents[1]
-PRIVATE_ENV = ("GITHUB_APP_PRIVATE_KEY", "DATABASE_URL", "BUCKET_NAME", "GH_TOKEN", "GITHUB_TOKEN")
+PRIVATE_ENV = (
+    "GITHUB_APP_PRIVATE_KEY", "SMTP_PASS", "DATABASE_URL", "BUCKET_NAME", "GH_TOKEN", "GITHUB_TOKEN",
+)
 PRIVATE_PREFIXES = ("PG", "AWS_", "S3_")
 RESULT_FILES = ("result.json", "body.md", "change.patch")
 
@@ -51,7 +52,7 @@ class Deps:
         default_factory=lambda: Path(os.environ.get("GIT_CONFIG_SYSTEM", "/etc/gitconfig")))
     workdir: Path = Path(tempfile.gettempdir())
     state_dir: Path = Path(tempfile.gettempdir()) / "upgrader"
-    smtp: Callable = smtplib.SMTP
+    smtp: Callable | None = None
     poll_seconds: float = 15
     extra_env: dict[str, str] = field(default_factory=dict)
     live: Live = field(default_factory=Live)

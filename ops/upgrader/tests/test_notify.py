@@ -12,6 +12,7 @@ from .test_config import FULL
 
 class FakeSMTP:
     sent: list = []
+    calls: list = []
     refuse = False
 
     def __init__(self, host, port, timeout):
@@ -23,6 +24,12 @@ class FakeSMTP:
     def __exit__(self, *exc):
         return False
 
+    def starttls(self):
+        FakeSMTP.calls.append("starttls")
+
+    def login(self, user, password):
+        FakeSMTP.calls.append(("login", user, password))
+
     def send_message(self, message):
         if FakeSMTP.refuse:
             raise smtplib.SMTPRecipientsRefused({"owner@example.test": (550, b"no")})
@@ -31,7 +38,7 @@ class FakeSMTP:
 
 @pytest.fixture(autouse=True)
 def reset():
-    FakeSMTP.sent, FakeSMTP.refuse = [], False
+    FakeSMTP.sent, FakeSMTP.calls, FakeSMTP.refuse = [], [], False
 
 
 def settings(**env):
@@ -70,6 +77,40 @@ def test_one_email_for_a_would_open_product():
     assert "upgrade/vaultwarden-1.37.3" in body
     assert "immich: up to date" in body
     assert "https://upgrader.freepod.eu/runs/7" in body
+    assert FakeSMTP.calls == []
+
+
+def test_an_authenticated_relay_over_implicit_tls():
+    r = run(product("vaultwarden", "would_open", branch="upgrade/x"))
+    s = settings(SMTP_HOST="smtp.purelymail.com", SMTP_PORT="465", SMTP_SECURE="1",
+                 SMTP_USER="noreply@freepod.eu", SMTP_PASS="pw")
+    assert notify.send(r, s, smtp=FakeSMTP)
+    assert FakeSMTP.sent[0][0] == ("smtp.purelymail.com", 465)
+    assert FakeSMTP.calls == [("login", "noreply@freepod.eu", "pw")]
+
+
+def test_credentials_without_implicit_tls_upgrade_with_starttls_first():
+    r = run(product("vaultwarden", "would_open", branch="upgrade/x"))
+    s = settings(SMTP_PORT="587", SMTP_USER="noreply@freepod.eu", SMTP_PASS="pw")
+    assert notify.send(r, s, smtp=FakeSMTP)
+    assert FakeSMTP.calls == ["starttls", ("login", "noreply@freepod.eu", "pw")]
+
+
+def test_the_transport_follows_smtp_secure(monkeypatch):
+    used = []
+    monkeypatch.setattr(smtplib, "SMTP", lambda *a, **k: used.append("SMTP") or FakeSMTP(*a, **k))
+    monkeypatch.setattr(smtplib, "SMTP_SSL", lambda *a, **k: used.append("SMTP_SSL") or FakeSMTP(*a, **k))
+    r = run(product("immich", "failed", error="x"))
+    assert notify.send(r, settings())
+    assert notify.send(r, settings(SMTP_SECURE="1", SMTP_PORT="465"))
+    assert used == ["SMTP", "SMTP_SSL"]
+
+
+def test_an_invalid_port_is_logged(caplog):
+    with caplog.at_level(logging.ERROR):
+        assert notify.send(run(product("immich", "failed", error="x")), settings(SMTP_PORT="smtps"),
+                           smtp=FakeSMTP) is False
+    assert "could not send" in caplog.text
 
 
 def test_the_subject_names_the_product_and_the_version_it_moves_to():

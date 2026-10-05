@@ -67,14 +67,20 @@ def compose(run: Run, settings: Settings) -> EmailMessage:
     return message
 
 
-def send(run: Run, settings: Settings, smtp=smtplib.SMTP) -> bool:
+def send(run: Run, settings: Settings, smtp=None) -> bool:
     """Send the run's email if it is noteworthy. A failure is logged and changes nothing else."""
     if not settings.notify_email or not noteworthy(run):
         return False
+    smtp = smtp or (smtplib.SMTP_SSL if settings.smtp_secure else smtplib.SMTP)
     try:
-        with smtp(settings.smtp_host, 25, timeout=30) as connection:
+        with smtp(settings.smtp_host, int(settings.smtp_port), timeout=30) as connection:
+            if settings.smtp_user:
+                # Never log in over plaintext: without implicit TLS, the server must offer STARTTLS.
+                if not settings.smtp_secure:
+                    connection.starttls()
+                connection.login(settings.smtp_user, settings.smtp_pass or "")
             connection.send_message(compose(run, settings))
-    except (OSError, smtplib.SMTPException):
+    except (OSError, ValueError, smtplib.SMTPException):
         log.exception("could not send the email for run %s", run.id)
         return False
     return True

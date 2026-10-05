@@ -92,6 +92,10 @@ Everything arrives as deployment vars.
 | `NOTIFY_EMAIL`            | unset                            | unset sends no email                                                   |
 | `NOTIFY_FROM`             | `upgrader@freepod.eu`            |                                                                        |
 | `SMTP_HOST`               | `smtp.mailer.svc.cluster.local`  | the cluster relay, which needs no credentials                          |
+| `SMTP_PORT`               | `25`                             |                                                                        |
+| `SMTP_SECURE`             | unset                            | `1` for implicit TLS (port 465)                                        |
+| `SMTP_USER`               | unset                            | unset sends without logging in; set, it needs TLS or STARTTLS          |
+| `SMTP_PASS`               | unset, **secret**                |                                                                        |
 | `DASHBOARD_URL`           | unset                            | unset leaves emails and PR descriptions without a run link             |
 | `REPO_URL`                | this repository                  | what each product clones; a local fixture for a scenario               |
 

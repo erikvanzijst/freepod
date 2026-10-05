@@ -123,6 +123,7 @@ def test_the_session_environment(deps, monkeypatch, tmp_path):
     deps.env["DASHBOARD_URL"] = "https://upgrader.test/"
     monkeypatch.setenv("FAKE_PI", "result:up_to_date")
     monkeypatch.setenv("FAKE_PI_ENV", str(tmp_path / "env.json"))
+    monkeypatch.setenv("SMTP_PASS", "smtp-secret")
     run_id = runner.execute_run(deps, "manual", "immich")
     env = json.loads((tmp_path / "env.json").read_text())
     assert env["UPGRADE_PRODUCT"] == "immich"
@@ -132,7 +133,7 @@ def test_the_session_environment(deps, monkeypatch, tmp_path):
     assert env["PATH"].split(os.pathsep)[0] == str(runner.HERE / "bin")
     assert env["PI_CODING_AGENT_DIR"] == str(deps.state_dir / "pi-agent")
     assert env["INFERENCE_API_KEY"] == "sk-inference-secret"
-    for private in ("GITHUB_APP_PRIVATE_KEY", "DATABASE_URL", "AWS_SECRET_ACCESS_KEY", "GH_TOKEN"):
+    for private in ("GITHUB_APP_PRIVATE_KEY", "SMTP_PASS", "DATABASE_URL", "AWS_SECRET_ACCESS_KEY", "GH_TOKEN"):
         assert private not in env
     assert KEY_B64 not in json.dumps(env)
 

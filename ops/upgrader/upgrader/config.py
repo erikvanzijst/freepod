@@ -16,7 +16,7 @@ REQUIRED = (
     "GITHUB_APP_ID",
     "GITHUB_APP_PRIVATE_KEY",
 )
-SECRETS = ("GITHUB_APP_PRIVATE_KEY", "INFERENCE_API_KEY")
+SECRETS = ("GITHUB_APP_PRIVATE_KEY", "INFERENCE_API_KEY", "SMTP_PASS")
 THINKING_LEVELS = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
 
 
@@ -41,6 +41,10 @@ class Settings:
     notify_email: str | None = None
     notify_from: str = "upgrader@freepod.eu"
     smtp_host: str = "smtp.mailer.svc.cluster.local"
+    smtp_port: str = "25"
+    smtp_secure: bool = False
+    smtp_user: str | None = None
+    smtp_pass: str | None = None
     dashboard_url: str | None = None
     repo_url: str = f"https://github.com/{REPO}.git"
 
@@ -67,6 +71,10 @@ class Settings:
             notify_email=_get(env, "NOTIFY_EMAIL"),
             notify_from=_get(env, "NOTIFY_FROM") or defaults.notify_from,
             smtp_host=_get(env, "SMTP_HOST") or defaults.smtp_host,
+            smtp_port=_get(env, "SMTP_PORT") or defaults.smtp_port,
+            smtp_secure=env.get("SMTP_SECURE") == "1",
+            smtp_user=_get(env, "SMTP_USER"),
+            smtp_pass=_get(env, "SMTP_PASS"),
             dashboard_url=_get(env, "DASHBOARD_URL"),
             repo_url=_get(env, "REPO_URL") or defaults.repo_url,
         )
@@ -105,4 +113,5 @@ class Settings:
         return found
 
     def secret_values(self) -> dict[str, str]:
-        return {"INFERENCE_API_KEY": self.inference_api_key} if self.inference_api_key else {}
+        values = {"INFERENCE_API_KEY": self.inference_api_key, "SMTP_PASS": self.smtp_pass}
+        return {name: value for name, value in values.items() if value}

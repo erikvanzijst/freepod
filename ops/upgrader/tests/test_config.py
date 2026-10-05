@@ -25,6 +25,7 @@ def test_defaults():
     assert s.notify_email is None
     assert s.notify_from == "upgrader@freepod.eu"
     assert s.smtp_host == "smtp.mailer.svc.cluster.local"
+    assert (s.smtp_port, s.smtp_secure, s.smtp_user, s.smtp_pass) == ("25", False, None, None)
     assert s.repo_url == "https://github.com/erikvanzijst/freepod.git"
     assert s.allowed_emails == frozenset()
 
@@ -32,6 +33,14 @@ def test_defaults():
 def test_allowed_emails_are_a_comma_separated_list():
     s = Settings.from_env({**FULL, "ALLOWED_EMAILS": " a@example.com, b@example.com ,,"})
     assert s.allowed_emails == {"a@example.com", "b@example.com"}
+
+
+def test_smtp_vars():
+    s = Settings.from_env({**FULL, "SMTP_HOST": "smtp.purelymail.com", "SMTP_PORT": "465",
+                           "SMTP_SECURE": "1", "SMTP_USER": "noreply@freepod.eu", "SMTP_PASS": "pw"})
+    assert (s.smtp_host, s.smtp_port, s.smtp_secure) == ("smtp.purelymail.com", "465", True)
+    assert (s.smtp_user, s.smtp_pass) == ("noreply@freepod.eu", "pw")
+    assert s.secret_values()["SMTP_PASS"] == "pw"
 
 
 @pytest.mark.parametrize(
