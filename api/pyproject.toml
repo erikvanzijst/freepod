@@ -47,10 +47,11 @@ caelus = "app.cli:app"
 line-length = 100
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q -n 8 --dist loadgroup"
 
 [dependency-groups]
 dev = [
     "ipython>=9.10.0",
     "mypy>=1.19.1",
+    "pytest-xdist>=3.8.0",
 ]
