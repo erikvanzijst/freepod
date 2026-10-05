@@ -120,8 +120,8 @@ def test_reconcile_apply_happy_path_returns_ready_and_applied_template(db_sessio
     # Isolation guardrails are applied after the namespace and before Helm, so no
     # tenant pod ever runs before its NetworkPolicy jail exists.
     order = [name for name, _ in fake_provisioner.calls]
-    assert order.index("ensure_namespace") < order.index("ensure_tenant_isolation")
-    assert order.index("ensure_tenant_isolation") < order.index("helm_upgrade_install")
+    assert order.index("ensure_namespace") < order.index("ensure_tenant_network_policies")
+    assert order.index("ensure_tenant_network_policies") < order.index("helm_upgrade_install")
     helm_values = next(c[1]["values"] for c in fake_provisioner.calls if c[0] == "helm_upgrade_install")
     assert helm_values == {
         "replicas": 1,

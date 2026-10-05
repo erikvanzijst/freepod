@@ -9,7 +9,7 @@ from typing import Any
 
 from app import egress_gate
 from app.config import get_settings
-from app.network_policy import TENANT_NAMESPACE_LABELS, build_tenant_baseline_policy
+from app.network_policy import TENANT_NAMESPACE_LABELS, tenant_network_policies
 from app.proc import AdapterCommandError, CommandRunner, run_command
 
 logger = logging.getLogger(__name__)
@@ -123,6 +123,19 @@ class KubeAdapter:
         items = json.loads(result.stdout).get("items", [])
         return [item["metadata"]["name"] for item in items]
 
+    def list_object_names(self, *, kind: str, namespace: str, selector: str) -> list[str]:
+        """Names of the objects of ``kind`` in ``namespace`` matching ``selector``.
+
+        Matching nothing is success (empty list).
+        """
+        result = run_command(
+            ["kubectl", "get", kind, "-n", namespace, "-l", selector, "-o", "json"],
+            runner=self._runner,
+            error_message=f"Failed to list {kind} matching {selector} in namespace {namespace}",
+        )
+        items = json.loads(result.stdout).get("items", [])
+        return [item["metadata"]["name"] for item in items]
+
     def server_side_apply(self, manifest: dict[str, Any], *, field_manager: str) -> None:
         """Apply the fields in *manifest* as *field_manager*, and no others.
 
@@ -223,6 +236,18 @@ class KubeAdapter:
                 runner=self._runner,
                 error_message=error_message,
             )
+
+    def delete_object(self, *, kind: str, namespace: str, name: str, error_message: str) -> None:
+        """Delete one object by name; matching nothing is success.
+
+        Idempotent, so reconcile can call it unconditionally to converge a
+        namespace that should not hold the object.
+        """
+        run_command(
+            ["kubectl", "delete", kind, name, "-n", namespace, "--ignore-not-found"],
+            runner=self._runner,
+            error_message=error_message,
+        )
 
 
 @dataclass(frozen=True)
@@ -488,27 +513,59 @@ class Provisioner:
     def ensure_namespace(self, *, name: str) -> NamespaceResult:
         return self.kube.ensure_namespace(name)
 
-    def build_tenant_policy(self, *, namespace: str) -> dict[str, Any]:
-        """Render (without applying) the baseline NetworkPolicy for a namespace."""
-        return build_tenant_baseline_policy(namespace=namespace, settings=get_settings())
+    def build_tenant_policies(
+        self, *, namespace: str, system_values_json: dict[str, Any] | None
+    ) -> list[dict[str, Any]]:
+        """Render (without applying) every NetworkPolicy the deployment in this
+        namespace should hold, tailored to its product's system values."""
+        return tenant_network_policies(
+            namespace=namespace, system_values_json=system_values_json, settings=get_settings()
+        )
 
-    def ensure_tenant_isolation(
-        self, *, namespace: str, labels: dict[str, str] | None = None
+    def ensure_tenant_network_policies(
+        self,
+        *,
+        namespace: str,
+        labels: dict[str, str] | None,
+        system_values_json: dict[str, Any] | None,
     ) -> None:
         """Apply the platform-owned isolation guardrails to a tenant namespace.
 
-        Idempotent and decoupled from the Helm release: labels the namespace for
-        Pod Security Admission + tenant selection, then applies the baseline
-        NetworkPolicy. ``labels`` replaces the static set and must
-        still carry every key in ``TENANT_NAMESPACE_LABELS``. Called before Helm installs anything so no workload ever
-        runs un-jailed, and re-run cheaply for drift/fleet updates without
-        touching Helm.
+        Labels the namespace for Pod Security Admission + tenant selection, then
+        reconciles its NetworkPolicy set to exactly what the product needs:
+        applies every rendered policy and removes any platform-managed policy no
+        longer wanted (e.g. the mailer overlay after a product drops the relay).
+        Idempotent and decoupled from Helm -- called before Helm installs anything
+        so no workload runs un-jailed, and re-run cheaply for drift/fleet updates.
+
+        Callers hand over the raw inputs and own none of the policy logic, so
+        reconcile and ``sync-network-policies`` cannot drift.
         """
         self.kube.label_namespace(namespace, labels or TENANT_NAMESPACE_LABELS)
-        self.kube.apply_manifest(
-            self.build_tenant_policy(namespace=namespace),
-            error_message=f"Failed to apply baseline NetworkPolicy in namespace {namespace}",
+        desired = self.build_tenant_policies(
+            namespace=namespace, system_values_json=system_values_json
         )
+        desired_names = {policy["metadata"]["name"] for policy in desired}
+        for policy in desired:
+            name = policy["metadata"]["name"]
+            self.kube.apply_manifest(
+                policy,
+                error_message=f"Failed to apply NetworkPolicy {name} in namespace {namespace}",
+            )
+        # Converge: remove any platform-managed policy that should no longer be
+        # present. Generic on purpose -- no policy's purpose is named here.
+        for name in self.kube.list_object_names(
+            kind="networkpolicy",
+            namespace=namespace,
+            selector="app.kubernetes.io/managed-by=caelus",
+        ):
+            if name not in desired_names:
+                self.kube.delete_object(
+                    kind="networkpolicy",
+                    namespace=namespace,
+                    name=name,
+                    error_message=f"Failed to remove NetworkPolicy {name} in namespace {namespace}",
+                )
 
     def delete_namespace(self, *, name: str) -> NamespaceResult:
         return self.kube.delete_namespace(name)

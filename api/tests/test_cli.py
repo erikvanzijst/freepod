@@ -1070,7 +1070,7 @@ def test_cli_reconcile_command_reconciles_deployment(cli_runner, monkeypatch):
         def ensure_namespace(self, *, name: str):
             return None
 
-        def ensure_tenant_isolation(self, *, namespace: str, labels: dict[str, str] | None = None):
+        def ensure_tenant_network_policies(self, *, namespace: str, labels=None, system_values_json=None):
             return None
 
         def ensure_account_certificate(self, *, fqdn: str):
@@ -1119,7 +1119,7 @@ class _FakeProvisioner:
     def ensure_namespace(self, *, name: str):
         return None
 
-    def ensure_tenant_isolation(self, *, namespace: str, labels: dict[str, str] | None = None):
+    def ensure_tenant_network_policies(self, *, namespace: str, labels=None, system_values_json=None):
         return None
 
     def ensure_account_certificate(self, *, fqdn: str):
@@ -1145,7 +1145,7 @@ class _FailingProvisioner:
     def ensure_namespace(self, *, name: str):
         raise RuntimeError("fail")
 
-    def ensure_tenant_isolation(self, *, namespace: str, labels: dict[str, str] | None = None):
+    def ensure_tenant_network_policies(self, *, namespace: str, labels=None, system_values_json=None):
         raise RuntimeError("fail")
 
     def helm_upgrade_install(self, **kwargs):
@@ -1168,8 +1168,8 @@ def test_cli_sync_network_policies_dry_run_renders_without_applying(cli_runner, 
     called: list[str] = []
     monkeypatch.setattr(
         provisioner_module.provisioner,
-        "ensure_tenant_isolation",
-        lambda *, namespace, labels=None: called.append(namespace),
+        "ensure_tenant_network_policies",
+        lambda *, namespace, labels=None, system_values_json=None: called.append(namespace),
     )
 
     result = runner.invoke(app, ["sync-network-policies", "--dry-run"])
@@ -1189,8 +1189,8 @@ def test_cli_sync_network_policies_applies_to_active_namespaces(cli_runner, monk
     synced: list[str] = []
     monkeypatch.setattr(
         provisioner_module.provisioner,
-        "ensure_tenant_isolation",
-        lambda *, namespace, labels=None: synced.append(namespace),
+        "ensure_tenant_network_policies",
+        lambda *, namespace, labels=None, system_values_json=None: synced.append(namespace),
     )
 
     result = runner.invoke(app, ["sync-network-policies", "--concurrency", "1"])
@@ -1206,10 +1206,10 @@ def test_cli_sync_network_policies_reports_failures_and_exits_nonzero(cli_runner
 
     import app.provisioner as provisioner_module
 
-    def _boom(*, namespace: str) -> None:
+    def _boom(*, namespace: str, labels=None, system_values_json=None) -> None:
         raise RuntimeError("apply exploded")
 
-    monkeypatch.setattr(provisioner_module.provisioner, "ensure_tenant_isolation", _boom)
+    monkeypatch.setattr(provisioner_module.provisioner, "ensure_tenant_network_policies", _boom)
 
     result = runner.invoke(app, ["sync-network-policies", "--concurrency", "1"])
     assert result.exit_code == 1

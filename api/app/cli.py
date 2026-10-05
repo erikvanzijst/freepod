@@ -33,6 +33,7 @@ from app.models import (
     BillingInterval,
     UsageBucket,
     UsageDimension,
+    DeploymentORM,
 )
 from app.services import (
     templates as template_service,
@@ -1118,6 +1119,14 @@ def sync_network_policies(
             for deployment in deployments
             if deployment.namespace
         }
+        # The provisioner tailors a namespace's policy set to its product's
+        # system_values, which the read models do not carry, so resolve them
+        # from the ORM in-session for the provisioner to interpret.
+        sysvals_by_ns = {
+            d.namespace: (d.desired_template.system_values_json if d.desired_template else None)
+            for d in session.exec(select(DeploymentORM)).all()
+            if d.namespace in labels_by_ns
+        }
 
     target_ns = sorted(
             deployment.namespace
@@ -1130,13 +1139,21 @@ def sync_network_policies(
 
     if dry_run:
         for ns in target_ns:
-            _echo_yaml_stream_item(prov.build_tenant_policy(namespace=ns))
+            for policy in prov.build_tenant_policies(namespace=ns, system_values_json=sysvals_by_ns.get(ns)):
+                _echo_yaml_stream_item(policy)
         return
+
+    def _sync_one(ns: str) -> None:
+        prov.ensure_tenant_network_policies(
+            namespace=ns,
+            labels=labels_by_ns.get(ns),
+            system_values_json=sysvals_by_ns.get(ns),
+        )
 
     failures: list[str] = []
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
         futures = {
-            pool.submit(prov.ensure_tenant_isolation, namespace=ns, labels=labels_by_ns.get(ns)): ns
+            pool.submit(_sync_one, ns): ns
             for ns in target_ns
         }
         for future in as_completed(futures):

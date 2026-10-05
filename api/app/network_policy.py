@@ -60,10 +60,15 @@ def build_tenant_baseline_policy(*, namespace: str, settings: CaelusSettings) ->
       sidecar port only -- it has no business on app ports, and the port scoping
       is also what keeps the other environment's router out), plus free traffic
       within the namespace;
-    - egress: free traffic within the namespace, DNS, the shared SMTP relay, the
-      shared database pooler (client port only), and the public internet minus
-      every internal range (LAN, node, other tenants, the service CIDR, and
-      link-local/cloud-metadata).
+    - egress: free traffic within the namespace, DNS, the shared database pooler
+      (client port only), and the public internet minus every internal range
+      (LAN, node, other tenants, the service CIDR, and link-local/cloud-metadata).
+
+    Egress to the shared SMTP relay is deliberately *not* here: it is granted
+    by a separate additive overlay (``build_tenant_mailer_egress_policy``)
+    applied only to namespaces whose product declares the in-cluster relay, so
+    a ``custom`` deployment -- which runs arbitrary tenant code -- cannot reach
+    it and spoof mail as the platform.
 
     The tenant PostgreSQL server is deliberately not among the allowances: it
     sits behind the same internal ranges the internet rule excludes, so the
@@ -139,17 +144,6 @@ def build_tenant_baseline_policy(*, namespace: str, settings: CaelusSettings) ->
                     "to": [{"ipBlock": {"cidr": f"{settings.dns_cluster_ip}/32"}}],
                     "ports": dns_ports,
                 },
-                {  # shared SMTP relay
-                    "to": [
-                        {
-                            "namespaceSelector": {
-                                "matchLabels": {"kubernetes.io/metadata.name": settings.mailer_namespace}
-                            },
-                            "podSelector": {"matchLabels": {"app": settings.mailer_pod_label}},
-                        }
-                    ],
-                    "ports": [{"port": settings.mailer_port, "protocol": "TCP"}],
-                },
                 {  # shared database pooler -> its client port only
                     "to": [
                         {
@@ -175,6 +169,83 @@ def build_tenant_baseline_policy(*, namespace: str, settings: CaelusSettings) ->
                         }
                     ]
                 },
+            ],
+        },
+    }
+
+
+def tenant_network_policies(
+    *, namespace: str, system_values_json: dict[str, Any] | None, settings: CaelusSettings
+) -> list[dict[str, Any]]:
+    """The complete set of platform-owned NetworkPolicies a tenant namespace
+    should hold, tailored to its product.
+
+    The baseline isolation jail always, plus the mailer-egress overlay iff the
+    product declares the in-cluster relay. This is the single place that knows a
+    namespace's policy set: callers apply whatever list comes back and need no
+    knowledge of what any particular policy is for.
+    """
+    policies = [build_tenant_baseline_policy(namespace=namespace, settings=settings)]
+    if _uses_in_cluster_mailer(system_values_json, settings):
+        policies.append(_build_tenant_mailer_egress_policy(namespace=namespace, settings=settings))
+    return policies
+
+
+def _uses_in_cluster_mailer(
+    system_values_json: dict[str, Any] | None, settings: CaelusSettings
+) -> bool:
+    """Whether a product's system values point its SMTP at the in-cluster relay.
+
+    The single declarative signal that grants a tenant namespace mailer egress --
+    no per-product code anywhere. A product that sends no mail, or sends it
+    through an external server (which the internet egress rule already permits),
+    does not match and gets no in-cluster allowance. ``custom`` declares no
+    ``smtp`` block, so it never matches.
+    """
+    smtp = (system_values_json or {}).get("smtp")
+    host = smtp.get("host", "") if isinstance(smtp, dict) else ""
+    return isinstance(host, str) and host.startswith(f"smtp.{settings.mailer_namespace}.svc")
+
+
+def _build_tenant_mailer_egress_policy(
+    *, namespace: str, settings: CaelusSettings
+) -> dict[str, Any]:
+    """Additive egress overlay granting a namespace access to the shared SMTP relay.
+
+    NetworkPolicies union their allows, so this adds the relay to whatever the
+    baseline already permits without restating it.
+
+    Kept separate from the baseline for two reasons: the baseline stays
+    byte-for-byte identical for every tenant (so one definition still covers the
+    fleet), and the relay allowance -- the thing a ``custom`` deployment must
+    never have -- is a policy that simply does not exist in its namespace rather
+    than a rule some shared render must be trusted to withhold.
+    """
+    return {
+        "apiVersion": "networking.k8s.io/v1",
+        "kind": "NetworkPolicy",
+        "metadata": {
+            "name": settings.tenant_mailer_netpol_name,
+            "namespace": namespace,
+            "labels": {"app.kubernetes.io/managed-by": "caelus"},
+        },
+        "spec": {
+            "podSelector": {},
+            "policyTypes": ["Egress"],
+            "egress": [
+                {
+                    "to": [
+                        {
+                            "namespaceSelector": {
+                                "matchLabels": {
+                                    "kubernetes.io/metadata.name": settings.mailer_namespace
+                                }
+                            },
+                            "podSelector": {"matchLabels": {"app": settings.mailer_pod_label}},
+                        }
+                    ],
+                    "ports": [{"port": settings.mailer_port, "protocol": "TCP"}],
+                }
             ],
         },
     }
