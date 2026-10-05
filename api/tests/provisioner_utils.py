@@ -16,8 +16,10 @@ class FakeProvisioner:
         self.calls.append(("ensure_namespace", {"name": name}))
         return None
 
-    def ensure_tenant_isolation(self, *, namespace: str, labels: dict[str, str] | None = None):
-        self.calls.append(("ensure_tenant_isolation", {"namespace": namespace}))
+    def ensure_tenant_network_policies(
+        self, *, namespace: str, labels=None, system_values_json=None
+    ):
+        self.calls.append(("ensure_tenant_network_policies", {"namespace": namespace}))
         return None
 
     def account_certificate_state(self, *, name: str):

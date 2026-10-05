@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from app.config import CaelusSettings
-from app.network_policy import TENANT_NAMESPACE_LABELS, build_tenant_baseline_policy
+from app.network_policy import (
+    TENANT_NAMESPACE_LABELS,
+    build_tenant_baseline_policy,
+    tenant_network_policies,
+)
 
 
 def _policy(namespace: str = "tenant-abc", **overrides):
@@ -70,7 +74,7 @@ def test_sftp_router_selector_is_environment_scoped() -> None:
     assert rule["ports"] == [{"port": 2323, "protocol": "TCP"}]
 
 
-def test_egress_allows_intra_namespace_dns_and_mailer_only_internally() -> None:
+def test_egress_allows_intra_namespace_and_dns() -> None:
     egress = _policy()["spec"]["egress"]
     assert egress[0]["to"] == [{"podSelector": {}}]  # intra-namespace
 
@@ -82,9 +86,45 @@ def test_egress_allows_intra_namespace_dns_and_mailer_only_internally() -> None:
     assert any("namespaceSelector" in rule["to"][0] for rule in dns_rules)
     assert any(rule["to"][0].get("ipBlock", {}).get("cidr") == "10.43.0.10/32" for rule in dns_rules)
 
-    mailer = next(r for r in egress if r.get("ports") == [{"port": 25, "protocol": "TCP"}])
-    assert mailer["to"][0]["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"] == "mailer"
-    assert mailer["to"][0]["podSelector"]["matchLabels"]["app"] == "smtp"
+
+def test_baseline_does_not_grant_mailer_egress() -> None:
+    """The SMTP relay is no longer in the baseline: it moved to an opt-in
+    overlay, so a `custom` deployment cannot reach it and spoof platform mail."""
+    egress = _policy()["spec"]["egress"]
+    assert all(r.get("ports") != [{"port": 25, "protocol": "TCP"}] for r in egress)
+
+
+def _names(policies):
+    return [p["metadata"]["name"] for p in policies]
+
+
+def test_policy_set_without_mailer_is_baseline_only() -> None:
+    settings = CaelusSettings(_env_file=None)
+    # custom (no smtp block), no system values, and an external relay all opt out.
+    for system_values in (None, {}, {"smtp": {}}, {"smtp": {"host": "smtp.sendgrid.net"}}):
+        policies = tenant_network_policies(
+            namespace="tenant-abc", system_values_json=system_values, settings=settings
+        )
+        assert _names(policies) == ["caelus-tenant-baseline"]
+
+
+def test_policy_set_adds_an_egress_only_mailer_overlay_when_declared() -> None:
+    settings = CaelusSettings(_env_file=None)  # mailer_namespace="mailer"
+    policies = tenant_network_policies(
+        namespace="tenant-abc",
+        system_values_json={"smtp": {"host": "smtp.mailer.svc.cluster.local", "port": 25}},
+        settings=settings,
+    )
+    assert _names(policies) == ["caelus-tenant-baseline", "caelus-tenant-mailer-egress"]
+    overlay = policies[1]
+    assert overlay["metadata"]["namespace"] == "tenant-abc"
+    spec = overlay["spec"]
+    assert spec["podSelector"] == {}
+    assert spec["policyTypes"] == ["Egress"]  # additive: adds nothing to ingress
+    rule = spec["egress"][0]
+    assert rule["ports"] == [{"port": 25, "protocol": "TCP"}]
+    assert rule["to"][0]["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"] == "mailer"
+    assert rule["to"][0]["podSelector"]["matchLabels"]["app"] == "smtp"
 
 
 def test_pooler_egress_is_namespace_pod_and_port_scoped() -> None:

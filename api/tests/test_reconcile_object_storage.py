@@ -160,7 +160,7 @@ def test_the_secret_is_written_before_helm_runs(db_session, stub_garage):
     order = [c[0] for c in provisioner.calls]
     assert order.index("upsert_secret") < order.index("helm_upgrade_install")
     # And still after the isolation jail, which nothing may precede.
-    assert order.index("ensure_tenant_isolation") < order.index("upsert_secret")
+    assert order.index("ensure_tenant_network_policies") < order.index("upsert_secret")
 
 
 def test_helm_values_carry_references_but_never_the_credential(db_session, stub_garage):

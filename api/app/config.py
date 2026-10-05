@@ -60,6 +60,9 @@ class CaelusSettings(BaseSettings):
     # Defaults match the current cluster: Traefik in kube-system, the shared SMTP
     # relay (app=smtp:25) in the `mailer` namespace, and the k3s CoreDNS ClusterIP.
     tenant_netpol_name: str = "caelus-tenant-baseline"
+    # The additive overlay that grants SMTP-relay egress, applied only to
+    # namespaces whose product declares the in-cluster relay (never `custom`).
+    tenant_mailer_netpol_name: str = "caelus-tenant-mailer-egress"
     ingress_namespace: str = "kube-system"
     ingress_pod_label: str = "traefik"
     mailer_namespace: str = "mailer"

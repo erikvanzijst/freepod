@@ -6,7 +6,55 @@ import subprocess
 import pytest
 
 from app.proc import AdapterCommandError
-from app.provisioner import HelmAdapter, KubeAdapter
+from app.provisioner import HelmAdapter, KubeAdapter, Provisioner
+
+
+class _RecordingKube:
+    """A KubeAdapter stand-in that records policy writes for Provisioner tests."""
+
+    def __init__(self, existing_netpols: tuple[str, ...] = ()) -> None:
+        self.applied: list[str] = []
+        self.deleted: list[str] = []
+        self.labeled: list[tuple[str, dict]] = []
+        self._existing = list(existing_netpols)
+
+    def label_namespace(self, name: str, labels: dict) -> None:
+        self.labeled.append((name, labels))
+
+    def apply_manifest(self, manifest: dict, *, error_message: str) -> None:
+        self.applied.append(manifest["metadata"]["name"])
+
+    def list_object_names(self, *, kind: str, namespace: str, selector: str) -> list[str]:
+        return list(self._existing)
+
+    def delete_object(self, *, kind: str, namespace: str, name: str, error_message: str) -> None:
+        self.deleted.append(name)
+
+
+def test_ensure_tenant_network_policies_adds_mailer_overlay_for_a_mail_product() -> None:
+    kube = _RecordingKube(existing_netpols=("caelus-tenant-baseline",))
+    prov = Provisioner(kube=kube, helm=object())
+    prov.ensure_tenant_network_policies(
+        namespace="tenant-x",
+        labels=None,
+        system_values_json={"smtp": {"host": "smtp.mailer.svc.cluster.local"}},
+    )
+    assert set(kube.applied) == {"caelus-tenant-baseline", "caelus-tenant-mailer-egress"}
+    assert kube.deleted == []
+
+
+def test_ensure_tenant_network_policies_converges_away_a_stale_mailer_overlay() -> None:
+    # A namespace that once sent mail now runs `custom` (no smtp block): the
+    # overlay must be removed, generically, without naming it in the caller.
+    kube = _RecordingKube(
+        existing_netpols=("caelus-tenant-baseline", "caelus-tenant-mailer-egress")
+    )
+    prov = Provisioner(kube=kube, helm=object())
+    prov.ensure_tenant_network_policies(
+        namespace="tenant-x", labels=None, system_values_json=None
+    )
+    assert kube.applied == ["caelus-tenant-baseline"]
+    assert kube.deleted == ["caelus-tenant-mailer-egress"]
 
 
 def _result(*, args: list[str], returncode: int, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:

@@ -383,9 +383,10 @@ class DeploymentReconciler:
         certificate = self._provisioner.ensure_account_certificate(fqdn=account)
 
         self._provisioner.ensure_namespace(name=deployment.namespace)
-        self._provisioner.ensure_tenant_isolation(
+        self._provisioner.ensure_tenant_network_policies(
             namespace=deployment.namespace,
             labels=deployment_service.namespace_labels(deployment),
+            system_values_json=template.system_values_json,
         )
 
         # After the namespace exists, because the credentials Secret is written

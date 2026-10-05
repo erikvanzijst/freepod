@@ -182,7 +182,7 @@ def test_the_secret_is_written_before_helm_runs(db_session, stub_cluster):
         next(n for n in names if n.endswith("-database"))
     )
     assert database_secret < order.index("helm_upgrade_install")
-    assert order.index("ensure_tenant_isolation") < order.index("upsert_secret")
+    assert order.index("ensure_tenant_network_policies") < order.index("upsert_secret")
 
 
 def test_the_same_secret_is_updated_across_reconciles(db_session, stub_cluster):
