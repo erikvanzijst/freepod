@@ -33,7 +33,7 @@
 
 - [x] 6.1 Run the full API test suite and the UI tests, and verify they pass
 - [x] 6.2 On dev, after rollout and the next settled window: verify each live `deployment_database` row has a `database` subject attributed to its deployment, `db_byte_hours` / 2^30 matches the Prometheus `avg_over_time` for that window, an allowance sample is present, container windows kept advancing, and Settings → Usage → By resource shows Database
-- [ ] 6.3 Repeat 6.2 on prod
+- [x] 6.3 Repeat 6.2 on prod
 
 ## 7. Scale
 

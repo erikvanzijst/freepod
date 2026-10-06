@@ -43,13 +43,18 @@ A subject MAY be a build rather than a container. A build subject's deployment i
 the build belongs to, taken from the build's own record rather than from the namespace it
 ran in, since builds run in a namespace shared by every deployment.
 
+A subject MAY be a tenant database. A database subject's deployment is the one the
+platform's record of that database names, rather than one resolved from the namespace it
+was observed in, since every tenant database is served from one shared cluster. Its
+reference is the database's name, which is unique to its deployment.
+
 Subject records MAY be updated as attribution improves; samples MUST NOT.
 
 #### Scenario: Usage is attributed to the owning user
 
 - **WHEN** usage is summed for a user over a period
 - **THEN** every subject attributed to one of that user's deployments is included,
-  whether a container in the deployment's namespace or one of its builds
+  whether a container in the deployment's namespace, one of its builds, or its database
 
 #### Scenario: A deleted deployment keeps its history
 
@@ -74,6 +79,12 @@ Subject records MAY be updated as attribution improves; samples MUST NOT.
 - **WHEN** a build's usage is recorded
 - **THEN** its subject is of kind `build` and attributed to the deployment the build
   belongs to, not to the shared namespace it ran in
+
+#### Scenario: A database is attributed to its own deployment
+
+- **WHEN** a tenant database's usage is recorded
+- **THEN** its subject is of kind `database` and attributed to the deployment the
+  platform's record of that database names, not to the shared cluster's namespace
 
 ### Requirement: Samples are window-aligned and self-describing
 
