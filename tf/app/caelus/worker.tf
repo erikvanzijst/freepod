@@ -220,6 +220,7 @@ resource "kubernetes_deployment" "worker" {
               psql -q -v ON_ERROR_STOP=1 \
                 -v caelus_admin_password="$CAELUS_ADMIN_PASSWORD" \
                 -v pgbouncer_auth_password="$PGBOUNCER_AUTH_PASSWORD" \
+                -v postgres_exporter_password="$POSTGRES_EXPORTER_PASSWORD" \
                 -f /bootstrap/tenant-bootstrap.sql
               echo 'Bootstrap complete'
             EOT
@@ -273,6 +274,16 @@ resource "kubernetes_deployment" "worker" {
               secret_key_ref {
                 name = kubernetes_secret.tenant_db_bootstrap.metadata[0].name
                 key  = "PGBOUNCER_AUTH_PASSWORD"
+              }
+            }
+          }
+
+          env {
+            name = "POSTGRES_EXPORTER_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.tenant_db_bootstrap.metadata[0].name
+                key  = "POSTGRES_EXPORTER_PASSWORD"
               }
             }
           }

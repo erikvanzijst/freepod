@@ -30,7 +30,13 @@ resource "random_password" "tenant_db_pgbouncer_auth" {
   special = false
 }
 
-# Superuser plus the two role passwords the bootstrap assigns. Separate from
+# The metrics sidecar's read-only role (pg_monitor).
+resource "random_password" "tenant_db_exporter" {
+  length  = 32
+  special = false
+}
+
+# Superuser plus the role passwords the bootstrap assigns. Separate from
 # `caelus-tenant-db` below, which the API and worker *containers* read: the
 # superuser password belongs only to the PostgreSQL container and to the
 # bootstrap init container, which is the whole point of D6's blast-radius
@@ -47,6 +53,8 @@ resource "kubernetes_secret" "tenant_db_bootstrap" {
     POSTGRES_PASSWORD       = random_password.tenant_db_superuser.result
     CAELUS_ADMIN_PASSWORD   = random_password.tenant_db_admin.result
     PGBOUNCER_AUTH_PASSWORD = random_password.tenant_db_pgbouncer_auth.result
+    # Also read by the sidecar, by key, so it never sees the superuser's.
+    POSTGRES_EXPORTER_PASSWORD = random_password.tenant_db_exporter.result
   }
 }
 
@@ -224,6 +232,54 @@ resource "kubernetes_deployment" "tenant_db" {
           }
         }
 
+        # Publishes per-database sizes (pg_database_size_bytes{datname}) and
+        # server statistics to Prometheus, for usage metering.
+        #
+        # A sidecar shares the pod's readiness: if this container is not
+        # running, the pod leaves the Service above and every tenant loses its
+        # database.
+        container {
+          image = local.tenant_db_exporter_image
+          name  = "postgres-exporter"
+
+          env {
+            name  = "DATA_SOURCE_URI"
+            value = "localhost:5432/postgres?sslmode=disable"
+          }
+
+          env {
+            name  = "DATA_SOURCE_USER"
+            value = "postgres_exporter"
+          }
+
+          env {
+            name = "DATA_SOURCE_PASS"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.tenant_db_bootstrap.metadata[0].name
+                key  = "POSTGRES_EXPORTER_PASSWORD"
+              }
+            }
+          }
+
+          port {
+            name           = "metrics"
+            container_port = 9187
+            protocol       = "TCP"
+          }
+
+          resources {
+            requests = {
+              memory = "32Mi"
+              cpu    = "10m"
+            }
+            limits = {
+              memory = "128Mi"
+              cpu    = "100m"
+            }
+          }
+        }
+
         volume {
           name = "tenant-db-data"
           persistent_volume_claim {
@@ -250,6 +306,29 @@ resource "kubernetes_service" "tenant_db" {
       name        = "postgres"
       port        = 5432
       target_port = "postgres"
+    }
+  }
+}
+
+resource "kubernetes_service" "tenant_db_metrics" {
+  metadata {
+    name      = "caelus-tenant-postgres-metrics"
+    namespace = var.namespace
+    annotations = {
+      "prometheus.io/scrape" = "true"
+      "prometheus.io/port"   = "9187"
+    }
+  }
+
+  spec {
+    selector = {
+      app = "caelus-tenant-postgres"
+    }
+
+    port {
+      name        = "metrics"
+      port        = 9187
+      target_port = "metrics"
     }
   }
 }

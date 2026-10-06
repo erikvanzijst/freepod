@@ -3,8 +3,9 @@
 -- Idempotent by construction, because it runs again on every rollout.
 --
 -- Required psql variables:
---   caelus_admin_password    password for the platform's admin role
---   pgbouncer_auth_password  password for the pooler's auth_query role
+--   caelus_admin_password       password for the platform's admin role
+--   pgbouncer_auth_password     password for the pooler's auth_query role
+--   postgres_exporter_password  password for the metrics sidecar's role
 
 \set ON_ERROR_STOP on
 
@@ -93,3 +94,28 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 REVOKE ALL ON FUNCTION pgbouncer.user_lookup(TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION pgbouncer.user_lookup(TEXT) TO pgbouncer_auth;
+
+
+-- ---------------------------------------------------------------------------
+-- postgres_exporter -- the metrics sidecar (tenant-db.tf)
+-- ---------------------------------------------------------------------------
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'postgres_exporter') THEN
+        CREATE ROLE postgres_exporter;
+    END IF;
+END
+$$;
+
+-- The exporter holds one connection; the limit keeps a misbehaving one from
+-- taking tenants' slots.
+ALTER ROLE postgres_exporter WITH LOGIN CONNECTION LIMIT 2
+    NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE postgres_exporter WITH PASSWORD :'postgres_exporter_password';
+
+-- Read-only statistics, including pg_database_size of every tenant database
+-- without CONNECT on any of them.
+GRANT pg_monitor TO postgres_exporter;
+
+GRANT CONNECT ON DATABASE postgres TO postgres_exporter;
