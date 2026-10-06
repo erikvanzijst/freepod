@@ -1,7 +1,11 @@
 """The sampling loop: which windows to read, in what order, and when to stop.
 
-Reading a window is `source`, naming what it contains is `mapping`, who owns it is
-`subjects`, writing it is `ledger`.
+Each measurement source is walked on its own: its own resume position, its own first
+unusable window, its own failures. OpenCost is one source; tenant database sizes
+(`databases`) are another.
+
+Reading an OpenCost window is `source`, naming what it contains is `mapping`, who owns
+it is `subjects`, writing it is `ledger`.
 """
 
 from __future__ import annotations
@@ -9,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import logging
+from typing import Protocol
 
 from sqlmodel import Session, select
 
@@ -16,6 +21,7 @@ from app.config import CaelusSettings, get_settings
 from app.models import UsageSampleORM, UsageSubjectORM
 from app.models.usage import SubjectKind
 from app.services.usage import ledger, subjects
+from app.services.usage.databases import DatabaseSizeSource
 from app.services.usage.opencost import OpenCostClient
 from app.services.usage.ledger import SampleRow
 from app.services.usage.mapping import quantities
@@ -26,12 +32,89 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SampleRun:
-    """What one pass did."""
+    """What one pass did, summed over its sources."""
 
     windows_recorded: int = 0
     windows_skipped: int = 0
     samples_written: int = 0
     skipped_reasons: list[str] = field(default_factory=list)
+    failed_sources: list[str] = field(default_factory=list)
+
+
+class Source(Protocol):
+    """One measurement source: what it records against, and how it reads a window."""
+
+    name: str
+    # Scopes the source's resume position to the subjects it records.
+    subject_kind: SubjectKind
+
+    def read(
+        self,
+        session: Session,
+        window_start: datetime,
+        *,
+        window_seconds: int,
+        observed_at: datetime,
+    ) -> list[SampleRow] | None:
+        """The rows to record for one closed window, or None when it is unusable.
+
+        May upsert subjects; the caller commits or rolls back with the samples.
+        """
+        ...
+
+
+class OpenCostSource:
+    """Containers, read from OpenCost's allocation API."""
+
+    name = "opencost"
+    subject_kind = SubjectKind.CONTAINER
+
+    def __init__(
+        self,
+        client: OpenCostClient,
+        *,
+        environment: str,
+        builds_namespace: str | None = None,
+    ) -> None:
+        self.client = client
+        self.environment = environment
+        self.builds_namespace = builds_namespace
+
+    def read(
+        self,
+        session: Session,
+        window_start: datetime,
+        *,
+        window_seconds: int,
+        observed_at: datetime,
+    ) -> list[SampleRow] | None:
+        window_end = window_start + timedelta(seconds=window_seconds)
+        reading = read_window(self.client, window_start, window_end)
+        if not reading.is_usable:
+            return None
+
+        allocations = billable(
+            reading.allocations,
+            environment=self.environment,
+            builds_namespace=self.builds_namespace,
+        )
+        if not allocations:
+            return None
+
+        resolved = subjects.resolve_subjects(
+            session, allocations, observed_at=observed_at
+        )
+        return [
+            SampleRow(
+                subject_id=resolved[subjects.subject_ref(allocation)],
+                metric=metric,
+                window_start=window_start,
+                interval_seconds=reading.interval_seconds,
+                value=value,
+            )
+            for allocation in allocations
+            for metric, value in quantities(allocation).items()
+        ]
 
 
 def align(moment: datetime, window_seconds: int) -> datetime:
@@ -41,27 +124,34 @@ def align(moment: datetime, window_seconds: int) -> datetime:
     return epoch + timedelta(seconds=elapsed - elapsed % window_seconds)
 
 
-def last_recorded_window(session: Session) -> datetime | None:
-    """The newest window this sampler recorded, or None when it has recorded none.
+def last_recorded_window(
+    session: Session, kind: SubjectKind = SubjectKind.CONTAINER
+) -> datetime | None:
+    """The newest window recorded for subjects of `kind`, or None when there is none.
 
-    Only container subjects count: the build worker writes closed windows of its own,
-    possibly ahead of a stalled sampler, and counting those would skip the windows in
-    between for good.
+    Scoped to one kind because other writers -- the build worker, and this sampler's
+    other sources -- record closed windows of their own, possibly ahead of a stalled
+    source, and counting those would skip the windows in between for good.
     """
     return session.exec(
         select(UsageSampleORM.window_start)
         .join(UsageSubjectORM, UsageSubjectORM.id == UsageSampleORM.subject_id)
-        .where(UsageSubjectORM.kind == SubjectKind.CONTAINER)
+        .where(UsageSubjectORM.kind == kind)
         .order_by(UsageSampleORM.window_start.desc())
         .limit(1)
     ).first()
 
 
 def resume_from(
-    session: Session, *, now: datetime, window_seconds: int, lookback_seconds: int
+    session: Session,
+    *,
+    now: datetime,
+    window_seconds: int,
+    lookback_seconds: int,
+    kind: SubjectKind = SubjectKind.CONTAINER,
 ) -> datetime:
     """One window past what is recorded; a bounded lookback when nothing is."""
-    recorded = last_recorded_window(session)
+    recorded = last_recorded_window(session, kind)
     if recorded is not None:
         return align(recorded, window_seconds) + timedelta(seconds=window_seconds)
     return align(now - timedelta(seconds=lookback_seconds), window_seconds)
@@ -85,6 +175,7 @@ def pending_windows(
     settle_seconds: int,
     lookback_seconds: int,
     max_windows: int,
+    kind: SubjectKind = SubjectKind.CONTAINER,
 ) -> list[datetime]:
     """The window starts to attempt this pass, oldest first and bounded.
 
@@ -95,6 +186,7 @@ def pending_windows(
         now=now,
         window_seconds=window_seconds,
         lookback_seconds=lookback_seconds,
+        kind=kind,
     )
     end = recordable_until(
         now=now, window_seconds=window_seconds, settle_seconds=settle_seconds
@@ -105,6 +197,31 @@ def pending_windows(
     span = int((end - start).total_seconds())
     count = min(max_windows, max(0, span // window_seconds))
     return [start + timedelta(seconds=i * window_seconds) for i in range(count)]
+
+
+def record_source_window(
+    session: Session,
+    source: Source,
+    window_start: datetime,
+    *,
+    window_seconds: int,
+    observed_at: datetime,
+    catalog: dict[str, int] | None = None,
+) -> int | None:
+    """Record one window from `source`. Returns samples written, or None if unusable.
+
+    None means unmeasured and the position must not pass it; zero means measured and
+    holding nothing new.
+    """
+    rows = source.read(
+        session, window_start, window_seconds=window_seconds, observed_at=observed_at
+    )
+    if rows is None:
+        return None
+    catalog = catalog if catalog is not None else ledger.metric_ids(session)
+    return ledger.record_samples(
+        session, rows, observed_at=observed_at, catalog=catalog
+    )
 
 
 def record_window(
@@ -118,44 +235,73 @@ def record_window(
     builds_namespace: str | None = None,
     catalog: dict[str, int] | None = None,
 ) -> int | None:
-    """Record one window. Returns samples written, or None if it was not usable.
+    """Record one OpenCost window. See `record_source_window`."""
+    return record_source_window(
+        session,
+        OpenCostSource(client, environment=environment, builds_namespace=builds_namespace),
+        window_start,
+        window_seconds=window_seconds,
+        observed_at=observed_at,
+        catalog=catalog,
+    )
 
-    None means unmeasured and the position must not pass it; zero means measured and
-    holding nothing new.
+
+def default_sources(
+    client: OpenCostClient, settings: CaelusSettings
+) -> list[Source]:
+    """OpenCost always; tenant database sizes when their namespace is configured."""
+    sources: list[Source] = [
+        OpenCostSource(
+            client,
+            environment=settings.environment,
+            builds_namespace=settings.builds_namespace,
+        )
+    ]
+    if settings.usage_tenant_db_namespace:
+        sources.append(DatabaseSizeSource.from_settings(settings))
+    return sources
+
+
+def _sample_source(
+    session: Session,
+    source: Source,
+    *,
+    now: datetime,
+    settings: CaelusSettings,
+    catalog: dict[str, int],
+    result: SampleRun,
+) -> None:
+    """Record every eligible window of one source, committing as it goes.
+
+    An unmeasurable window stops this source rather than being skipped: its position
+    is `max(window_start)`, so recording past a gap would strand it permanently.
     """
-    window_end = window_start + timedelta(seconds=window_seconds)
-    reading = read_window(client, window_start, window_end)
-    if not reading.is_usable:
-        return None
-
-    allocations = billable(
-        reading.allocations, environment=environment, builds_namespace=builds_namespace
+    windows = pending_windows(
+        session,
+        now=now,
+        window_seconds=settings.usage_window_seconds,
+        settle_seconds=settings.usage_settle_seconds,
+        lookback_seconds=settings.usage_first_run_lookback_seconds,
+        max_windows=settings.usage_max_windows_per_pass,
+        kind=source.subject_kind,
     )
-    if not allocations:
-        return None
-
-    resolved = subjects.resolve_subjects(
-        session, allocations, observed_at=observed_at
-    )
-    catalog = catalog if catalog is not None else ledger.metric_ids(session)
-
-    rows: list[SampleRow] = []
-    for allocation in allocations:
-        subject_id = resolved[subjects.subject_ref(allocation)]
-        for metric, value in quantities(allocation).items():
-            rows.append(
-                SampleRow(
-                    subject_id=subject_id,
-                    metric=metric,
-                    window_start=window_start,
-                    interval_seconds=reading.interval_seconds,
-                    value=value,
-                )
-            )
-
-    return ledger.record_samples(
-        session, rows, observed_at=observed_at, catalog=catalog
-    )
+    for window_start in windows:
+        written = record_source_window(
+            session,
+            source,
+            window_start,
+            window_seconds=settings.usage_window_seconds,
+            observed_at=now,
+            catalog=catalog,
+        )
+        if written is None:
+            session.rollback()
+            result.windows_skipped += 1
+            result.skipped_reasons.append(f"{source.name}:{window_start.isoformat()}")
+            break
+        session.commit()
+        result.windows_recorded += 1
+        result.samples_written += written
 
 
 def sample_once(
@@ -164,53 +310,36 @@ def sample_once(
     *,
     now: datetime | None = None,
     settings: CaelusSettings | None = None,
+    sources: list[Source] | None = None,
 ) -> SampleRun:
-    """One pass: record every eligible window, committing as it goes.
+    """One pass: every source, each from its own position.
 
-    An unmeasurable window stops the pass rather than being skipped: the position is
-    `max(window_start)`, so recording past a gap would strand it permanently.
+    A source that raises is logged and skipped for this pass; the others still run.
     """
     settings = settings or get_settings()
     now = now or _utcnow()
+    sources = sources if sources is not None else default_sources(client, settings)
     result = SampleRun()
 
-    windows = pending_windows(
-        session,
-        now=now,
-        window_seconds=settings.usage_window_seconds,
-        settle_seconds=settings.usage_settle_seconds,
-        lookback_seconds=settings.usage_first_run_lookback_seconds,
-        max_windows=settings.usage_max_windows_per_pass,
-    )
-    if not windows:
-        return result
-
     catalog = ledger.metric_ids(session)
-    for window_start in windows:
-        written = record_window(
-            session,
-            client,
-            window_start,
-            window_seconds=settings.usage_window_seconds,
-            observed_at=now,
-            environment=settings.environment,
-            builds_namespace=settings.builds_namespace,
-            catalog=catalog,
-        )
-        if written is None:
+    for source in sources:
+        try:
+            _sample_source(
+                session, source, now=now, settings=settings, catalog=catalog, result=result
+            )
+        except Exception:
             session.rollback()
-            result.windows_skipped += 1
-            result.skipped_reasons.append(window_start.isoformat())
-            break
-        session.commit()
-        result.windows_recorded += 1
-        result.samples_written += written
+            logger.exception("Usage source %s failed; retrying next pass", source.name)
+            result.failed_sources.append(source.name)
 
+    if not (result.windows_recorded or result.windows_skipped or result.failed_sources):
+        return result
     logger.info(
-        "Usage pass complete: recorded=%s samples=%s stopped_at=%s",
+        "Usage pass complete: recorded=%s samples=%s stopped_at=%s failed=%s",
         result.windows_recorded,
         result.samples_written,
-        result.skipped_reasons[0] if result.skipped_reasons else "-",
+        ",".join(result.skipped_reasons) or "-",
+        ",".join(result.failed_sources) or "-",
     )
     return result
 

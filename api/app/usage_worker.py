@@ -21,6 +21,7 @@ from typing import Any
 from app.config import CaelusSettings, get_settings
 from app.db import session_scope
 from app.services.usage import OpenCostClient, OpenCostException, SampleRun, sample_once
+from app.services.usage.sampler import default_sources
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,11 @@ def run_usage_worker(
     """
     settings = settings or get_settings()
     client = client or OpenCostClient.from_settings(settings)
+    sources = default_sources(client, settings)
+    if not settings.usage_tenant_db_namespace:
+        logger.info(
+            "Tenant database sizes are not recorded: CAELUS_USAGE_TENANT_DB_NAMESPACE is unset"
+        )
     shutdown = False
 
     def _handle_signal(signum: int, frame: object) -> None:
@@ -52,17 +58,18 @@ def run_usage_worker(
 
     interval = settings.usage_worker_interval_seconds
     logger.info(
-        "Usage worker started: interval=%ss window=%ss settle=%ss",
+        "Usage worker started: interval=%ss window=%ss settle=%ss sources=%s",
         interval,
         settings.usage_window_seconds,
         settings.usage_settle_seconds,
+        ",".join(source.name for source in sources),
     )
 
     passes = 0
     while not shutdown:
         try:
             with session_scope() as session:
-                result = sample_once(session, client, settings=settings)
+                result = sample_once(session, client, settings=settings, sources=sources)
         except OpenCostException as exc:
             logger.warning("Usage pass could not reach its source: %s", exc)
             result = SampleRun()

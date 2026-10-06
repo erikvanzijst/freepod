@@ -26,6 +26,7 @@ import httpx
 
 from app.config import CaelusSettings, get_settings
 from app.services.errors import CaelusException
+from app.services.usage.prometheus import PrometheusClient, PrometheusException, stamp
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +201,7 @@ class OpenCostClient:
             raise OpenCostException("OpenCost is not configured")
 
         params = {
-            "window": f"{_stamp(start)},{_stamp(end)}",
+            "window": f"{stamp(start)},{stamp(end)}",
             "step": step,
             "aggregate": AGGREGATE_BY,
             "accumulate": "false",
@@ -226,27 +227,14 @@ class OpenCostClient:
 
         False means `cpuCoreHours` collapsed to the request and must not be recorded.
         """
-        if not self.prometheus_url:
-            raise OpenCostException("Prometheus is not configured")
-
         span = int((end - start).total_seconds())
+        prometheus = PrometheusClient(
+            self.prometheus_url, timeout_seconds=self.timeout_seconds, client=self._client
+        )
         try:
-            response = self._get(
-                f"{self.prometheus_url}/api/v1/query",
-                {
-                    "query": f"count(count_over_time({ALLOCATION_SERIES}[{span}s]))",
-                    "time": _stamp(end),
-                },
+            result = prometheus.query(
+                f"count(count_over_time({ALLOCATION_SERIES}[{span}s]))", end
             )
-        except httpx.HTTPError as exc:
-            raise OpenCostException(f"Prometheus request failed: {exc}") from exc
-
-        if response.status_code != 200:
-            raise OpenCostException(f"Prometheus returned {response.status_code}")
-        result = (response.json().get("data") or {}).get("result") or []
+        except PrometheusException as exc:
+            raise OpenCostException(str(exc)) from exc
         return bool(result)
-
-
-def _stamp(moment: datetime) -> str:
-    """Naive UTC out to the RFC3339 Zulu both APIs expect."""
-    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")

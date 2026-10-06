@@ -140,3 +140,11 @@ def test_get_settings_is_cached():
     s2 = get_settings()
     assert s1 is s2
     get_settings.cache_clear()
+
+
+def test_usage_tenant_db_namespace(monkeypatch):
+    monkeypatch.delenv("CAELUS_USAGE_TENANT_DB_NAMESPACE", raising=False)
+    assert CaelusSettings(_env_file=None).usage_tenant_db_namespace == ""
+
+    monkeypatch.setenv("CAELUS_USAGE_TENANT_DB_NAMESPACE", "caelus-dev")
+    assert CaelusSettings(_env_file=None).usage_tenant_db_namespace == "caelus-dev"

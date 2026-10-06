@@ -218,11 +218,15 @@ class CaelusSettings(BaseSettings):
     # Empty means unconfigured, which is what the test suite runs with; the
     # sampler refuses to start rather than recording nothing silently.
     opencost_base_url: str = ""
-    # Not a second measurement source. The sampler asks Prometheus only whether
-    # OpenCost's own exporter published over a window, because `/allocation`
-    # answers 200 with request-only numbers when it did not.
+    # Two uses: whether OpenCost's own exporter published over a window, because
+    # `/allocation` answers 200 with request-only numbers when it did not; and
+    # tenant database sizes, which the sampler reads from it directly.
     prometheus_base_url: str = ""
     opencost_timeout_seconds: float = 30.0
+    # The namespace whose postgres_exporter this environment reads database sizes
+    # from. Empty disables that source: unscoped, the other environment's exporter
+    # would vouch for windows this one never measured.
+    usage_tenant_db_namespace: str = ""
 
     # Hourly windows, which is the granularity OpenCost's `step` supports and the
     # resolution the ledger records at. Changing it does not invalidate history:

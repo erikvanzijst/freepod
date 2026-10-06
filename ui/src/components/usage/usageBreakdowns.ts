@@ -5,6 +5,7 @@ import { columnLabels } from './usageModel'
 const METRIC_LABELS: Record<string, string> = {
   cpu_core_hours: 'CPU',
   ram_byte_hours: 'Memory',
+  db_byte_hours: 'Database',
 }
 
 /** A deployment's hostname, else its name, as the report carries them. */

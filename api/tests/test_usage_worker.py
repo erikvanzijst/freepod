@@ -135,6 +135,38 @@ def test_a_failing_source_does_not_stop_the_loop(
     assert not db_session.exec(select(UsageSampleORM)).all()
 
 
+def test_without_a_namespace_only_opencost_runs_and_says_so(
+    db_session, seeded_catalog, tenant, settings, caplog
+):
+    unset = settings.model_copy(update={"usage_tenant_db_namespace": ""})
+    with caplog.at_level("INFO", logger="app.usage_worker"):
+        run_usage_worker(settings=unset, client=_client(), max_passes=1)
+
+    assert "CAELUS_USAGE_TENANT_DB_NAMESPACE is unset" in caplog.text
+    assert "sources=opencost\n" in caplog.text + "\n"
+
+
+def test_with_a_namespace_the_worker_records_database_sizes(
+    db_session, seeded_catalog, tenant, settings, monkeypatch
+):
+    from app.services import relational_storage
+    from app.services.usage.databases import DatabaseSizeSource
+    from tests.test_usage_databases import FakePrometheus, _deployment_with_database, _samples
+
+    deployment = _deployment_with_database(db_session)
+    name = relational_storage.database_name(deployment)
+    fake = FakePrometheus(sizes=lambda end: {name: 2**30})
+    monkeypatch.setattr(
+        DatabaseSizeSource, "from_settings", classmethod(lambda cls, s: fake.source(s.usage_tenant_db_namespace))
+    )
+
+    configured = settings.model_copy(update={"usage_tenant_db_namespace": "caelus-dev"})
+    run_usage_worker(settings=configured, client=_client(), max_passes=1)
+
+    assert _samples(db_session, "db_byte_hours")
+    assert all('namespace="caelus-dev"' in query for query in fake.queries)
+
+
 def test_the_command_refuses_to_start_unconfigured(cli_runner, monkeypatch):
     """Recording nothing silently is the failure mode this guards."""
     monkeypatch.setenv("CAELUS_OPENCOST_BASE_URL", "")

@@ -61,7 +61,11 @@ This repository is a monorepo with:
   hardcoded list and silently skips anything absent from it.
 - **Usage is recorded and priced for display, but nothing is billed.** `caelus
   usage-worker` samples OpenCost hourly and writes one row per subject, metric
-  and window into a ledger. Builds are too short-lived to sample, so the
+  and window into a ledger. Tenant databases are a second source, each with its
+  own resume position: their sizes are read from Prometheus directly
+  (`postgres_exporter` beside the tenant cluster) and recorded as `database`
+  subjects attributed through `deployment_database`
+  (`app/services/usage/databases.py`). Builds are too short-lived to sample, so the
   sampler skips its own builds namespace: each build measures its own cgroup
   and reports it in its termination message, and `caelus build-worker` records
   it as a `build` subject attributed to the build's deployment once its windows
@@ -75,10 +79,12 @@ This repository is a monorepo with:
   or enforces it. Spec:
   [usage-ledger-data-model](openspec/specs/usage-ledger-data-model/spec.md),
   [usage-sampler-worker](openspec/specs/usage-sampler-worker/spec.md),
-  [build-usage-recording](openspec/specs/build-usage-recording/spec.md) ·
+  [build-usage-recording](openspec/specs/build-usage-recording/spec.md),
+  [relational-storage-usage](openspec/specs/relational-storage-usage/spec.md) ·
   Rationale:
   [add-usage-ledger](openspec/changes/archive/2026-09-23-add-usage-ledger/design.md),
-  [record-build-usage](openspec/changes/archive/2026-09-26-record-build-usage/design.md)
+  [record-build-usage](openspec/changes/archive/2026-09-26-record-build-usage/design.md),
+  [meter-relational-storage](openspec/changes/meter-relational-storage/design.md)
 - **Account SSH keys are the SSH credential.** A user registers SSH public keys
   on their account; they are owned by the user, scoped to no deployment, and are
   what authenticates every SSH connection. Adds are owner-only even for
