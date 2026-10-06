@@ -15,6 +15,11 @@ A request without the header MUST be refused with 401. A signed-in account whose
 is not listed MUST be refused with 403 and a link to sign out. When `ALLOWED_EMAILS` is
 unset or empty, every request except `GET /healthz` MUST be refused.
 
+The header is trusted only because the platform strips it from requests that arrive
+through the ingress. A request that does not arrive that way MUST be refused with 403,
+whatever headers it carries. This covers any request whose peer address belongs to the
+deployment's own pod, such as one from an agent session to `localhost`.
+
 #### Scenario: Not signed in
 - **WHEN** a run page is requested without an `X-Freepod-Email` header
 - **THEN** the response has status 401
@@ -26,6 +31,14 @@ unset or empty, every request except `GET /healthz` MUST be refused.
 #### Scenario: The allow-list was never set
 - **WHEN** `ALLOWED_EMAILS` is unset and any page other than `/healthz` is requested, by any account
 - **THEN** the response has status 403
+
+#### Scenario: A request from inside the pod
+- **WHEN** a process in the pod sends `POST /runs` to `localhost:8080`, or to the pod's own address, with an `X-Freepod-Email` header naming an allowed address
+- **THEN** the response has status 403, and no run starts
+
+#### Scenario: Health from inside the pod
+- **WHEN** a process in the pod requests `GET /healthz`
+- **THEN** the response has status 200
 
 ### Requirement: The run history is browsable
 The dashboard MUST list runs newest first. Each entry shows the run's trigger, scope,

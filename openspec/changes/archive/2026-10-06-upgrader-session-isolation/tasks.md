@@ -61,5 +61,5 @@
 
   Mark design D8 of `product-upgrade-service` as superseded where it says the private key is within the agent's reach.
 - [x] 9.2 Run `uv run pytest` in `ops/upgrader` and `openspec validate upgrader-session-isolation --strict`. Both must pass.
-- [ ] 9.3 Roll out per design D8, outside the nightly window: merge, `freepod deploy`, then run the post-deploy probes from the Migration Plan. Both must be refused.
-- [ ] 9.4 Run one real run on a single product that has an eligible release. The PR must be authored by the bot, labeled, and its diff must equal the stored `change.patch`.
+- [x] 9.3 Roll out per design D8, outside the nightly window: merge, `freepod deploy`, then run the post-deploy probes from the Migration Plan. Both must be refused.
+- [x] 9.4 Run one real run on a single product that has an eligible release. The PR must be authored by the bot, labeled, and its diff must equal the stored `change.patch`.
