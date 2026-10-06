@@ -1,15 +1,14 @@
 """The sampling loop: which windows to read, in what order, and when to stop.
 
 Each measurement source is walked on its own: its own resume position, its own first
-unusable window, its own failures. OpenCost is one source; tenant database sizes
-(`databases`) are another.
-
-Reading an OpenCost window is `source`, naming what it contains is `mapping`, who owns
-it is `subjects`, writing it is `ledger`.
+unusable window, its own failures. Containers from OpenCost (`containers`) are one
+source; tenant database sizes (`databases`) are another. A source yields observations;
+`ledger` writes them, a chunk at a time.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import logging
@@ -20,12 +19,11 @@ from sqlmodel import Session, select
 from app.config import CaelusSettings, get_settings
 from app.models import UsageSampleORM, UsageSubjectORM
 from app.models.usage import SubjectKind
-from app.services.usage import ledger, subjects
+from app.services.usage import ledger
+from app.services.usage.containers import OpenCostSource
 from app.services.usage.databases import DatabaseSizeSource
+from app.services.usage.ledger import Observation
 from app.services.usage.opencost import OpenCostClient
-from app.services.usage.ledger import SampleRow
-from app.services.usage.mapping import quantities
-from app.services.usage.source import billable, read_window
 
 logger = logging.getLogger(__name__)
 
@@ -49,72 +47,14 @@ class Source(Protocol):
     subject_kind: SubjectKind
 
     def read(
-        self,
-        session: Session,
-        window_start: datetime,
-        *,
-        window_seconds: int,
-        observed_at: datetime,
-    ) -> list[SampleRow] | None:
-        """The rows to record for one closed window, or None when it is unusable.
+        self, session: Session, window_start: datetime, *, window_seconds: int
+    ) -> Iterable[Observation] | None:
+        """The window's observations, or None when it is unusable.
 
-        May upsert subjects; the caller commits or rolls back with the samples.
+        Decided before anything is yielded, so a source returns None eagerly and its
+        observations lazily: the ledger consumes them a chunk at a time.
         """
         ...
-
-
-class OpenCostSource:
-    """Containers, read from OpenCost's allocation API."""
-
-    name = "opencost"
-    subject_kind = SubjectKind.CONTAINER
-
-    def __init__(
-        self,
-        client: OpenCostClient,
-        *,
-        environment: str,
-        builds_namespace: str | None = None,
-    ) -> None:
-        self.client = client
-        self.environment = environment
-        self.builds_namespace = builds_namespace
-
-    def read(
-        self,
-        session: Session,
-        window_start: datetime,
-        *,
-        window_seconds: int,
-        observed_at: datetime,
-    ) -> list[SampleRow] | None:
-        window_end = window_start + timedelta(seconds=window_seconds)
-        reading = read_window(self.client, window_start, window_end)
-        if not reading.is_usable:
-            return None
-
-        allocations = billable(
-            reading.allocations,
-            environment=self.environment,
-            builds_namespace=self.builds_namespace,
-        )
-        if not allocations:
-            return None
-
-        resolved = subjects.resolve_subjects(
-            session, allocations, observed_at=observed_at
-        )
-        return [
-            SampleRow(
-                subject_id=resolved[subjects.subject_ref(allocation)],
-                metric=metric,
-                window_start=window_start,
-                interval_seconds=reading.interval_seconds,
-                value=value,
-            )
-            for allocation in allocations
-            for metric, value in quantities(allocation).items()
-        ]
 
 
 def align(moment: datetime, window_seconds: int) -> datetime:
@@ -213,14 +153,16 @@ def record_source_window(
     None means unmeasured and the position must not pass it; zero means measured and
     holding nothing new.
     """
-    rows = source.read(
-        session, window_start, window_seconds=window_seconds, observed_at=observed_at
-    )
-    if rows is None:
+    observations = source.read(session, window_start, window_seconds=window_seconds)
+    if observations is None:
         return None
-    catalog = catalog if catalog is not None else ledger.metric_ids(session)
-    return ledger.record_samples(
-        session, rows, observed_at=observed_at, catalog=catalog
+    return ledger.record_observations(
+        session,
+        observations,
+        window_start=window_start,
+        interval_seconds=window_seconds,
+        observed_at=observed_at,
+        catalog=catalog,
     )
 
 

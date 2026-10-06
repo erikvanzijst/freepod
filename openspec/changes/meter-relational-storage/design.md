@@ -84,10 +84,20 @@ exactly like an exporter outage.
 
 ### D3: A source is a small object; the pass runs each one independently
 
-Extract what is source-specific from `sampler.py` into a narrow shape:
+Each source lives in its own module (`containers.py` for OpenCost, `databases.py`) and
+has a narrow shape:
 
 - the subject kind it records, which scopes its resume position;
-- `read(window) -> rows | None`, where `None` means unusable.
+- `read(window) -> Iterable[Observation] | None`, where `None` means unusable and is
+  decided eagerly, and the observations (a subject spec and its quantities) are yielded
+  lazily.
+
+A source neither upserts subjects nor builds sample rows. `ledger.record_observations`
+does both for every source, a chunk at a time: each chunk's subjects in one multi-row
+`INSERT … ON CONFLICT … RETURNING`, then its samples in multi-row inserts of at most
+1000. Memory is therefore bounded by the chunk, not by the number of subjects in a
+window. What stays whole is each source's own response for one window, the OpenCost
+allocations and the Prometheus series, since both arrive as one JSON document.
 
 `sample_once` keeps its window arithmetic (`pending_windows`, `align`, the settle
 allowance, `max_windows`) and runs it once per source, each from its own position, each
@@ -106,11 +116,13 @@ axis would multiply rollout entries (`scripts/rollout.sh`) for nothing.
 
 One subject per database: kind `database`, `ref` = `deployment_database.db_name`,
 `namespace` = the tenant cluster's namespace, `deployment_id` from the same row.
-`upsert_subject` is reused unchanged.
 
-Per window, the source loads `deployment_database` joined to `deployment` once, keyed by
-`db_name`, and keeps only series whose `datname` is in it. That join is the only thing
-that selects tenant databases (D2), and it gives attribution
+The measured series are joined to the platform's records in SQL, one statement per chunk
+of 1000: `unnest()` of the chunk's names and sizes, joined to `deployment_database` (by
+`db_name`, which gains a unique index for it), `deployment`, and the plan for its
+allowance, with the deletion rule (D5) in the `WHERE` clause. Nothing is loaded as ORM
+objects and nothing is looked up per database. That join is the only thing that selects
+tenant databases (D2), and it gives attribution
 (spec: *Attribution comes from the platform's record of the database*) and, as a side
 effect, a second guarantee that only this environment's databases are recorded.
 

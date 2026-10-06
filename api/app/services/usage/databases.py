@@ -12,18 +12,20 @@ depending on applies. Attribution still comes from the platform database, throug
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from datetime import datetime, timedelta
 from decimal import Decimal
 import logging
 
-from sqlmodel import Session, select
+from sqlalchemy import text
+from sqlmodel import Session
 
 from app.config import CaelusSettings
-from app.models import DeploymentDatabaseORM, DeploymentORM
 from app.models.usage import SubjectKind
-from app.services.usage import subjects
-from app.services.usage.ledger import SampleRow
+from app.services.usage.batching import batched
+from app.services.usage.ledger import Observation
 from app.services.usage.prometheus import PrometheusClient, PrometheusException
+from app.services.usage.subjects import SubjectSpec
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,22 @@ SIZE_METRIC = "db_byte_hours"
 ALLOWANCE_METRIC = "db_allowance_byte_hours"
 
 SECONDS_PER_HOUR = Decimal(3600)
+
+# One chunk of measured sizes, kept to the databases this environment's records hold
+# and whose deployment was not deleted before the window ended, with the plan's
+# allowance. A name the records do not know is not this environment's, or not a
+# deployment's at all. Set-based, so one round trip per chunk however many databases.
+_KNOWN_DATABASES = text(
+    """
+    SELECT m.db_name, dd.deployment_id, m.size_bytes, ptv.database_bytes
+    FROM unnest(CAST(:names AS text[]), CAST(:sizes AS numeric[])) AS m(db_name, size_bytes)
+    JOIN deployment_database dd ON dd.db_name = m.db_name
+    JOIN deployment d ON d.id = dd.deployment_id
+    LEFT JOIN subscription s ON s.id = d.subscription_id
+    LEFT JOIN plan_template_version ptv ON ptv.id = s.plan_template_id
+    WHERE d.deleted_at IS NULL OR d.deleted_at >= :window_end
+    """
+)
 
 
 class DatabaseSizeSource:
@@ -74,7 +92,9 @@ class DatabaseSizeSource:
             )
         )
 
-    def average_sizes(self, window_start: datetime, window_seconds: int) -> dict[str, Decimal]:
+    def average_sizes(
+        self, window_start: datetime, window_seconds: int
+    ) -> Iterator[tuple[str, Decimal]]:
         """Every database's average size over the window, in bytes, by name.
 
         A database measured for only part of the window is averaged over that part.
@@ -86,20 +106,20 @@ class DatabaseSizeSource:
             f'avg_over_time({SIZE_SERIES}{{namespace="{self.namespace}"}}[{window_seconds}s])',
             end,
         )
-        return {
-            series["metric"]["datname"]: Decimal(series["value"][1])
+        return (
+            (series["metric"]["datname"], Decimal(series["value"][1]))
             for series in result
             if series.get("metric", {}).get("datname")
-        }
+        )
 
     def read(
-        self,
-        session: Session,
-        window_start: datetime,
-        *,
-        window_seconds: int,
-        observed_at: datetime,
-    ) -> list[SampleRow] | None:
+        self, session: Session, window_start: datetime, *, window_seconds: int
+    ) -> Iterator[Observation] | None:
+        """None when the window is unusable; otherwise its observations, lazily.
+
+        Prometheus answers a window in one response, so its series are held; what is
+        derived from them is not.
+        """
         try:
             if not self.covers(window_start, window_seconds):
                 logger.warning(
@@ -115,64 +135,39 @@ class DatabaseSizeSource:
                 "Window %s not recorded for databases: %s", window_start.isoformat(), exc
             )
             return None
+        return self._observations(
+            session,
+            sizes,
+            window_end=window_start + timedelta(seconds=window_seconds),
+            hours=Decimal(window_seconds) / SECONDS_PER_HOUR,
+        )
 
-        window_end = window_start + timedelta(seconds=window_seconds)
-        hours = Decimal(window_seconds) / SECONDS_PER_HOUR
-        rows: list[SampleRow] = []
-        for record, deployment in _known_databases(session, set(sizes)):
-            if deployment.deleted_at is not None and deployment.deleted_at < window_end:
-                continue
-            subject_id = subjects.upsert_subject(
-                session,
-                kind=SubjectKind.DATABASE,
-                ref=record.db_name,
-                namespace=self.namespace,
-                deployment_id=deployment.id,
-                observed_at=observed_at,
-            )
-            quantities = {SIZE_METRIC: sizes[record.db_name] * hours}
-            allowance = _allowance_bytes(deployment)
-            if allowance is not None:
-                quantities[ALLOWANCE_METRIC] = Decimal(allowance) * hours
-            rows.extend(
-                SampleRow(
-                    subject_id=subject_id,
-                    metric=metric,
-                    window_start=window_start,
-                    interval_seconds=window_seconds,
-                    value=value,
+    def _observations(
+        self,
+        session: Session,
+        sizes: Iterable[tuple[str, Decimal]],
+        *,
+        window_end: datetime,
+        hours: Decimal,
+    ) -> Iterator[Observation]:
+        for chunk in batched(sizes):
+            names, values = zip(*chunk)
+            rows = session.execute(
+                _KNOWN_DATABASES,
+                {"names": list(names), "sizes": list(values), "window_end": window_end},
+            ).all()
+            for db_name, deployment_id, size_bytes, allowance_bytes in rows:
+                quantities = {SIZE_METRIC: size_bytes * hours}
+                # A plan without an allowance costs the window its allowance row,
+                # not its size.
+                if allowance_bytes and allowance_bytes > 0:
+                    quantities[ALLOWANCE_METRIC] = Decimal(allowance_bytes) * hours
+                yield Observation(
+                    subject=SubjectSpec(
+                        kind=SubjectKind.DATABASE,
+                        ref=db_name,
+                        namespace=self.namespace,
+                        deployment_id=deployment_id,
+                    ),
+                    quantities=quantities,
                 )
-                for metric, value in quantities.items()
-            )
-        return rows
-
-
-def _known_databases(
-    session: Session, names: set[str]
-) -> list[tuple[DeploymentDatabaseORM, DeploymentORM]]:
-    """The databases this environment's records hold, among `names`.
-
-    A name the records do not know is not recorded: it is not this environment's, or
-    not a deployment's at all.
-    """
-    if not names:
-        return []
-    return list(
-        session.exec(
-            select(DeploymentDatabaseORM, DeploymentORM)
-            .join(DeploymentORM, DeploymentORM.id == DeploymentDatabaseORM.deployment_id)
-            .where(DeploymentDatabaseORM.db_name.in_(sorted(names)))
-        ).all()
-    )
-
-
-def _allowance_bytes(deployment: DeploymentORM) -> int | None:
-    """The current plan's database allowance, or None when it declares none.
-
-    Unlike `relational_storage.resolve_quota_bytes`, a missing allowance is not an
-    error here: it costs the window its allowance row, not its size.
-    """
-    subscription = deployment.subscription
-    template = subscription.plan_template if subscription is not None else None
-    allowance = template.database_bytes if template is not None else None
-    return allowance if allowance and allowance > 0 else None

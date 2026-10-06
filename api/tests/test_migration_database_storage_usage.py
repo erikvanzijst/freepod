@@ -84,3 +84,25 @@ def test_the_fixture_catalog_matches_the_migration(schema):
     _run("upgrade", STORAGE, schema=schema)
     with _engine(schema).begin() as conn:
         assert _metrics(conn) == {name: tuple(rest) for name, *rest in DATABASE_CATALOG}
+
+
+INDEX = "5c8f3d0e2b47"
+
+
+def _indexes(conn) -> dict[str, str]:
+    return dict(
+        conn.execute(
+            text("SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'deployment_database' AND schemaname = current_schema()")
+        ).all()
+    )
+
+
+def test_db_name_gets_a_unique_index_and_loses_it_on_downgrade(schema):
+    _run("upgrade", INDEX, schema=schema)
+    with _engine(schema).begin() as conn:
+        definition = _indexes(conn)["uq_deployment_database_db_name"]
+    assert "UNIQUE" in definition and "(db_name)" in definition
+
+    _run("downgrade", STORAGE, schema=schema)
+    with _engine(schema).begin() as conn:
+        assert "uq_deployment_database_db_name" not in _indexes(conn)

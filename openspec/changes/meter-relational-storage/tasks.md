@@ -34,3 +34,10 @@
 - [x] 6.1 Run the full API test suite and the UI tests, and verify they pass
 - [x] 6.2 On dev, after rollout and the next settled window: verify each live `deployment_database` row has a `database` subject attributed to its deployment, `db_byte_hours` / 2^30 matches the Prometheus `avg_over_time` for that window, an allowance sample is present, container windows kept advancing, and Settings → Usage → By resource shows Database
 - [ ] 6.3 Repeat 6.2 on prod
+
+## 7. Scale
+
+- [x] 7.1 Move `OpenCostSource` into `app/services/usage/containers.py`, beside `databases.py`; verify the sampler, worker and database tests pass unchanged apart from imports
+- [x] 7.2 Make `Source.read` return observations lazily (`Iterable[Observation] | None`, `None` decided eagerly) and write them through `ledger.record_observations`, which chunks subjects into one multi-row upsert and samples into multi-row inserts of at most 1000; verify with `tests/test_usage_batching.py` counting statements per chunk and showing a source's generator is drawn only a chunk ahead of the writes
+- [x] 7.3 Replace `resolve_subjects` and per-database `upsert_subject` calls with `subjects.upsert_subjects`, merging duplicates within a chunk; verify `tests/test_usage_subjects.py` passes through the new path and a duplicate keeps its deployment
+- [x] 7.4 Attribute database sizes with one set-based join per chunk (design D4) and add a unique index on `deployment_database.db_name` (migration `5c8f3d0e2b47`, after checking both environments hold no duplicates); verify with a statement-count test showing three joins for five measured names in chunks of two and no subscription or plan reads, and a migration test for the index

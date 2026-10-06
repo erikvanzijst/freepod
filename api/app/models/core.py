@@ -1015,6 +1015,8 @@ class DeploymentDatabaseORM(SQLModel, table=True):
     __table_args__ = (
         # Read by the housekeeping worker's quota sweep.
         Index("ix_deployment_database_quota_state", "quota_state"),
+        # The usage sampler joins measured sizes to this table by name.
+        Index("uq_deployment_database_db_name", "db_name", unique=True),
         # Partial: only rows awaiting a purge are of interest, and a deployment
         # that was never deleted must not sit in this index at all.
         Index(

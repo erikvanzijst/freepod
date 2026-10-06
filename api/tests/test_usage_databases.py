@@ -28,11 +28,8 @@ from app.services import relational_storage
 from app.services.usage import sampler
 from app.services.usage.databases import DatabaseSizeSource
 from app.services.usage.prometheus import PrometheusClient
-from app.services.usage.sampler import (
-    OpenCostSource,
-    last_recorded_window,
-    sample_once,
-)
+from app.services.usage.containers import OpenCostSource
+from app.services.usage.sampler import last_recorded_window, sample_once
 from tests.conftest import make_deployment_with_release
 from tests.test_usage_sampler import _client as opencost_client
 from tests.test_usage_sampler import tenants  # noqa: F401
@@ -296,10 +293,8 @@ def test_a_window_ending_after_deletion_is_not_recorded(
     name = relational_storage.database_name(deployment)
     source = FakePrometheus(sizes=lambda end: {name: GIB}).source()
 
-    rows = source.read(
-        db_session, datetime(2026, 10, 6, 13), window_seconds=HOUR, observed_at=NOW
-    )
-    assert bool(rows) is recorded
+    observed = source.read(db_session, datetime(2026, 10, 6, 13), window_seconds=HOUR)
+    assert bool(list(observed)) is recorded
 
 
 def test_catch_up_records_the_windows_before_deletion(db_session, seeded_catalog, settings):

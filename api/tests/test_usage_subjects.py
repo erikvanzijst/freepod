@@ -19,14 +19,25 @@ from app.models import (
 )
 from app.models.usage import SubjectKind
 from app.services.usage.opencost import Allocation
+from app.services.usage.containers import observations
 from app.services.usage.subjects import (
     UNRESOLVED,
     is_degraded,
-    resolve_subjects,
     subject_ref,
     upsert_subject,
+    upsert_subjects,
 )
 from tests.conftest import make_deployment_with_release
+
+
+def resolve_subjects(session, allocations, *, observed_at) -> dict[str, int]:
+    """Attribute and upsert allocations the way the sampler does; ids by reference."""
+    ids = upsert_subjects(
+        session,
+        (o.subject for o in observations(session, allocations)),
+        observed_at=observed_at,
+    )
+    return {ref: subject_id for (_, ref), subject_id in ids.items()}
 
 OBSERVED = datetime(2026, 9, 23, 11, 5)
 
