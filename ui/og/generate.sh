@@ -4,7 +4,7 @@
 # (public/<name>.png). Run after editing a template. With no arguments it
 # renders every template; otherwise only the named ones:
 #
-#     og/generate.sh og-image-dev
+#     og/generate.sh og-image-dev-v2
 #
 # Requires a Chrome/Chromium binary. Renders at exactly 1200x630 with a scale
 # factor of 1, which is the canonical Open Graph "summary_large_image" size.

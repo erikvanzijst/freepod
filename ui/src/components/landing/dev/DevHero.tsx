@@ -163,7 +163,7 @@ export function DevHero({ onSignup }: { onSignup: () => void }) {
               letterSpacing: '-0.025em',
             }}
           >
-            Your code, live
+            Agentic and artisanal
             <br />
             {' '}
             <Box
@@ -177,7 +177,7 @@ export function DevHero({ onSignup }: { onSignup: () => void }) {
                 pr: '0.06em',
               }}
             >
-              in one command.
+              developer hosting.
             </Box>
           </Typography>
         </Box>

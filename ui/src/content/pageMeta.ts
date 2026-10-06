@@ -37,12 +37,12 @@ export const PAGE_META: Record<'home' | 'dev', PageMeta> = {
   dev: {
     path: '/dev',
     file: 'dev.html',
-    title: 'Freepod for developers — Your code, live in one command.',
+    title: 'Freepod for developers — Agentic and artisanal hosting.',
     description:
       'Deploy your own apps to the European cloud with one command, by hand or with your coding agent. Any stack, with Postgres, object storage and sign-in built in.',
     summary:
       'Ship your own apps with one command, by hand or with your coding agent. Any stack, Postgres, object storage and sign-in included. Hosted in Europe.',
-    image: 'og-image-dev.png',
+    image: 'og-image-dev-v2.png',
   },
 }
 
