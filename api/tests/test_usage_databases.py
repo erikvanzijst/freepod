@@ -230,6 +230,28 @@ def test_a_database_absent_from_a_usable_window_records_nothing_not_zero(
     assert relational_storage.database_name(absent) not in refs
 
 
+def test_the_value_query_selects_no_databases_by_name(db_session, seeded_catalog, settings):
+    """Which databases are tenants' is answered by the records, not a name pattern."""
+    prometheus = FakePrometheus()
+    sample_once(db_session, None, now=NOW, settings=settings, sources=[prometheus.source()])
+    values = [q for q in prometheus.queries if q.startswith("avg_over_time(")]
+    assert values
+    assert all("datname" not in query for query in values)
+
+
+def test_the_servers_own_databases_are_not_recorded(db_session, seeded_catalog, settings):
+    deployment = _deployment_with_database(db_session)
+    name = relational_storage.database_name(deployment)
+    prometheus = FakePrometheus(
+        sizes=lambda end: {name: GIB, "postgres": GIB, "template0": GIB, "template1": GIB}
+    )
+
+    sample_once(db_session, None, now=NOW, settings=settings, sources=[prometheus.source()])
+
+    assert {ref for ref, _ in _samples(db_session, "db_byte_hours")} == {name}
+    assert {s.ref for s in db_session.exec(select(UsageSubjectORM)).all()} == {name}
+
+
 # attribution and deletion (3.4)
 
 

@@ -54,13 +54,20 @@ usage worker exists to avoid; and it would build the integration over time that
 
 For a window `[s, e)`, at evaluation time `e`:
 
-- **Values:** `avg_over_time(pg_database_size_bytes{namespace="<ns>", datname=~"dpl_.*"}[<window>s])`.
+- **Values:** `avg_over_time(pg_database_size_bytes{namespace="<ns>"}[<window>s])`.
   Byte-hours are the average multiplied by the window's length in hours. Prometheus's
   range is `(e − window, e]`, the same convention the OpenCost trust check already uses.
-- **Trust:** `count(count_over_time(pg_database_size_bytes{namespace="<ns>"}[<window>s]))`,
-  with no `datname` filter. Any series at all, including `postgres` and `template1`,
-  proves the exporter published during the window. An empty result makes the window
-  unusable.
+- **Trust:** `count(count_over_time(pg_database_size_bytes{namespace="<ns>"}[<window>s]))`.
+  Any series at all, including `postgres` and `template1`, proves the exporter published
+  during the window. An empty result makes the window unusable.
+
+Neither query selects databases by name. Which databases are tenants' is answered by the
+platform's records (D4), and a `datname` pattern would re-derive membership from the
+naming convention that `deployment_database` stores `db_name` precisely to avoid: a
+changed prefix would silently stop metering every existing database. A pattern would
+also need escaping for a PromQL string literal, which is not Python's `re.escape` (a
+prefix such as `dpl.` escaped that way is a 400 from Prometheus). The cost of not
+filtering is the server's own three databases per window, which D4 discards.
 
 The `namespace` filter is what keeps the other environment's exporter from vouching for
 this one (spec: *Another environment's measurements do not stand in*). It cannot come from
@@ -102,7 +109,8 @@ One subject per database: kind `database`, `ref` = `deployment_database.db_name`
 `upsert_subject` is reused unchanged.
 
 Per window, the source loads `deployment_database` joined to `deployment` once, keyed by
-`db_name`, and keeps only series whose `datname` is in it. That join gives attribution
+`db_name`, and keeps only series whose `datname` is in it. That join is the only thing
+that selects tenant databases (D2), and it gives attribution
 (spec: *Attribution comes from the platform's record of the database*) and, as a side
 effect, a second guarantee that only this environment's databases are recorded.
 
@@ -158,9 +166,9 @@ ConfigMap, set to `var.namespace`. When it is empty, the database source is disa
 says so once at startup. It must not run unscoped, because an unscoped trust check would
 accept the other environment's exporter (D2).
 
-The metric name `pg_database_size_bytes` and the `dpl_` prefix are constants in the source
-module, with a comment naming `tf/app/caelus/tenant-db.tf` and `relational_storage.NAME_PREFIX`
-as the other ends. The prefix is imported, not repeated.
+The metric name `pg_database_size_bytes` is a constant in the source module, with a
+comment naming `tf/app/caelus/tenant-db.tf` as its other end. The database naming prefix
+is not used at all (D2).
 
 ### D8: The UI is one label
 

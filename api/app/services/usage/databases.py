@@ -15,14 +15,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from decimal import Decimal
 import logging
-import re
 
 from sqlmodel import Session, select
 
 from app.config import CaelusSettings
 from app.models import DeploymentDatabaseORM, DeploymentORM
 from app.models.usage import SubjectKind
-from app.services.relational_storage import NAME_PREFIX
 from app.services.usage import subjects
 from app.services.usage.ledger import SampleRow
 from app.services.usage.prometheus import PrometheusClient, PrometheusException
@@ -77,14 +75,15 @@ class DatabaseSizeSource:
         )
 
     def average_sizes(self, window_start: datetime, window_seconds: int) -> dict[str, Decimal]:
-        """Each tenant database's average size over the window, in bytes, by name.
+        """Every database's average size over the window, in bytes, by name.
 
         A database measured for only part of the window is averaged over that part.
+        Not filtered by name: which databases are tenants' is the platform records'
+        answer (`_known_databases`), not a naming convention's.
         """
         end = window_start + timedelta(seconds=window_seconds)
         result = self.prometheus.query(
-            f'avg_over_time({SIZE_SERIES}{{namespace="{self.namespace}",'
-            f'datname=~"{re.escape(NAME_PREFIX)}.*"}}[{window_seconds}s])',
+            f'avg_over_time({SIZE_SERIES}{{namespace="{self.namespace}"}}[{window_seconds}s])',
             end,
         )
         return {

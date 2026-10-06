@@ -13,11 +13,11 @@
 
 - [x] 3.1 Add a Prometheus query helper for instant-vector queries at a given time (design D2), sharing transport and error handling with `OpenCostClient.allocation_series_cover`; verify with tests against a stubbed `httpx` client for a result, an empty result, a non-200 and an unreachable host
 - [x] 3.2 Implement the trust check: `count(count_over_time(pg_database_size_bytes{namespace=<ns>}[w]))` at the window end, unusable when empty; verify with tests that an empty result makes the window unusable, and that the query carries the configured namespace
-- [x] 3.3 Implement the value read: `avg_over_time(...{namespace=<ns>, datname=~"dpl_.*"}[w])` at the window end, converted to byte-hours as an exact decimal; verify with tests for a full window, a partly covered window, and a database present for only part of the window
+- [x] 3.3 Implement the value read: `avg_over_time(...{namespace=<ns>}[w])` at the window end, with no `datname` matcher (design D2), converted to byte-hours as an exact decimal; verify with tests for a full window, a partly covered window, a database present for only part of the window, and that the server's own databases in the result are not recorded
 - [x] 3.4 Attribute from `deployment_database` joined to `deployment` by `db_name`: skip names it does not know, skip databases whose deployment's `deleted_at` is earlier than the window's end (design D5), and upsert `database` subjects with the tenant cluster's namespace; verify with tests for an unknown database, a deployment deleted mid-window and one deleted after the window, a catch-up replay spanning the deletion, and attribution surviving the deployment's deletion
 - [x] 3.5 Emit `db_allowance_byte_hours` from the plan's `database_bytes`, skipping the row (not the window) when the plan declares none; verify with tests for a plan with an allowance and one without
 - [x] 3.6 Register the source in the worker only when `usage_tenant_db_namespace` is set, logging once when it is not; verify with worker tests for both cases
-- [x] 3.7 Import `relational_storage.NAME_PREFIX` for the `dpl_` prefix and keep `pg_database_size_bytes` as a single constant naming `tf/app/caelus/tenant-db.tf` as its other end; verify by reading the module
+- [x] 3.7 Keep `pg_database_size_bytes` as a single constant naming `tf/app/caelus/tenant-db.tf` as its other end, and select no databases by name prefix (design D2); verify by reading the module and with a test that the value query carries no `datname` matcher
 
 ## 4. Reporting and UI
 
