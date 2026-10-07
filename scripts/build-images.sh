@@ -238,9 +238,9 @@ if [[ "$TARGET" == "daemons" ]]; then
   echo "Pushed ${DAEMONS_REF}"
   echo ""
   echo "This does not reach the cluster on its own. Point the image variable of"
-  echo "each daemon that should run it (app_auth_image, ssh_resolver_image in"
-  echo "tf/app) at this version and apply; ./scripts/rollout.sh does not touch"
-  echo "it."
+  echo "each daemon that should run it (app_auth_image, ssh_resolver_image,"
+  echo "bucket_exporter_image in tf/app) at this version and apply;"
+  echo "./scripts/rollout.sh does not touch it."
   echo "=============================================="
   exit 0
 fi

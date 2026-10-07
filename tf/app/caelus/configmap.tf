@@ -66,6 +66,8 @@ resource "kubernetes_config_map" "api" {
     CAELUS_OPENCOST_BASE_URL         = var.opencost_base_url
     CAELUS_PROMETHEUS_BASE_URL       = var.prometheus_base_url
     CAELUS_USAGE_TENANT_DB_NAMESPACE = var.namespace
+    # Bucket sizes, published by the bucket size exporter beside Garage.
+    CAELUS_USAGE_BUCKET_NAMESPACE = var.garage_namespace
 
     CAELUS_LOKI_BASE_URL = var.loki_base_url
     # Below the shortest connection timeout in the path, which is not a

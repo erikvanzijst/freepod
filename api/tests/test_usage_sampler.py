@@ -20,6 +20,9 @@ from app.models import (
     UserORM,
 )
 from app.services.usage import sampler
+from app.services.usage.buckets import BucketSizeSource
+from app.services.usage.containers import OpenCostSource
+from app.services.usage.databases import DatabaseSizeSource
 from app.services.usage.opencost import OpenCostClient
 from app.services.usage.sampler import (
     align,
@@ -495,6 +498,11 @@ def test_a_replayed_window_is_left_unchanged(
     assert after == before
 
 
+# A metric each kind's writer records: the sampler's position is one of the first, and a
+# build records the second, as it does every container quantity but three.
+_SEED_METRIC = {"container": "network_receive_bytes", "build": "cpu_core_hours"}
+
+
 def _seed_sample(session, window_start: datetime, *, kind: str = "container") -> None:
     """One recorded sample, which is all the cursor reads."""
     from app.models import UsageMetricORM
@@ -503,7 +511,9 @@ def _seed_sample(session, window_start: datetime, *, kind: str = "container") ->
     session.add(subject)
     session.commit()
     session.refresh(subject)
-    metric = session.exec(select(UsageMetricORM)).first()
+    metric = session.exec(
+        select(UsageMetricORM).where(UsageMetricORM.name == _SEED_METRIC[kind])
+    ).one()
     session.add(
         UsageSampleORM(
             subject_id=subject.id,
@@ -515,3 +525,150 @@ def _seed_sample(session, window_start: datetime, *, kind: str = "container") ->
         )
     )
     session.commit()
+
+
+# position metrics
+
+
+def _sources_position_metrics() -> dict[str, frozenset[str]]:
+    return {
+        source.name: source.position_metrics
+        for source in (OpenCostSource, DatabaseSizeSource, BucketSizeSource)
+    }
+
+
+def _build_quantities() -> set[str]:
+    """Every quantity a build records, measured or estimated."""
+    from uuid import uuid4
+
+    from app.models import BuildORM
+    from app.services.build_constants import BUILD_STATUS_SUCCEEDED
+    from app.services.usage.builds import window_quantities
+
+    start, end = datetime(2026, 9, 25, 14, 10), datetime(2026, 9, 25, 14, 20)
+    estimated = dict(
+        artifact_id=uuid4().hex,
+        deployment_id=uuid4(),
+        status=BUILD_STATUS_SUCCEEDED,
+        job_id="build-x",
+        started_at=start,
+        finished_at=end,
+    )
+    measured = estimated | dict(
+        usage_cpu_seconds=10.0,
+        usage_memory_byte_seconds=60 * 2**29,
+        usage_memory_peak_bytes=2**30,
+        usage_started_at=start,
+        usage_finished_at=end,
+    )
+    return {
+        metric
+        for fields in (estimated, measured)
+        for window in window_quantities(BuildORM(**fields), window_seconds=HOUR)
+        for metric in window.quantities
+    }
+
+
+def test_position_metrics_are_exclusive_to_their_source():
+    """A metric two writers record would let one advance the other's position."""
+    sets = _sources_position_metrics()
+    names = sorted(sets)
+    for i, a in enumerate(names):
+        assert sets[a], f"{a} has no position metric"
+        for b in names[i + 1 :]:
+            assert not sets[a] & sets[b], f"{a} and {b} share position metrics"
+
+    builds = _build_quantities()
+    assert builds, "builds record nothing; the check below would be vacuous"
+    for name, metrics in sets.items():
+        assert not metrics & builds, f"builds record {name}'s {sorted(metrics & builds)}"
+
+
+def _seed_ledger(session, *, metrics: list[str], hours: range, subjects: int) -> None:
+    """Many samples cheaply: every subject, metric and hour."""
+    from sqlalchemy import text
+
+    session.execute(
+        text(
+            "INSERT INTO usage_subject (kind, ref, first_seen_at, last_seen_at) "
+            "SELECT 'container', 'seed-' || g, now(), now() "
+            "FROM generate_series(1, :n) g ON CONFLICT DO NOTHING"
+        ),
+        {"n": subjects},
+    )
+    session.execute(
+        text(
+            "INSERT INTO usage_sample "
+            "(subject_id, metric_id, window_start, interval_seconds, observed_at, value) "
+            "SELECT s.id, m.id, CAST(:base AS timestamp) + h * interval '1 hour', 3600, now(), 1 "
+            "FROM usage_subject s, usage_metric m, generate_series(CAST(:first AS int), CAST(:last AS int)) h "
+            "WHERE s.ref LIKE 'seed-%' AND m.name = ANY(:metrics)"
+        ),
+        {"base": datetime(2026, 9, 1), "first": hours.start, "last": hours.stop - 1, "metrics": metrics},
+    )
+    session.execute(text("ANALYZE usage_sample"))
+    session.commit()
+
+
+def _rows_read(session, metric: str) -> tuple[set[str], int]:
+    """The indexes the position lookup used, and the sample rows it read."""
+    import json as _json
+
+    from sqlalchemy import text
+    from sqlalchemy.dialects import postgresql
+
+    from app.models import UsageMetricORM
+
+    metric_id = session.exec(
+        select(UsageMetricORM.id).where(UsageMetricORM.name == metric)
+    ).one()
+    sql = sampler.position_of(metric_id).compile(
+        dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+    )
+    (plan,) = session.execute(text(f"EXPLAIN (ANALYZE, FORMAT JSON) {sql}")).scalar_one()
+    if isinstance(plan, str):
+        plan = _json.loads(plan)[0]
+
+    indexes: set[str] = set()
+    read = 0
+
+    def walk(node: dict) -> None:
+        nonlocal read
+        if node.get("Relation Name") == "usage_sample":
+            indexes.add(node.get("Index Name", node["Node Type"]))
+            read += node["Actual Rows"] + node.get("Rows Removed by Filter", 0)
+        for child in node.get("Plans", []):
+            walk(child)
+
+    walk(plan["Plan"])
+    return indexes, read
+
+
+def test_a_source_with_no_samples_reads_none_of_the_others(db_session, seeded_catalog):
+    """The ledger holds other sources' samples only; finding nothing reads nothing."""
+    _seed_ledger(
+        db_session,
+        metrics=["cpu_core_hours", "ram_byte_hours", "network_receive_bytes"],
+        hours=range(0, 48),
+        subjects=200,
+    )
+
+    for metric in DatabaseSizeSource.position_metrics:
+        indexes, read = _rows_read(db_session, metric)
+        assert indexes == {"ix_usage_sample_metric_window"}
+        assert read == 0
+
+
+def test_a_lagging_source_reads_one_row_however_far_behind(db_session, seeded_catalog):
+    """Containers stopped at hour 9 while builds' and databases' samples carried on:
+    the position is still one index descent, not a walk back through the newer rows."""
+    _seed_ledger(db_session, metrics=sorted(OpenCostSource.position_metrics), hours=range(0, 10), subjects=200)
+    _seed_ledger(
+        db_session, metrics=["cpu_core_hours", "db_byte_hours"], hours=range(0, 200), subjects=200
+    )
+
+    assert last_recorded_window(db_session) == datetime(2026, 9, 1, 9)
+    for metric in OpenCostSource.position_metrics:
+        indexes, read = _rows_read(db_session, metric)
+        assert indexes == {"ix_usage_sample_metric_window"}
+        assert read == 1

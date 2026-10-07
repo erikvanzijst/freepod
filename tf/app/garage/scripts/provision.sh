@@ -36,6 +36,8 @@ set -eu
 : "${HEALTH_TIMEOUT_SECONDS:?}"
 : "${API_TOKEN_NAME:?}"
 : "${API_TOKEN_SECRET_KEY:?}"
+: "${EXPORTER_TOKEN_NAME:?}"
+: "${EXPORTER_TOKEN_SECRET_KEY:?}"
 
 log() { echo "[provision] $*" >&2; }
 
@@ -83,7 +85,7 @@ log "Garage is healthy; cluster layout is committed."
 # those operations and NEVER EXPIRES.
 #
 # That makes it the opposite animal from the short-lived, self-revoking token
-# minted in 2b for this script's own work. Two tokens, two lifetimes, one
+# minted in 2c for this script's own work. Two tokens, two lifetimes, one
 # script — deliberately. Do not "harmonize" them: giving the API an expiring
 # credential would break every deployment reconcile an hour later.
 #
@@ -127,40 +129,60 @@ api() { # api <METHOD> <PATH> [JSON_BODY]
   cat /tmp/api.out
 }
 
-# Absent Secret, absent key, or a malformed value all collapse to "empty", which
-# is the re-mint path. `|| true` because a missing Secret is the first-run case,
-# not an error.
-api_admin_token=$(kubectl get secret "$KEYS_SECRET_NAME" --namespace "$NAMESPACE" \
-  -o "jsonpath={.data.${API_TOKEN_SECRET_KEY}}" 2>/dev/null | base64 -d 2>/dev/null || true)
+# ensure_admin_token <name> <secret key> <scope JSON array>
+#
+# Prints the token's secret, reusing the one in the Secret when Garage still
+# holds that token, otherwise replacing it. Absent Secret, absent key, or a
+# malformed value all collapse to "empty", which is the re-mint path. `|| true`
+# because a missing Secret is the first-run case, not an error.
+ensure_admin_token() {
+  _name="$1"
+  _secret_key="$2"
+  _scope="$3"
+  _held=$(kubectl get secret "$KEYS_SECRET_NAME" --namespace "$NAMESPACE" \
+    -o "jsonpath={.data.${_secret_key}}" 2>/dev/null | base64 -d 2>/dev/null || true)
 
-existing_api_token_id=$(api GET /v2/ListAdminTokens |
-  jq -r --arg n "$API_TOKEN_NAME" 'map(select(.name == $n)) | .[0].id // empty')
+  _existing_id=$(api GET /v2/ListAdminTokens |
+    jq -r --arg n "$_name" 'map(select(.name == $n)) | .[0].id // empty')
 
-if [ -n "$api_admin_token" ] && [ -n "$existing_api_token_id" ]; then
-  log "Caelus API admin token '${API_TOKEN_NAME}' already provisioned (${existing_api_token_id})"
-else
-  if [ -n "$existing_api_token_id" ]; then
-    log "admin token '${API_TOKEN_NAME}' exists (${existing_api_token_id}) but its secret is not"
-    log "recoverable and is not in ${NAMESPACE}/${KEYS_SECRET_NAME}; replacing it."
-    api POST "/v2/DeleteAdminToken?id=${existing_api_token_id}" >/dev/null
+  if [ -n "$_held" ] && [ -n "$_existing_id" ]; then
+    log "admin token '${_name}' already provisioned (${_existing_id})"
+    echo "$_held"
+    return 0
   fi
-  # The scope is exactly what deployment provisioning calls and nothing more.
-  # `CreateAdminToken`/`UpdateAdminToken` are absent on purpose: Garage
-  # documents either as trivially equivalent to a scope of `*`.
-  api_token_response=$(api POST /v2/CreateAdminToken "$(
-    cat <<EOF
-{"name":"${API_TOKEN_NAME}",
- "neverExpires":true,
- "scope":["ListBuckets","CreateBucket","GetBucketInfo","UpdateBucket",
-          "ListKeys","CreateKey","GetKeyInfo","DeleteKey","AllowBucketKey"]}
-EOF
-  )")
-  api_admin_token=$(echo "$api_token_response" | jq -r '.secretToken')
-  log "minted Caelus API admin token '${API_TOKEN_NAME}' ($(echo "$api_token_response" | jq -r '.id'))"
-fi
+  if [ -n "$_existing_id" ]; then
+    log "admin token '${_name}' exists (${_existing_id}) but its secret is not"
+    log "recoverable and is not in ${NAMESPACE}/${KEYS_SECRET_NAME}; replacing it."
+    api POST "/v2/DeleteAdminToken?id=${_existing_id}" >/dev/null || return 1
+  fi
+  # Explicit returns: this runs in a command substitution, where errexit is not
+  # reliably inherited.
+  _response=$(api POST /v2/CreateAdminToken \
+    "{\"name\":\"${_name}\",\"neverExpires\":true,\"scope\":${_scope}}") || return 1
+  _secret=$(echo "$_response" | jq -re '.secretToken') || return 1
+  log "minted admin token '${_name}' ($(echo "$_response" | jq -r '.id'))"
+  echo "$_secret"
+}
+
+# The scope is exactly what deployment provisioning calls and nothing more.
+# `CreateAdminToken`/`UpdateAdminToken` are absent on purpose: Garage
+# documents either as trivially equivalent to a scope of `*`.
+api_admin_token=$(ensure_admin_token "$API_TOKEN_NAME" "$API_TOKEN_SECRET_KEY" \
+  '["ListBuckets","CreateBucket","GetBucketInfo","UpdateBucket","ListKeys","CreateKey","GetKeyInfo","DeleteKey","AllowBucketKey"]')
 
 # --------------------------------------------------------------------------
-# 2b. Mint a scoped, expiring admin token and do the real work with that.
+# 2b. Ensure the bucket size exporter's admin token exists.
+#
+# Same lifetime and same keep-or-replace rule as 2a, but its own token, so
+# either can be revoked or rotated without the other. It reads sizes and
+# nothing else: GetBucketInfo can show neither a key's secret nor anything
+# writable. The exporter's Deployment reads it from the Secret written in step 4.
+# --------------------------------------------------------------------------
+exporter_admin_token=$(ensure_admin_token "$EXPORTER_TOKEN_NAME" "$EXPORTER_TOKEN_SECRET_KEY" \
+  '["ListBuckets","GetBucketInfo"]')
+
+# --------------------------------------------------------------------------
+# 2c. Mint a scoped, expiring admin token and do the real work with that.
 #
 # Required by the garage-bucket-provisioning spec: the working credential is
 # limited to the seven endpoints below and expires on its own. Honest caveat —
@@ -282,6 +304,7 @@ set -- "$@" \
 # The API's admin token rides in the same Secret as the S3 credentials: same
 # store of record, same handoff to tf/app, and step 2a reads it back from here.
 set -- "$@" --from-literal="${API_TOKEN_SECRET_KEY}=${api_admin_token}"
+set -- "$@" --from-literal="${EXPORTER_TOKEN_SECRET_KEY}=${exporter_admin_token}"
 
 # --------------------------------------------------------------------------
 # 4. Publish the credentials as a Secret in this namespace.

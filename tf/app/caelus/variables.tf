@@ -166,6 +166,11 @@ variable "prometheus_base_url" {
   type        = string
 }
 
+variable "garage_namespace" {
+  description = "This environment's Garage namespace, where the bucket size exporter the usage sampler reads from runs."
+  type        = string
+}
+
 variable "loki_base_url" {
   description = "In-cluster Loki query API URL. Never routed by an Ingress: Loki runs auth_enabled=false over a single tenancy holding every tenant's logs and the platform's own, so only the API may reach it."
   type        = string

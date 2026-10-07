@@ -114,18 +114,24 @@ unused share flowing over. Alternating gives the same guarantee with nothing to 
 
 ```
 sum by (bucket) (count_over_time(
-  {namespace="<garage ns>"} |= "(key GK" |~ `\) (PUT|POST|DELETE) /`
-  | regexp `\) (?:PUT|POST|DELETE) /(?P<bucket>[^/?]+)`
+  {namespace="<garage ns>", container="garage"} |~ ` (PUT|POST|DELETE) /`
+  | regexp `[\])0-9] (?:PUT|POST|DELETE) /(?P<bucket>[^/?\s]+)`
+  | bucket != "" | bucket != "v2"
   [<to − from>s]))
 ```
 
 - It's an instant query evaluated at `to`, returning one series per bucket written to in
   the range. The count is a side effect: LogQL has no "exists" for log lines, and a
   plain log query would return every matching line instead.
-- The line filters run before the regular expression, so it only extracts from write
-  lines. That also keeps unmatched lines out of the result, which would otherwise form
-  one series with an empty `bucket`. On prod over 24 h this ran in 44 ms, against
-  74 ms without the second filter.
+- The line filter runs before the regular expression, so it only extracts from write
+  lines, and the `bucket != ""` filter keeps unmatched lines out of the result, which
+  would otherwise form one series with an empty `bucket`.
+- No `(key GK…)` filter: browser form uploads (`PostObject`) authenticate in the body
+  and are logged without a key, e.g. `<ip> (via <proxy>) POST /artifacts`. The method
+  is matched after any source form instead. Admin API requests share the log and are
+  addressed to `/v2/…`; `v2` is too short to be a bucket name, so it is dropped.
+- `container="garage"` keeps the namespace's other pods (the provisioning Job, the
+  exporter itself) out of the stream.
 - `from` is the cursor and `to` is `now − lag`, with a lag of 1 min for ingestion delay.
   The cursor advances to `to` only on success, so a Loki outage is re-read later,
   within Loki's 14 days. After a long outage the range is capped, for example at 1 h
@@ -159,6 +165,13 @@ broken. A decrease in the sum is a Garage restart, and is skipped. Then:
 The check is deliberately only "some versus none". Counters and log lines don't line
 up exactly at interval edges.
 
+The counter is read at each refresh, but the log only up to `now − lag`, so a write in
+the final lag of an interval is counted before the log shows it. The check therefore
+judges the latest interval between two counter readings that the log has been read past
+(the previous one, given `refresh_interval ≥ lag`), against the log windows that overlap
+it. An interval with no counted writes, a restart, or one the stored windows don't
+cover keeps the last verdict; Loki failing sets the signal to 0 until it answers.
+
 Prometheus doesn't scrape Garage today, and this doesn't need it to.
 
 ### D5: What the exporter publishes
@@ -182,7 +195,9 @@ Prometheus doesn't scrape Garage today, and this doesn't need it to.
   unusable, and the sampler can never get past a window that was never measured.
 - **Restart:** the exporter queries
   `last_over_time(caelus_bucket_bytes{namespace=…}[10d])` from Prometheus at startup
-  and seeds those aliases with `read_at = 0`.
+  and seeds those aliases with `read_at = 0`. Each past pod published under its own
+  `instance`, so a bucket can have several series; the one kept is from the pod whose
+  `last_success_timestamp_seconds` is latest.
 
 ### D6: The usage source
 
@@ -191,8 +206,12 @@ Prometheus doesn't scrape Garage today, and this doesn't need it to.
 
 - **Liveness:**
   `count(count_over_time(caelus_bucket_exporter_buckets{namespace="<ns>"}[<w>s]))`.
-- **Values:** `avg_over_time(caelus_bucket_bytes{namespace="<ns>"}[<w>s])`. Series
-  averaging 0 are dropped, along with names that don't parse as `dep-<uuid>`.
+- **Values:** each bucket's average over all its samples in the window,
+  `sum by (bucket) (sum_over_time(caelus_bucket_bytes{namespace="<ns>"}[<w>s]))`
+  divided by the same `count_over_time`. Not a plain `avg_over_time`: each scrape
+  carries the exporter pod's `instance`, so a restart mid-window splits a bucket into
+  two series. Buckets averaging 0 are dropped, along with names that don't parse as
+  `dep-<uuid>`.
 - **Confirmation:** one statement per chunk of 1000.
 
   ```sql
@@ -258,7 +277,10 @@ column to every row of the largest table.
 One migration:
 - adds the catalog row `object_storage_byte_hours` (storage, byte_hours, delta, usage);
 - adds its rate, `0.0000274` per 2³⁰ from 2026-10-07;
-- creates the index concurrently.
+- creates the index, inside the migration's transaction. `CONCURRENTLY` would need
+  an autocommit block, which commits the transaction that holds the runner's advisory
+  lock (`alembic/env.py`). A plain build of prod's 505k rows takes well under a second,
+  blocking only the usage worker's inserts meanwhile.
 
 The rate is €0.02 / 730 h = €0.0000273973/GiB-h, rounded to €0.0000274: €0.020002 per
 GiB-month. It's market-based, like the database rate (`meter-relational-storage` D6):
@@ -316,7 +338,7 @@ key in the existing keys Secret, which the exporter's Deployment reads by
 Prerequisite: `daemons-image` is applied and `daemons` is published.
 
 1. Merge, with `daemons/VERSION` bumped. CI publishes the new `daemons` version.
-2. Migration: catalog row, rate, index (concurrently). Purely additive. The new position
+2. Migration: catalog row, rate, index. Purely additive. The new position
    lookup ships in the same image as the index.
 3. `terraform apply` on dev:
    - provisioning mints the exporter token;

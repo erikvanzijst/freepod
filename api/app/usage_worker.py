@@ -44,6 +44,8 @@ def run_usage_worker(
         logger.info(
             "Tenant database sizes are not recorded: CAELUS_USAGE_TENANT_DB_NAMESPACE is unset"
         )
+    if not settings.usage_bucket_namespace:
+        logger.info("Bucket sizes are not recorded: CAELUS_USAGE_BUCKET_NAMESPACE is unset")
     shutdown = False
 
     def _handle_signal(signum: int, frame: object) -> None:

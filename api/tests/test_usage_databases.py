@@ -35,6 +35,8 @@ from tests.test_usage_sampler import _client as opencost_client
 from tests.test_usage_sampler import tenants  # noqa: F401
 from tests.usage_fixtures import seeded_catalog  # noqa: F401
 
+DATABASE_POSITION = DatabaseSizeSource.position_metrics
+
 HOUR = 3600
 GIB = 2**30
 NAMESPACE = "caelus-dev"
@@ -163,7 +165,7 @@ def test_a_window_the_exporter_did_not_cover_records_nothing_and_moves_nothing(
 
     assert run.windows_recorded == 0 and run.windows_skipped == 1
     assert not db_session.exec(select(UsageSampleORM)).all()
-    assert last_recorded_window(db_session, "database") is None
+    assert last_recorded_window(db_session, DATABASE_POSITION) is None
 
 
 def test_both_queries_are_scoped_to_the_configured_namespace(db_session, seeded_catalog, settings):
@@ -355,11 +357,17 @@ def test_a_plan_without_an_allowance_still_records_the_size(db_session, seeded_c
 # per-source positions (2.1)
 
 
+# A metric each kind's writer records, and only it.
+_SEED_METRIC = {"container": "network_receive_bytes", "database": "db_byte_hours"}
+
+
 def _seed(session, kind: str, window_start: datetime) -> None:
     subject = UsageSubjectORM(kind=kind, ref=f"{kind}-{uuid4().hex}", namespace="ns")
     session.add(subject)
     session.commit()
-    metric = session.exec(select(UsageMetricORM)).first()
+    metric = session.exec(
+        select(UsageMetricORM).where(UsageMetricORM.name == _SEED_METRIC[kind])
+    ).one()
     session.add(
         UsageSampleORM(
             subject_id=subject.id,
@@ -379,7 +387,6 @@ def test_a_newer_database_sample_does_not_advance_the_container_position(
     _seed(db_session, "container", datetime(2026, 10, 6, 12))
     _seed(db_session, "database", datetime(2026, 10, 6, 15))
     assert last_recorded_window(db_session) == datetime(2026, 10, 6, 12)
-    assert last_recorded_window(db_session, "container") == datetime(2026, 10, 6, 12)
 
 
 def test_a_newer_container_sample_does_not_advance_the_database_position(
@@ -387,7 +394,7 @@ def test_a_newer_container_sample_does_not_advance_the_database_position(
 ):
     _seed(db_session, "container", datetime(2026, 10, 6, 15))
     _seed(db_session, "database", datetime(2026, 10, 6, 12))
-    assert last_recorded_window(db_session, "database") == datetime(2026, 10, 6, 12)
+    assert last_recorded_window(db_session, DATABASE_POSITION) == datetime(2026, 10, 6, 12)
 
 
 # independent sources (2.3)
@@ -409,7 +416,7 @@ def test_an_unusable_database_window_leaves_containers_recorded(
         sources=[prometheus.source(), _opencost(settings)],
     )
     assert last_recorded_window(db_session) == datetime(2026, 10, 6, 13)
-    assert last_recorded_window(db_session, "database") is None
+    assert last_recorded_window(db_session, DATABASE_POSITION) is None
     assert run.windows_skipped == 1
 
 
@@ -424,7 +431,7 @@ def test_an_opencost_outage_leaves_databases_recorded(db_session, seeded_catalog
     )
 
     assert last_recorded_window(db_session) is None
-    assert last_recorded_window(db_session, "database") == datetime(2026, 10, 6, 13)
+    assert last_recorded_window(db_session, DATABASE_POSITION) == datetime(2026, 10, 6, 13)
 
 
 def test_a_raising_source_does_not_stop_the_other(
@@ -432,7 +439,7 @@ def test_a_raising_source_does_not_stop_the_other(
 ):
     class Broken:
         name = "broken"
-        subject_kind = "database"
+        position_metrics = DATABASE_POSITION
 
         def read(self, *args, **kwargs):
             raise RuntimeError("bug")

@@ -22,4 +22,4 @@ Deployments made with the `freepod` command-line client are billed by usage. See
 
 ## Usage
 
-**Settings → Usage** shows the CPU and memory your apps and deployments used, and its cost, per app or per resource. Usage is measured hourly; amounts exclude VAT.
+**Settings → Usage** shows the CPU, memory, databases and object storage your apps and deployments used, and its cost, per app or per resource. Usage is measured hourly; amounts exclude VAT.

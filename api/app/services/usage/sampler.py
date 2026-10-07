@@ -2,8 +2,8 @@
 
 Each measurement source is walked on its own: its own resume position, its own first
 unusable window, its own failures. Containers from OpenCost (`containers`) are one
-source; tenant database sizes (`databases`) are another. A source yields observations;
-`ledger` writes them, a chunk at a time.
+source; tenant database sizes (`databases`) and bucket sizes (`buckets`) are others. A
+source yields observations; `ledger` writes them, a chunk at a time.
 """
 
 from __future__ import annotations
@@ -14,12 +14,14 @@ from datetime import datetime, timedelta
 import logging
 from typing import Protocol
 
+from sqlalchemy import Select
 from sqlmodel import Session, select
 
 from app.config import CaelusSettings, get_settings
-from app.models import UsageSampleORM, UsageSubjectORM
-from app.models.usage import SubjectKind
+from app.models import UsageMetricORM, UsageSampleORM
 from app.services.usage import ledger
+from app.services.usage.buckets import BucketSizeSource
+from app.services.usage.containers import POSITION_METRICS as CONTAINER_POSITION_METRICS
 from app.services.usage.containers import OpenCostSource
 from app.services.usage.databases import DatabaseSizeSource
 from app.services.usage.ledger import Observation
@@ -43,8 +45,9 @@ class Source(Protocol):
     """One measurement source: what it records against, and how it reads a window."""
 
     name: str
-    # Scopes the source's resume position to the subjects it records.
-    subject_kind: SubjectKind
+    # The metrics only this source records, which its resume position is derived from.
+    # Disjoint from every other source's and from what builds record.
+    position_metrics: frozenset[str]
 
     def read(
         self, session: Session, window_start: datetime, *, window_seconds: int
@@ -65,21 +68,37 @@ def align(moment: datetime, window_seconds: int) -> datetime:
 
 
 def last_recorded_window(
-    session: Session, kind: SubjectKind = SubjectKind.CONTAINER
+    session: Session, metrics: Iterable[str] = CONTAINER_POSITION_METRICS
 ) -> datetime | None:
-    """The newest window recorded for subjects of `kind`, or None when there is none.
+    """The newest window recorded for any of `metrics`, or None when there is none.
 
-    Scoped to one kind because other writers -- the build worker, and this sampler's
-    other sources -- record closed windows of their own, possibly ahead of a stalled
-    source, and counting those would skip the windows in between for good.
+    Scoped to metrics one source alone records, because other writers -- the build
+    worker, and this sampler's other sources -- record closed windows of their own,
+    possibly ahead of a stalled source, and counting those would skip the windows in
+    between for good. One backward scan of `ix_usage_sample_metric_window` per metric,
+    whatever else the ledger holds.
     """
-    return session.exec(
+    metric_ids = session.exec(
+        select(UsageMetricORM.id).where(UsageMetricORM.name.in_(sorted(metrics)))
+    ).all()
+    positions = [session.exec(position_of(metric_id)).first() for metric_id in metric_ids]
+    return max((p for p in positions if p is not None), default=None)
+
+
+def position_of(metric_id: int) -> Select:
+    """The newest window recorded for one metric.
+
+    Phrased so only `ix_usage_sample_metric_window` can answer it without a sort. With
+    `max()` and `metric_id = :m`, the planner may instead walk `ix_usage_sample_window`
+    backwards, filtering, when the metric is common; that reads every newer sample of
+    the other sources when this one lags. The range keeps `metric_id` in the ordering.
+    """
+    return (
         select(UsageSampleORM.window_start)
-        .join(UsageSubjectORM, UsageSubjectORM.id == UsageSampleORM.subject_id)
-        .where(UsageSubjectORM.kind == kind)
-        .order_by(UsageSampleORM.window_start.desc())
+        .where(UsageSampleORM.metric_id >= metric_id, UsageSampleORM.metric_id <= metric_id)
+        .order_by(UsageSampleORM.metric_id.desc(), UsageSampleORM.window_start.desc())
         .limit(1)
-    ).first()
+    )
 
 
 def resume_from(
@@ -88,10 +107,10 @@ def resume_from(
     now: datetime,
     window_seconds: int,
     lookback_seconds: int,
-    kind: SubjectKind = SubjectKind.CONTAINER,
+    metrics: Iterable[str] = CONTAINER_POSITION_METRICS,
 ) -> datetime:
     """One window past what is recorded; a bounded lookback when nothing is."""
-    recorded = last_recorded_window(session, kind)
+    recorded = last_recorded_window(session, metrics)
     if recorded is not None:
         return align(recorded, window_seconds) + timedelta(seconds=window_seconds)
     return align(now - timedelta(seconds=lookback_seconds), window_seconds)
@@ -115,7 +134,7 @@ def pending_windows(
     settle_seconds: int,
     lookback_seconds: int,
     max_windows: int,
-    kind: SubjectKind = SubjectKind.CONTAINER,
+    metrics: Iterable[str] = CONTAINER_POSITION_METRICS,
 ) -> list[datetime]:
     """The window starts to attempt this pass, oldest first and bounded.
 
@@ -126,7 +145,7 @@ def pending_windows(
         now=now,
         window_seconds=window_seconds,
         lookback_seconds=lookback_seconds,
-        kind=kind,
+        metrics=metrics,
     )
     end = recordable_until(
         now=now, window_seconds=window_seconds, settle_seconds=settle_seconds
@@ -191,7 +210,7 @@ def record_window(
 def default_sources(
     client: OpenCostClient, settings: CaelusSettings
 ) -> list[Source]:
-    """OpenCost always; tenant database sizes when their namespace is configured."""
+    """OpenCost always; database and bucket sizes when their namespaces are configured."""
     sources: list[Source] = [
         OpenCostSource(
             client,
@@ -201,6 +220,8 @@ def default_sources(
     ]
     if settings.usage_tenant_db_namespace:
         sources.append(DatabaseSizeSource.from_settings(settings))
+    if settings.usage_bucket_namespace:
+        sources.append(BucketSizeSource.from_settings(settings))
     return sources
 
 
@@ -225,7 +246,7 @@ def _sample_source(
         settle_seconds=settings.usage_settle_seconds,
         lookback_seconds=settings.usage_first_run_lookback_seconds,
         max_windows=settings.usage_max_windows_per_pass,
-        kind=source.subject_kind,
+        metrics=source.position_metrics,
     )
     for window_start in windows:
         written = record_source_window(

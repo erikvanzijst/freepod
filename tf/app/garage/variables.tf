@@ -63,3 +63,26 @@ variable "object_expiry_days" {
   type        = number
   default     = 2
 }
+
+# --- Bucket size exporter --------------------------------------------------
+
+variable "bucket_exporter_image" {
+  description = "Daemons image (daemons/) that the bucket size exporter runs from, pinned to an immutable version."
+  type        = string
+}
+
+variable "bucket_exporter_read_rate" {
+  description = "Bucket size reads per second. Each costs Garage about 45 ms of CPU, so this alone sets the exporter's load; see daemons/bucket-exporter/config.go for refresh times by rate."
+  type        = number
+  default     = 0.2
+}
+
+variable "prometheus_base_url" {
+  description = "In-cluster Prometheus URL, from which the exporter recovers the last published sizes when it starts."
+  type        = string
+}
+
+variable "loki_base_url" {
+  description = "In-cluster Loki query API URL, for Garage's request log."
+  type        = string
+}

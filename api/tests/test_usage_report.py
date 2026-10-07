@@ -517,3 +517,54 @@ def test_database_storage_before_its_rate_is_not_billable(db_session, ledger_dat
     report = _query(db_session, user, group_by=BOTH)
 
     assert "db_byte_hours" not in {r["metric"] for r in _as_dicts(report)}
+
+
+# object storage
+
+
+def test_object_storage_is_reported_under_its_deployment_at_its_rate(db_session, ledger_data):
+    """1 GiB held for 730 hours from the rate's start costs EUR 0.020002."""
+    user, _, db = ledger_data
+    add_rate(
+        db_session,
+        "object_storage_byte_hours",
+        datetime(2026, 10, 7),
+        Decimal("0.0000274"),
+        GIB,
+    )
+    subject = UsageSubjectORM(
+        kind="bucket", ref=f"dep-{db.id}", namespace="caelus-garage", deployment_id=db.id
+    )
+    db_session.add(subject)
+    db_session.flush()
+    start = datetime(2026, 10, 7)
+    ledger.record_samples(
+        db_session,
+        [
+            SampleRow(
+                subject_id=subject.id,
+                metric="object_storage_byte_hours",
+                window_start=start + timedelta(hours=hour),
+                interval_seconds=3600,
+                value=GIB,
+            )
+            for hour in range(730)
+        ],
+        observed_at=_utcnow(),
+    )
+    db_session.commit()
+
+    report = _query(
+        db_session,
+        user,
+        start=start,
+        end=start + timedelta(hours=730),
+        bucket=UsageBucket.MONTH,
+        group_by={UsageDimension.DEPLOYMENT, UsageDimension.METRIC, UsageDimension.PRODUCT},
+    )
+
+    rows = _as_dicts(report)
+    assert {r["metric"] for r in rows} == {"object_storage_byte_hours"}
+    assert {r["deployment_name"] for r in rows} == {"db"}
+    assert sum(Decimal(r["value"]) for r in rows) == 730 * GIB
+    assert sum(Decimal(r["cost"]) for r in rows) == Decimal("0.020002")
