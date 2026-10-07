@@ -21,6 +21,7 @@ jobs:
     env:
       CAELUS_SND_DEVICE: /dev/null
       CAELUS_AUDIO_GROUP: root
+      COMPOSE_BAKE: "false"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5

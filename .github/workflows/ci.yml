@@ -120,6 +120,7 @@ jobs:
     env:
       CAELUS_SND_DEVICE: /dev/null
       CAELUS_AUDIO_GROUP: root
+      COMPOSE_BAKE: "false"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -141,6 +142,7 @@ jobs:
     env:
       CAELUS_SND_DEVICE: /dev/null
       CAELUS_AUDIO_GROUP: root
+      COMPOSE_BAKE: "false"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -214,6 +216,9 @@ jobs:
     env:
       CAELUS_SND_DEVICE: /dev/null
       CAELUS_AUDIO_GROUP: root
+      # Compose's bake builder refuses to read the Dockerfile devcontainers/ci
+      # generates outside the build context (docker/compose#14285).
+      COMPOSE_BAKE: "false"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -236,6 +241,7 @@ jobs:
     env:
       CAELUS_SND_DEVICE: /dev/null
       CAELUS_AUDIO_GROUP: root
+      COMPOSE_BAKE: "false"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
