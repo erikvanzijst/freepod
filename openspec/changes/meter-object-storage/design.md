@@ -114,14 +114,22 @@ unused share flowing over. Alternating gives the same guarantee with nothing to 
 
 ```
 sum by (bucket) (count_over_time(
-  {namespace="<garage ns>"} |= "(key GK"
-  | regexp `\) (?P<method>PUT|POST|DELETE) /(?P<bucket>[^/?]+)`
-  [<from, to)]))
+  {namespace="<garage ns>"} |= "(key GK" |~ `\) (PUT|POST|DELETE) /`
+  | regexp `\) (?:PUT|POST|DELETE) /(?P<bucket>[^/?]+)`
+  [<to − from>s]))
 ```
 
-- It's evaluated over `[cursor, now − lag)`, with a lag of 1 min for ingestion delay.
-  The cursor advances only on success, so a Loki outage is re-read later, within
-  Loki's 14 days.
+- It's an instant query evaluated at `to`, returning one series per bucket written to in
+  the range. The count is a side effect: LogQL has no "exists" for log lines, and a
+  plain log query would return every matching line instead.
+- The line filters run before the regular expression, so it only extracts from write
+  lines. That also keeps unmatched lines out of the result, which would otherwise form
+  one series with an empty `bucket`. On prod over 24 h this ran in 44 ms, against
+  74 ms without the second filter.
+- `from` is the cursor and `to` is `now − lag`, with a lag of 1 min for ingestion delay.
+  The cursor advances to `to` only on success, so a Loki outage is re-read later,
+  within Loki's 14 days. After a long outage the range is capped, for example at 1 h
+  per query, and catches up over several refreshes.
 - A `bucket` that isn't a known alias is looked up as a Garage id, then ignored.
 - Anyone can send a request naming any bucket. By D2's construction that only reorders
   reads.
