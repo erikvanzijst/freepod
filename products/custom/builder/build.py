@@ -55,7 +55,7 @@ DOCKERFILE_NAME = "Dockerfile"
 # image-resolution path — so the tenant must not get to choose it.
 DOCKERFILE_FRONTEND_REPO = "docker/dockerfile"
 DOCKERFILE_FRONTEND_DIGEST = (
-    "sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32"
+    "sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e"
 )
 
 # The port the platform assigns, mirroring `containerPort` in
