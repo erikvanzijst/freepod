@@ -14,7 +14,7 @@ import (
 // exact file: a test that asserted grants it had written itself would prove
 // nothing about what the cluster does.
 const (
-	roleBootstrap = "../tf/app/caelus/ssh-resolver-bootstrap.sql"
+	roleBootstrap = "../../tf/app/caelus/ssh-resolver-bootstrap.sql"
 	roleName      = "caelus_ssh_resolver"
 	rolePassword  = "resolver-test-password"
 )

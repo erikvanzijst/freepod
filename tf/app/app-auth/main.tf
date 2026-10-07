@@ -4,7 +4,7 @@
 #          every auth-enabled custom deployment (chart: app-auth middleware);
 #   :8081  the broker, the only listener exposed, on login.<domain>.
 #
-# See app-auth/README.md and the app-authentication design doc.
+# See daemons/app-auth/README.md and the app-authentication design doc.
 
 locals {
   labels = { app = "app-auth" }
@@ -65,8 +65,9 @@ resource "kubernetes_deployment" "app_auth" {
         }
 
         container {
-          name  = "app-auth"
-          image = var.image
+          name    = "app-auth"
+          image   = var.image
+          command = ["/app-auth"]
 
           port {
             name           = "verify"

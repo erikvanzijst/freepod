@@ -24,10 +24,10 @@ session is rooted at, it presents this same Service to the edge.
 
 The name follows the platform's single naming convention, `<release>-ssh`,
 which the SSH edge uses to derive a deployment's upstream address. **That
-convention is shared with `ssh-auth/` and cannot be changed on one side alone**
-— a chart rendering a name the edge does not expect produces a deployment that
-authenticates and then reaches nothing, and the failure surfaces at the edge
-rather than here. See ssh-auth/README.md § Coupling.
+convention is shared with `daemons/ssh-auth/` and cannot be changed on one side
+alone** — a chart rendering a name the edge does not expect produces a
+deployment that authenticates and then reaches nothing, and the failure surfaces
+at the edge rather than here. See daemons/ssh-auth/README.md § Coupling.
 
 Params:
   serviceName  Service name (default "<release>-ssh"). Overriding it makes the

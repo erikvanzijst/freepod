@@ -1,6 +1,6 @@
 """App authentication's own records: per-app consent and single-use sign-in codes.
 
-Written and read only by `app-auth/` (a Go service connecting as its own
+Written and read only by `daemons/app-auth/` (a Go service connecting as its own
 least-privilege role); the API never touches them. Declared here because every
 table's schema is owned by this package's Alembic history. See the
 `app-authentication` design doc, D8.

@@ -13,7 +13,7 @@ The models are split across three modules:
                 a deployment, whose owner is the build's owner.
   - ssh_key.py: SshKey (and its Create/Read variants). Owned by a user and
                 scoped to no deployment.
-  - app_auth.py: AppAuthConsent, AppAuthCode -- written only by `app-auth/`.
+  - app_auth.py: AppAuthConsent, AppAuthCode -- written only by `daemons/app-auth/`.
   - usage.py:   UsageMetric, UsageSubject, UsageSample -- the usage ledger, plus
                 the enums naming its catalog dimensions; UsageRate, what each
                 quantity costs from when; and UsageReport, the priced read-back.

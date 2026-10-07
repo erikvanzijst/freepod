@@ -120,7 +120,7 @@ is a system value, so it never reaches this assertion and never needs to.
 {{/*
 Every header the platform's app authentication owns on the way to the app. The
 strip middleware removes them all; the forward-auth middleware lets the
-verifier set them. Mirrors identityHeaders in app-auth/request.go.
+verifier set them. Mirrors identityHeaders in daemons/app-auth/request.go.
 */}}
 {{- define "custom.identityHeaders" -}}
 ["X-Freepod-User","X-Freepod-Email","X-Freepod-Name","X-Freepod-Jwt","Remote-User","X-Forwarded-User","X-Forwarded-Email"]

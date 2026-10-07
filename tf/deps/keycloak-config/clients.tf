@@ -180,11 +180,11 @@ resource "keycloak_openid_client" "grafana" {
   login_theme = "freepod"
 }
 
-# The app-authentication broker (app-auth/), one per environment. It signs users
-# in to tenant `custom` apps that opt in to "Sign in with Freepod", and it is the
-# only party that talks to Keycloak on their behalf: however many apps opt in,
-# these stay the only two clients, with one fixed redirect URI each. Every app
-# host gets its session through the broker's own code handoff instead
+# The app-authentication broker (daemons/app-auth/), one per environment. It
+# signs users in to tenant `custom` apps that opt in to "Sign in with Freepod",
+# and it is the only party that talks to Keycloak on their behalf: however many
+# apps opt in, these stay the only two clients, with one fixed redirect URI each.
+# Every app host gets its session through the broker's own code handoff instead
 # (openspec app-authentication D2), which is why no wildcard appears here.
 #
 # consent_required stays off: the broker asks for consent per app itself, and

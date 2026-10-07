@@ -7,16 +7,17 @@ not: it removes client-supplied identity headers, so an app that reads
 X-Freepod-Email without having enabled `auth` cannot be trivially spoofed.
 
 app-auth is rendered only when `auth.enabled`. It sends every request through
-the platform verifier (app-auth/), whose address the reconciler injects as
-caelus.appAuth.verifyUrl -- never a user value, or a tenant could choose its own
-identities. Two Traefik behaviors carry the contract, both covered by
-app-auth/traefik_test.go:
+the platform verifier (daemons/app-auth/), whose address the reconciler injects
+as caelus.appAuth.verifyUrl -- never a user value, or a tenant could choose its
+own identities. Two Traefik behaviors carry the contract, both covered by
+daemons/app-auth/traefik_test.go:
   - every header in authResponseHeaders is deleted from the request before the
     verifier's value (if any) is copied in, which makes the list a sanitizer;
     `Cookie` is in it so the verifier can strip its session cookie;
   - trustForwardHeader stays UNSET, so X-Forwarded-Host is the request's real
     Host and not a client-supplied one; sessions are bound to that host.
-Keep authResponseHeaders in step with identityHeaders in app-auth/request.go.
+Keep authResponseHeaders in step with identityHeaders in
+daemons/app-auth/request.go.
 */}}
 {{- if .Values.caelus.ingress.enabled }}
 apiVersion: traefik.io/v1alpha1

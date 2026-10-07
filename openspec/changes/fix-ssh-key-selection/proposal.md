@@ -22,7 +22,7 @@ unusable. There is no in-band way out: the user must hand-edit `keys.json` or
 revoke a key they wanted to keep.
 
 **The refusal is not protecting anything.** Authorization at the edge is per
-account, not per key: `ssh-auth/resolve.go` joins `user_ssh_key` on
+account, not per key: `daemons/ssh-auth/resolve.go` joins `user_ssh_key` on
 `k.user_id = d.user_id AND k.fingerprint = $2`, so any key registered on the
 owning account admits the connection. Both candidates would have worked
 identically. The guard exists because adoption is *persisted* and the client

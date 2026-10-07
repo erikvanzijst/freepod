@@ -186,7 +186,7 @@ variable "mollie_api_key" {
 #   ssh-keygen -t ed25519 -N "" -C freepod-upstream-<env> -f /tmp/k && cat /tmp/k
 #
 # Rotating it is a fleet-wide operation -- every sidecar trusts the public half
-# -- so plan it as a two-step chart change. See ssh-auth/README.md.
+# -- so plan it as a two-step chart change. See daemons/ssh-auth/README.md.
 variable "sshpiper_upstream_private_keys" {
   description = "OpenSSH private key the edge authenticates to sidecars with, per Terraform workspace. Set in secrets.auto.tfvars."
   type        = map(string)
@@ -276,19 +276,19 @@ variable "registry_pull_hmac_keys" {
   }
 }
 
-# The resolver image. Immutable tag from ssh-auth/VERSION, never re-pushed, and
-# deliberately not a moving tag like the API's: the SSH edge must not roll
-# because the API rolled. Bump it here to deploy a new resolver.
+# The auth-path daemons' images. Immutable tags, never re-pushed, and
+# deliberately not moving tags like the API's: app-auth and the SSH edge must not
+# roll because the API rolled. Bump one here to deploy a new version of it.
 variable "app_auth_image" {
-  description = "App authentication service image (app-auth/), pinned to an immutable version"
+  description = "Daemons image (daemons/) that app-auth runs from, pinned to an immutable version"
   type        = string
-  default     = "ghcr.io/erikvanzijst/freepod/app-auth:0.2.0"
+  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.1.0"
 }
 
 variable "ssh_resolver_image" {
-  description = "SSH auth resolver image (ssh-auth/), pinned to an immutable version"
+  description = "Daemons image (daemons/) that the SSH auth resolver runs from, pinned to an immutable version"
   type        = string
-  default     = "ghcr.io/erikvanzijst/freepod/ssh-resolver:0.1.3"
+  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.1.0"
 }
 
 variable "sshpiper_port" {

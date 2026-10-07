@@ -40,14 +40,14 @@ func TestChartsRenderTheServiceNameTheResolverDerives(t *testing.T) {
 	}{
 		{
 			name:  "volume session root",
-			chart: "../products/helloworld/chart",
+			chart: "../../products/helloworld/chart",
 			args: []string{
 				"--set-string", "caelus.ssh.platformPublicKey=" + platformKeyLine,
 			},
 		},
 		{
 			name:  "application-container session root",
-			chart: "../products/custom/chart",
+			chart: "../../products/custom/chart",
 			args: []string{
 				"--set-string", "caelus.ssh.platformPublicKey=" + platformKeyLine,
 				"--set", "hostname=app.example.test",

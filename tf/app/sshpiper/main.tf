@@ -101,8 +101,9 @@ resource "kubernetes_deployment" "sshpiper" {
         service_account_name = kubernetes_service_account.sshpiper.metadata[0].name
 
         container {
-          name  = "ssh-resolver"
-          image = var.resolver_image
+          name    = "ssh-resolver"
+          image   = var.resolver_image
+          command = ["/ssh-auth"]
 
           env {
             name  = "CAELUS_SSH_RESOLVER_LISTEN"

@@ -32,7 +32,7 @@ variable "upstream_private_key" {
 }
 
 variable "resolver_image" {
-  description = "SSH auth resolver image (ssh-auth/), pinned to an immutable version"
+  description = "Daemons image the SSH auth resolver runs from (/ssh-auth), pinned to an immutable version"
   type        = string
 }
 
