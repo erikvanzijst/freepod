@@ -82,3 +82,14 @@ resource "kubernetes_namespace" "sshpiper" {
     }
   }
 }
+
+resource "kubernetes_namespace" "garage" {
+  metadata {
+    name = local.ns_garage
+
+    labels = {
+      name        = local.ns_garage
+      environment = local.environment
+    }
+  }
+}

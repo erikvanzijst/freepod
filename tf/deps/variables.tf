@@ -87,22 +87,3 @@ variable "alert_email_to" {
   default     = "erik.van.zijst@gmail.com"
 }
 
-# --- Garage object store ---------------------------------------------------
-#
-# Both live only in the gitignored secrets.auto.tfvars. The admin API can mint
-# S3 access keys and rewrite the cluster layout, and it sits one namespace away
-# from a deliberately auth-free public S3 ingress — so it is never published
-# through an Ingress, and its token is never committed.
-
-variable "garage_admin_token" {
-  description = "Garage admin API master token. Any long random string (`openssl rand -base64 32`). Use secrets.auto.tfvars."
-  type        = string
-  sensitive   = true
-}
-
-variable "garage_rpc_secret" {
-  description = "Garage inter-node RPC secret. Must be exactly 32 bytes of hex: `openssl rand -hex 32`. Use secrets.auto.tfvars."
-  type        = string
-  sensitive   = true
-}
-

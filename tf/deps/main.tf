@@ -22,12 +22,6 @@ resource "kubernetes_namespace" "monitoring" {
   }
 }
 
-resource "kubernetes_namespace" "garage" {
-  metadata {
-    name = "garage"
-  }
-}
-
 module "keycloak" {
   source                  = "./keycloak"
   namespace               = kubernetes_namespace.keycloak.metadata[0].name
@@ -74,18 +68,6 @@ module "system" {
 
   # Traefik's default cert store points at the wildcard secret cert-manager issues.
   depends_on = [module.certmanager]
-}
-
-# One instance serves BOTH environments (tf/deps is workspace-less); separation
-# is by bucket and access-key naming, like the freepod-dev / freepod-prod split
-# in Keycloak.
-module "garage" {
-  source    = "./garage"
-  namespace = kubernetes_namespace.garage.metadata[0].name
-  domain    = "freepod.eu"
-
-  admin_token = var.garage_admin_token
-  rpc_secret  = var.garage_rpc_secret
 }
 
 module "mailer" {

@@ -21,7 +21,7 @@ resource "kubernetes_ingress_v1" "garage_s3" {
 
   spec {
     rule {
-      host = "blob.${var.domain}"
+      host = var.host
 
       http {
         path {
@@ -43,4 +43,9 @@ resource "kubernetes_ingress_v1" "garage_s3" {
       }
     }
   }
+}
+
+moved {
+  from = kubernetes_ingress_v1.garage_s3[0]
+  to   = kubernetes_ingress_v1.garage_s3
 }

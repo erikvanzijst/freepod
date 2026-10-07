@@ -31,6 +31,7 @@ resource "kubernetes_deployment" "api" {
         }
         annotations = {
           "checksum/config" = sha256(jsonencode(kubernetes_config_map.api.data))
+          "checksum/s3"     = sha256(jsonencode(kubernetes_secret.s3.data))
         }
       }
 

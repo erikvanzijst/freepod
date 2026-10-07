@@ -11,6 +11,8 @@ Shared dependencies (Keycloak, Echo) are managed separately in `../deps/`.
   `caelus-builds` / `caelus-builds-dev`, `caelus-registry` /
   `caelus-registry-dev`
 - The tenant image registry, in its own namespace (see below)
+- Garage, the S3 object store, in `caelus-garage` / `caelus-garage-dev` at
+  `blob.<domain>` (see below)
 - API deployment + service
 - UI deployment + service
 - Worker deployment (`caelus worker --follow`)
@@ -130,11 +132,6 @@ oauth2_proxy_client_secrets = {
 }
 
 oauth2_proxy_cookie_secret = "replace-with-oauth2-cookie-secret"
-
-# Garage admin token for per-deployment bucket provisioning. A scalar, not a
-# workspace map: both environments provision on the one shared instance.
-#   terraform -chdir=../deps output -raw garage_caelus_api_admin_token
-garage_admin_token = "replace-with-garage-admin-token"
 ```
 
 ```hcl
@@ -175,11 +172,6 @@ registry_pull_hmac_keys = {
   prod    = "replace-with-a-different-random-key"
 }
 ```
-
-The S3 credential maps (`s3_access_key_ids`, `s3_secret_access_keys`,
-`s3_buckets`) also live here — see `tf/deps/README.md` § Reading the S3
-credentials for how to obtain them and why they are workspace-keyed while
-`garage_admin_token` is not.
 
 ### Authentication
 
@@ -268,6 +260,22 @@ Destroy only the currently selected workspace environment:
 terraform destroy
 ```
 
+## Garage object store (`caelus-garage` / `caelus-garage-dev`)
+
+Each environment's S3 store, at `blob.<domain>` (`garage/`). It holds the
+platform's `artifacts` bucket and one `dep-<id>` bucket per storage-enabled
+deployment. A fresh instance serves nothing until its cluster layout is
+bootstrapped; the provisioning Job waits for that and prints the commands.
+Tenant pods read their bucket credentials at start, so after a reconcile
+changes them, restart the deployment's pods.
+
+Spec: [garage-object-store](../../openspec/specs/garage-object-store/spec.md),
+[garage-bucket-provisioning](../../openspec/specs/garage-bucket-provisioning/spec.md),
+[garage-s3-edge](../../openspec/specs/garage-s3-edge/spec.md),
+[deployment-object-storage](../../openspec/specs/deployment-object-storage/spec.md) ·
+Rationale: [add-garage-object-store](../../openspec/changes/archive/2026-08-12-add-garage-object-store/design.md),
+[garage-per-environment](../../openspec/changes/archive/2026-10-07-garage-per-environment/design.md)
+
 ## Tenant image registry (`caelus-registry` / `caelus-registry-dev`)
 
 Where builds push and tenant pods pull from: `registry:3.1.1`, one per
@@ -345,7 +353,8 @@ concurrent builds belonging to different tenants share this namespace:
 Verified by probe: a build pod cannot reach another build pod, the API server,
 Postgres, or the Caelus API, while the registry stays reachable.
 
-Garage needs no rule of its own: `blob.freepod.eu` resolves to the homelab's
+Garage needs no rule of its own: `blob.freepod.eu` and `blob.dev.freepod.eu`
+resolve to the homelab's
 *public* address even from inside the cluster, so it is reached by hairpin and
 covered by the public-internet rule. **If Garage is ever given an internally
 resolving name, this policy needs an explicit allow or every build will fail to

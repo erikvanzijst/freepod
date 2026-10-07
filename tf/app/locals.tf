@@ -15,6 +15,9 @@ locals {
   api_image = var.api_image != null ? var.api_image : "ghcr.io/erikvanzijst/freepod/api:${local.image_tag}"
   ui_image  = var.ui_image != null ? var.ui_image : "ghcr.io/erikvanzijst/freepod/ui:${local.image_tag}"
 
+  ns_garage   = local.is_prod_workspace ? "caelus-garage" : "caelus-garage-dev"
+  garage_host = "blob.${local.domain}"
+
   ns_builds = local.is_prod_workspace ? "caelus-builds" : "caelus-builds-dev"
 
   # The tenant registry (authenticated-tenant-registry D2). The ClusterIPs come

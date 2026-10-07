@@ -189,8 +189,9 @@ omits such a check is not a vulnerability, and neither is one that adds it.
 ## Per-Deployment Object Storage
 
 Deployments of a product whose template enables object storage get a private
-bucket and a dedicated access key on the shared Garage instance, provisioned
-by the reconciler as part of the apply path. The ordering is load-bearing: the
+bucket and a dedicated access key on their environment's Garage instance,
+provisioned by the reconciler as part of the apply path. The ordering is
+load-bearing: the
 Secret is written after the namespace exists and before Helm runs, and on
 delete the key is revoked before the bucket's expiry rule is set, because a
 key with write access can replace its own bucket's lifecycle configuration.

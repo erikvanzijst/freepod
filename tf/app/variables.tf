@@ -30,8 +30,7 @@ variable "reserved_hostnames" {
   type        = map(list(string))
 
   # kube.freepod.eu (the CNAME target every platform wildcard points at) and
-  # blob.freepod.eu (Garage) are one instance serving both environments, so
-  # they are reserved in both -- see s3_endpoint_url below.
+  # blob.freepod.eu (prod's object store) are reserved in both.
   default = {
     default = [
       "dev.freepod.eu",
@@ -48,6 +47,7 @@ variable "reserved_hostnames" {
       "cr.dev.freepod.eu",
       "kube.freepod.eu",
       "blob.freepod.eu",
+      "blob.dev.freepod.eu",
     ]
     prod = [
       "freepod.eu",
@@ -298,86 +298,10 @@ variable "sshpiper_port" {
   nullable    = true
 }
 
-# Garage S3 object store, keyed by Terraform workspace.
-#
-# Maps for the same reason as oauth2_proxy_client_ids above: `*.auto.tfvars` is
-# auto-loaded for EVERY workspace, so a scalar cannot hold two per-environment
-# values. One Garage instance serves both environments (tf/deps is
-# workspace-less) and they are separated by bucket and access key, so getting
-# this wrong does not fail loudly — it silently points dev at prod's objects.
-# Hence the validations, and the same reminder: **the dev workspace is named
-# `default`, not `dev`**.
-#
-# Read the values from tf/deps:
-#   terraform output -raw garage_access_key_id_dev
-#   terraform output -raw garage_secret_access_key_dev   (and the prod pair)
-
-variable "s3_buckets" {
-  description = "Garage bucket per Terraform workspace, e.g. { default = \"dev\", prod = \"prod\" }."
-  type        = map(string)
-  default = {
-    default = "dev"
-    prod    = "prod"
-  }
-
-  validation {
-    condition     = alltrue([for k in ["default", "prod"] : contains(keys(var.s3_buckets), k)])
-    error_message = "s3_buckets must have both a \"default\" (dev) and a \"prod\" key. The dev workspace is named `default`, not `dev`."
-  }
-}
-
-variable "s3_access_key_ids" {
-  description = "Garage S3 access key ID per Terraform workspace. Read from tf/deps outputs."
-  type        = map(string)
-
-  validation {
-    condition     = alltrue([for k in ["default", "prod"] : contains(keys(var.s3_access_key_ids), k)])
-    error_message = "s3_access_key_ids must have both a \"default\" (dev) and a \"prod\" key. The dev workspace is named `default`, not `dev`."
-  }
-}
-
-variable "s3_secret_access_keys" {
-  description = "Garage S3 secret access key per Terraform workspace. Read with `terraform output -raw garage_secret_access_key_{dev,prod}` in tf/deps."
-  type        = map(string)
-  sensitive   = true
-
-  validation {
-    condition     = alltrue([for k in ["default", "prod"] : contains(keys(var.s3_secret_access_keys), k)])
-    error_message = "s3_secret_access_keys must have both a \"default\" (dev) and a \"prod\" key. The dev workspace is named `default`, not `dev`."
-  }
-}
-
-# Scalars, not maps: one Garage serves both environments at one hostname.
-variable "s3_endpoint_url" {
-  description = "Garage S3 endpoint. Path-style addressing is mandatory — see api/app/config.py."
-  type        = string
-  default     = "https://blob.freepod.eu"
-}
-
 variable "s3_region" {
-  description = "SigV4 signing region. Garage's default; must match tf/deps."
+  description = "SigV4 signing region. Garage's default; must match tf/app/garage."
   type        = string
   default     = "garage"
-}
-
-# --- Per-deployment object storage ------------------------------------------
-# The API provisions a bucket and access key per storage-enabled deployment, so
-# it needs a Garage admin credential of its own. Not per-workspace, unlike the S3
-# credentials above: every environment provisions on the one shared instance and
-# the scope is identical, so both workspaces take the same value.
-#
-# `terraform output -raw garage_caelus_api_admin_token` in tf/deps.
-
-variable "garage_admin_url" {
-  description = "In-cluster Garage admin API URL. Never routed by an Ingress; see tf/deps/garage/ingress.tf."
-  type        = string
-  default     = "http://garage.garage.svc.cluster.local:3903"
-}
-
-variable "garage_admin_token" {
-  description = "Scoped, non-expiring Garage admin token for per-deployment bucket provisioning. From tf/deps."
-  type        = string
-  sensitive   = true
 }
 
 variable "opencost_base_url" {

@@ -2,7 +2,7 @@
 
 ## Purpose
 How a private S3 bucket and a dedicated access key are provisioned, scoped, quota-limited and
-reclaimed for an individual deployment on the shared Garage instance — and what the isolation
+reclaimed for an individual deployment on its environment's Garage instance — and what the isolation
 between two deployments' buckets actually rests on, given that Garage has no IAM.
 ## Requirements
 ### Requirement: Object storage is provisioned per deployment, opt-in per product
@@ -50,7 +50,7 @@ which would leave a deleted deployment's bucket anonymous and untraceable exactl
 reclamation needs to identify it.
 
 The `dep-` prefix is required. It SHALL be what distinguishes a deployment's bucket from every
-other bucket on the shared instance, so that tooling selects deployment buckets explicitly
+other bucket on the instance, so that tooling selects deployment buckets explicitly
 rather than by inferring intent from the shape of a name.
 
 The naming scheme SHALL NOT be changed to anything derivable from tenant-visible attributes

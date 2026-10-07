@@ -86,6 +86,12 @@ module "app_auth" {
   )
 }
 
+module "garage" {
+  source    = "./garage"
+  namespace = kubernetes_namespace.garage.metadata[0].name
+  host      = local.garage_host
+}
+
 module "caelus" {
   source             = "./caelus"
   namespace          = kubernetes_namespace.caelus.metadata[0].name
@@ -110,17 +116,14 @@ module "caelus" {
   sftp_platform_public_key = trimspace(data.tls_public_key.sshpiper_upstream.public_key_openssh)
   ssh_edge_host_public_key = trimspace(data.tls_public_key.sshpiper_host.public_key_openssh)
 
-  # Select this workspace's Garage bucket and key. Like the Keycloak clients
-  # above, the buckets and keys themselves are created in tf/deps (the singleton
-  # root module); tf/app only chooses which pair this environment gets.
-  s3_endpoint_url      = var.s3_endpoint_url
+  s3_endpoint_url      = module.garage.s3_endpoint
   s3_region            = var.s3_region
-  s3_bucket            = var.s3_buckets[terraform.workspace]
-  s3_access_key_id     = var.s3_access_key_ids[terraform.workspace]
-  s3_secret_access_key = var.s3_secret_access_keys[terraform.workspace]
+  s3_bucket            = module.garage.bucket
+  s3_access_key_id     = module.garage.access_key_id
+  s3_secret_access_key = module.garage.secret_access_key
 
-  garage_admin_url   = var.garage_admin_url
-  garage_admin_token = var.garage_admin_token
+  garage_admin_url   = module.garage.admin_url
+  garage_admin_token = module.garage.caelus_api_admin_token
 
   # Both environments write into the one platform zone; the record they create
   # is per account, and an account exists in one environment only.
@@ -142,7 +145,7 @@ module "caelus" {
   registry_pod_labels          = module.registry.pod_labels
   registry_cluster_ip          = module.registry.cluster_ip
 
-  # Loki, like Garage above, is a tf/deps singleton shared by both workspaces.
+  # Loki is a tf/deps singleton shared by both workspaces.
   loki_base_url         = var.loki_base_url
   opencost_base_url     = var.opencost_base_url
   prometheus_base_url   = var.prometheus_base_url
