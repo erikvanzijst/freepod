@@ -17,12 +17,9 @@
 # Service name. Design D2 anticipates this ("where the admin API is used rather
 # than the CLI, use a scoped, expirable admin token").
 #
-# The lifecycle rules used to be a second Job step in an S3-client image,
-# because setting them was an S3-API call (`PutBucketLifecycleConfiguration`)
-# that needed the bucket's own access key. As of Garage v2.3.0
-# `POST /v2/UpdateBucket` takes `lifecycleRules` directly, in the same
-# S3-shaped JSON, so that step folded into this one: one container, one image,
-# one credential, and no S3 client anywhere in provisioning.
+# Lifecycle rules go through the same API (`POST /v2/UpdateBucket` takes
+# `lifecycleRules` as S3-shaped JSON), so provisioning needs no S3 client: one
+# container, one image, one credential.
 #
 # EVERY STEP READS BEFORE IT WRITES, so a re-run is a no-op and an existing
 # access key is never rotated. Terraform re-runs this Job whenever the script or
@@ -58,9 +55,14 @@ while [ "$(curl -s -o /dev/null -w '%{http_code}' "$GARAGE_ADMIN_URL/health" || 
     log ""
     log "On a fresh install the overwhelmingly likely cause is that the cluster"
     log "layout has never been assigned and committed. Garage cannot serve any"
-    log "request without one. See tf/app/README.md -> 'Garage object store' ->"
-    log "'Cluster-layout bootstrap' for the two commands, then re-run"
-    log "'terraform apply'."
+    log "request without one. Bootstrap it (again whenever the metadata volume is"
+    log "recreated, which mints a new node ID), then re-run 'terraform apply':"
+    log ""
+    log "  kubectl -n $NAMESPACE exec garage-0 -- /garage status"
+    log "      # the node ID is the row marked NO ROLE ASSIGNED"
+    log "  kubectl -n $NAMESPACE exec garage-0 -- /garage layout assign -z dc1 -c 20G <node-id>"
+    log "      # capacity just under the data PVC size"
+    log "  kubectl -n $NAMESPACE exec garage-0 -- /garage layout apply --version 1"
     log ""
     log "Current health:"
     curl -s "$GARAGE_ADMIN_URL/health" >&2 || true

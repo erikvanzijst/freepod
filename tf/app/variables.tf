@@ -29,9 +29,8 @@ variable "reserved_hostnames" {
   description = "Hostnames that name platform infrastructure and so cannot be claimed as deployment hostnames, per Terraform workspace."
   type        = map(list(string))
 
-  # kube.freepod.eu is the CNAME target every platform wildcard points at, so it
-  # is reserved in both. So is blob.freepod.eu, which both environments shared
-  # until each got its own Garage instance.
+  # kube.freepod.eu (the CNAME target every platform wildcard points at) and
+  # blob.freepod.eu (prod's object store) are reserved in both.
   default = {
     default = [
       "dev.freepod.eu",

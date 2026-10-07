@@ -24,7 +24,7 @@ cluster-wide master admin token.
 
 #### Scenario: Provisioning mechanism is named and documented
 
-- **WHEN** the module's source and `tf/app/README.md` are read
+- **WHEN** the provisioning script's header in `tf/app/garage/` is read
 - **THEN** the bucket and access-key provisioning mechanism is named explicitly
 - **AND** the split between Terraform-managed and operator-run steps is stated
 

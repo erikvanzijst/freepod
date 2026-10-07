@@ -146,10 +146,6 @@ Read the secrets with `terraform output -raw freepod_dev_client_secret` (and
 `…_prod_…`) in `tf/deps`. Grafana's OIDC client ID and secret need no tfvar at
 all: `tf/deps` wires them straight from the Terraform-managed client.
 
-Garage credentials do not cross the boundary at all: each environment's instance
-lives in `tf/app` (`tf/app/garage/`), generates its own secrets, and its outputs
-are wired into the API directly. See `tf/app/README.md` § Garage object store.
-
 ### Tenant registry keys
 
 Each environment has its own signing keypair and pull HMAC key, as maps keyed
