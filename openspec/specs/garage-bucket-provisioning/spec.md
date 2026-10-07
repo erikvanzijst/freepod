@@ -1,9 +1,9 @@
 # garage-bucket-provisioning Specification
 
 ## Purpose
-How buckets, access keys and object expiry are created and scoped on the shared Garage
-instance, and how the resulting credentials reach the Caelus API — given that Garage has no IAM
-and separates environments by naming rather than by instance.
+How the platform's own bucket, access key and object expiry are created and scoped on an
+environment's Garage instance, and how the resulting credentials reach the Caelus API — given
+that Garage has no IAM.
 ## Requirements
 ### Requirement: Buckets and access keys are provisioned through Garage's native mechanism
 
@@ -12,7 +12,7 @@ per-access-key-per-bucket permission model, driven by the `garage` CLI or by the
 API. There is therefore no S3-policy-shaped Terraform resource to use, and the standard AWS
 provider's IAM resources are inapplicable.
 
-The change SHALL name an explicit, repeatable bootstrap mechanism for creating buckets, creating
+The module SHALL name an explicit, repeatable bootstrap mechanism for creating buckets, creating
 access keys and granting per-bucket permissions, and SHALL document which parts are Terraform-
 managed and which are operator-run. The awkwardness is owned explicitly rather than left to be
 rediscovered: whichever mechanism is chosen, the documentation MUST state how to re-run it
@@ -24,7 +24,7 @@ cluster-wide master admin token.
 
 #### Scenario: Provisioning mechanism is named and documented
 
-- **WHEN** the change's design and the `tf/deps/README.md` are read
+- **WHEN** the module's source and `tf/app/README.md` are read
 - **THEN** the bucket and access-key provisioning mechanism is named explicitly
 - **AND** the split between Terraform-managed and operator-run steps is stated
 
@@ -39,39 +39,6 @@ cluster-wide master admin token.
 - **WHEN** an access key provisioned for one bucket is used against a different bucket
 - **THEN** the request is denied
 - **AND** no object is read, written or listed
-
-### Requirement: Buckets and access keys are named per environment
-
-One Garage instance serves both the dev and prod Caelus environments, because `tf/deps` is a
-workspace-less shared singleton. Environment isolation SHALL therefore be expressed in bucket
-and access-key naming: every provisioned bucket and key SHALL name its environment
-unambiguously, so that no resource is ambiguous about which environment it belongs to.
-
-Buckets SHALL be named for the environment alone — `dev` and `prod`. The bucket namespace is
-private to this Garage instance and serves one platform, so a qualifying prefix would carry no
-information. Access keys SHALL carry a matching `-dev` / `-prod` suffix on a descriptive stem,
-mirroring how the Keycloak configuration splits `freepod-dev` / `freepod-prod` clients.
-
-Each environment SHALL have its **own bucket and its own access key**. A key issued for one
-environment MUST NOT carry permission on the other environment's bucket, so a leaked or
-misconfigured dev credential cannot reach prod objects.
-
-#### Scenario: Separate buckets exist per environment
-
-- **WHEN** the provisioned buckets are listed
-- **THEN** exactly two buckets exist, named `dev` and `prod`
-- **AND** neither environment's objects are reachable under the other's bucket
-
-#### Scenario: A dev key cannot reach the prod bucket
-
-- **WHEN** the dev access key is used to read, write or list the prod bucket
-- **THEN** the request is denied
-
-#### Scenario: Naming is derived, not hand-entered per resource
-
-- **WHEN** the Terraform module is inspected
-- **THEN** the per-environment bucket and key names are produced from a documented naming
-  convention rather than being independently hardcoded in several places
 
 ### Requirement: Bucket lifecycle expiration is configured at provisioning time
 
@@ -115,15 +82,12 @@ The Caelus API needs the S3 endpoint and an access key in order to mint presigne
 values SHALL be delivered as a Kubernetes Secret consumed by the API container through
 `env_from`, following the existing `caelus-db` pattern in `tf/app/caelus/`.
 
-The Secret SHALL carry, at minimum: the S3 endpoint URL, the region, the bucket name for the
-environment, the access key ID and the secret access key.
+The Secret SHALL carry, at minimum: the S3 endpoint URL, the region, the platform bucket name,
+the access key ID and the secret access key.
 
-Because `tf/deps` and `tf/app` are deliberately not coupled with `terraform_remote_state`, the
-generated credentials SHALL be exposed as `tf/deps` outputs and transferred by the operator into
-the gitignored `tf/app/secrets.auto.tfvars`, exactly as the Keycloak client secrets already are.
-The workspace-keyed map form used for the oauth2-proxy client credentials applies here too: a
-scalar cannot express two per-environment values when `*.auto.tfvars` is auto-loaded for every
-workspace.
+The instance and the API are in the same root module and workspace, so the credentials SHALL be
+wired from the Garage module's outputs into the API module directly. The operator SHALL NOT
+transfer them by hand.
 
 Secret values MUST NOT appear in tracked files, in Terraform outputs printed by default, or in
 pod logs.
@@ -138,8 +102,8 @@ pod logs.
 #### Scenario: Each environment receives only its own credentials
 
 - **WHEN** the dev and prod API deployments are compared
-- **THEN** each references its own environment's bucket and access key
-- **AND** neither carries the other environment's credentials
+- **THEN** each references its own environment's instance, endpoint and access key
+- **AND** neither carries a credential the other environment's instance accepts
 
 #### Scenario: Credentials are absent from version control
 
@@ -179,3 +143,37 @@ this change; only the configuration surface is added.
 - **WHEN** the default values of the S3 settings are inspected
 - **THEN** the access key ID and secret access key default to empty or unset values
 
+### Requirement: Each instance provisions one platform bucket and access key
+
+Each Garage instance serves exactly one environment, so the platform's own bucket and access
+key SHALL NOT be qualified by environment. Every instance SHALL have one platform bucket named
+`artifacts` and one platform access key named `caelus-api`, granted read and write on that
+bucket only. Tenant buckets are prefixed `dep-` (see `deployment-object-storage`), so the
+platform bucket cannot collide with one.
+
+The names SHALL be defined once in the Terraform module and handed to the provisioning Job, not
+hardcoded independently in several places.
+
+#### Scenario: One platform bucket per instance
+
+- **WHEN** an instance's buckets are listed
+- **THEN** exactly one bucket that is not prefixed `dep-` exists, named `artifacts`
+- **AND** a key named `caelus-api` has read and write on it and on no other bucket
+
+#### Scenario: Naming is defined once
+
+- **WHEN** the Terraform module is inspected
+- **THEN** the platform bucket and key names come from one definition passed to the
+  provisioning Job and used for the module's outputs
+
+### Requirement: A change to the API's S3 credentials restarts their consumers
+
+Every Deployment that reads the API's S3 credentials Secret through `env_from` — the API, the
+reconcile worker and the build worker — SHALL carry an annotation derived from the Secret's
+content, so that changing the endpoint, bucket or key rolls those pods in the same apply.
+
+#### Scenario: Rotating the key rolls the pods
+
+- **WHEN** the S3 credentials Secret's content changes in a `terraform apply`
+- **THEN** the API, reconcile worker and build worker Deployments roll
+- **AND** their new pods carry the new values

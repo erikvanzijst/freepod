@@ -16,6 +16,17 @@ locals {
   })
 }
 
+# Generated rather than supplied: nothing outside this instance needs either
+# value, so they live only in Terraform state, like tf/app/caelus/tenant-db.tf.
+resource "random_password" "admin_token" {
+  length  = 48
+  special = false
+}
+
+resource "random_id" "rpc_secret" {
+  byte_length = 32
+}
+
 # Neither value is ever written into the ConfigMap: both are injected into the
 # process as GARAGE_RPC_SECRET / GARAGE_ADMIN_TOKEN. Garage refuses to start on
 # world-readable secret files, and a ConfigMap mount is world-readable.
@@ -28,8 +39,8 @@ resource "kubernetes_secret" "garage" {
   type = "Opaque"
 
   data = {
-    admin_token = var.admin_token
-    rpc_secret  = var.rpc_secret
+    admin_token = random_password.admin_token.result
+    rpc_secret  = random_id.rpc_secret.hex
   }
 }
 

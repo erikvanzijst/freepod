@@ -37,6 +37,7 @@ resource "kubernetes_deployment" "build_worker" {
         # Roll the pod when the config changes.
         annotations = {
           "checksum/config" = sha256(jsonencode(kubernetes_config_map.api.data))
+          "checksum/s3"     = sha256(jsonencode(kubernetes_secret.s3.data))
         }
       }
 

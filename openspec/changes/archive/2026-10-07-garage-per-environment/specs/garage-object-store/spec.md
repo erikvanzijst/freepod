@@ -1,10 +1,5 @@
-# garage-object-store Specification
+## ADDED Requirements
 
-## Purpose
-The platform's S3-compatible object store: one Garage instance per Caelus environment in
-`tf/app`, sized and bounded to coexist with every other workload on the one k3s node, and
-serviceable from the moment it is installed.
-## Requirements
 ### Requirement: Each environment runs its own Garage instance in tf/app
 
 The platform SHALL run one Garage instance per Caelus environment, provisioned by Terraform
@@ -36,23 +31,7 @@ an upgrade is a reviewed code change rather than a pod restart.
 - **THEN** the Garage container image is pinned to an explicit version
 - **AND** no reference resolves to a mutable `latest` tag
 
-### Requirement: Garage runs single-node with replication factor 1
-
-The cluster is a single k3s node, so Garage SHALL be configured with one replica and a
-replication factor of `1`. Any replication factor above `1` on a single node leaves Garage
-unable to satisfy its own quorum and it will refuse writes.
-
-#### Scenario: Single replica, replication factor 1
-
-- **WHEN** the rendered Garage configuration and StatefulSet spec are inspected
-- **THEN** the replica count is `1`
-- **AND** the configured replication factor is `1`
-
-#### Scenario: Writes succeed on the single node
-
-- **WHEN** an object is written to a provisioned bucket
-- **THEN** the write is accepted and the object is subsequently readable
-- **AND** Garage does not report a quorum or layout error
+## MODIFIED Requirements
 
 ### Requirement: Metadata and object data are on separate persistent volumes
 
@@ -87,56 +66,6 @@ outlive the pod.
 - **THEN** the pod rejoins with its existing cluster layout intact
 - **AND** the previously written object is still readable
 
-### Requirement: Garage has hard CPU and memory bounds
-
-Garage SHALL declare explicit CPU and memory **requests and limits** on its container.
-
-This is a functional requirement, not boilerplate. The k3s node is a single libvirt VM whose
-RAM was raised from 16 GB to 24 GB following out-of-memory events, and which runs Postgres,
-Keycloak, Traefik, the monitoring stack and every tenant workload on the same kernel. An
-unbounded storage daemon absorbing a burst of large multipart uploads can push the node into
-the OOM killer and take unrelated tenant workloads down with it. Limits convert that failure
-into a slow or failed upload, which is recoverable.
-
-The limits MUST be set from module variables so they can be tuned without editing resource
-definitions.
-
-#### Scenario: Requests and limits are present
-
-- **WHEN** the Garage pod spec is inspected
-- **THEN** the container declares both `requests` and `limits` for `cpu` and `memory`
-- **AND** no resource field is left unset
-
-#### Scenario: Bounds are configurable
-
-- **WHEN** the Terraform module is inspected
-- **THEN** the CPU and memory requests and limits are supplied by module variables with
-  documented defaults
-
-### Requirement: The cluster layout is assigned and committed as a bootstrap step
-
-A freshly installed Garage node holds **no cluster layout** and rejects all S3 operations until
-a layout assigning capacity to the node is applied and committed. This step is a documented
-one-time operator action, not something Terraform performs.
-
-The change SHALL document the exact commands, and the operator SHALL verify the node reports a
-healthy layout before any bucket is provisioned. The documentation MUST state that the step
-recurs whenever the Garage node identity changes (for example, if the metadata volume is
-recreated).
-
-#### Scenario: Layout is applied on first install
-
-- **WHEN** Garage is installed for the first time and the documented layout commands are run
-- **THEN** `garage status` reports the node as part of the cluster with assigned capacity
-- **AND** `garage layout show` reports no pending layout changes
-
-#### Scenario: S3 operations before layout are understood to fail
-
-- **WHEN** an S3 request is made against a Garage node that has no committed layout
-- **THEN** the request fails
-- **AND** the operator documentation identifies the missing layout as the cause and points at
-  the bootstrap procedure
-
 ### Requirement: The admin interface is not exposed outside the cluster
 
 Garage's admin API and its CLI grant unrestricted control over buckets, access keys and cluster
@@ -158,3 +87,14 @@ committed to the repository and SHALL NOT be supplied by the operator.
 - **WHEN** the repository is searched for a Garage admin token or RPC secret
 - **THEN** neither value appears in tracked files
 - **AND** neither is declared as a variable the operator must supply
+
+## REMOVED Requirements
+
+### Requirement: Garage is deployed as a shared singleton in tf/deps
+
+**Reason**: One store for both environments put dev's experiments and admin credential on the
+same instance as prod's tenant data, separated only by naming.
+
+**Migration**: Replaced by "Each environment runs its own Garage instance in tf/app". Data was
+copied with the original access keys imported; see the `garage-per-environment` change's
+design. The `tf/deps` instance and its volumes have been removed.

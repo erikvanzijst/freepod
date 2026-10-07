@@ -31,6 +31,7 @@ resource "kubernetes_deployment" "worker" {
         }
         annotations = {
           "checksum/config" = sha256(jsonencode(kubernetes_config_map.api.data))
+          "checksum/s3"     = sha256(jsonencode(kubernetes_secret.s3.data))
           # Without this a bootstrap edit would sit in the ConfigMap unapplied
           # until some unrelated restart happened to pick it up.
           "checksum/tenant-bootstrap" = sha256(kubernetes_config_map.tenant_db_bootstrap.data["tenant-bootstrap.sql"])

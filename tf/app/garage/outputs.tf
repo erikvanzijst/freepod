@@ -20,28 +20,26 @@ data "kubernetes_secret" "garage_keys" {
 # and that marking propagates to anything derived from it — so without this,
 # every consumer would have to declare the key ID sensitive too, and
 # `terraform output` / `terraform plan` would show `(sensitive value)` where the
-# operator most needs to read it: confirming that each environment got its own
-# key. The ID is not secret by any measure — it travels in the clear in the
+# operator most needs to read it. The ID is not secret by any measure — it travels in the clear in the
 # `X-Amz-Credential` parameter of every presigned URL this store hands out.
 #
 # The secret access key below keeps its marking, which is the half that matters.
-output "access_key_ids" {
-  description = "S3 access key ID per environment. Not a credential on its own."
-  value       = { for env in var.environments : env => nonsensitive(data.kubernetes_secret.garage_keys.data["${env}_access_key_id"]) }
+output "access_key_id" {
+  description = "The platform's S3 access key ID. Not a credential on its own."
+  value       = nonsensitive(data.kubernetes_secret.garage_keys.data["access_key_id"])
 }
 
-output "secret_access_keys" {
-  description = "S3 secret access key per environment."
-  value       = { for env in var.environments : env => data.kubernetes_secret.garage_keys.data["${env}_secret_access_key"] }
+output "secret_access_key" {
+  description = "The platform's S3 secret access key."
+  value       = data.kubernetes_secret.garage_keys.data["secret_access_key"]
   sensitive   = true
 }
 
-# The bucket name IS the environment name — single-sourced from the same
-# variable the provisioning script derives its names from, so tf/app cannot
-# drift from what was actually created.
-output "buckets" {
-  description = "S3 bucket name per environment."
-  value       = { for env in var.environments : env => env }
+# Single-sourced from the same local the provisioning Job is given, so the API
+# cannot drift from what was actually created.
+output "bucket" {
+  description = "The platform's own S3 bucket."
+  value       = local.bucket_name
 }
 
 # The Caelus API's admin credential for per-deployment bucket provisioning.
@@ -68,7 +66,7 @@ output "admin_url" {
 
 output "s3_endpoint" {
   description = "Public S3 endpoint URL, for the Caelus API's S3 client."
-  value       = "https://blob.${var.domain}"
+  value       = "https://${var.host}"
 }
 
 output "s3_region" {

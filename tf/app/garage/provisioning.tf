@@ -30,14 +30,18 @@ locals {
   # script ConfigMap changes" means in practice.
   provision_hash = substr(sha256(join("\n", [
     local.provision_script,
-    join(",", var.environments),
+    local.bucket_name,
+    local.key_name,
     tostring(var.object_expiry_days),
     var.kubectl_image,
     local.api_token_name,
     local.api_token_secret_key,
   ])), 0, 10)
 
-  environments_arg = join(" ", var.environments)
+  # The platform's own bucket and S3 key on this instance, e.g. for build
+  # artifacts. Tenant buckets are `dep-<id>`, so this cannot collide.
+  bucket_name = "artifacts"
+  key_name    = "caelus-api"
 }
 
 resource "kubernetes_service_account" "provisioner" {
@@ -152,8 +156,13 @@ resource "kubernetes_job" "provision" {
           }
 
           env {
-            name  = "ENVIRONMENTS"
-            value = local.environments_arg
+            name  = "BUCKET_NAME"
+            value = local.bucket_name
+          }
+
+          env {
+            name  = "KEY_NAME"
+            value = local.key_name
           }
 
           env {
