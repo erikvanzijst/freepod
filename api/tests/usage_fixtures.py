@@ -40,16 +40,21 @@ DATABASE_CATALOG = [
     ("db_allowance_byte_hours", "storage", "byte_hours", "delta", "allocation"),
 ]
 
+# Mirrors METRICS in the object storage migration; its migration test pins the two.
+OBJECT_STORAGE_CATALOG = [
+    ("object_storage_byte_hours", "storage", "byte_hours", "delta", "usage"),
+]
+
 
 @pytest.fixture
 def seeded_catalog(db_session):
     """The metric catalog, as a freshly migrated database would have it."""
-    for name, axis, unit, kind, role in CATALOG + DATABASE_CATALOG:
+    for name, axis, unit, kind, role in CATALOG + DATABASE_CATALOG + OBJECT_STORAGE_CATALOG:
         db_session.add(
             UsageMetricORM(name=name, axis=axis, unit=unit, kind=kind, role=role)
         )
     db_session.commit()
-    return CATALOG + DATABASE_CATALOG
+    return CATALOG + DATABASE_CATALOG + OBJECT_STORAGE_CATALOG
 
 
 @pytest.fixture

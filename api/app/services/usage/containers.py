@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 
 from sqlmodel import Session
 
-from app.models.usage import SubjectKind
 from app.services.usage import subjects
 from app.services.usage.batching import batched
 from app.services.usage.ledger import Observation
@@ -19,12 +18,18 @@ from app.services.usage.mapping import quantities
 from app.services.usage.opencost import Allocation, OpenCostClient
 from app.services.usage.source import billable, read_window
 
+# Builds record every other container quantity, so these three are the container
+# source's only resume position.
+POSITION_METRICS = frozenset(
+    {"network_receive_bytes", "network_transmit_bytes", "pv_byte_hours"}
+)
+
 
 class OpenCostSource:
     """Every container in this environment's tenants and the platform's namespaces."""
 
     name = "opencost"
-    subject_kind = SubjectKind.CONTAINER
+    position_metrics = POSITION_METRICS
 
     def __init__(
         self,

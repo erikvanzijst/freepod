@@ -1,0 +1,51 @@
+{
+  "id": "90547472817ecc5a1e7df91d214a2db22983774f357c343a0b87874892d26251",
+  "created": "2026-10-07T08:59:19.223Z",
+  "globalAliases": [
+    "dep-d597d0fa-c81d-4148-b467-0785e8d152bb"
+  ],
+  "websiteAccess": false,
+  "corsRules": [
+    {
+      "ID": "caelus-browser-access",
+      "AllowedOrigin": [
+        "*"
+      ],
+      "AllowedMethod": [
+        "GET",
+        "PUT",
+        "POST",
+        "DELETE",
+        "HEAD"
+      ],
+      "AllowedHeader": [
+        "*"
+      ],
+      "ExposeHeader": [
+        "ETag"
+      ]
+    }
+  ],
+  "keys": [
+    {
+      "accessKeyId": "GK000000000000000000000000",
+      "name": "app-d597d0fa-c81d-4148-b467-0785e8d152bb",
+      "permissions": {
+        "read": true,
+        "write": true,
+        "owner": false
+      },
+      "bucketLocalAliases": []
+    }
+  ],
+  "objects": 5,
+  "bytes": 2673759,
+  "unfinishedUploads": 0,
+  "unfinishedMultipartUploads": 0,
+  "unfinishedMultipartUploadParts": 0,
+  "unfinishedMultipartUploadBytes": 0,
+  "quotas": {
+    "maxSize": 1073741824,
+    "maxObjects": 1000000
+  }
+}

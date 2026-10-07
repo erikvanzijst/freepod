@@ -228,6 +228,9 @@ class CaelusSettings(BaseSettings):
     # from. Empty disables that source: unscoped, the other environment's exporter
     # would vouch for windows this one never measured.
     usage_tenant_db_namespace: str = ""
+    # The Garage namespace whose bucket size exporter this environment reads bucket
+    # sizes from. Empty disables that source, for the same reason.
+    usage_bucket_namespace: str = ""
 
     # Hourly windows, which is the granularity OpenCost's `step` supports and the
     # resolution the ledger records at. Changing it does not invalidate history:

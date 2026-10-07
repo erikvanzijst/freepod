@@ -65,8 +65,15 @@ This repository is a monorepo with:
   own resume position: their sizes are read from Prometheus directly
   (`postgres_exporter` beside the tenant cluster) and recorded as `database`
   subjects attributed through `deployment_database`
-  (`app/services/usage/databases.py`). Builds are too short-lived to sample, so the
-  sampler skips its own builds namespace: each build measures its own cgroup
+  (`app/services/usage/databases.py`). Object storage buckets are a third:
+  `daemons/bucket-exporter/`, beside each environment's Garage, reads every
+  `dep-<deployment id>` bucket's size one call at a time at a fixed rate,
+  recently written buckets first, and publishes it to Prometheus; the sampler
+  records each window's average as a `bucket` subject attributed through the
+  name, confirmed against `deployment` (`app/services/usage/buckets.py`). Each
+  source resumes from the newest window of the metrics only it records. Builds
+  are too short-lived to sample, so the sampler skips its own builds
+  namespace: each build measures its own cgroup
   and reports it in its termination message, and `caelus build-worker` records
   it as a `build` subject attributed to the build's deployment once its windows
   settle (`app/services/usage/builds.py`). `app/services/usage/report.py`
@@ -80,11 +87,14 @@ This repository is a monorepo with:
   [usage-ledger-data-model](openspec/specs/usage-ledger-data-model/spec.md),
   [usage-sampler-worker](openspec/specs/usage-sampler-worker/spec.md),
   [build-usage-recording](openspec/specs/build-usage-recording/spec.md),
-  [relational-storage-usage](openspec/specs/relational-storage-usage/spec.md) ·
+  [relational-storage-usage](openspec/specs/relational-storage-usage/spec.md),
+  [object-storage-usage](openspec/specs/object-storage-usage/spec.md),
+  [bucket-size-exporter](openspec/specs/bucket-size-exporter/spec.md) ·
   Rationale:
   [add-usage-ledger](openspec/changes/archive/2026-09-23-add-usage-ledger/design.md),
   [record-build-usage](openspec/changes/archive/2026-09-26-record-build-usage/design.md),
-  [meter-relational-storage](openspec/changes/archive/2026-10-06-meter-relational-storage/design.md)
+  [meter-relational-storage](openspec/changes/archive/2026-10-06-meter-relational-storage/design.md),
+  [meter-object-storage](openspec/changes/meter-object-storage/design.md)
 - **Account SSH keys are the SSH credential.** A user registers SSH public keys
   on their account; they are owned by the user, scoped to no deployment, and are
   what authenticates every SSH connection. Adds are owner-only even for

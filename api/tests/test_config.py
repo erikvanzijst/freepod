@@ -148,3 +148,11 @@ def test_usage_tenant_db_namespace(monkeypatch):
 
     monkeypatch.setenv("CAELUS_USAGE_TENANT_DB_NAMESPACE", "caelus-dev")
     assert CaelusSettings(_env_file=None).usage_tenant_db_namespace == "caelus-dev"
+
+
+def test_usage_bucket_namespace(monkeypatch):
+    monkeypatch.delenv("CAELUS_USAGE_BUCKET_NAMESPACE", raising=False)
+    assert CaelusSettings(_env_file=None).usage_bucket_namespace == ""
+
+    monkeypatch.setenv("CAELUS_USAGE_BUCKET_NAMESPACE", "caelus-garage-dev")
+    assert CaelusSettings(_env_file=None).usage_bucket_namespace == "caelus-garage-dev"

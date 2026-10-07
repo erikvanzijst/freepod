@@ -164,6 +164,9 @@ class UsageSampleORM(SQLModel, table=True):
         # btree rather than BRIN: BRIN cannot answer the resume position's max()
         # without scanning the table.
         Index("ix_usage_sample_window", "window_start"),
+        # Each sampler source's resume position: max(window_start) of the metrics only
+        # it records, one backward index-only scan per metric.
+        Index("ix_usage_sample_metric_window", "metric_id", "window_start"),
     )
 
     subject_id: int = Field(

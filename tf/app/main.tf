@@ -90,6 +90,10 @@ module "garage" {
   source    = "./garage"
   namespace = kubernetes_namespace.garage.metadata[0].name
   host      = local.garage_host
+
+  bucket_exporter_image = var.bucket_exporter_image
+  prometheus_base_url   = var.prometheus_base_url
+  loki_base_url         = var.loki_base_url
 }
 
 module "caelus" {
@@ -124,6 +128,7 @@ module "caelus" {
 
   garage_admin_url   = module.garage.admin_url
   garage_admin_token = module.garage.caelus_api_admin_token
+  garage_namespace   = kubernetes_namespace.garage.metadata[0].name
 
   # Both environments write into the one platform zone; the record they create
   # is per account, and an account exists in one environment only.

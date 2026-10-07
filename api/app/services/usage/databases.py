@@ -58,7 +58,7 @@ class DatabaseSizeSource:
     """Tenant databases in one environment's tenant cluster."""
 
     name = "databases"
-    subject_kind = SubjectKind.DATABASE
+    position_metrics = frozenset({SIZE_METRIC})
 
     def __init__(self, prometheus: PrometheusClient, *, namespace: str) -> None:
         if not namespace:

@@ -291,6 +291,12 @@ variable "ssh_resolver_image" {
   default     = "ghcr.io/erikvanzijst/freepod/daemons:0.1.0"
 }
 
+variable "bucket_exporter_image" {
+  description = "Daemons image (daemons/) that the bucket size exporter runs from, pinned to an immutable version"
+  type        = string
+  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.2.0"
+}
+
 variable "sshpiper_port" {
   description = "Cluster-side SSH port for the SFTP entry point (null = workspace default: 2222 prod, 2223 dev)"
   type        = number

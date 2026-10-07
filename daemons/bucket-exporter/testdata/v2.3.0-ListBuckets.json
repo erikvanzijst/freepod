@@ -1,0 +1,34 @@
+[
+  {
+    "id": "4a350deb0f127eb79090ecb29f45280ada658d4ab25e4fa166dd363c58b22b7b",
+    "created": "2026-10-07T08:59:20.360Z",
+    "globalAliases": [
+      "dep-5006d4fd-b458-48dc-bd90-20f1cac6ee85"
+    ],
+    "localAliases": []
+  },
+  {
+    "id": "90547472817ecc5a1e7df91d214a2db22983774f357c343a0b87874892d26251",
+    "created": "2026-10-07T08:59:19.223Z",
+    "globalAliases": [
+      "dep-d597d0fa-c81d-4148-b467-0785e8d152bb"
+    ],
+    "localAliases": []
+  },
+  {
+    "id": "f600a537c9d9dfe886a30b5aeaf0876afc1f8c2b8490d2d9d53a67a1479ea8c3",
+    "created": "2026-10-07T09:04:21.383Z",
+    "globalAliases": [
+      "artifacts"
+    ],
+    "localAliases": []
+  },
+  {
+    "id": "f78dbd87ee1fcaab2cba18fafc0b9fa95728bcd846556fa0911c8e088dc19671",
+    "created": "2026-10-07T08:59:19.795Z",
+    "globalAliases": [
+      "dep-940b7eb8-d8ee-4a95-b8db-9f9301a27064"
+    ],
+    "localAliases": []
+  }
+]

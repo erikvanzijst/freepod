@@ -9,6 +9,7 @@ window holds.
   - ``containers``  the OpenCost source: ``opencost`` (transport), ``source`` (whether a
                     window is trustworthy), ``mapping`` (fields to catalogued quantities)
   - ``databases``   the tenant database source, read through ``prometheus``
+  - ``buckets``     the object storage bucket source, read through ``prometheus``
   - ``subjects``    subject identity, container attribution, and the bulk upsert
   - ``ledger``      the append-only, idempotent, chunked write
   - ``batching``    the chunking both use

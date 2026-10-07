@@ -22,6 +22,11 @@ locals {
   api_token_name       = "caelus-api-provisioning"
   api_token_secret_key = "caelus_api_admin_token"
 
+  # The bucket size exporter's: a third credential in the Secret, read by its
+  # Deployment in this namespace and never by Terraform.
+  exporter_token_name       = "bucket-exporter"
+  exporter_token_secret_key = "bucket_exporter_admin_token"
+
   provision_script = file("${path.module}/scripts/provision.sh")
 
   # Job specs are immutable, so the Job is named after a digest of everything
@@ -36,6 +41,8 @@ locals {
     var.kubectl_image,
     local.api_token_name,
     local.api_token_secret_key,
+    local.exporter_token_name,
+    local.exporter_token_secret_key,
   ])), 0, 10)
 
   # The platform's own bucket and S3 key on this instance, e.g. for build
@@ -188,6 +195,16 @@ resource "kubernetes_job" "provision" {
           env {
             name  = "API_TOKEN_SECRET_KEY"
             value = local.api_token_secret_key
+          }
+
+          env {
+            name  = "EXPORTER_TOKEN_NAME"
+            value = local.exporter_token_name
+          }
+
+          env {
+            name  = "EXPORTER_TOKEN_SECRET_KEY"
+            value = local.exporter_token_secret_key
           }
 
           # Long enough that an operator can complete the one-time layout

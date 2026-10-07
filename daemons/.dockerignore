@@ -5,3 +5,4 @@ go.work.sum
 # Binaries left by a local `go build` in a daemon's directory.
 */app-auth
 */ssh-auth
+*/bucket-exporter
