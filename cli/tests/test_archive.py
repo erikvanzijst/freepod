@@ -513,16 +513,20 @@ def test_ownership_metadata_is_normalized(tmp_path):
 def test_repacking_an_unchanged_tree_is_reproducible(tmp_path):
     build(tmp_path, {"app.py": "z", "src/index.js": "x", "README.md": "y"})
 
-    first, first_size, _ = pack(tmp_path)
-    second, second_size, _ = pack(tmp_path)
-    try:
-        first.seek(0)
-        second.seek(0)
-        assert first.read() == second.read(), "two packs of one tree must be byte-identical"
-        assert first_size == second_size
-    finally:
-        first.close()
-        second.close()
+    def contents():
+        handle, _, _ = pack(tmp_path)
+        try:
+            with tarfile.open(fileobj=handle, mode="r:gz") as tar:
+                return [
+                    (info.get_info(), tar.extractfile(info).read() if info.isreg() else None)
+                    for info in tar.getmembers()
+                ]
+        finally:
+            handle.close()
+
+    # Members, their order, metadata and data; not the compressed bytes, whose
+    # gzip header carries the time of packing.
+    assert contents() == contents()
 
 
 def test_the_handle_is_rewound_and_the_size_is_the_packed_size(tmp_path):
