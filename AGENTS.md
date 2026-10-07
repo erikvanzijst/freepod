@@ -94,7 +94,7 @@ This repository is a monorepo with:
   [add-usage-ledger](openspec/changes/archive/2026-09-23-add-usage-ledger/design.md),
   [record-build-usage](openspec/changes/archive/2026-09-26-record-build-usage/design.md),
   [meter-relational-storage](openspec/changes/archive/2026-10-06-meter-relational-storage/design.md),
-  [meter-object-storage](openspec/changes/meter-object-storage/design.md)
+  [meter-object-storage](openspec/changes/archive/2026-10-07-meter-object-storage/design.md)
 - **Account SSH keys are the SSH credential.** A user registers SSH public keys
   on their account; they are owned by the user, scoped to no deployment, and are
   what authenticates every SSH connection. Adds are owner-only even for

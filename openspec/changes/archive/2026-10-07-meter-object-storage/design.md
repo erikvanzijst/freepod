@@ -353,6 +353,13 @@ Prerequisite: `daemons-image` is applied and `daemons` is published.
    - Settings → Usage shows Object storage.
 5. Repeat on prod.
 
+**As rolled out (2026-10-07):** `daemons:0.2.0` was pushed by hand from the branch for
+the dev rollout, so CI skipped it on merge. A new source records nothing until the
+sampler's 6 h first-run lookback passes the windows before its exporter existed, which
+are unmeasurable. Prod was started with one pass of the bucket source at a 1 h lookback,
+recording the partly measured first window, which matched Prometheus's average exactly.
+Dev was started from one seeded window instead.
+
 **Rollback:**
 - Unset `CAELUS_USAGE_BUCKET_NAMESPACE` to disable the source without a deploy.
 - Scale the exporter to zero.

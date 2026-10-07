@@ -60,7 +60,7 @@
   - `caelus_bucket_exporter_buckets` and `caelus_bucket_bytes` appear in Prometheus for `caelus-garage-dev`;
   - a write to a dev bucket is followed by a read of it within a minute (exporter log);
   - `activity_signal_ok` is 1.
-- [ ] 7.2 After the next settled window on dev:
+- [x] 7.2 After the next settled window on dev:
   - every non-empty bucket of a live deployment has an `object_storage_byte_hours` sample equal to the Prometheus average × hours;
   - Settings → Usage shows Object storage.
-- [ ] 7.3 Repeat 7.1–7.2 on `prod`
+- [x] 7.3 Repeat 7.1–7.2 on `prod`

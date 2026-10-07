@@ -48,13 +48,19 @@ platform's record of that database names, rather than one resolved from the name
 was observed in, since every tenant database is served from one shared cluster. Its
 reference is the database's name, which is unique to its deployment.
 
+A subject MAY be an object storage bucket. A bucket subject's deployment is the one whose
+identifier the bucket's name carries, confirmed against the platform's deployment
+records, since every bucket is served from one shared object store. Its reference is the
+bucket's name, `dep-<deployment id>`, which is unique to its deployment.
+
 Subject records MAY be updated as attribution improves; samples MUST NOT.
 
 #### Scenario: Usage is attributed to the owning user
 
 - **WHEN** usage is summed for a user over a period
 - **THEN** every subject attributed to one of that user's deployments is included,
-  whether a container in the deployment's namespace, one of its builds, or its database
+  whether a container in the deployment's namespace, one of its builds, its database or
+  its bucket
 
 #### Scenario: A deleted deployment keeps its history
 
@@ -85,6 +91,12 @@ Subject records MAY be updated as attribution improves; samples MUST NOT.
 - **WHEN** a tenant database's usage is recorded
 - **THEN** its subject is of kind `database` and attributed to the deployment the
   platform's record of that database names, not to the shared cluster's namespace
+
+#### Scenario: A bucket is attributed to its own deployment
+
+- **WHEN** a bucket's usage is recorded
+- **THEN** its subject is of kind `bucket`, its reference is the bucket's name, and it is
+  attributed to the deployment that name carries, not to the object store's namespace
 
 ### Requirement: Samples are window-aligned and self-describing
 
@@ -158,13 +170,23 @@ is decided outside this record.
 
 For each axis where an allowance exists, the system SHALL record both what was consumed
 and what was allowed, as separate catalogued quantities against the same subject and
-window.
+window, with one exception: object storage.
+
+Object storage SHALL record consumption only. Its allowance, the plan's storage quota
+enforced by the object store, is constant per plan and derivable from the plan when
+needed. Recording it every window would double the rows of the axis with the most
+subjects.
 
 #### Scenario: Requests and usage are both available
 
 - **WHEN** a container's CPU and memory are recorded for a window
 - **THEN** both the consumed quantities and the requested and limited allowances are
   recorded, and either can be summed independently
+
+#### Scenario: Object storage records consumption alone
+
+- **WHEN** a bucket's size is recorded for a window
+- **THEN** one quantity is recorded for that subject and window, and no allowance
 
 ### Requirement: Both metric kinds reduce to one additive quantity
 

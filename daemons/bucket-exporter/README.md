@@ -8,7 +8,7 @@ Runs beside Garage (`tf/app/garage/bucket-exporter.tf`) with a token scoped to
 
 Spec: [bucket-size-exporter](../../openspec/specs/bucket-size-exporter/spec.md),
 [object-storage-usage](../../openspec/specs/object-storage-usage/spec.md) ·
-Rationale: [meter-object-storage](../../openspec/changes/meter-object-storage/design.md)
+Rationale: [meter-object-storage](../../openspec/changes/archive/2026-10-07-meter-object-storage/design.md)
 
 ## Configuration
 
