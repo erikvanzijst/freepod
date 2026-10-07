@@ -57,8 +57,13 @@ MISE_TAG=mise-2026.8.4
 #
 # DOCKERFILE_FRONTEND_DIGEST duplicates `DOCKERFILE_FRONTEND_DIGEST` in
 # build.py; the same test that guards FRONTEND_DIGEST fails if they disagree.
-DOCKERFILE_FRONTEND_TAG=1
-DOCKERFILE_FRONTEND_DIGEST=sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#
+# The tag is the exact release, never a moving one like `1`: the copy goes by
+# tag, so a moving tag mirrors whatever upstream points it at that day, and
+# re-tagging the mirror would leave the pinned digest untagged and exposed to
+# garbage collection. The copy is checked against the digest below either way.
+DOCKERFILE_FRONTEND_TAG=1.27.1
+DOCKERFILE_FRONTEND_DIGEST=sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # `crane copy` retains the source digest, which the frontend requires: build.py
 # names it by digest, so a re-serialized manifest would be a different image
@@ -125,6 +130,11 @@ done
 
 echo "  docker/dockerfile:${DOCKERFILE_FRONTEND_TAG}  ->  ${REGISTRY}/docker/dockerfile"
 crane copy "docker/dockerfile:${DOCKERFILE_FRONTEND_TAG}" "${REGISTRY}/docker/dockerfile:${DOCKERFILE_FRONTEND_TAG}"
+mirrored=\$(crane digest "${REGISTRY}/docker/dockerfile:${DOCKERFILE_FRONTEND_TAG}")
+if [ "\$mirrored" != "${DOCKERFILE_FRONTEND_DIGEST}" ]; then
+  echo "docker/dockerfile:${DOCKERFILE_FRONTEND_TAG} is \$mirrored, not the pinned ${DOCKERFILE_FRONTEND_DIGEST}" >&2
+  exit 1
+fi
 
 echo MIRROR_OK
 EOF

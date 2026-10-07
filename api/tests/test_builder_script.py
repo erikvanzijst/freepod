@@ -18,6 +18,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import tarfile
 import time
 import tomllib
@@ -993,6 +994,13 @@ def test_the_mirror_script_pins_the_dockerfile_frontend_build_py_names():
     fall through to, so a disagreement here is a broken build, not a slow one."""
     script = MIRROR_SCRIPT.read_text()
     assert f"DOCKERFILE_FRONTEND_DIGEST={build.DOCKERFILE_FRONTEND_DIGEST}" in script
+
+
+def test_the_mirror_script_copies_the_dockerfile_frontend_by_exact_release():
+    """The copy goes by tag, so a moving tag like `1` would mirror whatever
+    upstream points it at that day rather than the digest build.py names."""
+    script = MIRROR_SCRIPT.read_text()
+    assert re.search(r"^DOCKERFILE_FRONTEND_TAG=\d+\.\d+\.\d+$", script, re.MULTILINE)
 
 
 # ---------------------------------------------------------------------------

@@ -16,7 +16,7 @@
 # different blast radius.
 #
 # Build and publish: see README.md in this directory.
-FROM moby/buildkit:v0.32.2-rootless
+FROM moby/buildkit:v0.33.1-rootless
 
 # Version-matched pair. The build plan `railpack prepare` emits is a contract
 # between this binary and the frontend image pinned in build.py: the two must
