@@ -225,7 +225,7 @@ This repository is a monorepo with:
   the container `command` and pins each consumer's version separately, so one
   daemon's release never moves another. Adding a daemon is adding a directory.
   Spec: [daemons-image](openspec/specs/daemons-image/spec.md) · Rationale:
-  [daemons-image](openspec/changes/daemons-image/design.md),
+  [daemons-image](openspec/changes/archive/2026-10-07-daemons-image/design.md),
   [daemons/README.md](daemons/README.md)
 - Authentication: all API endpoints require the `X-Auth-Request-Email` header
   (injected by oauth2-proxy in production, set by the frontend in local dev);

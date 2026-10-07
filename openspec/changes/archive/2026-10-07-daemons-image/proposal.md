@@ -24,8 +24,9 @@ Consolidating first means the exporter, and every daemon after it, only adds a b
 - One Dockerfile builds every daemon. `build-images.sh` gains `--daemons`, which
   replaces `--app-auth` and `--ssh-resolver`.
 - One CI job vets and tests every daemon module, replacing `app-auth-test` and
-  `ssh-auth-test`. One publish step pushes `daemons` when its version is new. CI makes
-  the first push of the package, so the repo's Actions own it from the start.
+  `ssh-auth-test`. One publish step pushes `daemons` when its version is new. The first
+  version is pushed by hand and the repo's Actions are granted write access to the
+  package, so CI publishes every version after it.
 - Terraform repoints `app-auth` and the SSH resolver at the first `daemons` version,
   which runs the same code they run today. The old `app-auth` and `ssh-resolver`
   packages stay published for rollback and receive no new versions.

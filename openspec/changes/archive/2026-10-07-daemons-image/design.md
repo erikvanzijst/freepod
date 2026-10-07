@@ -129,16 +129,19 @@ depends on it.
 A new daemon is picked up by the loop with no workflow edit (spec: *A new daemon is
 checked*).
 
-### D5: CI makes the first push
+### D5: The first version is pushed by hand; CI publishes every later one
 
-The `daemons` package must not be created by hand. The first version merges with
-`daemons/VERSION` set and no package in the registry, so the CI step
-`build-images.sh --daemons --skip-if-published` is what creates the package. The
-package then belongs to the repository's Actions.
+`daemons:0.1.0` is pushed by hand with `build-images.sh --daemons` before merge, so
+dev can be repointed and checked ahead of it. The package is then made public, as the
+cluster pulls platform images anonymously, and the repository's Actions are granted
+write access in the package settings. From then on the CI step
+`build-images.sh --daemons --skip-if-published` publishes each new version and skips
+`0.1.0` as already published.
 
-If that first push is denied anyway, the fallback is the existing manual one: push by
-hand, then grant Actions write access in the package settings. The migration plan
-checks for the tag before any Terraform change, so a denial costs time, not an outage.
+*Alternative considered:* let CI make the first push, so the package belongs to the
+repository's Actions from the start. Rejected for this release: it would have
+delayed checking the image on dev until after merge, and granting write access by
+hand is a one-time step.
 
 ### D6: Paths that move, and one string that must not
 
@@ -169,8 +172,8 @@ Archived design documents keep their old paths. They're dated and immutable.
 - **[Shared base, shared Go toolchain]** Bumping the Go version rebuilds every daemon
   in the next version. → That's per-version, not per-deployment: each daemon still
   moves only when its pin does, and gets reviewed then.
-- **[The first push may still be denied]** → D5's fallback. Terraform isn't touched
-  until the tag is confirmed to exist.
+- **[CI can't push later versions]** if the package's Actions write access is missing.
+  → D5 grants it once, at the first push; the publish step fails loudly otherwise.
 - **[Auth paths restart once]** Repointing changes the image reference, so `app-auth`
   and the SSH edge pod restart on apply. → Same binaries, same configuration. Apply
   dev first. The SSH edge restart drops open sessions, which is already true for any
@@ -181,11 +184,11 @@ Archived design documents keep their old paths. They're dated and immutable.
 1. Move the directories, add the `daemons/` build files, update tests, CI, scripts and
    docs. Remove `app-auth/{Dockerfile,VERSION,.dockerignore}` and
    `ssh-auth/{Dockerfile,VERSION}`. Set `daemons/VERSION` to `0.1.0`.
-2. Merge. CI tests every daemon and publishes `daemons:0.1.0`. Confirm with
+2. Push `daemons:0.1.0` by hand, make the package public and grant the repository's
+   Actions write access (D5). Confirm with
    `docker buildx imagetools inspect ghcr.io/erikvanzijst/freepod/daemons:0.1.0`.
 3. Point `app_auth_image` and `ssh_resolver_image` at `daemons:0.1.0` and add the
-   `command`s, in a follow-up commit, or the same one if step 2 has already published.
-   `terraform apply` on the `default` (dev) workspace, check login and SSH on dev, then
+   `command`s. `terraform apply` on the `default` (dev) workspace, check login and SSH on dev, then
    on `prod`.
 4. Verify: `app-auth` pods ready and a sign-in works; the SSH edge pod ready
    (`/ssh-auth -healthcheck`) and an SFTP connection authenticates.

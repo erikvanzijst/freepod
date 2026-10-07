@@ -28,6 +28,6 @@
 
 ## 6. Roll out
 
-- [ ] 6.1 Merge; confirm CI's `daemons-test` passed and its publish step created `daemons:0.1.0` (D5). If GHCR denies the first push, push by hand, grant the repository's Actions write access in the package settings, and record that in the PR
+- [x] 6.1 Push `daemons:0.1.0` by hand, make the package public and grant the repository's Actions write access (D5); merge, and confirm CI's `daemons-test` passed and its publish step skipped `daemons:0.1.0` as already published
 - [x] 6.2 Apply task 4.2 to the `default` (dev) workspace: `app-auth` in `login-dev` is ready and a "Sign in with Freepod" login on a dev app works; the `sshpiper-dev` pod is ready and an SFTP connection to a dev deployment authenticates
-- [ ] 6.3 Apply to `prod` and repeat 6.2's checks against prod
+- [x] 6.3 Apply to `prod` and repeat 6.2's checks against prod
