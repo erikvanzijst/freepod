@@ -93,13 +93,14 @@ This repository is a monorepo with:
   [ssh-key-data-model](openspec/specs/ssh-key-data-model/spec.md) · Rationale:
   [account-ssh-keys](openspec/changes/archive/2026-08-28-account-ssh-keys/design.md)
 - **SSH routing and authentication are resolved per connection.** The edge
-  (sshpiperd) asks the SSH auth resolver — `ssh-auth/`, a gRPC plugin — rather
-  than reading cluster objects, so the reconciler owns nothing for this feature.
+  (sshpiperd) asks the SSH auth resolver — `daemons/ssh-auth/`, a gRPC plugin —
+  rather than reading cluster objects, so the reconciler owns nothing for this
+  feature.
   Spec: [sftp-edge-routing](openspec/specs/sftp-edge-routing/spec.md),
   [ssh-chart-contract](openspec/specs/ssh-chart-contract/spec.md),
   [ssh-auth-resolver](openspec/specs/ssh-auth-resolver/spec.md) · Rationale:
   [ssh-grpc-auth-plugin](openspec/changes/archive/2026-08-30-ssh-grpc-auth-plugin/design.md),
-  [ssh-auth](ssh-auth/README.md)
+  [ssh-auth](daemons/ssh-auth/README.md)
 - **One SSH sidecar for every product, and a product declares one thing: its
   session root.** The `ssh-sidecar` library chart
   (`products/_lib/ssh-sidecar-chart`) renders the platform's own image
@@ -120,10 +121,10 @@ This repository is a monorepo with:
   is the name every product chart renders. The coupling is invisible from both
   sides — the resolver never validates the Service, and nothing in a chart's own
   release consults it — so a unilateral change produces deployments that
-  authenticate and then reach nothing. `ssh-auth/convention_test.go` renders
-  both session roots and asserts the two agree; it is the only thing that fails
-  when one side moves. Moving it costs a maintenance window with the fleet
-  unroutable in between.
+  authenticate and then reach nothing. `daemons/ssh-auth/convention_test.go`
+  renders both session roots and asserts the two agree; it is the only thing
+  that fails when one side moves. Moving it costs a maintenance window with the
+  fleet unroutable in between.
 - **Vars are the single channel into a pod's environment.** A deployment's
   `vars` become environment variables in its container;
   `deployment.user_values_json` configures the **chart**, not the process, and
@@ -203,7 +204,7 @@ This repository is a monorepo with:
   [product-upgrade-service](openspec/changes/archive/2026-09-17-product-upgrade-service/design.md),
   [ops/upgrader/README.md](ops/upgrader/README.md)
 - **"Sign in with Freepod" is an edge feature of `custom` deployments, served
-  by `app-auth/`** (Go): a Traefik forward-auth verifier and a broker on
+  by `daemons/app-auth/`** (Go): a Traefik forward-auth verifier and a broker on
   `login.<domain>`, the only party that talks to Keycloak for tenant apps (one
   client per environment, never one per app). A deployment opts in with
   `auth.enabled` in its values; the `custom` chart then routes every request
@@ -217,7 +218,15 @@ This repository is a monorepo with:
   [app-auth-chart-contract](openspec/specs/app-auth-chart-contract/spec.md),
   [app-auth-data-model](openspec/specs/app-auth-data-model/spec.md) ·
   Rationale: [app-authentication](openspec/changes/archive/2026-09-28-app-authentication/design.md),
-  [app-auth/README.md](app-auth/README.md)
+  [daemons/app-auth/README.md](daemons/app-auth/README.md)
+- **The platform's Go daemons ship in one image and are pinned per consumer.**
+  Each is its own module under `daemons/` and becomes `/<directory>` in
+  `ghcr.io/…/daemons`, which has no entrypoint: Terraform names the binary as
+  the container `command` and pins each consumer's version separately, so one
+  daemon's release never moves another. Adding a daemon is adding a directory.
+  Spec: [daemons-image](openspec/specs/daemons-image/spec.md) · Rationale:
+  [daemons-image](openspec/changes/daemons-image/design.md),
+  [daemons/README.md](daemons/README.md)
 - Authentication: all API endpoints require the `X-Auth-Request-Email` header
   (injected by oauth2-proxy in production, set by the frontend in local dev);
   `GET /api/me` is the session initialization endpoint. The CLI uses

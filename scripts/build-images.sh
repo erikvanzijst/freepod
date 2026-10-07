@@ -9,8 +9,7 @@
 #   ./scripts/build-images.sh --ui           # Build only UI image (tag = git SHA)
 #   ./scripts/build-images.sh --keycloak     # Build only Keycloak image (Freepod theme)
 #   ./scripts/build-images.sh --ssh-sidecar   # Build only the dev-profile SSH sidecar
-#   ./scripts/build-images.sh --ssh-resolver  # Build only the SSH auth resolver
-#   ./scripts/build-images.sh --app-auth      # Build only the app authentication service
+#   ./scripts/build-images.sh --daemons       # Build only the platform Go daemons image
 #   ./scripts/build-images.sh --builder       # Build only the tenant build image
 #   ./scripts/build-images.sh --placeholder   # Build only the custom placeholder image
 #   ./scripts/build-images.sh v1.2.3 --api   # Build only API image with custom tag
@@ -32,22 +31,17 @@
 # --skip-if-published instead, so a push lands exactly when VERSION names a
 # version the registry does not already hold.
 #
-# The SSH auth resolver is on the same footing and for a related reason. It runs
-# as a sidecar in the SSH edge's pod, on the authentication path of every SSH
-# connection, and must not roll because the API rolled: it takes its version from
-# ssh-auth/VERSION, is never re-pushed, and reaches the cluster only when
-# Terraform names a new version.
+# The platform Go daemons image (daemons/) is on the same footing and for a
+# related reason. Its daemons include the SSH auth resolver and app-auth, both on
+# an authentication path, which must not roll because the API rolled: it takes
+# its version from daemons/VERSION, is never re-pushed, and each daemon reaches
+# the cluster only when Terraform names a new version for it.
 #
 # The tenant build image is the third of these. It is not a Deployment at all --
 # the build worker names it in each build Job it creates -- so a moving tag would
 # change what runs tenant code without anything having been rolled out. Version
 # in products/custom/builder/VERSION, never re-pushed, reaching builds only when
 # Terraform names a new version.
-#
-# The app authentication service (app-auth/) is versioned the same way and for
-# the same reason as the SSH resolver: it sits on the authentication path of
-# every opted-in app, and reaches the cluster only when Terraform names a new
-# version from app-auth/VERSION.
 
 set -euo pipefail
 
@@ -56,7 +50,7 @@ REGISTRY=ghcr.io/$(gh repo view --json nameWithOwner -q .nameWithOwner)
 # Function to display help
 usage() {
   cat <<'EOF'
-Usage: ./scripts/build-images.sh [TAG] [--api|--ui|--keycloak|--ssh-sidecar|--ssh-resolver|--app-auth|--builder|--placeholder|--all|--help]
+Usage: ./scripts/build-images.sh [TAG] [--api|--ui|--keycloak|--ssh-sidecar|--daemons|--builder|--placeholder|--all|--help]
 
 If TAG is not provided, the current git SHA will be used.
 
@@ -67,11 +61,8 @@ Options:
   --ssh-sidecar   Build only the dev-profile SSH sidecar. Ignores TAG: its
                   version comes from products/_lib/ssh-sidecar-image/VERSION and an
                   already-published version is refused rather than overwritten.
-  --ssh-resolver  Build only the SSH auth resolver. Ignores TAG: its version
-                  comes from ssh-auth/VERSION and an already-published version
-                  is refused rather than overwritten.
-  --app-auth      Build only the app authentication service. Ignores TAG: its
-                  version comes from app-auth/VERSION and an already-published
+  --daemons       Build only the platform Go daemons image. Ignores TAG: its
+                  version comes from daemons/VERSION and an already-published
                   version is refused rather than overwritten.
   --builder       Build only the tenant build image. Ignores TAG: its version
                   comes from products/custom/builder/VERSION and an already-
@@ -81,8 +72,8 @@ Options:
                   an already-published version is refused rather than
                   overwritten.
   --skip-if-published
-                  With --ssh-sidecar, --ssh-resolver, --app-auth,
-                  --builder or --placeholder, treat an already-published version as nothing
+                  With --ssh-sidecar, --daemons, --builder or
+                  --placeholder, treat an already-published version as nothing
                   to do rather than an error. This is what makes the publish
                   safe to run on every merge: it pushes exactly when VERSION is
                   new. Run by hand without it, so that a version you believed
@@ -94,7 +85,7 @@ EOF
 
 # Parse arguments
 TAG=""
-TARGET="both"  # possible values: both, api, ui, keycloak, ssh-sidecar, ssh-resolver, app-auth, builder, placeholder, all
+TARGET="both"  # possible values: both, api, ui, keycloak, ssh-sidecar, daemons, builder, placeholder, all
 SKIP_IF_PUBLISHED=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -114,12 +105,8 @@ while [[ $# -gt 0 ]]; do
       TARGET="ssh-sidecar"
       shift
       ;;
-    --ssh-resolver)
-      TARGET="ssh-resolver"
-      shift
-      ;;
-    --app-auth)
-      TARGET="app-auth"
+    --daemons)
+      TARGET="daemons"
       shift
       ;;
     --builder)
@@ -157,8 +144,8 @@ done
 # Only the immutably-tagged images can be already-published, so anywhere else
 # this flag would silently do nothing -- which is how a publish everyone
 # believes is conditional turns out never to have been.
-if [[ "$SKIP_IF_PUBLISHED" == "true" && "$TARGET" != "ssh-sidecar" && "$TARGET" != "ssh-resolver" && "$TARGET" != "app-auth" && "$TARGET" != "builder" && "$TARGET" != "placeholder" ]]; then
-  echo "--skip-if-published only applies to --ssh-sidecar, --ssh-resolver, --app-auth, --builder and --placeholder." >&2
+if [[ "$SKIP_IF_PUBLISHED" == "true" && "$TARGET" != "ssh-sidecar" && "$TARGET" != "daemons" && "$TARGET" != "builder" && "$TARGET" != "placeholder" ]]; then
+  echo "--skip-if-published only applies to --ssh-sidecar, --daemons, --builder and --placeholder." >&2
   exit 1
 fi
 
@@ -218,73 +205,42 @@ if [[ "$TARGET" == "ssh-sidecar" ]]; then
   exit 0
 fi
 
-if [[ "$TARGET" == "ssh-resolver" ]]; then
-  RESOLVER_CONTEXT=./ssh-auth
-  RESOLVER_VERSION=$(tr -d '[:space:]' < "${RESOLVER_CONTEXT}/VERSION")
-  RESOLVER_REF="${REGISTRY}/ssh-resolver:${RESOLVER_VERSION}"
+if [[ "$TARGET" == "daemons" ]]; then
+  DAEMONS_CONTEXT=./daemons
+  DAEMONS_VERSION=$(tr -d '[:space:]' < "${DAEMONS_CONTEXT}/VERSION")
+  DAEMONS_REF="${REGISTRY}/daemons:${DAEMONS_VERSION}"
 
   # Never overwritten, for the same reason as the sidecar above and one more:
-  # rolling back the SSH edge means pointing Terraform at the previous version,
+  # rolling a daemon back means pointing Terraform at the previous version,
   # which only works while that version is still the image it was.
-  if docker manifest inspect "${RESOLVER_REF}" >/dev/null 2>&1; then
+  if docker manifest inspect "${DAEMONS_REF}" >/dev/null 2>&1; then
     if [[ "$SKIP_IF_PUBLISHED" == "true" ]]; then
-      echo "${RESOLVER_REF} is already published. Nothing to do."
+      echo "${DAEMONS_REF} is already published. Nothing to do."
       exit 0
     fi
-    echo "Refusing to overwrite ${RESOLVER_REF}, which is already published." >&2
-    echo "Bump ssh-auth/VERSION and repoint tf/app/sshpiper." >&2
+    echo "Refusing to overwrite ${DAEMONS_REF}, which is already published." >&2
+    echo "Bump ${DAEMONS_CONTEXT}/VERSION and repoint the daemons' image variables in tf/app." >&2
     exit 1
   fi
 
   echo ""
-  echo "[1/1] Building and pushing SSH resolver image ${RESOLVER_VERSION}..."
-  # Its own directory is the whole context: ssh-auth/ depends on nothing else
-  # in the repository, which is the point of it being self-contained.
+  echo "[1/1] Building and pushing the daemons image ${DAEMONS_VERSION}..."
+  # daemons/ is the whole context: the daemons depend on nothing else in the
+  # repository.
   docker buildx build \
     --push \
     --platform linux/amd64 \
-    --tag "${RESOLVER_REF}" \
-    "${RESOLVER_CONTEXT}"
+    --tag "${DAEMONS_REF}" \
+    "${DAEMONS_CONTEXT}"
 
   echo ""
   echo "=============================================="
-  echo "Pushed ${RESOLVER_REF}"
+  echo "Pushed ${DAEMONS_REF}"
   echo ""
-  echo "This does not reach the SSH edge on its own. Point tf/app/sshpiper at"
-  echo "this version and apply; ./scripts/rollout.sh does not touch it."
-  echo "=============================================="
-  exit 0
-fi
-
-if [[ "$TARGET" == "app-auth" ]]; then
-  APP_AUTH_CONTEXT=./app-auth
-  APP_AUTH_VERSION=$(tr -d '[:space:]' < "${APP_AUTH_CONTEXT}/VERSION")
-  APP_AUTH_REF="${REGISTRY}/app-auth:${APP_AUTH_VERSION}"
-
-  if docker manifest inspect "${APP_AUTH_REF}" >/dev/null 2>&1; then
-    if [[ "$SKIP_IF_PUBLISHED" == "true" ]]; then
-      echo "${APP_AUTH_REF} is already published. Nothing to do."
-      exit 0
-    fi
-    echo "Refusing to overwrite ${APP_AUTH_REF}, which is already published." >&2
-    echo "Bump app-auth/VERSION and repoint tf/app." >&2
-    exit 1
-  fi
-
-  echo ""
-  echo "[1/1] Building and pushing app-auth image ${APP_AUTH_VERSION}..."
-  docker buildx build \
-    --push \
-    --platform linux/amd64 \
-    --tag "${APP_AUTH_REF}" \
-    "${APP_AUTH_CONTEXT}"
-
-  echo ""
-  echo "=============================================="
-  echo "Pushed ${APP_AUTH_REF}"
-  echo ""
-  echo "This does not reach the cluster on its own. Point tf/app at this version"
-  echo "and apply; ./scripts/rollout.sh does not touch it."
+  echo "This does not reach the cluster on its own. Point the image variable of"
+  echo "each daemon that should run it (app_auth_image, ssh_resolver_image in"
+  echo "tf/app) at this version and apply; ./scripts/rollout.sh does not touch"
+  echo "it."
   echo "=============================================="
   exit 0
 fi

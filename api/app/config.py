@@ -48,7 +48,8 @@ class CaelusSettings(BaseSettings):
     # tf/deps/certmanager and tf/deps/system/traefik.tf)
     tls_cluster_issuer: str = "letsencrypt-http"
 
-    # The app authentication verifier's in-cluster forward-auth address (app-auth/).
+    # The app authentication verifier's in-cluster forward-auth address
+    # (daemons/app-auth/).
     # Injected into every chart as caelus.appAuth.verifyUrl; the custom chart
     # routes an auth-enabled deployment through it and refuses to render one
     # without it. Empty means the environment does not run app-auth.

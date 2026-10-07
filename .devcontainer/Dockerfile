@@ -12,7 +12,7 @@ ARG HELM_SHA256=86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb
 RUN wget -qO /tmp/helm.tgz "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" && \
     echo "${HELM_SHA256}  /tmp/helm.tgz" | sha256sum -c - && \
     tar -xzf /tmp/helm.tgz -C /tmp && mv /tmp/linux-amd64/helm /helm
-# Same image ssh-auth/Dockerfile builds the release binary with.
+# Same image daemons/Dockerfile builds the release binaries with.
 FROM golang:1.25-bookworm AS golang
 FROM mcr.microsoft.com/devcontainers/python:3.13-trixie
 

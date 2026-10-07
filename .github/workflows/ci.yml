@@ -110,10 +110,11 @@ jobs:
       - name: Run the ssh-sidecar harness
         run: ./products/_lib/ssh-sidecar-image/test/run-tests.sh
 
-  # The SSH auth resolver's Go suite. The devcontainer's post-create.sh has
-  # already created the test db and set CAELUS_TEST_DATABASE_URL and has run
-  # `alembic upgrade head`.
-  ssh-auth-test:
+  # Every Go daemon under daemons/, each module vetted and tested against its
+  # own go.mod. Runs in the dev container because post-create.sh has already
+  # created the test db, set CAELUS_TEST_DATABASE_URL and run `alembic upgrade
+  # head`, which the ssh-auth and app-auth role tests need.
+  daemons-test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -125,42 +126,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Build and run the resolver tests in the dev container
+      - name: Build and run the daemon tests in the dev container
         uses: devcontainers/ci@v0.3
         with:
           imageName: ghcr.io/${{ github.repository }}-devcontainer
           push: never
           runCmd: |
-            cd ssh-auth
-            go vet ./...
-            go test ./...
-
-  app-auth-test:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      CAELUS_SND_DEVICE: /dev/null
-      CAELUS_AUDIO_GROUP: root
-      COMPOSE_BAKE: "false"
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Build and run the app-auth tests in the dev container
-        uses: devcontainers/ci@v0.3
-        with:
-          imageName: ghcr.io/${{ github.repository }}-devcontainer
-          push: never
-          runCmd: |
-            cd app-auth
-            go vet ./...
-            go test ./...
+            set -e
+            export GOWORK=off
+            for d in daemons/*/; do
+              echo "== $d"
+              (cd "$d" && go vet ./... && go test ./...)
+            done
 
   publish-images:
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    needs: [ui-test, docs, api-test, catalog-lint, cli, ssh-sidecar-test, ssh-auth-test, app-auth-test, upgrader-test]
+    needs: [ui-test, docs, api-test, catalog-lint, cli, ssh-sidecar-test, daemons-test, upgrader-test]
     permissions:
       contents: read
       packages: write
@@ -182,11 +164,8 @@ jobs:
       - name: Publish the SSH sidecar when its version is new
         run: ./scripts/build-images.sh --ssh-sidecar --skip-if-published
 
-      - name: Publish the SSH auth resolver when its version is new
-        run: ./scripts/build-images.sh --ssh-resolver --skip-if-published
-
-      - name: Publish the app authentication service when its version is new
-        run: ./scripts/build-images.sh --app-auth --skip-if-published
+      - name: Publish the daemons image when its version is new
+        run: ./scripts/build-images.sh --daemons --skip-if-published
 
       - name: Publish the tenant build image when its version is new
         run: ./scripts/build-images.sh --builder --skip-if-published

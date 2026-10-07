@@ -65,7 +65,7 @@ The edge authenticates the upstream leg as the **deployment name**, not as
 derives from the deployment's own record, reading no cluster object, so no
 product can choose a different one and the edge stays ignorant of what any
 deployment's sessions are rooted at (see
-[`ssh-auth/README.md`](../../../ssh-auth/README.md) § *Coupling*).
+[`daemons/ssh-auth/README.md`](../../../daemons/ssh-auth/README.md) § *Coupling*).
 
 This server needs uid 0 — the dispatcher reads another container's process
 filesystem and enters it — so rather than teaching the edge a second convention,

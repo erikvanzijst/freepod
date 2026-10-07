@@ -23,11 +23,11 @@ next sign-in asks for credentials and can pick another account. Keycloak
 returns to the broker's `/signed-out` (the client's only post-logout redirect
 URI), which forwards to the app host. Other hosts' sessions are untouched.
 
-Spec: [app-auth-verifier](../openspec/specs/app-auth-verifier/spec.md),
-[app-auth-broker](../openspec/specs/app-auth-broker/spec.md),
-[app-auth-chart-contract](../openspec/specs/app-auth-chart-contract/spec.md),
-[app-auth-data-model](../openspec/specs/app-auth-data-model/spec.md) ·
-Rationale: [app-authentication](../openspec/changes/archive/2026-09-28-app-authentication/design.md)
+Spec: [app-auth-verifier](../../openspec/specs/app-auth-verifier/spec.md),
+[app-auth-broker](../../openspec/specs/app-auth-broker/spec.md),
+[app-auth-chart-contract](../../openspec/specs/app-auth-chart-contract/spec.md),
+[app-auth-data-model](../../openspec/specs/app-auth-data-model/spec.md) ·
+Rationale: [app-authentication](../../openspec/changes/archive/2026-09-28-app-authentication/design.md)
 
 ## Coupling
 
@@ -61,7 +61,7 @@ per purpose, so a broker flow cookie can never open as a session.
 ## Running the tests
 
 ```bash
-cd app-auth
+cd daemons/app-auth
 go test ./...
 ```
 
@@ -72,6 +72,6 @@ or `-short` to skip it.
 
 ## Releasing
 
-Bump `VERSION`. CI publishes `ghcr.io/…/app-auth:<VERSION>` on merge
-(`scripts/build-images.sh --app-auth --skip-if-published`), and it reaches the
-cluster only when `app_auth_image` in `tf/app/variables.tf` names it.
+It ships in the shared daemons image; see [`daemons/`](../README.md). It
+reaches the cluster only when `app_auth_image` in `tf/app/variables.tf` names a
+new version of that image.

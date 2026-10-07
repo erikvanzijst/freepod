@@ -22,8 +22,8 @@ uv run alembic upgrade head
 
 # The test database, which the suites share but neither owns. pytest creates it
 # on demand (`test_database` in api/tests/conftest.py), but the Go suite in
-# ssh-auth/ has no such hook and only reads, so a fresh container has to arrive
-# with the database already migrated for `go test ./...` to work at all.
+# daemons/ssh-auth/ has no such hook and only reads, so a fresh container has to
+# arrive with the database already migrated for `go test ./...` to work at all.
 #
 # Idempotent on purpose: var/pg_data outlives container rebuilds, so this
 # re-runs against a database that is usually already there.

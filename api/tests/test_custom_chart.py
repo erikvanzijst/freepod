@@ -493,7 +493,7 @@ INGRESS = {
     "caelus__ingress__tls__wildcard": "true",
 }
 VERIFY_URL = "http://app-auth.login.svc.cluster.local:8080/verify"
-APP_AUTH_GO = Path(__file__).resolve().parents[2] / "app-auth" / "request.go"
+APP_AUTH_GO = Path(__file__).resolve().parents[2] / "daemons" / "app-auth" / "request.go"
 
 
 def _render_ns(*sets: str, **values: str) -> list[dict]:
@@ -524,7 +524,7 @@ def _identity_headers_in_go() -> list[str]:
     import re
 
     block = re.search(r"var identityHeaders = \[\]string\{(.*?)\}", APP_AUTH_GO.read_text(), re.S)
-    assert block, "identityHeaders not found in app-auth/request.go"
+    assert block, "identityHeaders not found in daemons/app-auth/request.go"
     return re.findall(r'"([^"]+)"', block.group(1))
 
 

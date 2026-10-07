@@ -390,7 +390,7 @@ with `terraform output -raw sshpiper_upstream_public_key`.
 
 Spec: [sftp-edge-routing](../../openspec/specs/sftp-edge-routing/spec.md) ·
 Rationale: [ssh-grpc-auth-plugin](../../openspec/changes/archive/2026-08-30-ssh-grpc-auth-plugin/design.md),
-[ssh-auth/README.md](../../ssh-auth/README.md)
+[daemons/ssh-auth/README.md](../../daemons/ssh-auth/README.md)
 
 Port chain (all internal hops avoid 22 — the hosts' own sshd lives there):
 

@@ -13,7 +13,7 @@ would do — which is the question this change answers.
 
 Every key registered on the account authenticates equally, because the edge
 resolves a connection against the account rather than against one key
-(`ssh-auth/resolve.go`). So a tie is not a question about *access*; it is a
+(`daemons/ssh-auth/resolve.go`). So a tie is not a question about *access*; it is a
 question about which key this machine should be bound to from now on, since
 adoption is written to `keys.json`.
 

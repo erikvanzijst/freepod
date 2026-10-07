@@ -45,7 +45,7 @@ ssh-sidecar.sessionJail    where a volume session is rooted; see below
 → this deployment's sidecar → its data mount, or its application container`.
 
 The chart renders no routing object: the edge resolves the route and the user's
-key from the platform database on every connection (`ssh-auth/`).
+key from the platform database on every connection (`daemons/ssh-auth/`).
 
 The sidecar rides **inside the app pod** — for a volume root because RWO PVCs
 can only be shared by containers in the same pod, and for an application root
@@ -56,7 +56,7 @@ because a shared process namespace is what lets it reach the application at all.
 `ssh-sidecar.service` names the Service `<release>-ssh`. That name is **not this
 chart's to choose**: the SSH edge derives a deployment's upstream address from
 it by string convention, in
-[`ssh-auth/resolve.go`](../../../ssh-auth/README.md#the--ssh-naming-convention-is-shared-with-the-charts).
+[`daemons/ssh-auth/resolve.go`](../../../daemons/ssh-auth/README.md#the--ssh-naming-convention-is-shared-with-the-charts).
 **Neither side may change it alone.**
 
 The coupling is invisible in both directions — the resolver names a Service it

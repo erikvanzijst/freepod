@@ -25,7 +25,7 @@ tables. Inside the devcontainer the variable is set; migrate the database with:
 `
 
 const (
-	roleBootstrap = "../tf/app/caelus/app-auth-bootstrap.sql"
+	roleBootstrap = "../../tf/app/caelus/app-auth-bootstrap.sql"
 	roleName      = "caelus_app_auth"
 	rolePassword  = "app-auth-test-password"
 )

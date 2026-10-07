@@ -9,7 +9,7 @@ variable "domain" {
 }
 
 variable "image" {
-  description = "app-auth image, pinned to an immutable version from app-auth/VERSION."
+  description = "Daemons image app-auth runs from (/app-auth), pinned to an immutable version."
   type        = string
 }
 

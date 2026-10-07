@@ -1,0 +1,6 @@
+go 1.25.14
+
+use (
+	./app-auth
+	./ssh-auth
+)

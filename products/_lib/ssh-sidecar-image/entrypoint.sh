@@ -100,7 +100,7 @@ done < <(tr ',[:space:]' '\n\n' <<< "${FREEPOD_PERMIT_OPEN:-}")
 # The SSH edge authenticates the upstream leg as the *deployment name*, because
 # that is the one username convention it has: on the `sftp` profile the account
 # atmoz creates IS the release name, and the edge is deliberately ignorant of
-# which profile it is talking to (see ssh-auth/README.md).
+# which profile it is talking to (see daemons/ssh-auth/README.md).
 #
 # This server needs uid 0 -- the dispatcher reads another container's process
 # filesystem and enters it -- so the deployment name is added as a second uid-0

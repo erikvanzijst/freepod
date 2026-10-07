@@ -4,10 +4,10 @@ sshpiper's gRPC plugin. On every SSH connection the edge asks one question — m
 this key open the deployment this username names, and where is that deployment's
 sidecar — and this answers it from the platform's own rows, in one query.
 
-Spec: [ssh-auth-resolver](../openspec/specs/ssh-auth-resolver/spec.md),
-[sftp-edge-routing](../openspec/specs/sftp-edge-routing/spec.md) · Rationale:
-[ssh-grpc-auth-plugin](../openspec/changes/archive/2026-08-30-ssh-grpc-auth-plugin/design.md),
-[var/ssh_access.md](../var/ssh_access.md) (the spikes, and what sshpiperd
+Spec: [ssh-auth-resolver](../../openspec/specs/ssh-auth-resolver/spec.md),
+[sftp-edge-routing](../../openspec/specs/sftp-edge-routing/spec.md) · Rationale:
+[ssh-grpc-auth-plugin](../../openspec/changes/archive/2026-08-30-ssh-grpc-auth-plugin/design.md),
+[var/ssh_access.md](../../var/ssh_access.md) (the spikes, and what sshpiperd
 actually does)
 
 ## Coupling
@@ -22,7 +22,7 @@ let a product choose a different sidecar user — see `ssh-chart-contract`.
 `<name>-ssh` is not an internal detail of this resolver. It is the name every
 product chart gives the Service fronting its sidecar, rendered by the
 `ssh-sidecar.service` helper in
-[`products/_lib/ssh-sidecar-chart`](../products/_lib/ssh-sidecar-chart/README.md).
+[`products/_lib/ssh-sidecar-chart`](../../products/_lib/ssh-sidecar-chart/README.md).
 **Neither side may change it alone.**
 
 The coupling is invisible in both directions, which is what makes it dangerous.
@@ -96,20 +96,8 @@ proto's provenance is in `proto/UPSTREAM`.
 
 ## Releasing
 
-`VERSION` is an immutable tag and the image is never re-pushed: rolling the edge
-back means pointing Terraform at the previous version, which only works while
-that version is still the image it was.
-
-**CI publishes it on merge to master**, running the target below with
-`--skip-if-published`, which turns the refusal to overwrite into "nothing to
-do". So a push happens exactly when `VERSION` names a version the registry does
-not have, and every other merge is a no-op rather than a red build. Publishing
-by hand is still the right move when you want the image out ahead of a merge:
-
-```sh
-./scripts/build-images.sh --ssh-resolver
-```
-
-Deploying it is a separate act either way: bump `ssh_resolver_image` in
-`tf/app/variables.tf` and apply. `scripts/rollout.sh` does not touch the edge —
-that is the point of it having its own version.
+It ships in the shared daemons image as `/ssh-auth`; see
+[`daemons/`](../README.md) for how that image is versioned and published.
+Deploying it is a separate act: point `ssh_resolver_image` in
+`tf/app/variables.tf` at the new version and apply. `scripts/rollout.sh` does
+not touch the edge — that is the point of it having its own pin.

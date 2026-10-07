@@ -12,8 +12,8 @@ That tag is the one running in both environments (`farmer1992/sshpiperd:v1.5.4`,
 tf/app/sshpiper). Re-vendor only together with an image bump:
 
   gh api "repos/tg123/sshpiper/contents/libplugin/plugin.proto?ref=<tag>" \
-    -q .content | base64 -d > ssh-auth/proto/plugin.proto
-  ssh-auth/gen.sh
+    -q .content | base64 -d > daemons/ssh-auth/proto/plugin.proto
+  daemons/ssh-auth/gen.sh
 
 then update the four lines above. proto_test.go checks the sha256 and
 regenerates the stubs to compare, so a half-done re-vendor fails the suite.
