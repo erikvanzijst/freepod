@@ -406,8 +406,6 @@ def pack(
 
     handle: IO[bytes] = tempfile.SpooledTemporaryFile(max_size=SPOOL_MAX_BYTES, suffix=".tar.gz")
     try:
-        # mtime=0 in the gzip header: the default embeds the current time,
-        # which would make two packs of an unchanged tree differ byte for byte.
         with tarfile.open(fileobj=handle, mode="w:gz", format=tarfile.PAX_FORMAT) as tar:
             for relative, path in members:
                 info = tar.gettarinfo(str(path), arcname=relative)
