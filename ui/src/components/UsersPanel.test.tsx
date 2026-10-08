@@ -31,8 +31,8 @@ function renderPanel() {
 }
 
 const users: User[] = [
-  { id: 1, email: 'alice@example.com', is_admin: false, created_at: '2026-01-01T00:00:00Z' },
-  { id: 2, email: 'bob@example.com', is_admin: true, created_at: '2026-02-01T00:00:00Z' },
+  { id: 1, email: 'alice@example.com', is_admin: false, subdomain: 'alice', wildcard_domain: '*.alice.freepod.eu', created_at: '2026-01-01T00:00:00Z' },
+  { id: 2, email: 'bob@example.com', is_admin: true, subdomain: null, wildcard_domain: null, created_at: '2026-02-01T00:00:00Z' },
   { id: 3, email: 'carol@example.com', is_admin: false, created_at: '2026-03-01T00:00:00Z' },
 ]
 
@@ -83,7 +83,7 @@ const columnHeader = (field: string) =>
   screen.getByText(field, { selector: '[role="columnheader"] div' }).closest('[role="columnheader"]') as HTMLElement
 
 describe('UsersPanel', () => {
-  it('renders one row per user with id, email, admin status, and join date', async () => {
+  it('renders one row per user with id, email, admin status, wildcard domain, and join date', async () => {
     listUsersMock.mockResolvedValue(users)
     listAllDeploymentsMock.mockResolvedValue([])
     renderPanel()
@@ -96,6 +96,8 @@ describe('UsersPanel', () => {
     expect(rowCell('bob@example.com', 'id')).toBe('2')
     expect(rowCell('bob@example.com', 'is_admin')).toBe('Yes')
     expect(rowCell('alice@example.com', 'is_admin')).toBe('No')
+    expect(rowCell('alice@example.com', 'wildcard_domain')).toBe('*.alice.freepod.eu')
+    expect(rowCell('bob@example.com', 'wildcard_domain')).toBe('')
     expect(rowCell('alice@example.com', 'created_at')).toMatch(/2026-01-01/)
   })
 

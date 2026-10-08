@@ -5,6 +5,9 @@ export interface User {
   id: number
   email: string
   is_admin: boolean
+  subdomain?: string | null
+  /** `*.<subdomain>.<platform domain>`; null until a subdomain is claimed. */
+  wildcard_domain?: string | null
   created_at: IsoDate
 }
 

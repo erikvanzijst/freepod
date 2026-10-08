@@ -3,7 +3,7 @@ from enum import StrEnum
 from typing import Optional, Any
 from uuid import UUID, uuid4
 
-from pydantic import ConfigDict, field_validator, model_serializer, model_validator
+from pydantic import ConfigDict, computed_field, field_validator, model_serializer, model_validator
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import (
     BigInteger,
@@ -82,7 +82,16 @@ class UserCreate(UserBase):
 class UserRead(UserBase):
     id: int
     is_admin: bool
+    subdomain: Optional[str] = None
     created_at: datetime
+
+    @computed_field
+    @property
+    def wildcard_domain(self) -> Optional[str]:
+        """`*.<subdomain>.<platform domain>`: every host the account deploys
+        under. Null until a subdomain is claimed."""
+        domain = get_settings().domain
+        return f"*.{self.subdomain}.{domain}" if self.subdomain and domain else None
 
 
 class TosAcceptanceCreate(SQLModel):

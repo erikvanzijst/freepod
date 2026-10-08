@@ -70,10 +70,8 @@ def hostname_settings(monkeypatch):
                 _env_file=None,
             ),
         )
-        monkeypatch.setattr(
-            "app.services.users.get_settings",
-            lambda: CaelusSettings(domain="freepod.eu", _env_file=None),
-        )
+        for target in ("app.services.users.get_settings", "app.models.core.get_settings"):
+            monkeypatch.setattr(target, lambda: CaelusSettings(domain="freepod.eu", _env_file=None))
 
     _apply()
     return _apply
@@ -286,7 +284,28 @@ def test_no_route_changes_or_releases_a_subdomain():
 
 def test_the_user_schemas_expose_no_writable_subdomain():
     """A subdomain must not ride in on any other resource's payload."""
-    from app.models import UserCreate, UserRead
+    from app.models import UserCreate
 
     assert "subdomain" not in UserCreate.model_fields
-    assert "subdomain" not in UserRead.model_fields
+
+
+def test_the_user_list_reports_each_wildcard_domain(client, db_session, hostname_settings):
+    db_session.add(UserORM(email="ada@example.com", subdomain="ada"))
+    db_session.add(UserORM(email="none@example.com"))
+    db_session.commit()
+
+    by_email = {u["email"]: u for u in client.get("/api/users").json()}
+
+    assert by_email["ada@example.com"]["subdomain"] == "ada"
+    assert by_email["ada@example.com"]["wildcard_domain"] == "*.ada.freepod.eu"
+    assert by_email["none@example.com"]["subdomain"] is None
+    assert by_email["none@example.com"]["wildcard_domain"] is None
+
+
+def test_me_reports_the_wildcard_domain(client, hostname_settings):
+    create_user(client, USER_EMAIL, claim_subdomain=False)
+    client.post("/api/me/subdomain", json={"subdomain": "ada"}, headers=_headers(USER_EMAIL))
+
+    me = client.get("/api/me", headers=_headers(USER_EMAIL)).json()
+
+    assert me["wildcard_domain"] == "*.ada.freepod.eu"
