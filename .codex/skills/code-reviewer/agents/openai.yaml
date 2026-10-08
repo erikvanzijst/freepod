@@ -1,4 +1,0 @@
-interface:
-  display_name: "Code Reviewer"
-  short_description: "Find bugs, regressions, and missing tests in diffs"
-  default_prompt: "Use $code-reviewer to review this change set and return findings by severity with file/line evidence, API/CLI parity risks, migration risks, and missing tests."
