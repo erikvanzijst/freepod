@@ -237,7 +237,7 @@ def test_the_selector_is_built_from_the_deployment_row(client, db_session, loki)
     query = fake.queries[0]["query"]
     assert query == (
         f'{{namespace="{deployment.namespace}", instance="{deployment.name}", '
-        f'container!="ssh"}}'
+        f'container!="ssh", container!="caelus-egress-gate"}}'
     )
 
 
@@ -259,7 +259,7 @@ def test_a_client_supplied_selector_has_no_effect_on_the_query(client, db_sessio
     deployment = db_session.get(DeploymentORM, deployment_id)
     assert fake.queries[0]["query"] == (
         f'{{namespace="{deployment.namespace}", instance="{deployment.name}", '
-        f'container!="ssh"}}'
+        f'container!="ssh", container!="caelus-egress-gate"}}'
     )
     assert "caelus-api" not in fake.queries[0]["query"]
 

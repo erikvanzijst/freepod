@@ -29,6 +29,7 @@ from typing import AsyncIterator
 from sqlmodel import Session, select
 
 from app.config import CaelusSettings, get_settings
+from app.egress_gate import CONTAINER_NAME as EGRESS_GATE_CONTAINER
 from app.models import DeploymentORM, DeploymentReleaseORM
 from app.services.errors import NotFoundException, ValidationException
 from app.services.loki import (
@@ -48,6 +49,8 @@ RELEASE_LABEL = "release_id"
 
 CONTAINER_LABEL = "container"
 SIDECAR_CONTAINER = "ssh"
+# Containers the platform adds to a tenant's pods; their output is not the app's.
+PLATFORM_CONTAINERS = (SIDECAR_CONTAINER, EGRESS_GATE_CONTAINER)
 
 NS_PER_SECOND = 1_000_000_000
 # A nanosecond timestamp is a uint64. The lower bound rejects a value in
@@ -100,7 +103,7 @@ def build_selector(target: LogTarget) -> str:
     matchers = [
         f"namespace={_quote(target.namespace)}",
         f"instance={_quote(target.name)}",
-        f"{CONTAINER_LABEL}!={_quote(SIDECAR_CONTAINER)}",
+        *(f"{CONTAINER_LABEL}!={_quote(c)}" for c in PLATFORM_CONTAINERS),
     ]
     if target.release_id is not None:
         matchers.append(f"{RELEASE_LABEL}={_quote(target.release_id)}")

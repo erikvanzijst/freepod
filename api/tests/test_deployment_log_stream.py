@@ -313,7 +313,7 @@ def test_a_release_that_never_ran_ends_with_that_reason_not_silence():
 
 def test_the_selector_names_only_the_deployment():
     assert log_service.build_selector(TARGET) == (
-        '{namespace="ns-abc", instance="app-abc", container!="ssh"}'
+        '{namespace="ns-abc", instance="app-abc", container!="ssh", container!="caelus-egress-gate"}'
     )
 
 
@@ -324,12 +324,18 @@ def test_the_selector_excludes_the_platform_ssh_sidecar():
     assert 'container!="ssh"' in log_service.build_selector(TARGET)
 
 
+def test_the_selector_excludes_the_platform_egress_gate():
+    """The gate is injected into every tenant pod and prints its verdict on
+    success, which the tenant never wrote and should not have to explain."""
+    assert 'container!="caelus-egress-gate"' in log_service.build_selector(TARGET)
+
+
 def test_a_pinned_selector_adds_the_release_label():
     target = log_service.LogTarget(
         deployment_id="d", namespace="ns-abc", name="app-abc", release_id=RELEASE
     )
     assert log_service.build_selector(target) == (
-        f'{{namespace="ns-abc", instance="app-abc", container!="ssh", release_id="{RELEASE}"}}'
+        f'{{namespace="ns-abc", instance="app-abc", container!="ssh", container!="caelus-egress-gate", release_id="{RELEASE}"}}'
     )
 
 
@@ -343,4 +349,4 @@ def test_label_values_are_quoted_so_a_stray_quote_cannot_escape_the_selector():
     # matcher and the injected `}` stays inside the string.
     assert '\\"' in selector
     assert selector.startswith('{namespace="')
-    assert selector.endswith('instance="app", container!="ssh"}')
+    assert selector.endswith('instance="app", container!="ssh", container!="caelus-egress-gate"}')

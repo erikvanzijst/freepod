@@ -252,13 +252,20 @@ cross-tenant read and a platform-internal read.
 
 ### Requirement: The stream carries the application's output, not the platform's
 
-The query SHALL exclude the platform's SSH sidecar container, whose output belongs to the
-platform rather than to the tenant's application.
+The query SHALL exclude the containers the platform adds to a deployment's pods -- the SSH
+sidecar and the egress gate init container -- whose output belongs to the platform rather than
+to the tenant's application.
 
 #### Scenario: An idle deployment whose sidecar is being probed
 
 - **WHEN** a caller reads the log of a deployment whose SSH sidecar is receiving liveness probes
 - **THEN** no line written by the sidecar appears in the response
+
+#### Scenario: A pod that waited on the egress gate
+
+- **WHEN** a caller reads the log of a deployment whose pod's egress gate printed its verdict
+  before the application started
+- **THEN** no line written by the gate appears in the response
 
 #### Scenario: A product running several application containers
 
