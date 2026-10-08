@@ -23,7 +23,7 @@ template:
     image:
       # Keep this quoted: unquoted it parses as an integer and the chart's
       # values schema rejects it.
-      tag: "260919"
+      tag: "261007"
     admin:
       username: admin
   values_schema:
