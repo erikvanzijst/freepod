@@ -145,4 +145,4 @@ upload, err := presigner.PresignPutObject(ctx, &s3.PutObjectInput{
 
 ## Size allowance
 
-The bucket may hold 1 GiB and 1,000,000 objects. Writes beyond the allowance are refused.
+Depending on your plan, the bucket may enforce caps on total storage capacity and number of objects, in which case writes beyond those allowances are refused.
