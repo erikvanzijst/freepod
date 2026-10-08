@@ -146,6 +146,10 @@ resource "kubernetes_deployment" "registry" {
         # REGISTRY_* variables, which the registry reads as config overrides.
         enable_service_links = false
 
+        # The registry is no init: as PID 1 it never reaps the ssl_client
+        # helpers that the probes' busybox wget orphans. pause reaps them.
+        share_process_namespace = true
+
         security_context {
           run_as_non_root = true
           run_as_user     = local.pod_security_context.run_as_user
