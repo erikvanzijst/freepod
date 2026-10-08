@@ -141,6 +141,7 @@ upload, err := presigner.PresignPutObject(ctx, &s3.PutObjectInput{
 - The bucket's name is assigned by the platform and cannot be changed or aliased.
 - The bucket's CORS configuration is set by the platform and cannot be changed.
 - User metadata (`x-amz-meta-*`) is stored and returned, but keys are returned with an initial capital: `owner` is returned as `Owner`.
+- Aborted, partial upload artifacts are automatically deleted after 1 day.
 
 ## Size allowance
 

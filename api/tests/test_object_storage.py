@@ -68,10 +68,17 @@ class FakeGarage:
         if path == "/v2/AllowBucketKey":
             self.grants.append(body)
             return httpx.Response(200, json={})
+        if path == "/v2/GetBucketInfo":
+            return httpx.Response(200, json=self._bucket(query["id"]))
         if path == "/v2/UpdateBucket":
             self.updates.append(body)
+            if "lifecycleRules" in body:
+                self._bucket(query["id"])["lifecycleRules"] = body["lifecycleRules"] or None
             return httpx.Response(200, json={})
         return httpx.Response(404, text="unhandled")
+
+    def _bucket(self, bucket_id: str) -> dict:
+        return next(b for b in self.buckets if b["id"] == bucket_id)
 
     def client(self) -> GarageAdminClient:
         transport = httpx.MockTransport(self.handler)
@@ -276,6 +283,45 @@ def test_quota_is_reasserted_when_the_plan_changes(settings):
     deployment.subscription = FakeSubscription(5368709120)
     object_storage.ensure_object_storage(deployment, client=garage.client(), settings=settings)
     assert garage.updates[-1]["quotas"]["maxSize"] == 5368709120
+
+
+def test_provisioning_sets_the_default_abort_rule_on_a_bucket_without_lifecycle(settings):
+    garage = FakeGarage()
+    object_storage.ensure_object_storage(
+        FakeDeployment(), client=garage.client(), settings=settings
+    )
+    rules = garage.updates[-1]["lifecycleRules"]
+    assert [r["AbortIncompleteMultipartUpload"] for r in rules] == [{"DaysAfterInitiation": 1}]
+    # Never Expiration on a live bucket: that would delete the tenant's objects.
+    assert not any("Expiration" in r for r in rules)
+
+
+def test_provisioning_never_overwrites_the_tenant_s_own_lifecycle_rules(settings):
+    """The tenant's key can replace the lifecycle configuration, and one it set
+    is theirs: re-asserting the default on reconcile would silently drop it."""
+    deployment = FakeDeployment()
+    garage = FakeGarage()
+    object_storage.ensure_object_storage(deployment, client=garage.client(), settings=settings)
+    tenant_rules = [
+        {"ID": "tmp", "Status": "Enabled", "Filter": {"Prefix": "tmp/"}, "Expiration": {"Days": 7}}
+    ]
+    garage.buckets[0]["lifecycleRules"] = tenant_rules
+
+    object_storage.ensure_object_storage(deployment, client=garage.client(), settings=settings)
+
+    assert "lifecycleRules" not in garage.updates[-1]
+    assert garage.buckets[0]["lifecycleRules"] == tenant_rules
+
+
+def test_the_default_abort_rule_returns_once_the_tenant_removes_theirs(settings):
+    deployment = FakeDeployment()
+    garage = FakeGarage()
+    object_storage.ensure_object_storage(deployment, client=garage.client(), settings=settings)
+    garage.buckets[0].pop("lifecycleRules")
+
+    object_storage.ensure_object_storage(deployment, client=garage.client(), settings=settings)
+
+    assert garage.updates[-1]["lifecycleRules"] == object_storage.BUCKET_DEFAULT_LIFECYCLE_RULES
 
 
 # --- teardown ---------------------------------------------------------------

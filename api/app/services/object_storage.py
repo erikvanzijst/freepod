@@ -44,6 +44,24 @@ BUCKET_CORS_RULES: list[dict[str, object]] = [
     }
 ]
 
+# Abandoned multipart uploads hold disk while never appearing in a listing or in
+# the bucket's size, so neither the quota nor metering sees them. Garage runs
+# lifecycle once a day at midnight UTC and counts days from the midnight after
+# initiation, so 1 aborts an upload 24–48 hours after it began.
+#
+# A default, not a policy: the tenant's key can replace the whole lifecycle
+# configuration, so this is only applied to a bucket that has none, and never
+# overwrites the tenant's own rules.
+ABORT_INCOMPLETE_UPLOAD_DAYS = 1
+BUCKET_DEFAULT_LIFECYCLE_RULES: list[dict[str, object]] = [
+    {
+        "ID": "caelus-abort-incomplete-multipart-uploads",
+        "Status": "Enabled",
+        "Filter": {"Prefix": ""},
+        "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": ABORT_INCOMPLETE_UPLOAD_DAYS},
+    }
+]
+
 
 @dataclass(frozen=True)
 class ObjectStorageCredentials:
@@ -173,8 +191,10 @@ def ensure_object_storage(
     #    removed out of band and can never narrow one by accident.
     client.allow_bucket_key(bucket_id=bucket_id, access_key_id=access_key_id)
 
-    # 4. Quota and CORS, one call. Re-asserted so a plan change takes effect on
-    #    the next reconcile with no separate migration.
+    # 4. Quota, CORS and the default lifecycle rule, one call. Quota and CORS
+    #    are re-asserted so a plan change takes effect on the next reconcile
+    #    with no separate migration; lifecycle only fills a gap.
+    has_lifecycle = bool(client.get_bucket(bucket_id).get("lifecycleRules"))
     client.update_bucket(
         bucket_id,
         quotas={
@@ -182,6 +202,7 @@ def ensure_object_storage(
             "maxObjects": settings.deployment_bucket_max_objects,
         },
         cors_rules=BUCKET_CORS_RULES,
+        lifecycle_rules=None if has_lifecycle else BUCKET_DEFAULT_LIFECYCLE_RULES,
     )
 
     return ObjectStorageCredentials(

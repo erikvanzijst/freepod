@@ -176,6 +176,36 @@ A tenant SHALL NOT be able to set this policy themselves, and SHALL NOT be requi
 - **THEN** the object store refuses the write
 - **AND** no platform code participates in detecting or enforcing the overage
 
+### Requirement: The bucket defaults to aborting abandoned multipart uploads
+
+A bucket that has no lifecycle configuration SHALL be given one rule that aborts incomplete
+multipart uploads one day after initiation. Parts of an abandoned upload consume disk while
+appearing in neither a bucket listing nor the bucket's measured size, so without the rule they
+escape both the quota and metering indefinitely.
+
+The rule is a default, not an enforced policy. A tenant's key can replace the bucket's whole
+lifecycle configuration, so provisioning SHALL NOT overwrite a configuration that is present:
+the default SHALL only be applied when the bucket has none. A live bucket SHALL NOT be given an
+`Expiration` rule.
+
+#### Scenario: New bucket
+
+- **WHEN** a storage-enabled deployment is provisioned
+- **THEN** its bucket carries an `AbortIncompleteMultipartUpload` rule of one day
+- **AND** no `Expiration` rule
+
+#### Scenario: The tenant has set their own lifecycle rules
+
+- **GIVEN** a tenant has replaced their bucket's lifecycle configuration
+- **WHEN** the deployment is reconciled
+- **THEN** the tenant's configuration is left unchanged
+
+#### Scenario: The tenant has removed their lifecycle rules
+
+- **GIVEN** a tenant has deleted their bucket's lifecycle configuration
+- **WHEN** the deployment is reconciled
+- **THEN** the default abort rule is applied again
+
 ### Requirement: Provisioning is idempotent and resumable at each step
 
 Provisioning SHALL read before it writes at every step, so that reconciling an
