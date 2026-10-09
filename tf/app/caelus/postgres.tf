@@ -106,6 +106,12 @@ resource "kubernetes_deployment" "postgres" {
   }
 
   depends_on = [kubernetes_secret.db]
+
+  lifecycle {
+    ignore_changes = [
+      spec[0].template[0].metadata[0].annotations["kubectl.kubernetes.io/restartedAt"],
+    ]
+  }
 }
 
 resource "kubernetes_service" "postgres" {

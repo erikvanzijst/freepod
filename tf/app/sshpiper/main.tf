@@ -238,6 +238,12 @@ resource "kubernetes_deployment" "sshpiper" {
       }
     }
   }
+
+  lifecycle {
+    ignore_changes = [
+      spec[0].template[0].metadata[0].annotations["kubectl.kubernetes.io/restartedAt"],
+    ]
+  }
 }
 
 # klipper ServiceLB binds var.ssh_port directly on the node (validated in the

@@ -289,6 +289,12 @@ resource "kubernetes_deployment" "tenant_db" {
       }
     }
   }
+
+  lifecycle {
+    ignore_changes = [
+      spec[0].template[0].metadata[0].annotations["kubectl.kubernetes.io/restartedAt"],
+    ]
+  }
 }
 
 resource "kubernetes_service" "tenant_db" {

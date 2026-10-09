@@ -118,6 +118,12 @@ resource "kubernetes_deployment" "bucket_exporter" {
       }
     }
   }
+
+  lifecycle {
+    ignore_changes = [
+      spec[0].template[0].metadata[0].annotations["kubectl.kubernetes.io/restartedAt"],
+    ]
+  }
 }
 
 # Scraped through the annotation, like the tenant database exporter. ClusterIP

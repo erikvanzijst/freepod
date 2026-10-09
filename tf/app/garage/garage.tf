@@ -231,6 +231,12 @@ resource "kubernetes_stateful_set" "garage" {
   # apply proceeds to the provisioning Job, which polls for health and fails
   # with a message naming the bootstrap procedure. One clear error, one place.
   wait_for_rollout = false
+
+  lifecycle {
+    ignore_changes = [
+      spec[0].template[0].metadata[0].annotations["kubectl.kubernetes.io/restartedAt"],
+    ]
+  }
 }
 
 # Headless governing Service. Also the in-cluster address of the ADMIN API
