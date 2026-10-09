@@ -33,6 +33,8 @@ import jwt
 from app.services import registry_tokens
 from app.services.build_jobs import (
     BUILD_ID_LABEL,
+    BUILD_NODE_LABEL,
+    BUILD_NODE_POOL,
     CAPABILITY_MARGIN_SECONDS,
     MIRRORED_REPOSITORIES,
     build_job_manifest,
@@ -827,6 +829,31 @@ def test_the_job_manifest_bounds_its_resources(settings):
     assert limits["cpu"] and limits["memory"] and limits["ephemeral-storage"]
     for volume in pod["volumes"]:
         assert volume["emptyDir"]["sizeLimit"], f"{volume['name']} is unbounded"
+
+
+def test_the_job_manifest_prefers_the_build_node_without_requiring_it(settings):
+    """Tolerating the build node's taint and preferring it moves builds there;
+    a preference rather than a requirement lets them fall back when it is down."""
+    manifest = build_job_manifest(
+        build_id=uuid4(), user_id=7, artifact_url="https://x/y", settings=settings
+    )
+    pod = manifest["spec"]["template"]["spec"]
+
+    assert pod["tolerations"] == [
+        {
+            "key": BUILD_NODE_LABEL,
+            "operator": "Equal",
+            "value": BUILD_NODE_POOL,
+            "effect": "NoSchedule",
+        }
+    ]
+    node_affinity = pod["affinity"]["nodeAffinity"]
+    assert "requiredDuringSchedulingIgnoredDuringExecution" not in node_affinity
+    (preferred,) = node_affinity["preferredDuringSchedulingIgnoredDuringExecution"]
+    assert preferred["preference"]["matchExpressions"] == [
+        {"key": BUILD_NODE_LABEL, "operator": "In", "values": [BUILD_NODE_POOL]}
+    ]
+    assert "nodeSelector" not in pod
 
 
 def _env(manifest) -> dict[str, str]:

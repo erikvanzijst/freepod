@@ -81,7 +81,7 @@ def _build(
 def test_the_request_constants_are_the_jobs():
     assert (build_jobs.CPU_REQUEST, CPU_REQUEST_CORES) == ("500m", Decimal("0.5"))
     assert (build_jobs.MEMORY_REQUEST, MEMORY_REQUEST_BYTES) == ("1Gi", GIB)
-    assert build_usage.CPU_LIMIT_CORES == 2
+    assert build_usage.CPU_LIMIT_CORES == 4
     assert build_usage.MEMORY_LIMIT_BYTES == 6 * GIB
 
 
@@ -179,7 +179,7 @@ def test_usage_and_allowances_are_recorded_side_by_side():
     assert window.quantities["cpu_usage_cores_avg"] == Decimal("0.5")
     assert window.quantities["ram_usage_bytes_avg"] == Decimal(2**29)
     assert window.quantities["cpu_request_cores_avg"] == Decimal("0.5")
-    assert window.quantities["cpu_limit_cores_avg"] == 2
+    assert window.quantities["cpu_limit_cores_avg"] == 4
     assert window.quantities["ram_request_bytes_avg"] == GIB
     assert window.quantities["ram_limit_bytes_avg"] == 6 * GIB
 

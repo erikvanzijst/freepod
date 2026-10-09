@@ -48,12 +48,17 @@ WORK_SIZE_LIMIT = "2Gi"
 BUILDKIT_DIR = "/home/user/.local/share/buildkit"
 BUILDKIT_SIZE_LIMIT = "6Gi"
 
-# Resource envelope for one build on a shared 4-thread node. The CPU limit
-# leaves two threads for tenant traffic, which is the point: a dependency
-# install will otherwise saturate everything for minutes. ephemeral-storage
-# must cover both emptyDirs, since they count against it.
+# Builds prefer nodes tainted and labeled for them, and fall back to any node
+# when none is schedulable, so losing the build node delays no build.
+BUILD_NODE_LABEL = "caelus.dev/node-pool"
+BUILD_NODE_POOL = "builds"
+
+# Resource envelope for one build. On a
+# fallback to a shared node, the 500m request is what weighs the build against
+# tenant traffic under contention. ephemeral-storage must cover both emptyDirs,
+# since they count against it.
 CPU_REQUEST = "500m"
-CPU_LIMIT = "2"
+CPU_LIMIT = "4"
 MEMORY_REQUEST = "1Gi"
 MEMORY_LIMIT = "6Gi"
 EPHEMERAL_STORAGE_LIMIT = "8Gi"
@@ -162,6 +167,32 @@ def build_job_manifest(
                     "restartPolicy": "Never",
                     "serviceAccountName": "caelus-builder",
                     "automountServiceAccountToken": False,
+                    "tolerations": [
+                        {
+                            "key": BUILD_NODE_LABEL,
+                            "operator": "Equal",
+                            "value": BUILD_NODE_POOL,
+                            "effect": "NoSchedule",
+                        }
+                    ],
+                    "affinity": {
+                        "nodeAffinity": {
+                            "preferredDuringSchedulingIgnoredDuringExecution": [
+                                {
+                                    "weight": 100,
+                                    "preference": {
+                                        "matchExpressions": [
+                                            {
+                                                "key": BUILD_NODE_LABEL,
+                                                "operator": "In",
+                                                "values": [BUILD_NODE_POOL],
+                                            }
+                                        ]
+                                    },
+                                }
+                            ]
+                        }
+                    },
                     "securityContext": {
                         "runAsUser": 1000,
                         "runAsGroup": 1000,
