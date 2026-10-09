@@ -201,6 +201,11 @@ def test_no_service_account_token_is_mounted():
     assert _pod_spec(_render(**BASE, **STORAGE))["automountServiceAccountToken"] is False
 
 
+def test_the_pod_runs_in_its_own_user_namespace():
+    assert _pod_spec(_render(**BASE))["hostUsers"] is False
+    assert _pod_spec(_render(**BASE, image=f"1@{DIGEST}", **DATABASE))["hostUsers"] is False
+
+
 def test_catalog_system_values_are_valid_values_for_this_chart():
     """`system_values` ARE the chart's default Helm values — the catalog's are
     handed to `helm upgrade` verbatim — so anything the catalog declares must

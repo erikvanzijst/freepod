@@ -35,6 +35,10 @@ spec:
       */}}
       automountServiceAccountToken: false
       {{- /*
+      Root in the tenant's containers maps to an unprivileged host uid.
+      */}}
+      hostUsers: false
+      {{- /*
       What makes the `dev` access profile work.
       */}}
       shareProcessNamespace: true
