@@ -27,14 +27,10 @@ metadata:
     {{- include "immich.componentSelector" (dict "root" . "name" "server") | nindent 4 }}
 spec:
   replicas: 1
-  # The library PVC is RWO, so old and new pods cannot both hold it during an
-  # upgrade. maxSurge=0 scales the old pod down FIRST (releasing the volume)
-  # before the new one starts -- brief downtime, no deadlock.
+  # Single RWO library volume: never two server pods at once. maxSurge=0 is
+  # not enough: it starts the new pod while the old one is still terminating.
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 0
+    type: Recreate
   selector:
     matchLabels:
       {{- include "immich.componentSelector" (dict "root" . "name" "server") | nindent 6 }}
