@@ -109,7 +109,7 @@ export function DeploymentsPanel() {
           setSelectedDeployment(params.row)
         }}
         initialState={{
-          sorting: { sortModel: [{ field: 'created_at', sort: 'desc' }] },
+          sorting: { sortModel: [{ field: 'last_reconcile_at', sort: 'desc' }] },
         }}
         pageSizeOptions={[25, 50, 100]}
         sx={{
