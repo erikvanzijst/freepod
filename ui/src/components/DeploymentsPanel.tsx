@@ -54,6 +54,14 @@ const columns: GridColDef<Deployment>[] = [
     renderCell: ({ value }) => value ? formatLocalIso(value as Date) : '',
   },
   {
+    field: 'last_reconcile_at',
+    headerName: 'Last reconcile',
+    flex: 1,
+    minWidth: 160,
+    valueGetter: (_value, row) => row.last_reconcile_at ? parseUtc(row.last_reconcile_at) : null,
+    renderCell: ({ value }) => value ? formatLocalIso(value as Date) : '',
+  },
+  {
     field: 'status',
     headerName: 'Status',
     width: 110,
