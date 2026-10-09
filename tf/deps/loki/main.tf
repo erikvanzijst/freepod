@@ -89,6 +89,15 @@ resource "helm_release" "loki" {
         allocatedMemory = 128
       }
 
+      # The gateway's required anti-affinity forbids two gateways per node, and
+      # the only other node is the tainted build node, so a rolling update's
+      # surge pod can never schedule. Replace it instead.
+      gateway = {
+        deploymentStrategy = {
+          type = "Recreate"
+        }
+      }
+
       # Zero out replica counts of other deployment modes:
       backend = {
         replicas = 0

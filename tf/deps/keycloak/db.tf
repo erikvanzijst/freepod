@@ -30,6 +30,13 @@ resource "kubernetes_deployment" "postgres" {
       }
     }
 
+    # Never two postmasters on one data directory: a rolling update starts the
+    # new pod first, local-path lets both mount the PVC, and Postgres's lock
+    # file can't tell (each container is PID 1).
+    strategy {
+      type = "Recreate"
+    }
+
     template {
       metadata {
         labels = {

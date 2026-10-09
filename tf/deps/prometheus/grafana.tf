@@ -34,6 +34,11 @@ resource "helm_release" "grafana" {
         enabled = false
       }
 
+      # One Grafana at a time on its SQLite PVC.
+      deploymentStrategy = {
+        type = "Recreate"
+      }
+
       "grafana.ini" = {
         server = {
           root_url = "https://${var.grafana_domain}/"
