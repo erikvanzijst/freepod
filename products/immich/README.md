@@ -52,7 +52,7 @@ The published chart is then referenced from a Caelus product template:
 | Field               | Value                                                                               |
 |---------------------|-------------------------------------------------------------------------------------|
 | Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/immich`                                  |
-| Chart version       | `0.2.2`                                                                             |
+| Chart version       | `0.2.6`                                                                             |
 | User values schema  | see [Caelus product template](#caelus-product-template) below                       |
 | Default Helm values | see [Default values (system_values_json)](#default-values-system_values_json) below |
 
