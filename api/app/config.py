@@ -326,6 +326,10 @@ class CaelusSettings(BaseSettings):
     # NetworkPolicy, none of which should be shared with anything else.
     builds_namespace: str = "caelus-builds"
 
+    # The node pool builds prefer (`caelus.dev/node-pool=<pool>`). Empty
+    # schedules them like any other pod.
+    build_node_pool: str = ""
+
     # Largest project archive accepted, enforced by Garage itself through the
     # presigned POST policy's content-length-range rather than by the client or
     # a proxy body limit.

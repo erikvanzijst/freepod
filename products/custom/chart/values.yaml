@@ -94,6 +94,11 @@ objectStorage:
 relationalStorage:
   enabled: false
 
+# The node pool the app prefers: nodes labeled and tainted
+# `caelus.dev/node-pool=<pool>`. A system value like `objectStorage` above; empty
+# schedules the pod like any other.
+nodePool: ""
+
 # Injected per deployment by the Caelus reconciler. These defaults let the chart
 # render standalone (helm lint / helm template with no --set).
 caelus:

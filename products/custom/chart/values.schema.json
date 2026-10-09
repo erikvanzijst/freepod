@@ -88,6 +88,10 @@
       },
       "additionalProperties": false
     },
+    "nodePool": {
+      "type": "string",
+      "description": "Node pool the app prefers, by the caelus.dev/node-pool label and taint. A system value set by the product's catalog entry, never tenant-settable. Empty schedules the pod like any other."
+    },
     "relationalStorage": {
       "type": "object",
       "description": "Whether this chart wires up a PostgreSQL database. A system value set by the product's catalog entry, never tenant-settable \u2014 it is deliberately absent from the tenant-facing values schema. Distinct from caelus.database, which carries the per-deployment references the reconciler injects.",

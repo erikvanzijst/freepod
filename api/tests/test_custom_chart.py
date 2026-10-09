@@ -206,6 +206,27 @@ def test_the_pod_runs_in_its_own_user_namespace():
     assert _pod_spec(_render(**BASE, image=f"1@{DIGEST}", **DATABASE))["hostUsers"] is False
 
 
+def test_a_node_pool_is_preferred_and_tolerated_but_not_required():
+    pod = _pod_spec(_render(**BASE, nodePool="tenant"))
+
+    assert pod["tolerations"] == [
+        {"key": "caelus.dev/node-pool", "operator": "Equal", "value": "tenant", "effect": "NoSchedule"}
+    ]
+    node_affinity = pod["affinity"]["nodeAffinity"]
+    assert "requiredDuringSchedulingIgnoredDuringExecution" not in node_affinity
+    (preferred,) = node_affinity["preferredDuringSchedulingIgnoredDuringExecution"]
+    assert preferred["preference"]["matchExpressions"] == [
+        {"key": "caelus.dev/node-pool", "operator": "In", "values": ["tenant"]}
+    ]
+
+
+def test_without_a_node_pool_the_pod_schedules_like_any_other():
+    pod = _pod_spec(_render(**BASE))
+
+    assert "tolerations" not in pod
+    assert "affinity" not in pod
+
+
 def test_catalog_system_values_are_valid_values_for_this_chart():
     """`system_values` ARE the chart's default Helm values — the catalog's are
     handed to `helm upgrade` verbatim — so anything the catalog declares must

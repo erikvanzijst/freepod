@@ -148,8 +148,7 @@ resource "helm_release" "promtail" {
 
   values = [
     yamlencode({
-      # Every node, tainted pools included (the build node is
-      # caelus.dev/node-pool=builds:NoSchedule). Replaces the chart's default
+      # Every node, tainted node pools included. Replaces the chart's default
       # list, which tolerates only the control-plane taints.
       tolerations = [
         {

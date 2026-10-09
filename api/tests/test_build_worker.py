@@ -33,10 +33,9 @@ import jwt
 from app.services import registry_tokens
 from app.services.build_jobs import (
     BUILD_ID_LABEL,
-    BUILD_NODE_LABEL,
-    BUILD_NODE_POOL,
     CAPABILITY_MARGIN_SECONDS,
     MIRRORED_REPOSITORIES,
+    NODE_POOL_LABEL,
     build_job_manifest,
     job_name,
 )
@@ -831,29 +830,35 @@ def test_the_job_manifest_bounds_its_resources(settings):
         assert volume["emptyDir"]["sizeLimit"], f"{volume['name']} is unbounded"
 
 
-def test_the_job_manifest_prefers_the_build_node_without_requiring_it(settings):
-    """Tolerating the build node's taint and preferring it moves builds there;
-    a preference rather than a requirement lets them fall back when it is down."""
-    manifest = build_job_manifest(
-        build_id=uuid4(), user_id=7, artifact_url="https://x/y", settings=settings
-    )
-    pod = manifest["spec"]["template"]["spec"]
+def test_the_job_manifest_prefers_the_configured_node_pool_without_requiring_it(settings):
+    """Tolerating the pool's taint and preferring it moves builds there; a
+    preference rather than a requirement lets them run elsewhere while it is down."""
+    pod = build_job_manifest(
+        build_id=uuid4(),
+        user_id=7,
+        artifact_url="https://x/y",
+        settings=settings.model_copy(update={"build_node_pool": "tenant"}),
+    )["spec"]["template"]["spec"]
 
     assert pod["tolerations"] == [
-        {
-            "key": BUILD_NODE_LABEL,
-            "operator": "Equal",
-            "value": BUILD_NODE_POOL,
-            "effect": "NoSchedule",
-        }
+        {"key": NODE_POOL_LABEL, "operator": "Equal", "value": "tenant", "effect": "NoSchedule"}
     ]
     node_affinity = pod["affinity"]["nodeAffinity"]
     assert "requiredDuringSchedulingIgnoredDuringExecution" not in node_affinity
     (preferred,) = node_affinity["preferredDuringSchedulingIgnoredDuringExecution"]
     assert preferred["preference"]["matchExpressions"] == [
-        {"key": BUILD_NODE_LABEL, "operator": "In", "values": [BUILD_NODE_POOL]}
+        {"key": NODE_POOL_LABEL, "operator": "In", "values": ["tenant"]}
     ]
     assert "nodeSelector" not in pod
+
+
+def test_without_a_node_pool_the_job_manifest_schedules_like_any_pod(settings):
+    pod = build_job_manifest(
+        build_id=uuid4(), user_id=7, artifact_url="https://x/y", settings=settings
+    )["spec"]["template"]["spec"]
+
+    assert "tolerations" not in pod
+    assert "affinity" not in pod
 
 
 def _env(manifest) -> dict[str, str]:

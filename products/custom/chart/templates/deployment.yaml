@@ -38,6 +38,27 @@ spec:
       Root in the tenant's containers maps to an unprivileged host uid.
       */}}
       hostUsers: false
+      {{- with .Values.nodePool }}
+      {{- /*
+      Prefer the pool's nodes without requiring them, so the app still runs
+      while the pool has no schedulable node.
+      */}}
+      tolerations:
+        - key: caelus.dev/node-pool
+          operator: Equal
+          value: {{ . | quote }}
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: caelus.dev/node-pool
+                    operator: In
+                    values:
+                      - {{ . | quote }}
+      {{- end }}
       {{- /*
       What makes the `dev` access profile work.
       */}}

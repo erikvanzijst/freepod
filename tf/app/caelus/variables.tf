@@ -198,6 +198,12 @@ variable "dns_cluster_ip" {
   default     = "10.43.0.10"
 }
 
+variable "build_node_pool" {
+  description = "Node pool builds prefer: nodes labeled and tainted caelus.dev/node-pool=<pool>. Empty schedules builds like any other pod."
+  type        = string
+  default     = "tenant"
+}
+
 variable "build_max_in_flight" {
   description = <<-EOT
     How many builds may run at once. An ops knob rather than a code constant:

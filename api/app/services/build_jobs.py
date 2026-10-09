@@ -48,10 +48,8 @@ WORK_SIZE_LIMIT = "2Gi"
 BUILDKIT_DIR = "/home/user/.local/share/buildkit"
 BUILDKIT_SIZE_LIMIT = "6Gi"
 
-# Builds prefer nodes tainted and labeled for them, and fall back to any node
-# when none is schedulable, so losing the build node delays no build.
-BUILD_NODE_LABEL = "caelus.dev/node-pool"
-BUILD_NODE_POOL = "builds"
+# The node label and taint key naming a pool of nodes reserved for tenant code.
+NODE_POOL_LABEL = "caelus.dev/node-pool"
 
 # Resource envelope for one build. On a
 # fallback to a shared node, the 500m request is what weighs the build against
@@ -102,6 +100,30 @@ def build_capability(*, build_id: UUID | str, user_id: int, settings: CaelusSett
         access=build_access(user_id),
         ttl_seconds=settings.build_deadline_seconds + CAPABILITY_MARGIN_SECONDS,
     ).token
+
+
+def node_pool_scheduling(pool: str) -> dict[str, Any]:
+    """Tolerate the pool's taint and prefer its nodes, without requiring them:
+    a build still runs elsewhere while the pool has no schedulable node."""
+    return {
+        "tolerations": [
+            {"key": NODE_POOL_LABEL, "operator": "Equal", "value": pool, "effect": "NoSchedule"}
+        ],
+        "affinity": {
+            "nodeAffinity": {
+                "preferredDuringSchedulingIgnoredDuringExecution": [
+                    {
+                        "weight": 100,
+                        "preference": {
+                            "matchExpressions": [
+                                {"key": NODE_POOL_LABEL, "operator": "In", "values": [pool]}
+                            ]
+                        },
+                    }
+                ]
+            }
+        },
+    }
 
 
 def build_job_manifest(
@@ -167,32 +189,6 @@ def build_job_manifest(
                     "restartPolicy": "Never",
                     "serviceAccountName": "caelus-builder",
                     "automountServiceAccountToken": False,
-                    "tolerations": [
-                        {
-                            "key": BUILD_NODE_LABEL,
-                            "operator": "Equal",
-                            "value": BUILD_NODE_POOL,
-                            "effect": "NoSchedule",
-                        }
-                    ],
-                    "affinity": {
-                        "nodeAffinity": {
-                            "preferredDuringSchedulingIgnoredDuringExecution": [
-                                {
-                                    "weight": 100,
-                                    "preference": {
-                                        "matchExpressions": [
-                                            {
-                                                "key": BUILD_NODE_LABEL,
-                                                "operator": "In",
-                                                "values": [BUILD_NODE_POOL],
-                                            }
-                                        ]
-                                    },
-                                }
-                            ]
-                        }
-                    },
                     "securityContext": {
                         "runAsUser": 1000,
                         "runAsGroup": 1000,
@@ -245,6 +241,8 @@ def build_job_manifest(
             },
         },
     }
+    if settings.build_node_pool:
+        manifest["spec"]["template"]["spec"].update(node_pool_scheduling(settings.build_node_pool))
     # Builds run tenant code with network access, and are created by kubectl
     # rather than Helm, so the post-renderer never sees them.
     egress_gate.inject(
