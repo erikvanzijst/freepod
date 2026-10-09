@@ -31,6 +31,15 @@ from tests.test_chart_release_label_contract import (  # noqa: F401
 pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
 
 
+# Charts whose volume holds nothing two pods can corrupt, so a rolling update's
+# zero-downtime is worth more than Recreate. Each needs its reason.
+ROLLING_UPDATE_ALLOWED = {
+    # The PVC holds only index.html, rewritten by an init container on every
+    # start and served read-only.
+    "helloworld",
+}
+
+
 def _claims(doc: dict) -> list[str]:
     volumes = (_pod_template(doc).get("spec") or {}).get("volumes") or []
     return [v["persistentVolumeClaim"]["claimName"] for v in volumes if "persistentVolumeClaim" in v]
@@ -43,15 +52,26 @@ def _deployments_with_claims(chart: str) -> list[tuple[str, dict]]:
     ]
 
 
-@pytest.mark.parametrize("chart", CHARTS)
-def test_deployments_with_a_volume_claim_use_recreate(chart):
-    rolling = [
+def _rolling(chart: str) -> list[str]:
+    return [
         f"{_name(s, d)} mounts {_claims(d)} with strategy "
         f"{((d['spec'].get('strategy') or {}).get('type') or 'RollingUpdate (default)')}"
         for s, d in _deployments_with_claims(chart)
         if (d["spec"].get("strategy") or {}).get("type") != "Recreate"
     ]
+
+
+@pytest.mark.parametrize("chart", [c for c in CHARTS if c not in ROLLING_UPDATE_ALLOWED])
+def test_deployments_with_a_volume_claim_use_recreate(chart):
+    rolling = _rolling(chart)
     assert not rolling, f"{chart}: two pods would share a volume during a rollout: {rolling}"
+
+
+@pytest.mark.parametrize("chart", sorted(ROLLING_UPDATE_ALLOWED))
+def test_allowed_rolling_updates_are_still_needed(chart):
+    """An exemption outlives its reason silently unless something checks it."""
+    assert chart in CHARTS, f"{chart} is no longer a product chart"
+    assert _rolling(chart), f"{chart} no longer needs its RollingUpdate exemption"
 
 
 def test_the_check_sees_claims():
