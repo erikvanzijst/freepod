@@ -38,7 +38,7 @@ project that *does* have a `Dockerfile` in its root is built from that instead.
 - **`ssh`, for the interactive commands.** `shell`, `db shell`, and `db proxy`
   drive the system `ssh` to reach the deployment over the platform's SSH edge;
   the client does not implement the protocol itself. Everything else — login,
-  deploy, log, var, `db status` — needs no `ssh`.
+  deploy, log, var, `db status`, `bucket` — needs no `ssh`.
 
 ## Commands
 
@@ -60,6 +60,8 @@ project that *does* have a `Dockerfile` in its root is built from that instead.
 | `freepod db`       | Report this deployment's database: name, role, password (masked), and quota state.   |
 | `freepod db shell` | Open an interactive session in the deployment's database, server-side.               |
 | `freepod db proxy` | Forward a local port to the database and print a connection URL for the local end.   |
+| `freepod bucket`   | Report this deployment's bucket: endpoint, credentials (secret masked), and usage.   |
+| `freepod bucket ls`, `cp`, `mv`, `rm`, `cat`, `link` | List, copy, move, delete and stream the bucket's objects, or print a presigned URL. |
 | `freepod skill`    | Install deployment instructions for your coding agents.                              |
 
 `freepod --help` and `freepod <command> --help` cover the flags.
@@ -99,6 +101,29 @@ freepod cp ./assets :/app/assets           # a whole tree, no flag needed
 ```
 
 Owners and timestamps are not preserved.
+
+## Object storage
+
+A deployment whose product offers object storage has its own S3 bucket. Your
+app finds it in its environment; `freepod bucket` reaches the same bucket
+from your machine, directly over its public S3 endpoint:
+
+```bash
+freepod bucket status                      # endpoint, credentials, usage
+freepod bucket ls -l :uploads              # one level; -r for the whole tree
+freepod bucket cp ./seed :seed             # upload a tree, no flag needed
+freepod bucket cp :exports/report.csv .    # download one object
+freepod bucket mv :draft.txt :final.txt    # within the bucket, nothing downloaded
+freepod bucket rm -r :tmp                  # -r is required for a prefix
+freepod bucket cat :dump.sql | psql …      # stream an object
+freepod bucket link :exports/report.csv    # a URL anyone can fetch, for 1h
+```
+
+Mark the bucket's side with a leading colon; `:` alone is the root. A path
+names the object with that exact key if there is one, and otherwise the
+prefix `path/`; a trailing `/` always means the prefix. Copies overwrite, and
+a downloaded key that would land outside the destination is skipped and
+reported. `rm` alone needs `-r` for a prefix, because nothing can undo it.
 
 ## Hostnames
 

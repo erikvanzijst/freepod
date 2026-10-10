@@ -78,8 +78,13 @@ class GarageAdminClient:
         body: dict[str, Any] | None = None,
         *,
         params: dict[str, str] | None = None,
+        missing_ok: bool = False,
     ) -> Any:
         """Issue one admin API call.
+
+        With ``missing_ok``, a 404 answers ``None``: Garage reports a missing
+        key or bucket with that status, so it is told apart from an unwell
+        store without reading the error text.
 
         Query parameters go through ``params`` so httpx encodes them, rather
         than being interpolated into ``path``. Every id passed here today is
@@ -104,6 +109,8 @@ class GarageAdminClient:
         except httpx.HTTPError as exc:
             raise GarageException(f"Garage admin API {method} {path} failed: {exc}") from exc
 
+        if missing_ok and response.status_code == 404:
+            return None
         if response.status_code < 200 or response.status_code >= 300:
             # The body carries Garage's own message, which is the only thing that
             # says *why*; without it the caller sees a bare status code and a
@@ -136,6 +143,15 @@ class GarageAdminClient:
             if global_alias in (bucket.get("globalAliases") or []):
                 return bucket
         return None
+
+    def get_bucket_by_alias(self, global_alias: str) -> dict[str, Any] | None:
+        """``GetBucketInfo`` by global alias, or ``None`` when there is none.
+
+        One call, where ``find_bucket`` lists every bucket on the instance.
+        """
+        return self._request(
+            "GET", "/v2/GetBucketInfo", params={"globalAlias": global_alias}, missing_ok=True
+        )
 
     def get_bucket(self, bucket_id: str) -> dict[str, Any]:
         return self._request("GET", "/v2/GetBucketInfo", params={"id": bucket_id})
@@ -190,6 +206,21 @@ class GarageAdminClient:
             if key.get("name") == name:
                 return key
         return None
+
+    def get_key_by_name(self, name: str, *, show_secret: bool = False) -> dict[str, Any] | None:
+        """``GetKeyInfo`` for the key named ``name``, or ``None``.
+
+        One call, where ``find_key`` lists every key. ``search`` also matches a
+        partial name or key id, so the result is only trusted when its name is
+        exactly the one asked for.
+        """
+        params = {"search": name}
+        if show_secret:
+            params["showSecretKey"] = "true"
+        key = self._request("GET", "/v2/GetKeyInfo", params=params, missing_ok=True)
+        if key is None or key.get("name") != name:
+            return None
+        return key
 
     def get_key_secret(self, access_key_id: str) -> str:
         """Read an existing key's secret back.

@@ -215,8 +215,10 @@ checked too.
 ### D8. `mv` and copies within the bucket stay inside Garage
 
 A copy within the bucket is `CopyObject` per object, or `UploadPartCopy` parts above 5 GiB,
-the S3 limit for a single copy. Whether Garage enforces that limit is settled by the
-integration tests; the client uses the multipart path above it regardless. Garage shares the
+the S3 limit for a single copy. Garage v2.3.0 does not enforce that limit: a single
+`CopyObject` of a 5.05 GiB object succeeded (probed by assembling one from `UploadPartCopy`
+parts, which cost no disk). The client still uses the multipart path above 5 GiB, which is
+S3's rule and costs nothing extra in Garage. Garage shares the
 blocks, so even a large copy costs metadata, not disk (Context 4).
 
 `mv` is that copy, or a transfer for local↔remote, followed by deleting the source:

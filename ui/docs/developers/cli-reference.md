@@ -19,6 +19,136 @@ These go before the command: `freepod --verbose deploy`.
 | `--timeout SECONDS` | how long to wait for the current operation before giving up (defaults: login 300s, build 1800s, rollout 600s) |
 | `--version` | Show the version and exit. |
 
+## `freepod bucket`
+
+```
+freepod bucket [OPTIONS] COMMAND [ARGS]...
+```
+
+Your app's object storage bucket.
+
+`bucket status` shows the bucket, its S3 endpoint and credentials, and how
+much of its limits it uses. The other commands work with its objects
+directly, from this machine. Mark the bucket's side of a path with a
+leading colon; `:` alone is the bucket's root:
+
+```
+freepod bucket ls -l :uploads
+freepod bucket cp ./assets :public          upload a directory
+freepod bucket cp :exports/report.csv .     download one object
+freepod bucket link :exports/report.csv     a URL to share
+```
+
+Your running app already has the same credentials in its environment
+(`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL`, and
+`S3_BUCKET`).
+
+### `freepod bucket cat`
+
+```
+freepod bucket cat [OPTIONS] PATHS...
+```
+
+Write objects to stdout, exactly as stored.
+
+Several objects are written one after another, in the order given.
+
+### `freepod bucket cp`
+
+```
+freepod bucket cp [OPTIONS] SOURCE DESTINATION
+```
+
+Copy files or objects between here and the bucket, or within it.
+
+Mark the bucket's side with a leading colon; the marked side decides the
+direction. A directory or prefix is copied recursively, with no flag:
+
+```
+freepod bucket cp photo.jpg :images/       to images/photo.jpg
+freepod bucket cp photo.jpg :cover.jpg     to exactly cover.jpg
+freepod bucket cp ./site :public           a whole tree
+freepod bucket cp :public ./backup         and back
+freepod bucket cp :public :public-old      within the bucket
+```
+
+Existing files and objects are overwritten. Keys that would land outside
+the destination are skipped and reported.
+
+### `freepod bucket link`
+
+```
+freepod bucket link [OPTIONS] PATH
+```
+
+Print a presigned URL for one object.
+
+Anyone holding the URL can download the object (or, with --put, upload to
+the key, as in `curl -T file URL`) until it expires, with no other
+credentials. The URL is the only output.
+
+| Option | Description |
+| --- | --- |
+| `--put` | a URL that uploads to the key, instead of downloading it |
+| `--expires DURATION` | how long the URL works: a number with s, m, h or d; at most 7d [default: 1h] |
+
+### `freepod bucket ls`
+
+```
+freepod bucket ls [OPTIONS] [PATH]
+```
+
+List a prefix of the bucket, or the root when no path is given.
+
+Sub-prefixes are shown with a trailing `/`. The leading colon is optional:
+the path is always the bucket's.
+
+| Option | Description |
+| --- | --- |
+| `-l` | show each object's size and last-modified time |
+| `-r` | list every object under the prefix, recursively |
+
+### `freepod bucket mv`
+
+```
+freepod bucket mv [OPTIONS] SOURCE DESTINATION
+```
+
+Move files or objects: copy them, then delete each source.
+
+Takes the same paths as `cp`. A source is deleted only after its copy has
+completed; one that could not be copied is kept and reported. Within the
+bucket, nothing is downloaded.
+
+### `freepod bucket rm`
+
+```
+freepod bucket rm [OPTIONS] PATHS...
+```
+
+Delete objects, or with -r everything under a prefix.
+
+There is no undo: the bucket keeps no previous versions. The leading colon
+is optional; local files are never touched.
+
+| Option | Description |
+| --- | --- |
+| `-r` | delete everything under a prefix |
+
+### `freepod bucket status`
+
+```
+freepod bucket status [OPTIONS]
+```
+
+Show this deployment's bucket, endpoint, credentials and usage.
+
+The secret key is masked unless `--show-secret` is given.
+
+| Option | Description |
+| --- | --- |
+| `--show-secret` | print the secret key instead of masking it |
+
 ## `freepod builds`
 
 ```

@@ -134,6 +134,36 @@ upload, err := presigner.PresignPutObject(ctx, &s3.PutObjectInput{
 - The bucket accepts cross-origin requests from any origin for `GET`, `PUT`, `POST`, `DELETE` and `HEAD`, and exposes the `ETag` header, so browsers can upload directly, including multipart uploads.
 - Each request, including an upload through a presigned URL, must transfer its body within 60 seconds. For large files, use a multipart upload with parts small enough to finish within that time on the client's connection. See [Runtime contract: Timeouts and size limits](../runtime.mdx#timeouts-and-size-limits).
 
+## Access from your machine
+
+`freepod bucket` reaches the deployment's bucket directly over the S3 endpoint. It needs no SSH key and works while the application is stopped. A leading `:` marks a path in the bucket; `:` alone is the bucket's root.
+
+| Command | Effect |
+| --- | --- |
+| `freepod bucket status` | Bucket name, endpoint, region, access key, and usage. `--show-secret` prints the secret key |
+| `freepod bucket ls [-l] [-r] [path]` | Lists one level of a prefix; `-r` lists every object under it, `-l` adds size and time |
+| `freepod bucket cp <source> <destination>` | Copies between the local machine and the bucket, or within the bucket. Directories and prefixes are copied recursively |
+| `freepod bucket mv <source> <destination>` | Copies, then deletes each source once its copy is complete |
+| `freepod bucket rm [-r] <path>...` | Deletes objects; a prefix requires `-r` |
+| `freepod bucket cat <path>...` | Writes objects to stdout as stored |
+| `freepod bucket link [--put] [--expires 1h] <path>` | Prints a presigned URL: download by default, upload with `--put`. At most `7d` |
+
+```bash
+freepod bucket cp ./seed :seed                 # upload a directory
+freepod bucket cp :exports/report.csv .        # download one object
+freepod bucket cp :uploads ./uploads-backup    # download a prefix
+freepod bucket mv :draft.txt :final.txt        # rename within the bucket
+freepod bucket rm -r :tmp
+curl -T data.csv "$(freepod bucket link --put :incoming/data.csv)"
+```
+
+- A path without a trailing `/` names the object with that key if one exists, and otherwise the prefix `path/`. A trailing `/` always names the prefix.
+- Copying a file to a path ending in `/` (or to `:`) keeps its name; any other destination is the exact key.
+- Copies overwrite existing objects and files.
+- Copies and moves within the bucket happen on the object store; no data is downloaded.
+- When downloading, keys are resolved as paths (`a/../b` becomes `b`). Keys that would be written outside the destination directory are skipped and reported, and the command exits with status 1.
+- Deleted objects cannot be recovered.
+
 ## Restrictions
 
 - One bucket per deployment. Creating additional buckets is not permitted.
@@ -146,3 +176,9 @@ upload, err := presigner.PresignPutObject(ctx, &s3.PutObjectInput{
 ## Size allowance
 
 Depending on your plan, the bucket may enforce caps on total storage capacity and number of objects, in which case writes beyond those allowances are refused.
+
+```bash
+freepod bucket status
+```
+
+shows the current size and object count against those caps.

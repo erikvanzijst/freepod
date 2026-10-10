@@ -705,6 +705,36 @@ class DeploymentDatabaseRead(SQLModel):
     measured_at: Optional[datetime] = None
 
 
+class BucketUsageRead(SQLModel):
+    """A bucket's usage and the limits the object store enforces on it.
+
+    Read from Garage at request time, so it is current rather than swept.
+    """
+
+    bytes: int
+    objects: int
+    max_size_bytes: Optional[int] = None
+    max_objects: Optional[int] = None
+
+
+class DeploymentBucketRead(SQLModel):
+    """A deployment's bucket: which one it is, where it is served, its credential.
+
+    `secret_access_key` is `None` and `secret_withheld` is True for a reader who
+    is not the owner, as with a database password. `usage` is `None` when the
+    caller did not ask for it, which keeps "not requested" distinguishable from
+    an empty bucket.
+    """
+
+    bucket: str
+    endpoint: str
+    region: str
+    access_key_id: str
+    secret_access_key: Optional[str] = None
+    secret_withheld: bool = False
+    usage: Optional[BucketUsageRead] = None
+
+
 class DeploymentCreateResponse(SQLModel):
     """Envelope returned by the deployment creation endpoint only."""
     deployment: DeploymentRead

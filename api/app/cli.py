@@ -723,6 +723,32 @@ def get_deployment_database(user_id: int, deployment_id: UUID) -> None:
         _echo_yaml_entity(details)
 
 
+@app.command("get-deployment-bucket")
+def get_deployment_bucket(
+    user_id: int,
+    deployment_id: UUID,
+    usage: bool = typer.Option(True, "--usage/--no-usage", help="Read the bucket's current usage."),
+) -> None:
+    """A deployment's bucket, the credentials that reach it, and its usage.
+
+    The secret is reported to the deployment's owner alone, by the same service
+    rule the API applies.
+    """
+    with session_scope() as session:
+        operator = _require_cli_user(session)
+        try:
+            details = deployment_service.get_bucket_details(
+                session,
+                user_id=user_id,
+                deployment_id=deployment_id,
+                viewer_id=operator.id,
+                usage=usage,
+            )
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        _echo_yaml_entity(details)
+
+
 @app.command("get-usage")
 def get_usage(
     user_id: int | None = typer.Argument(None, help="The account; omit with --all."),
