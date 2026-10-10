@@ -55,11 +55,6 @@ resource "kubernetes_deployment" "api" {
               name = "caelus-db"
             }
           }
-
-          volume_mount {
-            name       = "sqlite-data"
-            mount_path = "/app/db"
-          }
         }
 
         # Applies the catalog baked into the image at /app/products/catalog.
@@ -165,11 +160,6 @@ resource "kubernetes_deployment" "api" {
           }
 
           volume_mount {
-            name       = "sqlite-data"
-            mount_path = "/app/db"
-          }
-
-          volume_mount {
             name       = "static-data"
             mount_path = "/var/static"
           }
@@ -184,12 +174,6 @@ resource "kubernetes_deployment" "api" {
           #     cpu    = "200m"
           #   }
           # }
-        }
-        volume {
-          name = "sqlite-data"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.sqlite_pvc.metadata[0].name
-          }
         }
         volume {
           name = "static-data"

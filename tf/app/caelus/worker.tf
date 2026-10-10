@@ -61,11 +61,6 @@ resource "kubernetes_deployment" "worker" {
               name = "caelus-db"
             }
           }
-
-          volume_mount {
-            name       = "sqlite-data"
-            mount_path = "/app/db"
-          }
         }
 
         # Creates the SSH auth resolver's read-only role on the *platform*
@@ -354,20 +349,7 @@ resource "kubernetes_deployment" "worker" {
               name = kubernetes_secret.registry_pull_hmac.metadata[0].name
             }
           }
-
-          volume_mount {
-            name       = "sqlite-data"
-            mount_path = "/app/db"
-          }
-
         }
-        volume {
-          name = "sqlite-data"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.sqlite_pvc.metadata[0].name
-          }
-        }
-
         volume {
           name = "tenant-db-bootstrap"
           config_map {
