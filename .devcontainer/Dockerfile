@@ -89,8 +89,9 @@ ENV OPENCODE_ENABLE_EXA=1
 
 USER vscode
 WORKDIR /workspace/src
-RUN mkdir -p ~/.local/bin ~/.ssh ~/.docker
+RUN mkdir -p ~/.local/bin ~/.ssh ~/.docker ~/.config/k9s
 RUN chmod 700 ~/.ssh ~/.docker
+COPY --chown=vscode:vscode .devcontainer/views.yaml /home/vscode/.config/k9s/views.yaml
 RUN ssh-keyscan github.com >> ~/.ssh/known_hosts
 RUN echo '' >> ~/.bashrc && \
     echo '# Export individual PG* vars from CAELUS_DATABASE_URL' >> ~/.bashrc && \

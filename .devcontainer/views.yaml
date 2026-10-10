@@ -1,0 +1,21 @@
+# k9s custom views, installed at ~/.config/k9s/views.yaml. The listed columns
+# replace k9s's defaults, so these are the stock pod columns plus HOST.
+views:
+  v1/pods:
+    columns:
+      - NAMESPACE
+      - NAME
+      - HOST:.metadata.annotations.caelus\.dev/hostname
+      - PF
+      - READY
+      - STATUS
+      - RESTARTS
+      - CPU
+      - "%CPU/R"
+      - "%CPU/L"
+      - MEM
+      - "%MEM/R"
+      - "%MEM/L"
+      - IP
+      - NODE
+      - AGE
