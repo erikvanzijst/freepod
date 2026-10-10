@@ -11,6 +11,7 @@ import hashlib
 import os
 import re
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
@@ -114,10 +115,11 @@ def small_parts(monkeypatch):
 def test_status_reports_the_bucket_with_the_secret_masked(run, capsys):
     assert run(["status"]) == EXIT_OK
     out = capsys.readouterr().out
-    assert BUCKET in out
-    assert "https://blob.example.test" in out
-    assert "garage" in out
-    assert ACCESS_KEY_ID in out
+    rows = dict(re.findall(r"^(\w[\w ]*?)\s{2,}(.+)$", out, re.M))
+    assert rows["Bucket"] == BUCKET
+    assert rows["Endpoint"] == "https://blob.example.test"
+    assert rows["Region"] == "garage"
+    assert rows["Access key"] == ACCESS_KEY_ID
     assert SECRET not in out
     assert "--show-secret" in out
     assert "3 MB of 1.0 GB" in out
@@ -684,8 +686,10 @@ def test_link_prints_only_a_presigned_get_url(run, store, capsys):
     out = capsys.readouterr().out
     assert out.count("\n") == 1
     url = out.strip()
-    assert url.startswith(f"https://blob.example.test/{BUCKET}/report.pdf?")
-    assert "X-Amz-Expires=3600" in url and "X-Amz-Signature=" in url
+    parts = urlsplit(url)
+    query = parse_qs(parts.query)
+    assert (parts.scheme, parts.netloc, parts.path) == ("https", "blob.example.test", f"/{BUCKET}/report.pdf")
+    assert query["X-Amz-Expires"] == ["3600"] and "X-Amz-Signature" in query
     assert SECRET not in url
 
 

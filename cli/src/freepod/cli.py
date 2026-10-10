@@ -1136,8 +1136,8 @@ def bucket() -> None:
       freepod bucket link :exports/report.csv     a URL to share
 
     Your running app already has the same credentials in its environment
-    (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL`, and the
-    bucket name).
+    (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL`, and
+    `S3_BUCKET`).
     """
 
 
