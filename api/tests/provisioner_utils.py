@@ -48,6 +48,7 @@ class FakeProvisioner:
         timeout: int,
         atomic: bool,
         wait: bool,
+        hostname: str | None = None,
     ):
         self.calls.append(
             (
@@ -62,6 +63,7 @@ class FakeProvisioner:
                     "timeout": timeout,
                     "atomic": atomic,
                     "wait": wait,
+                    "hostname": hostname,
                 },
             )
         )

@@ -3,16 +3,20 @@
 # the top-level `products/catalog/`. Replaces the former `api/.dockerignore`,
 # which no longer applies now that the context is not `api/`.
 #
+# The dev container (`.devcontainer/Dockerfile`, through docker-compose.yml)
+# builds from the repository root too, so it shares these rules.
+#
 # The UI and Keycloak images still build from their own directories and use
 # their own ignore files, so nothing here affects them.
 
-# Start from nothing and re-include only what the API image needs. An allowlist
+# Start from nothing and re-include only what the images need. An allowlist
 # rather than a denylist because the context otherwise pulls in `var/pg_data`,
 # which the build cannot read, and `.claude/worktrees`, which contains whole
 # copies of the repository.
 *
 !api
 !products/catalog
+!.devcontainer/views.yaml
 
 # Within those, the junk the old api/.dockerignore excluded.
 **/.git

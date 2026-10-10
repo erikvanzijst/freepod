@@ -275,11 +275,11 @@ _XDIST_GROUPS = {
         "test_chart_rollout_strategy",
         "test_custom_chart",
         "test_custom_ssh_sidecar",
-        "test_egress_gate",
         "test_lemmy_chart",
         "test_mattermost_chart",
         "test_nextcloud_chart",
         "test_photoprism_chart",
+        "test_post_render",
         "test_ssh_chart_contract",
     },
 }

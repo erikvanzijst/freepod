@@ -122,7 +122,9 @@ def test_reconcile_apply_happy_path_returns_ready_and_applied_template(db_sessio
     order = [name for name, _ in fake_provisioner.calls]
     assert order.index("ensure_namespace") < order.index("ensure_tenant_network_policies")
     assert order.index("ensure_tenant_network_policies") < order.index("helm_upgrade_install")
-    helm_values = next(c[1]["values"] for c in fake_provisioner.calls if c[0] == "helm_upgrade_install")
+    helm_call = next(c[1] for c in fake_provisioner.calls if c[0] == "helm_upgrade_install")
+    assert helm_call["hostname"] == "reconcile.example.test"
+    helm_values = helm_call["values"]
     assert helm_values == {
         "replicas": 1,
         "user": {"message": "hello", "domain": "reconcile.example.test"},
