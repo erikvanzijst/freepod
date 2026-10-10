@@ -418,6 +418,7 @@ class DeploymentReconciler:
             timeout=HELM_TIMEOUT_SEC,
             atomic=True,
             wait=True,
+            hostname=deployment.hostname,
         )
 
         self._await_account_certificate(certificate)

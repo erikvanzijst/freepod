@@ -1,12 +1,12 @@
-# Injects the egress gate into every tenant release; see app/egress_gate.py.
+# The platform's post-renderer for every tenant release; see app/post_render.py.
 # Found through HELM_PLUGINS, which the API image points at this directory's
 # parent.
 apiVersion: v1
 type: postrenderer/v1
-name: egress-gate
+name: post-render
 version: 0.1.0
 runtime: subprocess
 runtimeConfig:
   platformCommand:
     - command: python
-      args: ["-m", "app.egress_gate"]
+      args: ["-m", "app.post_render"]

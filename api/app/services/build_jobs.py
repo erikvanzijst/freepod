@@ -246,7 +246,7 @@ def build_job_manifest(
     # Builds run tenant code with network access, and are created by kubectl
     # rather than Helm, so the post-renderer never sees them.
     egress_gate.inject(
-        manifest,
+        manifest["spec"]["template"]["spec"],
         egress_gate.gate_container(
             image=settings.egress_gate_image,
             deadline_seconds=settings.egress_gate_deadline_seconds,

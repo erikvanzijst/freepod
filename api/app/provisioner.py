@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
-from app import egress_gate
+from app import post_render
 from app.config import get_settings
 from app.network_policy import TENANT_NAMESPACE_LABELS, tenant_network_policies
 from app.proc import AdapterCommandError, CommandRunner, run_command
@@ -287,6 +287,7 @@ class HelmAdapter:
         timeout: int,
         atomic: bool,
         wait: bool,
+        hostname: str | None = None,
     ) -> HelmReleaseOperationResult:
         logger.info(
             "Applying Helm release '%s' in namespace '%s' (chart=%s version=%s digest=%s)",
@@ -313,11 +314,13 @@ class HelmAdapter:
                 cmd.extend(["--version", chart_version])
             settings = get_settings()
             cmd.extend([
-                "--post-renderer", egress_gate.PLUGIN_NAME,
+                "--post-renderer", post_render.PLUGIN_NAME,
                 "--post-renderer-args", f"--image={settings.egress_gate_image}",
                 "--post-renderer-args",
                 f"--deadline-seconds={settings.egress_gate_deadline_seconds}",
             ])
+            if hostname:
+                cmd.extend(["--post-renderer-args", f"--hostname={hostname}"])
             if atomic:
                 cmd.append("--atomic")
             if wait:
@@ -778,6 +781,7 @@ class Provisioner:
         timeout: int,
         atomic: bool,
         wait: bool,
+        hostname: str | None = None,
     ) -> HelmReleaseOperationResult:
         return self.helm.helm_upgrade_install(
             release_name=release_name,
@@ -789,6 +793,7 @@ class Provisioner:
             timeout=timeout,
             atomic=atomic,
             wait=wait,
+            hostname=hostname,
         )
 
     def helm_uninstall(
