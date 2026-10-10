@@ -50,6 +50,8 @@ from app.models.core import (  # noqa: F401
     ProductVisibility,
     ReleaseVarORM,
     DeploymentDatabaseRead,
+    BucketUsageRead,
+    DeploymentBucketRead,
     SftpCredentialsRead,
     SshEdgeRead,
     SQLModel,

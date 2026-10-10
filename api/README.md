@@ -201,12 +201,22 @@ provisioning credential is scoped to the bucket and key operations, and its
 blast radius — it can read back the secret of any access key it can see — is
 stated in the spec rather than left to be discovered.
 
+`GET /api/users/{user_id}/deployments/{deployment_id}/bucket` returns the
+bucket's name, the public S3 endpoint and region, and the pod's own access key,
+with the secret for the owner alone. By default it also reads the bucket's live
+size and object count against its limits; `?usage=false` skips that, because
+every Garage admin call pays for an Argon2 token check. A deployment with no
+bucket answers 404 with `code: object_storage_unavailable`. Like the database
+endpoint it is a pure read, and `caelus get-deployment-bucket` is its parity.
+
 Spec: [deployment-object-storage](../openspec/specs/deployment-object-storage/spec.md),
 [garage-bucket-provisioning](../openspec/specs/garage-bucket-provisioning/spec.md),
-[object-storage-chart-contract](../openspec/specs/object-storage-chart-contract/spec.md) ·
+[object-storage-chart-contract](../openspec/specs/object-storage-chart-contract/spec.md),
+[bucket-credentials-api](../openspec/specs/bucket-credentials-api/spec.md) ·
 Rationale:
 [add-garage-object-store](../openspec/changes/archive/2026-08-12-add-garage-object-store/design.md),
-[add-deployment-object-storage](../openspec/changes/archive/2026-08-17-add-deployment-object-storage/design.md)
+[add-deployment-object-storage](../openspec/changes/archive/2026-08-17-add-deployment-object-storage/design.md),
+[cli-bucket-commands](../openspec/changes/archive/2026-10-10-cli-bucket-commands/design.md)
 
 ## Per-Deployment Relational Storage
 

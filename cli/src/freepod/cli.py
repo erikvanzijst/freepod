@@ -21,6 +21,7 @@ from urllib.parse import quote
 import click
 
 from . import EXIT_ERROR, EXIT_OK, FreepodError, UsageError
+from . import bucket as bucket_module
 from . import copy as copy_module
 from . import database as database_module
 from . import delete as delete_module
@@ -28,8 +29,10 @@ from . import deploy as deploy_module
 from . import history
 from . import keys as keys_module
 from . import logs as logs_module
+from . import objects as objects_module
 from . import project
 from . import releases as releases_module
+from . import s3 as s3_module
 from . import skill as skill_module
 from . import ssh as ssh_module
 from . import tos
@@ -1115,6 +1118,186 @@ def db_proxy(context: Context, port: Optional[int]) -> None:
         if proc.stderr:
             sys.stderr.write(proc.stderr.decode("utf-8", "replace"))
     raise SystemExit(proc.returncode)
+
+
+@cli.group()
+def bucket() -> None:
+    """Your app's object storage bucket.
+
+    `bucket status` shows the bucket, its S3 endpoint and credentials, and how
+    much of its limits it uses. The other commands work with its objects
+    directly, from this machine. Mark the bucket's side of a path with a
+    leading colon; `:` alone is the bucket's root:
+
+    \b
+      freepod bucket ls -l :uploads
+      freepod bucket cp ./assets :public          upload a directory
+      freepod bucket cp :exports/report.csv .     download one object
+      freepod bucket link :exports/report.csv     a URL to share
+
+    Your running app already has the same credentials in its environment
+    (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL`, and the
+    bucket name).
+    """
+
+
+def _bucket_details(context: Context, *, usage: bool) -> Optional[dict]:
+    project_file = _project_deployment(context, lacks="bucket")
+    session = context.session()
+    session.authenticate(interactive=False)
+    with context.client(session) as api:
+        user_id = api.me()["id"]
+        return bucket_module.read(api, user_id, project_file.deployment_id, usage=usage)
+
+
+def _open_bucket(context: Context) -> s3_module.Bucket:
+    """The project deployment's bucket, with credentials fetched for this run only."""
+    creds = bucket_module.credentials(_bucket_details(context, usage=False))
+    return s3_module.Bucket(creds, verbose=context.verbose)
+
+
+def _reporter(context: Context) -> objects_module.Reporter:
+    return objects_module.Reporter(quiet=context.quiet)
+
+
+@bucket.command("status")
+@click.option("--show-secret", is_flag=True, help="print the secret key instead of masking it")
+@click.pass_obj
+def bucket_status(context: Context, show_secret: bool) -> None:
+    """Show this deployment's bucket, endpoint, credentials and usage.
+
+    The secret key is masked unless `--show-secret` is given.
+    """
+    details = _bucket_details(context, usage=True)
+    if details is None:
+        context.say("This deployment has no bucket.")
+        return
+    click.echo(bucket_module.render_status(details, show_secret=show_secret))
+
+
+@bucket.command("ls")
+@click.option("-l", "long_format", is_flag=True, help="show each object's size and last-modified time")
+@click.option("-r", "recursive", is_flag=True, help="list every object under the prefix, recursively")
+@click.argument("path", required=False, default=":")
+@click.pass_obj
+def bucket_ls(context: Context, long_format: bool, recursive: bool, path: str) -> None:
+    """List a prefix of the bucket, or the root when no path is given.
+
+    Sub-prefixes are shown with a trailing `/`. The leading colon is optional:
+    the path is always the bucket's.
+    """
+    remote = objects_module.remote_path(path, marker_required=False)
+    with _open_bucket(context) as store:
+        for name, info in objects_module.list_entries(store, remote, path, recursive=recursive):
+            click.echo(objects_module.format_entry(name, info, long=long_format))
+
+
+def _transfer(context: Context, source: str, destination: str, *, move: bool) -> None:
+    reporter = _reporter(context)
+    with _open_bucket(context) as store:
+        objects_module.transfer(store, source, destination, move=move, reporter=reporter)
+    verb = "Moved" if move else "Copied"
+    context.say(
+        f"{verb} {reporter.files} file{'s' if reporter.files != 1 else ''} "
+        f"({database_module.format_bytes(reporter.bytes)})."
+    )
+
+
+@bucket.command("cp")
+@click.argument("source")
+@click.argument("destination")
+@click.pass_obj
+def bucket_cp(context: Context, source: str, destination: str) -> None:
+    """Copy files or objects between here and the bucket, or within it.
+
+    Mark the bucket's side with a leading colon; the marked side decides the
+    direction. A directory or prefix is copied recursively, with no flag:
+
+    \b
+      freepod bucket cp photo.jpg :images/       to images/photo.jpg
+      freepod bucket cp photo.jpg :cover.jpg     to exactly cover.jpg
+      freepod bucket cp ./site :public           a whole tree
+      freepod bucket cp :public ./backup         and back
+      freepod bucket cp :public :public-old      within the bucket
+
+    Existing files and objects are overwritten. Keys that would land outside
+    the destination are skipped and reported.
+    """
+    _transfer(context, source, destination, move=False)
+
+
+@bucket.command("mv")
+@click.argument("source")
+@click.argument("destination")
+@click.pass_obj
+def bucket_mv(context: Context, source: str, destination: str) -> None:
+    """Move files or objects: copy them, then delete each source.
+
+    Takes the same paths as `cp`. A source is deleted only after its copy has
+    completed; one that could not be copied is kept and reported. Within the
+    bucket, nothing is downloaded.
+    """
+    _transfer(context, source, destination, move=True)
+
+
+@bucket.command("rm")
+@click.option("-r", "recursive", is_flag=True, help="delete everything under a prefix")
+@click.argument("paths", nargs=-1, required=True)
+@click.pass_obj
+def bucket_rm(context: Context, recursive: bool, paths: tuple) -> None:
+    """Delete objects, or with -r everything under a prefix.
+
+    There is no undo: the bucket keeps no previous versions. The leading colon
+    is optional; local files are never touched.
+    """
+    reporter = _reporter(context)
+    targets = [(objects_module.remote_path(p, marker_required=False), p) for p in paths]
+    with _open_bucket(context) as store:
+        deleted = objects_module.remove(store, targets, recursive=recursive, reporter=reporter)
+    context.say(f"Deleted {deleted} object{'s' if deleted != 1 else ''}.")
+
+
+@bucket.command("cat")
+@click.argument("paths", nargs=-1, required=True)
+@click.pass_obj
+def bucket_cat(context: Context, paths: tuple) -> None:
+    """Write objects to stdout, exactly as stored.
+
+    Several objects are written one after another, in the order given.
+    """
+    targets = [(objects_module.remote_path(p, marker_required=False), p) for p in paths]
+    out = click.get_binary_stream("stdout")
+    with _open_bucket(context) as store:
+        try:
+            objects_module.cat(store, targets, out)
+        except BrokenPipeError:
+            # The reader went away (`| head`); that is its choice, not a failure.
+            sys.stdout = open(os.devnull, "w")
+
+
+@bucket.command("link")
+@click.option("--put", is_flag=True, help="a URL that uploads to the key, instead of downloading it")
+@click.option(
+    "--expires",
+    default="1h",
+    show_default=True,
+    metavar="DURATION",
+    help="how long the URL works: a number with s, m, h or d; at most 7d",
+)
+@click.argument("path")
+@click.pass_obj
+def bucket_link(context: Context, put: bool, expires: str, path: str) -> None:
+    """Print a presigned URL for one object.
+
+    Anyone holding the URL can download the object (or, with --put, upload to
+    the key, as in `curl -T file URL`) until it expires, with no other
+    credentials. The URL is the only output.
+    """
+    seconds = objects_module.parse_expiry(expires)
+    remote = objects_module.remote_path(path, marker_required=False)
+    with _open_bucket(context) as store:
+        url = objects_module.link(store, remote, path, put=put, expires=seconds)
+    click.echo(url)
 
 
 @cli.group()

@@ -288,6 +288,24 @@ Three things worth knowing:
 - **User metadata keys come back capitalized.** `Metadata={"owner": "alice"}`
   is returned as `{"Owner": "alice"}`; read keys case-insensitively.
 
+From this machine, `freepod bucket` reaches the same bucket directly. No key
+or `ssh` is needed, and it works while the app is down. Use it to inspect
+what the app stored, to seed it, or to pull a backup down. The running app
+still gets its credentials from the environment above, never from the CLI.
+
+```bash
+freepod bucket status                      # bucket, endpoint, usage; --show-secret for the key
+freepod bucket ls -l :uploads              # -r lists the whole tree
+freepod bucket cp ./seed :seed             # directories copy recursively, no flag
+freepod bucket cp :exports ./exports       # and back
+freepod bucket rm -r :tmp                  # a prefix needs -r; there is no undo
+freepod bucket link :exports/report.pdf    # presigned GET for 1h; --put, --expires 2d
+```
+
+Mark the bucket's side with `:` (`:` alone is the root). Copies overwrite
+without asking, and `rm` cannot be undone, so confirm with the user before
+deleting or overwriting anything the app wrote.
+
 ## Signing users in: "Sign in with Freepod"
 
 An app that needs to know **who** is calling does not have to build signup,
@@ -713,6 +731,7 @@ redeploy.
 | `freepod db`       | Read this deployment's database: `db status` reports database name, role, password (masked by default; `--show-password` reveals), and quota state. No host, no URL. |
 | `freepod db shell` | Open an interactive `psql` session server-side; no local PostgreSQL client needed. Needs a registered key and `ssh`.                                                 |
 | `freepod db proxy` | Forward a local port to the database and print a connection URL for the local end; the tunnel runs until Ctrl+C. Needs a registered key and `ssh`.                   |
+| `freepod bucket`   | The deployment's S3 bucket, reached directly from here: `bucket status` (credentials, usage; `--show-secret`), `ls [-l] [-r]`, `cp`, `mv`, `rm [-r]`, `cat`, `link [--put] [--expires]`. Mark the bucket's side with `:`. |
 | `freepod key`      | Register the SSH keys that identify you: `key add` (generates one if you name no file), `key list`, `key rm <fingerprint>`. The prerequisite for the SSH commands.   |
 | `freepod logout`   | Forget the cached credential.                                                                                                                                        |
 

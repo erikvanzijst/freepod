@@ -11,8 +11,8 @@ from dataclasses import dataclass
 import logging
 
 from app.config import CaelusSettings, get_settings
-from app.models import DeploymentORM
-from app.services.errors import IntegrityException
+from app.models import BucketUsageRead, DeploymentBucketRead, DeploymentORM
+from app.services.errors import IntegrityException, NotFoundException
 from app.services.garage import GarageAdminClient
 
 logger = logging.getLogger(__name__)
@@ -61,6 +61,18 @@ BUCKET_DEFAULT_LIFECYCLE_RULES: list[dict[str, object]] = [
         "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": ABORT_INCOMPLETE_UPLOAD_DAYS},
     }
 ]
+
+
+class ObjectStorageUnavailableException(NotFoundException):
+    """This deployment has no bucket to report.
+
+    Shares 404 with "no such deployment", so it carries a stable code a client
+    keys on. Covers a product that does not opt in and the interval before the
+    first reconcile has provisioned the bucket, which is an interval in which
+    the deployment is not settled.
+    """
+
+    code = "object_storage_unavailable"
 
 
 @dataclass(frozen=True)
@@ -209,6 +221,58 @@ def ensure_object_storage(
         bucket=alias,
         access_key_id=access_key_id,
         secret_access_key=secret_access_key,
+    )
+
+
+def get_bucket_details(
+    deployment: DeploymentORM,
+    *,
+    viewer_id: int | None,
+    usage: bool = True,
+    client: GarageAdminClient | None = None,
+    settings: CaelusSettings | None = None,
+) -> DeploymentBucketRead:
+    """This deployment's bucket, as its owner or an administrator sees it.
+
+    A pure read of what provisioning created: at most one ``GetKeyInfo`` and,
+    when ``usage`` is asked for, one ``GetBucketInfo``. Each costs Garage an
+    Argon2 token check, which is why usage is optional. The secret is only
+    requested from Garage for the owner; ``viewer_id`` of ``None`` withholds.
+    """
+    if not is_enabled(deployment):
+        raise ObjectStorageUnavailableException(
+            "This deployment's product does not offer object storage"
+        )
+
+    settings = settings or get_settings()
+    client = client or GarageAdminClient.from_settings(settings)
+    is_owner = viewer_id is not None and deployment.user_id == viewer_id
+
+    key = client.get_key_by_name(key_name(deployment), show_secret=is_owner)
+    if key is None:
+        raise ObjectStorageUnavailableException("This deployment has no bucket")
+
+    bucket_usage = None
+    if usage:
+        bucket = client.get_bucket_by_alias(bucket_name(deployment))
+        if bucket is None:
+            raise ObjectStorageUnavailableException("This deployment has no bucket")
+        quotas = bucket.get("quotas") or {}
+        bucket_usage = BucketUsageRead(
+            bytes=bucket.get("bytes") or 0,
+            objects=bucket.get("objects") or 0,
+            max_size_bytes=quotas.get("maxSize"),
+            max_objects=quotas.get("maxObjects"),
+        )
+
+    return DeploymentBucketRead(
+        bucket=bucket_name(deployment),
+        endpoint=settings.s3_endpoint_url,
+        region=settings.s3_region,
+        access_key_id=key["accessKeyId"],
+        secret_access_key=key.get("secretAccessKey") if is_owner else None,
+        secret_withheld=not is_owner,
+        usage=bucket_usage,
     )
 
 

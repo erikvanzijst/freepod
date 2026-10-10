@@ -13,6 +13,7 @@ from app.models import (
     DeploymentCreate,
     DeploymentCreateResponse,
     DeploymentRead,
+    DeploymentBucketRead,
     DeploymentDatabaseRead,
     SftpCredentialsRead,
     SubdomainClaim,
@@ -568,6 +569,84 @@ def get_deployment_database(
         deployment_id=deployment_id,
         user_id=user_id,
         viewer_id=current_user.id,
+    )
+
+
+@router.get(
+    "/{user_id}/deployments/{deployment_id}/bucket",
+    response_model=DeploymentBucketRead,
+    summary="Get a deployment's bucket and its credentials",
+    response_description=(
+        "Bucket name, S3 endpoint and region, access key, and the bucket's usage."
+    ),
+    responses={
+        403: {"description": "Caller may only access their own deployments."},
+        404: {
+            "description": (
+                "No such deployment exists for this user, or this deployment has no "
+                "bucket (`code: object_storage_unavailable`)."
+            )
+        },
+    },
+)
+def get_deployment_bucket(
+    user_id: int = Path(..., description="ID of the user that owns the deployment."),
+    deployment_id: UUID = Path(..., description="UUID of the deployment whose bucket to describe."),
+    usage: bool = Query(
+        True,
+        description="Read the bucket's current size and object count. Pass false to skip it.",
+    ),
+    current_user: UserORM = Depends(require_self),
+    session: Session = Depends(get_session),
+) -> DeploymentBucketRead:
+    """Return a deployment's bucket, the credentials that reach it, and its usage.
+
+    ## Authorization
+    You may only access your own deployments; administrators may access any
+    account's deployments. Other requests receive `403 Forbidden`.
+
+    **The secret access key is returned to the owner alone.** An administrator
+    receives every other field with `secret_access_key` null and
+    `secret_withheld` true, for the reason the database endpoint withholds its
+    password: the key reads and writes everything the tenant stores.
+
+    ## Parameters
+    - **user_id** — owner of the deployment.
+    - **deployment_id** — UUID of the deployment.
+    - **usage** (query, default true) — whether to read usage from the object
+      store.
+
+    ## Behavior
+    The response carries the bucket's name (its `dep-<deployment id>` alias),
+    the public S3 `endpoint` and `region`, and the `access_key_id` and
+    `secret_access_key` — the same values the deployment's own pod receives.
+    The bucket is addressed path-style. No object, bucket or presigned URL is
+    composed here; that is the client's job.
+
+    `usage` reports the bucket's `bytes` and `objects` and the `max_size_bytes`
+    and `max_objects` limits enforced on it, read from the object store at
+    request time. It is null when `usage=false` was passed, which is what a
+    client that only needs credentials should do: each usage read costs the
+    object store an authenticated administrative call.
+
+    This is a pure read: nothing is provisioned, rotated or re-evaluated by it.
+
+    ## Errors
+    - **403 Forbidden** — accessing another account's deployment without
+      administrator privileges.
+    - **404 Not Found** — no such deployment exists for this user, or this
+      deployment has no bucket. The latter carries
+      `code: object_storage_unavailable`, for a product that does not offer
+      object storage and for the interval before a new deployment's first
+      reconcile has provisioned it.
+    - **500** — the object store could not be reached.
+    """
+    return deployment_service.get_bucket_details(
+        session,
+        deployment_id=deployment_id,
+        user_id=user_id,
+        viewer_id=current_user.id,
+        usage=usage,
     )
 
 

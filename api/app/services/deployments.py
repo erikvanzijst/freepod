@@ -22,6 +22,7 @@ from app.models import (
     MolliePaymentStatus,
     PaymentStatus,
     PlanTemplateVersionORM,
+    DeploymentBucketRead,
     DeploymentDatabaseRead,
     ProductTemplateVersionORM,
     SftpCredentialsRead,
@@ -30,7 +31,7 @@ from app.models import (
 )
 from app.network_policy import deployment_namespace_labels
 from app.services.jobs import JobService
-from app.services import relational_storage
+from app.services import object_storage, relational_storage
 from app.services import ssh_keys as ssh_keys_service
 from app.services import subscriptions as subscription_service
 from app.services import template_values
@@ -629,6 +630,24 @@ def get_database_details(
     return relational_storage.get_connection_details(
         session, deployment, viewer_id=viewer_id
     )
+
+
+def get_bucket_details(
+    session: Session,
+    *,
+    deployment_id: UUID,
+    user_id: int | None = None,
+    viewer_id: int | None = None,
+    usage: bool = True,
+) -> DeploymentBucketRead:
+    """A deployment's bucket, its credentials and, optionally, its usage.
+
+    Reached through the readable-deployment rule, as `get_database_details`
+    is, so missing, not yours and deleted answer identically. Its own absence
+    is `ObjectStorageUnavailableException`.
+    """
+    deployment = get_deployment_orm(session, deployment_id=deployment_id, user_id=user_id)
+    return object_storage.get_bucket_details(deployment, viewer_id=viewer_id, usage=usage)
 
 
 def delete_deployment(session: Session, *, user_id: int, deployment_id: UUID) -> DeploymentRead:

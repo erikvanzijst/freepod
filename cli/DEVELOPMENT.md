@@ -107,6 +107,9 @@ that locks users out until they upgrade.
 | `tos.py`      | Terms acceptance: the gate, the prompt, and recording an acceptance.                                                                   |
 | `keys.py`     | `freepod key`: the account's keys, the local key record, and fingerprint recovery.                                                     |
 | `database.py` | `freepod db`: the deployment's database, the masking rule, and the absence shape.                                                      |
+| `bucket.py`   | `freepod bucket status`: the bucket endpoint, the credentials it yields, and the masked rendering.                                     |
+| `objects.py`  | The bucket's object commands: remote paths, resolution, safe local paths, the transfer pool, `ls`/`cp`/`mv`/`rm`/`cat`/`link`.          |
+| `s3.py`       | The small S3 client those use: SigV4 signing and presigning, and the operations, over `httpx`.                                         |
 | `ssh.py`      | The SSH assembly shared by `shell`, `cp`, `db shell` and `db proxy`: the one key to offer, the pinned host key, and the argument list. |
 | `copy.py`     | `freepod cp`: which side is the deployment's, the refusals made before connecting, and the transfer script.                            |
 | `skill.py`    | The packaged agent instructions: reading `assets/SKILL.md`, and where to install it.                                                   |
@@ -151,6 +154,7 @@ Spec: [cli-environments](../openspec/specs/cli-environments/spec.md) · Rational
 | `builds` | List the **account's** builds, marking the one this project runs.                                            | `--limit`, `--all`                  |
 | `log`    | Stream the project deployment's application output.                                                          | `-f`, `-n`, `-r`, `-t`              |
 | `db`     | Group holding the deployment's database. `db status` reports identity, credential (masked), and quota state. | `--show-password` (status)          |
+| `bucket` | Group holding the deployment's bucket: `status`, and `ls`, `cp`, `mv`, `rm`, `cat`, `link` on its objects.  | `--show-secret` (status), `-l`, `-r` |
 
 Global: `--env` (hidden from `--help`, as is `FREEPOD_ENV`), `--verbose`, `--quiet`, `--timeout`, `--version`, `-h/--help`.
 `--verbose` and `--quiet` together are a usage error.
@@ -945,6 +949,77 @@ platform's string through unchanged makes the chart's rendered allowlist and
 the client's `-L` argument the same fact with two readers — nothing is
 duplicated, so nothing has to be kept in agreement.
 
+## `freepod bucket`
+
+Spec: [cli-bucket-status](../openspec/specs/cli-bucket-status/spec.md),
+[cli-bucket-objects](../openspec/specs/cli-bucket-objects/spec.md). Unlike `db`,
+nothing goes through the pod: the bucket's S3 endpoint is public, so the client
+fetches the owner's credentials from `/bucket?usage=false` on every run and
+talks to the store directly. They stay in memory. A cache on disk would put a
+live read/write key beside the session tokens to save one request per command.
+
+### Paths
+
+A leading `:` marks the bucket's side, and a `/` after it is dropped: `:`,
+`:/`, `:a` and `:/a` name the root, the root, and `a` twice. Garage stores a
+key written with a leading slash without it, so nothing is lost. `ls`, `rm`,
+`cat` and `link` only ever act on the bucket, so the colon is optional there.
+`cp` and `mv` need at least one side marked.
+
+Without a trailing `/`, a path names the object with that exact key if there is
+one (`HeadObject`), and otherwise the prefix `path/` if it holds anything. A
+trailing `/` always names the prefix. Destinations are never looked up:
+`cp f :name` writes the key `name`, and `cp f :name/` writes `name/f`.
+
+`cp` and `mv` recurse without a flag, like `freepod cp`. `rm` alone needs `-r`
+for a prefix: it is the one command nothing can undo. Every argument is resolved
+before anything is deleted, so a refusal deletes nothing.
+
+### Keys become local paths
+
+Keys are whatever the tenant's app wrote, and Garage stores `../../x`
+verbatim. `objects.local_path` drops empty and `.` segments, resolves `..`,
+and refuses a result that still leaves the destination, checking with
+`realpath` so a symlink already inside it cannot carry a key out. Two keys that
+land on one path (`a//b`, `a/b`) and a file/folder clash (`a`, `a/b`) are
+caught as they happen, not by listing everything first, because a large tree
+should start transferring at once. Each refused key is reported, the rest
+still copy, and the run exits 1.
+
+### The S3 client
+
+Signing follows SigV4 exactly, and `test_s3.py` pins AWS's own worked
+examples. Two things about the wire form are easy to break:
+
+- **Dot segments.** httpx removes `.` and `..` from a URL path, so `a/../b`
+  would be sent as `b`. `s3._encode_key` sends them as `%2E`. Garage decodes the
+  path before building the canonical request, so the signature is computed over
+  the *decoded* path (`Bucket.canonical_path`), not over what was sent.
+- **The query** is put on the URL in its canonical form rather than passed as
+  `params=`, so what is sent is what was signed.
+
+Every body is signed with its SHA-256, so Garage refuses one that changed in
+transit. Files up to 8 MiB go up in one `PutObject`. Larger ones go up as a
+multipart upload with 8 MiB parts, grown only past 10,000 parts. 8 MiB fits
+under the edge's 60-second read timeout down to about 1.1 Mbit/s. Each request
+is retried once on a transport error or 5xx, except the ones that create or
+complete an upload. A failed or interrupted upload is aborted before the
+command exits. A download goes to a temporary file beside its destination,
+checked against `Content-Length` (and the MD5, for a single-part ETag), and is
+renamed into place only when complete.
+
+`objects.Pool` keeps two thread pools of four, one for items and one for parts
+of large files, so an item waiting on its parts can never starve them. The item
+iterator is consumed lazily, so a listing feeds transfers as it arrives. Ctrl-C
+sets a flag every worker checks between chunks.
+
+Garage differs from S3 in ways the client absorbs:
+
+- `DeleteObjects` reports an already-absent key as an error. It is dropped.
+- A skewed clock is refused as "Date is too old", and only beyond about a day.
+- A single `CopyObject` above 5 GiB is accepted. The client still copies in
+  parts above it, which is S3's rule.
+
 ## The agent skill
 
 `freepod skill install` writes `assets/SKILL.md` into the skills directory of
@@ -1096,8 +1171,13 @@ every release recording a null build.
 
 ## Testing
 
-`uv run pytest`. Around 450 cases, none of which touch the network: the API,
-the object store, and Keycloak are all reached through `httpx.MockTransport`.
+`uv run pytest`. Around 900 cases. Apart from one suite, none touch the network:
+the API, the object store, and Keycloak are all reached through
+`httpx.MockTransport`. `fake_s3.py` is an in-memory bucket shaped like Garage
+for the `bucket` commands. The exception is `test_s3_garage.py`, which starts a
+throwaway `dxflrs/garage` container (joining this container's network in a
+devcontainer) to check signing, multipart and presigning against the real
+store, and skips itself when Docker is not available.
 Two autouse fixtures in `conftest.py` make that safe to rely on — `isolated_home`
 points `HOME` and `XDG_CONFIG_HOME` at a temp directory (so no test passes
 because a real credential happened to be lying around) and `no_sleep` patches
