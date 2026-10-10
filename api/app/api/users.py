@@ -601,15 +601,6 @@ def get_deployment_bucket(
 ) -> DeploymentBucketRead:
     """Return a deployment's bucket, the credentials that reach it, and its usage.
 
-    ## Authorization
-    You may only access your own deployments; administrators may access any
-    account's deployments. Other requests receive `403 Forbidden`.
-
-    **The secret access key is returned to the owner alone.** An administrator
-    receives every other field with `secret_access_key` null and
-    `secret_withheld` true, for the reason the database endpoint withholds its
-    password: the key reads and writes everything the tenant stores.
-
     ## Parameters
     - **user_id** — owner of the deployment.
     - **deployment_id** — UUID of the deployment.
