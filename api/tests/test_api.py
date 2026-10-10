@@ -1,7 +1,7 @@
 from starlette.testclient import TestClient
 
 from tests.conftest import client, db_session
-from tests.conftest import create_free_plan_template, create_user
+from tests.conftest import create_free_plan_template, create_user, subject_for
 
 from app.db import get_session
 from app.main import app as fastapi_app
@@ -15,7 +15,10 @@ def test_me_returns_user_for_known_email(client, db_session):
     create_user(client, "known@example.com")
 
     # Now call /api/me with that email
-    me_resp = client.get("/api/me", headers={"X-Auth-Request-Email": "known@example.com"})
+    me_resp = client.get(
+        "/api/me",
+        headers={"X-Auth-Request-Email": "known@example.com", "X-Auth-Request-User": subject_for("known@example.com")},
+    )
     assert me_resp.status_code == 200
     data = me_resp.json()
     assert data["email"] == "known@example.com"
@@ -24,7 +27,10 @@ def test_me_returns_user_for_known_email(client, db_session):
 
 
 def test_me_auto_creates_unknown_email(client):
-    me_resp = client.get("/api/me", headers={"X-Auth-Request-Email": "newuser@example.com"})
+    me_resp = client.get(
+        "/api/me",
+        headers={"X-Auth-Request-Email": "newuser@example.com", "X-Auth-Request-User": subject_for("newuser@example.com")},
+    )
     assert me_resp.status_code == 200
     data = me_resp.json()
     assert data["email"] == "newuser@example.com"
@@ -40,8 +46,12 @@ def test_me_case_insensitive_email(client, db_session):
     # Create a user with lowercase email
     create_user(client, "alice@example.com")
 
-    # Call /api/me with mixed-case variant
-    me_resp = client.get("/api/me", headers={"X-Auth-Request-Email": "Alice@Example.COM"})
+    # Call /api/me with mixed-case variant; the subject is derived from the
+    # lowercased address, so it matches the record create_user bound.
+    me_resp = client.get(
+        "/api/me",
+        headers={"X-Auth-Request-Email": "Alice@Example.COM", "X-Auth-Request-User": subject_for("Alice@Example.COM")},
+    )
     assert me_resp.status_code == 200
     assert me_resp.json()["email"] == "alice@example.com"
 

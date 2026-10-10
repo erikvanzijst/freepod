@@ -49,11 +49,11 @@ def test_a_deleted_account_keeps_its_label(db_session):
 # --- The claim ---------------------------------------------------------------
 
 from app.config import CaelusSettings
-from tests.conftest import OTHER_EMAIL, USER_EMAIL, create_user
+from tests.conftest import OTHER_EMAIL, USER_EMAIL, create_user, subject_for
 
 
 def _headers(email: str) -> dict:
-    return {"X-Auth-Request-Email": email}
+    return {"X-Auth-Request-Email": email, "X-Auth-Request-User": subject_for(email)}
 
 
 @pytest.fixture

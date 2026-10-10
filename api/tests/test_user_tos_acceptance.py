@@ -9,13 +9,13 @@ from sqlmodel import select
 from app.config import get_settings
 from app.models import DeploymentORM, UserORM
 from tests.conftest import client, db_session  # noqa: F401
-from tests.conftest import create_free_plan_template, create_user
+from tests.conftest import create_free_plan_template, create_user, subject_for
 
 CURRENT = get_settings().current_tos_version
 
 
 def _headers(email):
-    return {"X-Auth-Request-Email": email}
+    return {"X-Auth-Request-Email": email, "X-Auth-Request-User": subject_for(email)}
 
 
 @pytest.fixture
