@@ -133,7 +133,10 @@ def run(monkeypatch, *args, notice="freepod 9.9.9 available (you have 0.1.0): uv
     calls = []
     monkeypatch.setattr(update, "check", lambda: calls.append(1) or notice)
     monkeypatch.setattr(cli_module, "_at_terminal", lambda: True)
+    printed = []
+    monkeypatch.setattr(cli_module, "log", printed.append)
     result = CliRunner().invoke(cli_module.cli, list(args))
+    result.printed = printed
     return result, calls
 
 
@@ -141,7 +144,7 @@ def test_the_cli_prints_the_notice_after_a_successful_command(monkeypatch):
     result, calls = run(monkeypatch, "skill", "show")
     assert result.exit_code == 0, result.output
     assert calls == [1]
-    assert result.stderr.splitlines()[-1].startswith("freepod 9.9.9 available")
+    assert result.printed[-1].startswith("freepod 9.9.9 available")
 
 
 def test_quiet_and_opt_out_skip_the_check(monkeypatch):
