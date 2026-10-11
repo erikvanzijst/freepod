@@ -1118,6 +1118,35 @@ them matches against a user's request, which is why it enumerates the phrasings
 that should select it and why a test asserts it stays on one line: wrapped, it
 truncates.
 
+## Update notice
+
+Nothing a user installs with keeps the client current on its own (`brew`,
+`uv tool`, `pipx` and `mise` all wait for an explicit upgrade), so the client
+looks for itself. The same result callback that syncs the skill calls
+`update.check()`, which asks for the latest release at most once a day and
+prints one line to stderr when it is newer:
+
+    freepod 0.20.1 available (you have 0.19.0): uv tool upgrade freepod
+
+**It asks the repository the install upgrades from.** The Homebrew tap is
+published after PyPI, often a day later, so a brew user is checked against the
+formula in `erikvanzijst/homebrew-tap` and everyone else against PyPI's JSON
+API. Telling a brew user about a PyPI release would send them to a
+`brew upgrade` that does nothing. `detect_install` reads the installer from
+`sys.prefix`: a `Cellar` path is Homebrew, a `mise` path is mise (checked first,
+because its `pipx:` backend installs through uv or pipx), then the
+`uv-receipt.toml` and `pipx_metadata.json` markers, and plain pip otherwise.
+
+**It stays out of the way.** The attempt is recorded in
+`~/.config/freepod/update.json` before the request goes out, so an offline
+machine pays the 2-second timeout once a day, not per command, and a failed
+check is silent. It runs only at a terminal and not under `--quiet`, so scripts
+and CI never make the request. `FREEPOD_NO_UPDATE_CHECK=1` turns it off; the
+notice itself does not advertise that, to stay one line.
+
+**It never upgrades itself.** Windows will not let a running `freepod.exe`
+replace itself, and a package manager's install is that manager's to change.
+
 ## Reading logs
 
 `freepod log` streams a deployment's application output from

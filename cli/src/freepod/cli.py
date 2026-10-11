@@ -36,6 +36,7 @@ from . import s3 as s3_module
 from . import skill as skill_module
 from . import ssh as ssh_module
 from . import tos
+from . import update as update_module
 from . import vars as vars_module
 from .api import ApiClient
 from .auth import Session, forget_environment, format_claims, log
@@ -173,17 +174,24 @@ def cli(
 
 @cli.result_callback()
 @click.pass_context
-def sync_skill(ctx: click.Context, _result: object, **_options: object) -> None:
-    """Keep the agent skill current after a command that succeeded.
+def after_command(ctx: click.Context, _result: object, **_options: object) -> None:
+    """Housekeeping after a command that succeeded.
 
     A result callback rather than part of `cli` itself, because that runs
     before the subcommand parses its arguments, so `freepod deploy --help`
-    would write files. Running last also keeps the notice below the command's
-    own output. `skill` is skipped: there the user is managing it by hand.
+    would write files. Running last also keeps any notice below the command's
+    own output.
     """
+    context: Context = ctx.obj
+    sync_skill(ctx, context)
+    notify_update(context)
+
+
+def sync_skill(ctx: click.Context, context: Context) -> None:
+    """Keep the agent skill current. `skill` is skipped: there the user is
+    managing it by hand."""
     if ctx.invoked_subcommand == "skill" or skill_module.opted_out():
         return
-    context: Context = ctx.obj
     try:
         results = skill_module.sync()
     except (FreepodError, OSError) as exc:
@@ -204,6 +212,23 @@ def sync_skill(ctx: click.Context, _result: object, **_options: object) -> None:
         f"Freepod's coding agent skill: {' and '.join(done)}. "
         f"Set {skill_module.OPT_OUT_VAR}=1 to turn this off."
     )
+
+
+def notify_update(context: Context) -> None:
+    """One line on stderr when a newer release exists, at most once a day.
+
+    Only for a person at a terminal: a script or CI job pins its own version
+    and has no use for the hint, nor for the request behind it.
+    """
+    if context.quiet or update_module.opted_out() or not _at_terminal():
+        return
+    notice = update_module.check()
+    if notice:
+        log(notice)
+
+
+def _at_terminal() -> bool:
+    return sys.stderr.isatty()
 
 
 @cli.command()
