@@ -94,6 +94,7 @@ def test_seed_keeps_other_endpoints_intact():
     assert len(lines) == 2
 
 
+@pytest.mark.posix
 def test_seed_is_written_owner_only():
     path = ssh_module.seed_known_hosts("freepod.eu", 22, "ssh-ed25519", "AAAAhostkey")
     assert oct(path.stat().st_mode & 0o777) == "0o600"
@@ -147,7 +148,7 @@ def test_offers_exactly_one_identity():
     args = _args()
     assert args.count("-i") == 1
     identity = args[args.index("-i") + 1]
-    assert identity == "/keys/id_ed25519.pub"
+    assert identity == str(Path("/keys/id_ed25519.pub"))
     assert "IdentitiesOnly=yes" in args
 
 
@@ -167,7 +168,7 @@ def test_the_identity_is_the_public_key_when_no_private_half_exists():
 
 def test_pins_the_edge_to_the_client_store():
     args = _args()
-    assert "UserKnownHostsFile=/config/known_hosts" in args
+    assert 'UserKnownHostsFile="/config/known_hosts"' in args
     assert "StrictHostKeyChecking=yes" in args
     # The user's own known_hosts is neither named nor the default.
     assert not any(".ssh/known_hosts" in a for a in args)
@@ -290,3 +291,18 @@ def test_missing_record_falls_back_to_fingerprint_recovery(isolated_home):
     assert keys_module.resolve_local_key("prod", [entry]) == pub
     # And it is recorded, so the next invocation needs no search.
     assert keys_module.local_key("prod")["path"] == str(pub)
+
+
+def test_a_known_hosts_path_with_a_space_stays_one_value():
+    """ssh splits this option on whitespace; a Windows profile often has a space."""
+    value = ssh_module._config_path(Path("/Users/Jan de Vries/.config/freepod/known_hosts"))
+
+    assert value == '"/Users/Jan de Vries/.config/freepod/known_hosts"'
+
+
+def test_a_windows_known_hosts_path_uses_forward_slashes():
+    from pathlib import PureWindowsPath
+
+    value = ssh_module._config_path(PureWindowsPath(r"C:\Users\Jan de Vries\known_hosts"))
+
+    assert value == '"C:/Users/Jan de Vries/known_hosts"'

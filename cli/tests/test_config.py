@@ -93,12 +93,14 @@ def test_only_dev_gates_on_a_group():
     assert ENVIRONMENTS["prod"].requires_group is None
 
 
+@pytest.mark.posix
 def test_the_config_directory_is_owner_only():
     directory = ensure_config_dir()
     mode = stat.S_IMODE(os.stat(directory).st_mode)
     assert mode == 0o700, f"expected 0700, got {mode:o}"
 
 
+@pytest.mark.posix
 def test_an_existing_loose_directory_is_tightened():
     directory = ensure_config_dir()
     os.chmod(directory, 0o755)
@@ -121,6 +123,7 @@ def test_xdg_config_home_is_honored(monkeypatch, tmp_path):
 def test_the_config_directory_falls_back_to_dot_config(monkeypatch, tmp_path):
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     assert config_dir() == tmp_path / ".config" / "freepod"
 
 

@@ -143,7 +143,7 @@ def test_project_destinations_are_relative_to_the_working_directory():
 )
 def test_the_confirmed_paths(key, suffix):
     agent = next(a for a in agents() if a.key == key)
-    assert str(agent.user_skills).endswith(suffix)
+    assert agent.user_skills.as_posix().endswith(suffix)
 
 
 def test_the_agent_home_variables_outrank_the_home_directory(monkeypatch, tmp_path):
@@ -300,7 +300,7 @@ def test_only_paths_reach_stdout(capsys):
 
     captured = capsys.readouterr()
     for line in captured.out.strip().splitlines():
-        assert line.endswith(f"{SKILL_NAME}/SKILL.md")
+        assert pathlib.Path(line).as_posix().endswith(f"{SKILL_NAME}/SKILL.md")
     assert "Installed" in captured.err
 
 

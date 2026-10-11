@@ -442,6 +442,7 @@ def test_a_symlink_inside_the_project_is_kept(tmp_path):
     assert "link.txt" in packed(tmp_path)
 
 
+@pytest.mark.posix
 def test_a_fifo_is_omitted_and_reported(tmp_path):
     build(tmp_path, {"app.py": "z"})
     os.mkfifo(tmp_path / "pipe")
@@ -453,6 +454,7 @@ def test_a_fifo_is_omitted_and_reported(tmp_path):
     assert any(path == "pipe" and "FIFO" in reason for path, reason in packer.skipped)
 
 
+@pytest.mark.posix
 def test_skips_are_reported_through_the_callback(tmp_path):
     build(tmp_path, {"app.py": "z"})
     os.mkfifo(tmp_path / "pipe")

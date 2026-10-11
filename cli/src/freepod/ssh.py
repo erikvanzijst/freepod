@@ -149,6 +149,16 @@ def identity_file(key_path: Path) -> Path:
     return key_path
 
 
+def _config_path(path: Path) -> str:
+    """`path` as one ssh_config value.
+
+    `UserKnownHostsFile` takes a whitespace-separated list, so an unquoted
+    `C:\\Users\\Jan de Vries\\...` would name two files. Forward slashes keep
+    Windows paths clear of the parser's backslash escapes; Windows accepts them.
+    """
+    return '"' + path.as_posix().replace('"', '\\"') + '"'
+
+
 def edge_options(key_path: Path, known_hosts: Path) -> List[str]:
     """The options every connection to the edge carries, whichever tool makes it.
 
@@ -169,7 +179,7 @@ def edge_options(key_path: Path, known_hosts: Path) -> List[str]:
         # does not curate. StrictHostKeyChecking means a mismatch is a refusal,
         # never a prompt, and never a key recorded on first use.
         "-o",
-        f"UserKnownHostsFile={known_hosts}",
+        f"UserKnownHostsFile={_config_path(known_hosts)}",
         "-o",
         "StrictHostKeyChecking=yes",
     ]

@@ -393,6 +393,7 @@ def test_signing_out_with_nothing_cached_reports_so():
     assert forget_environment("prod") is False
 
 
+@pytest.mark.posix
 def test_the_cache_is_not_world_readable():
     store_refresh_token("prod", "freepod-cli-prod", "prod-refresh")
     path = token_cache_path()

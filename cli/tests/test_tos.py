@@ -111,7 +111,7 @@ def test_no_terms_version_is_hardcoded_in_the_client():
 
     root = Path(freepod.__file__).parent
     for module in root.glob("*.py"):
-        found = re.findall(r"\b(20\d\d-\d\d-\d\d)\b", module.read_text())
+        found = re.findall(r"\b(20\d\d-\d\d-\d\d)\b", module.read_text(encoding="utf-8"))
         assert not found, f"{module.name} carries a hardcoded date: {found}"
 
 

@@ -67,6 +67,9 @@ def _pause(seconds: float) -> None:
 def garage(tmp_path_factory):
     if shutil.which("docker") is None or _docker("info", check=False).returncode != 0:
         pytest.skip("Docker is not available")
+    # Docker on a Windows host runs Windows containers; Garage is a Linux image.
+    if _docker("info", "--format", "{{.OSType}}", check=False).stdout.strip() != "linux":
+        pytest.skip("Docker is not running Linux containers")
 
     name = f"freepod-test-garage-{uuid.uuid4().hex[:8]}"
     network = _own_network()

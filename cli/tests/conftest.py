@@ -8,6 +8,7 @@ can pass because a credential happened to be lying around.
 from __future__ import annotations
 
 import json
+import sys
 from typing import Callable, List, Optional
 
 import httpx
@@ -15,6 +16,21 @@ import pytest
 
 from freepod.api import ApiClient
 from freepod.config import ENVIRONMENTS, Environment
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "posix: asserts POSIX permission bits or file types Windows does not have"
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if sys.platform != "win32":
+        return
+    skip = pytest.mark.skip(reason="POSIX-only behavior; Windows has no such permission bits or file type")
+    for item in items:
+        if "posix" in item.keywords:
+            item.add_marker(skip)
 
 
 @pytest.fixture(autouse=True)
@@ -25,6 +41,8 @@ def isolated_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    # Windows resolves `~` and `Path.home()` from USERPROFILE and ignores HOME.
+    monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
     monkeypatch.delenv("FREEPOD_ENV", raising=False)
     monkeypatch.delenv("NO_COLOR", raising=False)
