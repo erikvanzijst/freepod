@@ -31,6 +31,6 @@ installs it for every supported agent whose configuration directory exists on th
 
 `freepod skill show` prints the skill.
 
-The skill is versioned with the client. After upgrading `freepod`, run `freepod skill install` again.
+Every other `freepod` command also keeps the skill in place: it installs the skill for agents detected since the last run and replaces installed copies with the version that matches the client, printing one line when it does. A copy you delete is not installed again; `freepod skill install` reinstalls it. Set `FREEPOD_NO_SKILL=1` to turn this off.
 
 Signing in needs a person at a browser. Run `freepod login` yourself before asking an agent to deploy.

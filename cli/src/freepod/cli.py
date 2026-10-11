@@ -171,6 +171,41 @@ def cli(
     ctx.obj = Context(env_name, verbose, quiet, timeout)
 
 
+@cli.result_callback()
+@click.pass_context
+def sync_skill(ctx: click.Context, _result: object, **_options: object) -> None:
+    """Keep the agent skill current after a command that succeeded.
+
+    A result callback rather than part of `cli` itself, because that runs
+    before the subcommand parses its arguments, so `freepod deploy --help`
+    would write files. Running last also keeps the notice below the command's
+    own output. `skill` is skipped: there the user is managing it by hand.
+    """
+    if ctx.invoked_subcommand == "skill" or skill_module.opted_out():
+        return
+    context: Context = ctx.obj
+    try:
+        results = skill_module.sync()
+    except (FreepodError, OSError) as exc:
+        if context.verbose:
+            log(f"Could not update the {skill_module.SKILL_NAME} skill: {exc}")
+        return
+    if not results:
+        return
+
+    installed = [who for who, _, outcome in results if outcome == "installed"]
+    updated = [who for who, _, outcome in results if outcome == "updated"]
+    done = []
+    if installed:
+        done.append(f"installed it for {_join(installed)}")
+    if updated:
+        done.append(f"updated it for {_join(updated)}")
+    context.say(
+        f"Freepod's coding agent skill: {' and '.join(done)}. "
+        f"Set {skill_module.OPT_OUT_VAR}=1 to turn this off."
+    )
+
+
 @cli.command()
 @click.option(
     "--loopback",
@@ -1460,8 +1495,10 @@ def skill_install(
     directory exists on this machine. `--agent` and `--all` choose agents
     explicitly; `--dest` writes the file to an exact path.
 
-    Existing copies are replaced, so upgrading freepod and re-running this
-    updates the skill. The installed paths are printed to stdout, one per line.
+    Existing copies are replaced. Every other freepod command also keeps
+    installed copies current and installs for newly detected agents, unless
+    FREEPOD_NO_SKILL=1 is set. The installed paths are printed to stdout, one
+    per line.
     \f
     Replaced without asking because the file is generated and the path belongs
     to this client: a newer client's skill has to supersede an older one for
@@ -1471,6 +1508,7 @@ def skill_install(
         if names or everything or project:
             raise UsageError("--dest names the exact path, so it takes no other selector.")
         outcome = skill_module.write(dest)
+        skill_module.remember([dest])
         context.say(
             f"{'Already current' if outcome == 'current' else 'Installed'}: "
             f"{skill_module.SKILL_NAME}"
@@ -1491,6 +1529,8 @@ def skill_install(
         )
 
     results = skill_module.install(chosen, project=project)
+    if not project:
+        skill_module.remember(target for _, target, _ in results)
 
     # The whole report to stderr first, then the paths to stdout, rather than
     # alternating between the two. Both streams reach a terminal by default,

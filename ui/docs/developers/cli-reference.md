@@ -471,8 +471,10 @@ With no options, installs for every supported agent whose configuration
 directory exists on this machine. `--agent` and `--all` choose agents
 explicitly; `--dest` writes the file to an exact path.
 
-Existing copies are replaced, so upgrading freepod and re-running this
-updates the skill. The installed paths are printed to stdout, one per line.
+Existing copies are replaced. Every other freepod command also keeps
+installed copies current and installs for newly detected agents, unless
+FREEPOD_NO_SKILL=1 is set. The installed paths are printed to stdout, one
+per line.
 
 | Option | Description |
 | --- | --- |
