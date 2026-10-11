@@ -1,7 +1,7 @@
 # freepod
 
 Take a local project directory to a running deployment on
-[freepod.eu](https://freepod.eu).
+[freepod.dev](https://freepod.dev).
 
 ```bash
 brew install erikvanzijst/tap/freepod     # Mac, Linux
@@ -29,8 +29,6 @@ project that *does* have a `Dockerfile` in its root is built from that instead.
 
 - **A Freepod account.** `freepod login` opens the sign-in page, which is also
   where you can register.
-- **Python 3.9 or newer**, or Homebrew. The project you deploy can be in
-  any language Railpack supports.
 - **An app that listens on `$PORT`.** The platform assigns the port and passes
   it in the environment, so bind `0.0.0.0:$PORT` (`process.env.PORT`,
   `os.environ["PORT"]`, …) rather than a fixed number. An app that picks its own
@@ -102,29 +100,6 @@ freepod cp ./assets :/app/assets           # a whole tree, no flag needed
 
 Owners and timestamps are not preserved.
 
-## Object storage
-
-A deployment whose product offers object storage has its own S3 bucket. Your
-app finds it in its environment; `freepod bucket` reaches the same bucket
-from your machine, directly over its public S3 endpoint:
-
-```bash
-freepod bucket status                      # endpoint, credentials, usage
-freepod bucket ls -l :uploads              # one level; -r for the whole tree
-freepod bucket cp ./seed :seed             # upload a tree, no flag needed
-freepod bucket cp :exports/report.csv .    # download one object
-freepod bucket mv :draft.txt :final.txt    # within the bucket, nothing downloaded
-freepod bucket rm -r :tmp                  # -r is required for a prefix
-freepod bucket cat :dump.sql | psql …      # stream an object
-freepod bucket link :exports/report.csv    # a URL anyone can fetch, for 1h
-```
-
-Mark the bucket's side with a leading colon; `:` alone is the root. A path
-names the object with that exact key if there is one, and otherwise the
-prefix `path/`; a trailing `/` always means the prefix. Copies overwrite, and
-a downloaded key that would land outside the destination is skipped and
-reported. `rm` alone needs `-r` for a prefix, because nothing can undo it.
-
 ## Hostnames
 
 Your account has its own subdomain, `<you>.freepod.eu`, which you choose
@@ -141,11 +116,9 @@ renewed for you either way.
 Deployments have no persistent disks or volumes. Whatever the app writes to its
 own filesystem is gone when it restarts, and at every release.
 
-Instead, each pod has its own private S3-compatible bucket for object storage.
-Use with any aws-s3 client. `S3_BUCKET`, `BUCKET_NAME` and `AWS_*` environment
-variables and access keys are already set.
+### Database
 
-Each deployment also gets its own PostgreSQL database. Nothing to set up:
+Each deployment gets its own PostgreSQL database. Nothing to set up:
 `DATABASE_URL` and the usual `PG*` variables are already in the environment, so
 any ORM or `psql` connects as-is.
 
@@ -170,6 +143,23 @@ freepod db proxy
 
 # terminal 2: a local client, against the URL terminal 1 printed
 psql "postgresql://…@localhost:5432/<db>"
+```
+
+### Object storage
+
+Every deployment also automatically gets its own S3 bucket compatible with any aws-s3 client. Your
+code finds it in its environment (`S3_BUCKET`, `BUCKET_NAME` and `AWS_*`).
+Use `freepod bucket` to access the bucket directly from your machine:
+
+```bash
+freepod bucket status                      # endpoint, credentials, usage
+freepod bucket ls -l :uploads              # one level; -r for the whole tree
+freepod bucket cp ./seed :seed             # upload a tree, no flag needed
+freepod bucket cp :exports/report.csv .    # download one object
+freepod bucket mv :draft.txt :final.txt    # within the bucket, nothing downloaded
+freepod bucket rm -r :tmp                  # -r is required for a prefix
+freepod bucket cat :dump.sql | psql …      # stream an object
+freepod bucket link :exports/report.csv    # a URL anyone can fetch, for 1h
 ```
 
 ## Environment variables
