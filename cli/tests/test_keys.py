@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import httpx
@@ -185,7 +186,8 @@ def test_add_with_no_argument_generates_and_registers(run_key, isolated_home, ca
 
     generated = keys_module.generated_key_path()
     assert generated.is_file()
-    assert oct(generated.stat().st_mode & 0o777) == "0o600"
+    if sys.platform != "win32":
+        assert oct(generated.stat().st_mode & 0o777) == "0o600"
     assert len(platform.keys) == 1
     assert keys_module.local_key("prod")["fingerprint"] == platform.keys[0]["fingerprint"]
     assert platform.keys[0]["fingerprint"] in capsys.readouterr().out
@@ -282,6 +284,7 @@ def test_record_holds_no_key_material(run_key, isolated_home):
     assert "PRIVATE KEY" not in keys_module.record_path().read_text()
 
 
+@pytest.mark.posix
 def test_record_is_written_owner_only(run_key, isolated_home):
     run_key(Platform([]), ["key", "add"])
     assert oct(keys_module.record_path().stat().st_mode & 0o777) == "0o600"

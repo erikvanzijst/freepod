@@ -362,6 +362,7 @@ def test_cp_an_object_to_an_exact_path(run, store, work):
     assert (work / "home.html").read_bytes() == b"<h1>"
 
 
+@pytest.mark.posix
 def test_a_downloaded_file_gets_ordinary_permissions(run, store, work):
     store.put("f", b"x")
     old = os.umask(0o022)

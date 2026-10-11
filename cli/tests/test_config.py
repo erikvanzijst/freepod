@@ -93,12 +93,14 @@ def test_only_dev_gates_on_a_group():
     assert ENVIRONMENTS["prod"].requires_group is None
 
 
+@pytest.mark.posix
 def test_the_config_directory_is_owner_only():
     directory = ensure_config_dir()
     mode = stat.S_IMODE(os.stat(directory).st_mode)
     assert mode == 0o700, f"expected 0700, got {mode:o}"
 
 
+@pytest.mark.posix
 def test_an_existing_loose_directory_is_tightened():
     directory = ensure_config_dir()
     os.chmod(directory, 0o755)

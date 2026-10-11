@@ -94,6 +94,7 @@ def test_seed_keeps_other_endpoints_intact():
     assert len(lines) == 2
 
 
+@pytest.mark.posix
 def test_seed_is_written_owner_only():
     path = ssh_module.seed_known_hosts("freepod.eu", 22, "ssh-ed25519", "AAAAhostkey")
     assert oct(path.stat().st_mode & 0o777) == "0o600"
@@ -147,7 +148,7 @@ def test_offers_exactly_one_identity():
     args = _args()
     assert args.count("-i") == 1
     identity = args[args.index("-i") + 1]
-    assert identity == "/keys/id_ed25519.pub"
+    assert identity == str(Path("/keys/id_ed25519.pub"))
     assert "IdentitiesOnly=yes" in args
 
 
