@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 
 const HEADERS_KEY = 'caelus.auth.headers'
+const SUBJECT_KEY = 'caelus.auth.subject'
 
 export type AuthHeaders = Record<string, string>
 
 export function clearStoredAuthHeaders(): void {
   if (typeof window !== 'undefined') {
     window.localStorage.removeItem(HEADERS_KEY)
+    window.localStorage.removeItem(SUBJECT_KEY)
   }
 }
 
@@ -29,6 +31,18 @@ function getEmailFromHeaders(headers: AuthHeaders): string {
   return headers['X-Auth-Request-Email'] ?? ''
 }
 
+// The dev session's Keycloak subject: generated once and held across email
+// changes, so a dev session resolves to one stable record the way a real
+// identity does (the subject is the join key; the email is mutable).
+function getOrCreateSubject(): string {
+  if (typeof window === 'undefined') return ''
+  const existing = window.localStorage.getItem(SUBJECT_KEY)
+  if (existing) return existing
+  const subject = crypto.randomUUID()
+  window.localStorage.setItem(SUBJECT_KEY, subject)
+  return subject
+}
+
 export function useAuthHeaders() {
   const [headers, setHeaders] = useState<AuthHeaders>(getStoredAuthHeaders)
 
@@ -45,7 +59,10 @@ export function useAuthHeaders() {
 
   const setEmail = (newEmail: string) => {
     if (newEmail) {
-      setHeaders({ 'X-Auth-Request-Email': newEmail })
+      setHeaders({
+        'X-Auth-Request-Email': newEmail,
+        'X-Auth-Request-User': getOrCreateSubject(),
+      })
     } else {
       setHeaders({})
     }

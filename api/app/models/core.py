@@ -53,9 +53,24 @@ class UserORM(UserBase, table=True):
             unique=True,
             postgresql_where=Column("deleted_at").is_(None),
         ),
+        # The Keycloak subject is the join key between a Keycloak identity and
+        # this record (see caller-identity-resolution). One active record per
+        # subject, mirroring `uq_user_active` on the email column.
+        Index(
+            "uq_user_subject_active",
+            "keycloak_subject",
+            unique=True,
+            postgresql_where=Column("deleted_at").is_(None),
+        ),
     )
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(nullable=False, unique=False)
+    # The subject Keycloak issued for this identity. Opaque: stored and compared
+    # as a string, never parsed. Null until the record is bound to a subject
+    # (adoption or creation); a null subject is what makes a record adoptable
+    # by email. Deliberately absent from UserCreate and UserRead: it is an
+    # internal join key, not settable or readable through the API.
+    keycloak_subject: Optional[str] = Field(default=None, nullable=True)
     is_admin: bool = Field(default=False, nullable=False)
     mollie_customer_id: Optional[str] = Field(default=None)
     # Terms of Service acceptance is a user-level fact recorded once, not per
