@@ -9,8 +9,6 @@ on:
   workflow_call:
 
 jobs:
-  # The client is a separately installable package on its own release cadence
-  # and imports nothing from `api/`, so it is tested on its own terms.
   test:
     runs-on: ${{ matrix.os }}
     permissions:
@@ -21,13 +19,7 @@ jobs:
       # hides half the answer.
       fail-fast: false
       matrix:
-        # The declared floor and the current releases. `requires-python =
-        # ">=3.9"` is a promise to anyone running an older interpreter, and
-        # running the floor is the only thing that keeps it true: the rest of
-        # this repo targets >=3.11 and uses syntax 3.9 rejects outright.
         python-version: ["3.9", "3.14"]
-        # Users run the client on Windows; nobody here does. This is the only
-        # place its paths, files and subprocesses meet a real Windows machine.
         os: [ubuntu-latest, windows-latest]
     defaults:
       run:
