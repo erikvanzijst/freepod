@@ -12,7 +12,7 @@ jobs:
   # The client is a separately installable package on its own release cadence
   # and imports nothing from `api/`, so it is tested on its own terms.
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     strategy:
@@ -26,6 +26,12 @@ jobs:
         # running the floor is the only thing that keeps it true: the rest of
         # this repo targets >=3.11 and uses syntax 3.9 rejects outright.
         python-version: ["3.9", "3.14"]
+        # Users run the client on Windows; nobody here does. This is the only
+        # place its paths, files and subprocesses meet a real Windows machine.
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -33,7 +39,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Run the CLI test suite on Python ${{ matrix.python-version }}
+      - name: Run the CLI test suite on Python ${{ matrix.python-version }} (${{ matrix.os }})
         run: |
           cd cli
           # `--frozen` resolves from uv.lock instead of updating it, so a
