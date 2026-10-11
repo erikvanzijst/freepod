@@ -4,8 +4,8 @@ The skill is shipped as package data rather than as documentation in the
 repository, because the copy an agent reads has to be versioned with the client
 it drives. Instructions describing a `deploy` that no longer behaves that way
 are worse than no instructions at all, and a hand-copied file becomes exactly
-that on the first release. `pip install --upgrade freepod` followed by
-`freepod skill install` is the whole update story.
+that on the first release. `pip install --upgrade freepod` is the whole
+update story: `sync` replaces installed copies on the next command.
 
 `SKILL.md` with YAML frontmatter is a cross-agent format: Claude Code, Codex,
 OpenCode, Amp, Gemini and Qwen Code all read the same file, differing only in
@@ -21,14 +21,18 @@ exists so that a user is never blocked waiting for that release.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
-from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence, Set, Tuple
 
 from . import FreepodError, UsageError
+from .config import config_dir, ensure_config_dir
 
 SKILL_NAME = "deploy-to-freepod"
 SKILL_FILE = "SKILL.md"
+RECORD_FILE = "skill.json"
+OPT_OUT_VAR = "FREEPOD_NO_SKILL"
 
 
 class Agent(NamedTuple):
@@ -230,5 +234,102 @@ def install(chosen: Iterable[Agent], *, project: bool) -> List[Tuple[Agent, Path
             continue
         seen[resolved] = agent
         results.append((agent, target, write(target, content)))
+
+    return results
+
+
+# ------------------------------------------------------------- the auto-sync
+
+
+def _key(target: Path) -> str:
+    """One spelling per destination, so a symlinked skills directory is one entry."""
+    return str(target.parent.resolve() / target.name)
+
+
+def record_path() -> Path:
+    return config_dir() / RECORD_FILE
+
+
+def load_record() -> Set[str]:
+    """The destinations this client has installed to. Unreadable means none."""
+    try:
+        data = json.loads(record_path().read_text(encoding="utf-8"))
+        return {str(path) for path in data["paths"]}
+    except (OSError, ValueError, KeyError, TypeError):
+        return set()
+
+
+def save_record(paths: Set[str]) -> None:
+    directory = ensure_config_dir()
+    temporary = directory / f".{RECORD_FILE}.tmp"
+    temporary.write_text(json.dumps({"paths": sorted(paths)}, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, record_path())
+
+
+def remember(targets: Iterable[Path]) -> None:
+    """Add `targets` to the record, so `sync` keeps them current.
+
+    Best effort: the skill is already written, and failing the command over
+    the bookkeeping would report a success as an error.
+    """
+    record = load_record()
+    added = {_key(target) for target in targets} - record
+    if added:
+        try:
+            save_record(record | added)
+        except OSError:
+            pass
+
+
+def opted_out() -> bool:
+    return os.environ.get(OPT_OUT_VAR, "").strip().lower() not in ("", "0", "false", "no")
+
+
+def sync() -> List[Tuple[str, Path, str]]:
+    """Bring the skill up to date without being asked; return what changed.
+
+    Two jobs, both keyed on the record. A recorded copy that differs from the
+    packaged skill is rewritten, and a recorded copy that is gone stays gone:
+    the user deleted it. A detected agent with no recorded destination gets the
+    skill installed, which is how a newly installed agent is picked up. Only
+    user-level destinations are ever discovered here; `--project` copies live
+    in a checkout and are left to the command that wrote them.
+
+    A destination that cannot be written is skipped and left unrecorded, so the
+    next run tries it again. Each result is (who, path, "installed"|"updated").
+    """
+    content = read_skill()
+    record = load_record()
+    labels = {_key(target_for(agent, False)): agent.label for agent in agents()}
+    results: List[Tuple[str, Path, str]] = []
+
+    for key in sorted(record):
+        target = Path(key)
+        if not target.is_file():
+            continue
+        try:
+            outcome = write(target, content)
+        except FreepodError:
+            continue
+        if outcome != "current":
+            results.append((labels.get(key, key), target, "updated"))
+
+    discovered: Set[str] = set()
+    for agent in detected():
+        target = target_for(agent, False)
+        key = _key(target)
+        if key in record or key in discovered:
+            continue
+        existed = target.exists()
+        try:
+            outcome = write(target, content)
+        except FreepodError:
+            continue
+        discovered.add(key)
+        if outcome != "current":
+            results.append((agent.label, target, "updated" if existed else "installed"))
+
+    if discovered:
+        save_record(record | discovered)
 
     return results

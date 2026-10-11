@@ -1065,6 +1065,30 @@ and `pip install --upgrade freepod && freepod skill install` only means
 something if a newer skill can supersede an older one unattended. An unchanged
 file is reported rather than rewritten so a re-run stays quiet.
 
+### Keeping it installed without being asked
+
+A wheel has no post-install hook and Homebrew's sandbox keeps `post_install`
+out of the home directory, so the install step cannot place the skill. The
+client does it instead: a result callback on the root group runs
+`skill.sync()` after every command that succeeds, except `skill` itself.
+Running after the subcommand rather than in the group callback is what keeps
+`freepod deploy --help` from writing files (the group callback runs before the
+subcommand parses its arguments). The one-line notice goes to stderr through
+`say`, so `--quiet` silences it and stdout stays the command's result.
+
+`~/.config/freepod/skill.json` records every user-level destination the client
+has written, by `sync` or by `skill install` (including `--dest`, excluding
+`--project`). It is what makes the behaviour polite:
+
+- a recorded copy that differs from the packaged skill is replaced;
+- a recorded copy that is gone stays gone, because the user deleted it;
+- a detected agent with no recorded destination gets the skill, which is how
+  an agent installed later is picked up.
+
+`skill install` ignores the record and writes wherever it is pointed. A
+destination that cannot be written is skipped and not recorded, so the next
+command retries it. `FREEPOD_NO_SKILL=1` turns the whole thing off.
+
 ### Why it ships as package data
 
 The skill documents a contract — `$PORT`, no disk, no user environment
@@ -1072,8 +1096,8 @@ variables, S3 for state, `.freepodignore` precedence — and an agent acting on 
 stale copy of that contract is worse off than an agent with none, because it
 will act confidently on something untrue. Shipping it inside the wheel makes
 the instructions and the client one artifact with one version, so
-`pip install --upgrade freepod && freepod skill install` is the entire update
-path. A file in this repository that users copy is stale the moment the next
+`pip install --upgrade freepod` is the entire update path: the next command
+replaces the installed copies. A file in this repository that users copy is stale the moment the next
 release changes anything.
 
 **What belongs in it.** Only what an agent cannot discover from `--help` and

@@ -26,8 +26,10 @@ from freepod.skill import (
     agents,
     detected,
     install,
+    load_record,
     read_skill,
     select,
+    sync,
     target_for,
     write,
 )
@@ -308,3 +310,148 @@ def test_show_writes_the_skill_to_stdout(capsys):
     captured = capsys.readouterr()
     assert captured.out == read_skill()
     assert captured.err == ""
+
+
+# ------------------------------------------------------------- the auto-sync
+
+
+def user_target(key):
+    return target_for(next(a for a in agents() if a.key == key), project=False)
+
+
+def test_sync_installs_for_detected_agents_and_records_them():
+    make_config_dirs("claude", "codex")
+
+    results = sync()
+
+    assert [(who, outcome) for who, _, outcome in results] == [
+        ("Claude Code", "installed"),
+        ("Codex", "installed"),
+    ]
+    assert user_target("claude").read_text(encoding="utf-8") == read_skill()
+    assert len(load_record()) == 2
+
+
+def test_sync_is_silent_when_everything_is_current():
+    make_config_dirs("claude")
+    sync()
+
+    assert sync() == []
+
+
+def test_sync_replaces_a_stale_recorded_copy():
+    make_config_dirs("claude")
+    sync()
+    user_target("claude").write_text("an older release's skill\n", encoding="utf-8")
+
+    assert [outcome for _, _, outcome in sync()] == ["updated"]
+    assert user_target("claude").read_text(encoding="utf-8") == read_skill()
+
+
+def test_sync_leaves_a_deleted_copy_deleted():
+    make_config_dirs("claude")
+    sync()
+    user_target("claude").unlink()
+
+    assert sync() == []
+    assert not user_target("claude").exists()
+
+
+def test_sync_picks_up_an_agent_installed_later():
+    make_config_dirs("claude")
+    sync()
+    make_config_dirs("gemini")
+
+    assert [who for who, _, _ in sync()] == ["Gemini CLI"]
+
+
+def test_sync_refreshes_a_copy_written_before_the_record_existed():
+    make_config_dirs("claude")
+    target = user_target("claude")
+    target.parent.mkdir(parents=True)
+    target.write_text("an older release's skill\n", encoding="utf-8")
+
+    assert [outcome for _, _, outcome in sync()] == ["updated"]
+
+
+def test_sync_skips_and_retries_a_destination_it_cannot_write():
+    make_config_dirs("claude")
+    target = user_target("claude")
+    target.parent.parent.mkdir(parents=True)
+    target.parent.write_text("a file where the directory should be", encoding="utf-8")
+
+    assert sync() == []
+    assert load_record() == set()
+
+
+def test_skill_install_records_what_it_wrote_so_a_deletion_sticks():
+    make_config_dirs("claude")
+    main(["skill", "install"])
+    user_target("claude").unlink()
+
+    assert sync() == []
+
+
+def test_skill_install_reinstalls_whatever_the_record_says():
+    make_config_dirs("claude")
+    sync()
+    user_target("claude").unlink()
+
+    assert main(["skill", "install"]) == EXIT_OK
+    assert user_target("claude").exists()
+
+
+def test_a_dest_copy_is_kept_current(tmp_path):
+    target = tmp_path / "elsewhere" / "freepod.md"
+    main(["skill", "install", "--dest", str(target)])
+    target.write_text("an older release's skill\n", encoding="utf-8")
+
+    assert [outcome for _, _, outcome in sync()] == ["updated"]
+
+
+def test_project_copies_are_not_recorded(tmp_path, monkeypatch):
+    make_config_dirs("claude")
+    monkeypatch.chdir(tmp_path)
+    main(["skill", "install", "--project"])
+
+    assert load_record() == set()
+
+
+def test_any_successful_command_syncs_and_says_so_on_stderr(capsys):
+    make_config_dirs("claude")
+
+    assert main(["logout"]) == EXIT_OK
+    captured = capsys.readouterr()
+    assert "installed it for Claude Code" in captured.err
+    assert SKILL_NAME not in captured.out
+    assert user_target("claude").exists()
+
+
+def test_quiet_syncs_without_saying_so(capsys):
+    make_config_dirs("claude")
+    main(["--quiet", "logout"])
+
+    assert "skill" not in capsys.readouterr().err
+    assert user_target("claude").exists()
+
+
+def test_the_opt_out_variable_turns_sync_off(monkeypatch):
+    make_config_dirs("claude")
+    monkeypatch.setenv("FREEPOD_NO_SKILL", "1")
+    main(["logout"])
+
+    assert not user_target("claude").exists()
+
+
+def test_help_writes_nothing():
+    make_config_dirs("claude")
+    main(["logout", "--help"])
+
+    assert not user_target("claude").exists()
+
+
+def test_a_failed_command_writes_nothing():
+    make_config_dirs("claude")
+    main(["whoami"])
+
+    assert not user_target("claude").exists()

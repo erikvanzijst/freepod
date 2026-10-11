@@ -229,7 +229,9 @@ URL=$(freepod deploy)
 
 ## Deploying with a coding agent
 
-Install the freepod skill:
+The freepod skill installs itself for every supported agent on the machine the
+first time you run a `freepod` command, and stays current as you upgrade. To
+install it explicitly, or into a project:
 
 ```bash
 freepod skill install

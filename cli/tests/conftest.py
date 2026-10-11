@@ -28,6 +28,7 @@ def isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
     monkeypatch.delenv("FREEPOD_ENV", raising=False)
     monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("FREEPOD_NO_SKILL", raising=False)
     return home
 
 
