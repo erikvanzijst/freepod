@@ -158,9 +158,11 @@ class ProductVisibility(StrEnum):
     Runtime state, deliberately independent of curation: a catalog-managed
     product may be hidden, and a database-authored one may be public. New
     products start ADMIN so onboarding is never visible before it is ready.
+    UNLISTED is PUBLIC to the API; only the storefront leaves it out.
     """
 
     PUBLIC = "public"
+    UNLISTED = "unlisted"
     ADMIN = "admin"
 
 

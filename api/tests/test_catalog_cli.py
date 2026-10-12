@@ -114,6 +114,21 @@ def test_curate_writes_the_document_and_icon(catalog_cli, tmp_path):
     assert doc["upstream"]["source"]["type"] == "github-release"
 
 
+def test_curate_of_an_unlisted_product_writes_no_visibility(catalog_cli, tmp_path):
+    runner, app, catalog_dir, _ = catalog_cli
+    product_id, _ = seed_product(runner, app, tmp_path)
+    unlisted = runner.invoke(
+        app, ["update-product", str(product_id), "--visibility", "unlisted"]
+    )
+    assert unlisted.exit_code == 0, unlisted.output
+
+    result = runner.invoke(app, ["catalog", "curate", "Immich", "--dir", str(catalog_dir)])
+
+    assert result.exit_code == 0, result.output
+    doc = yaml.safe_load((catalog_dir / "immich.yaml").read_text())
+    assert "visibility" not in doc["product"]
+
+
 def test_curate_does_not_curate_the_product(catalog_cli, tmp_path):
     """Curation follows from a rolled-out file, never from running a command."""
     runner, app, catalog_dir, _ = catalog_cli

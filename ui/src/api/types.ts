@@ -30,8 +30,8 @@ export interface Subdomain {
   domain: string | null
 }
 
-/** Whether a product is offered to end users ('public') or hidden ('admin'). */
-export type ProductVisibility = 'public' | 'admin'
+/** Whether a product is offered to end users ('public'), offered through the API and CLI but kept out of the storefront ('unlisted'), or hidden ('admin'). */
+export type ProductVisibility = 'public' | 'unlisted' | 'admin'
 
 export interface Product {
   id: number

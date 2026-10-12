@@ -218,9 +218,11 @@ def list_products(
 
     ## Behavior
     Anonymous visitors and regular users get the end-user listing: only
-    non-deleted products whose `visibility` is `public`. Administrators get the
-    administrative listing, which additionally includes products whose
-    `visibility` is `admin`. Soft-deleted products are excluded either way.
+    non-deleted products whose `visibility` is `public` or `unlisted`.
+    Administrators get the administrative listing, which additionally includes
+    products whose `visibility` is `admin`. Soft-deleted products are excluded
+    either way. Each product reports its `visibility`, so a storefront can
+    leave `unlisted` products out.
 
     Each product includes its marketing metadata (`category`, `replaces`) and
     an `icon_url` when an icon is set.
@@ -310,7 +312,8 @@ async def update_product(
     - Setting `template_id` selects the product's current template version; the
       referenced template must belong to this product or a 404 is raised.
     - Setting `visibility` to `public` offers the product in the end-user
-      product list; setting it to `admin` withdraws it, leaving existing
+      product list; `unlisted` offers it there too but marks it to be left
+      out of the storefront; `admin` withdraws it, leaving existing
       deployments untouched.
     - A supplied `icon` replaces the product's existing icon; the returned
       product carries the new `icon_url`.
