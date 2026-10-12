@@ -1,15 +1,20 @@
-"""The Nextcloud admin password reaches the pod from the tenant's vars only.
+"""The Nextcloud chart: admin password handling and the app-install hook.
 
-Under Caelus it is `NEXTCLOUD_ADMIN_PASSWORD`, a required sensitive var, so the
-chart must neither carry it in Helm values nor render a copy of its own. A
-standalone install has no vars Secret and falls back to a generated password,
-never a constant. Shells out to a real `helm template`; skipped when helm is
-unavailable.
+The admin password reaches the pod from the tenant's vars only. Under Caelus it
+is `NEXTCLOUD_ADMIN_PASSWORD`, a required sensitive var, so the chart must
+neither carry it in Helm values nor render a copy of its own. A standalone
+install has no vars Secret and falls back to a generated password, never a
+constant.
+
+The `before-starting` hook `apps.sh` installs Calendar and Contacts. It runs
+here against a stub `php` that plays `occ`. Shells out to a real `helm
+template`; skipped when helm is unavailable.
 """
 
 from __future__ import annotations
 
 import base64
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -104,3 +109,88 @@ def test_a_standalone_install_generates_a_password(tmp_path):
 def test_a_standalone_install_honors_an_explicit_password(tmp_path):
     docs = _render(tmp_path, {"admin": {"username": "admin", "password": "pinned-by-hand"}})
     assert _secrets(docs)["t-admin"][VAR] == "pinned-by-hand"
+
+
+_FAKE_PHP = r"""#!/bin/sh
+shift  # the occ path
+echo "$*" >> "$CALLS"
+case "$1" in
+    app:list) [ -z "$LIST_FAILS" ] || exit 1; printf '%s' "$APP_LIST" ;;
+    config:app:get)
+        case " $INSTALLED " in *" $2 "*) echo 1.0.0 ;; *) exit 1 ;; esac ;;
+    app:install) exit "${INSTALL_RC:-0}" ;;
+esac
+"""
+
+
+def _hooks(tmp_path: Path) -> dict[str, str]:
+    for doc in _render(tmp_path, {}):
+        if doc["kind"] == "ConfigMap" and doc["metadata"]["name"] == "t-hooks":
+            return doc["data"]
+    raise AssertionError("no hooks ConfigMap")
+
+
+def _run_apps_hook(tmp_path: Path, *, app_list="", installed="", install_rc=0, list_fails=False):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    php = bin_dir / "php"
+    php.write_text(_FAKE_PHP)
+    php.chmod(0o755)
+    hook = tmp_path / "apps.sh"
+    hook.write_text(_hooks(tmp_path)["apps.sh"])
+    calls = tmp_path / "calls"
+    calls.touch()
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "CALLS": str(calls),
+        "APP_LIST": app_list,
+        "INSTALLED": installed,
+        "INSTALL_RC": str(install_rc),
+        "LIST_FAILS": "1" if list_fails else "",
+    }
+    result = subprocess.run(["sh", str(hook)], env=env, capture_output=True, text=True)
+    installs = [c.split()[1] for c in calls.read_text().splitlines() if c.startswith("app:install")]
+    return result, installs
+
+
+def test_the_apps_hook_runs_first_among_the_boot_hooks(tmp_path):
+    assert sorted(_hooks(tmp_path))[0] == "apps.sh"
+
+
+def test_the_apps_hook_installs_calendar_and_contacts_on_a_bare_instance(tmp_path):
+    result, installs = _run_apps_hook(tmp_path, app_list="Enabled:\n  - dav: 2.0.0\nDisabled:\n")
+    assert result.returncode == 0
+    assert installs == ["calendar", "contacts"]
+
+
+def test_the_apps_hook_leaves_listed_apps_alone_enabled_or_disabled(tmp_path):
+    listing = "Enabled:\n  - calendar: 6.6.2\nDisabled:\n  - contacts: 8.9.1 (installed 8.9.1)\n"
+    result, installs = _run_apps_hook(tmp_path, app_list=listing)
+    assert result.returncode == 0
+    assert installs == []
+
+
+def test_the_apps_hook_does_not_reinstall_a_removed_app(tmp_path):
+    result, installs = _run_apps_hook(tmp_path, app_list="Enabled:\n", installed="calendar")
+    assert result.returncode == 0
+    assert installs == ["contacts"]
+
+
+def test_a_failed_install_never_fails_the_hook(tmp_path):
+    result, installs = _run_apps_hook(tmp_path, install_rc=1)
+    assert result.returncode == 0
+    assert installs == ["calendar", "contacts"]
+    assert "could not install contacts" in result.stdout
+
+
+def test_a_timed_out_install_skips_the_remaining_apps(tmp_path):
+    result, installs = _run_apps_hook(tmp_path, install_rc=124)
+    assert result.returncode == 0
+    assert installs == ["calendar"]
+
+
+def test_the_apps_hook_does_nothing_when_occ_cannot_list_apps(tmp_path):
+    result, installs = _run_apps_hook(tmp_path, list_fails=True)
+    assert result.returncode == 0
+    assert installs == []
