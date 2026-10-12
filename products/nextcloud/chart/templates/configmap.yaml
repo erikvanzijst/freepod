@@ -27,6 +27,25 @@ metadata:
   labels:
     {{- include "nextcloud.labels" . | nindent 4 }}
 data:
+  apps.sh: |
+    #!/bin/sh
+    # Installs the setup wizard's Calendar and Contacts, which the image's
+    # automated install skips. Every boot, so any instance lacking them gets them.
+    # An app that was ever installed (listed, or removed but still holding an
+    # installed_version) is the admin's and is left alone. Never fails: a
+    # non-zero exit would stop the entrypoint before Apache starts.
+    occ="php /var/www/html/occ"
+    listed=$($occ app:list) || exit 0
+    listed=$(printf '%s\n' "$listed" | sed -n 's/^  - \([^:]*\).*/\1/p')
+    for app in calendar contacts; do
+        printf '%s\n' "$listed" | grep -qx "$app" && continue
+        [ -n "$($occ config:app:get "$app" installed_version)" ] && continue
+        timeout 90 $occ app:install "$app" && continue
+        rc=$?
+        echo "apps.sh: could not install $app (exit $rc); retrying on next start"
+        [ "$rc" -eq 124 ] && break
+    done
+    exit 0
   db-maintenance.sh: |
     #!/bin/sh
     # Runs from /docker-entrypoint-hooks.d/before-starting on every boot, after

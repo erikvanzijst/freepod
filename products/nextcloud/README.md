@@ -13,13 +13,29 @@ read-only file access to the data volume.
 | PostgreSQL  | StatefulSet `<release>-postgresql` on `postgres:17-alpine` + headless Service + Secret `<release>-db` (auto-generated password); data on PVC `data-<release>-postgresql-0`                                                                                                                                                                                                                                                                                                                                 |
 | Data        | PVC `<release>-data` (plan-sized), mounted into the app via subPaths (`html`, `data`, `config`, `custom_apps`, `themes`, `tmp`)                                                                                                                                                                                                                                                                                                                                                                            |
 | App secrets | Secret `<release>-app` (admin username + SMTP); Secret `<release>-admin` (generated admin password, standalone installs only — see [Admin password](#admin-password))                                                                                                                                                                                                                                                                                         |
-| App config  | ConfigMap `<release>-config` (non-secret env via `envFrom`) + ConfigMap `<release>-hooks` (a `before-starting` entrypoint hook that runs `occ db:add-missing-indices/columns/primary-keys` and `occ maintenance:repair --include-expensive` after each upgrade, clearing the "missing indices" and "mimetype migrations available" admin warnings, and rewrites the persisted `trusted_domains` from `NEXTCLOUD_TRUSTED_DOMAINS` so a hostname change takes effect — the image applies that variable at install time only) + ConfigMap `<release>-apache` (`hsts.conf` so Nextcloud's server-side HTTP-headers check sees HSTS; edge Traefik still owns the browser-facing header) |
+| App config  | ConfigMap `<release>-config` (non-secret env via `envFrom`) + ConfigMap `<release>-hooks` (`before-starting` entrypoint hooks: `apps.sh` installs Calendar and Contacts, see [Calendar and Contacts](#calendar-and-contacts); `db-maintenance.sh` runs `occ db:add-missing-indices/columns/primary-keys` and `occ maintenance:repair --include-expensive` after each upgrade, clearing the "missing indices" and "mimetype migrations available" admin warnings, and rewrites the persisted `trusted_domains` from `NEXTCLOUD_TRUSTED_DOMAINS` so a hostname change takes effect — the image applies that variable at install time only) + ConfigMap `<release>-apache` (`hsts.conf` so Nextcloud's server-side HTTP-headers check sees HSTS; edge Traefik still owns the browser-facing header) |
 | Ingress     | `<release>-ingress` (per-deployment TLS via `caelus.ingress.tls`)                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | File access | Service `<release>-ssh` only (`ssh-sidecar`); session rooted at `volume:/data`, the `data` subPath alone — the PVC root also holds `config/config.php`                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 The bundled PostgreSQL password is generated on first install and reused from the
 `<release>-db` Secret on upgrade, so it never rotates a live credential. Set
 `postgresql.auth.password` to pin an explicit value instead.
+
+## Calendar and Contacts
+
+Core's `dav` app serves CalDAV and CardDAV; the Calendar and Contacts apps are
+their web UI. The image's automated install skips the setup wizard that would
+offer them, so `apps.sh` installs both from the Nextcloud app store on every
+start, not only the first, so an instance without them gets them. An app
+that was ever installed, whether enabled, disabled or removed, is the admin's
+and the hook leaves it alone. A failed download is logged and retried on the
+next start; one that runs past 90 seconds also skips the remaining app, so an
+unreachable store delays startup by at most that.
+
+The hook never updates them. On a new image `occ upgrade` updates enabled app
+store apps and re-enables the ones it disabled as incompatible, when the store
+offers a compatible release; otherwise they stay disabled until the admin
+updates and enables them under Apps.
 
 ## Manual install
 
@@ -169,6 +185,9 @@ Pitfalls:
   effect when their environment variables are set. Check which ones this chart
   sets (`templates/configmap.yaml`) before calling a change to one of them not
   applicable.
+- On a new major, check that Calendar and Contacts have app store releases
+  compatible with it. Without one, `occ upgrade` disables them and nothing
+  re-enables them (see [Calendar and Contacts](#calendar-and-contacts)).
 - The `before-starting` hook (§ What it deploys) runs the post-upgrade repair
   steps. If upstream starts recommending a new one after upgrades, it belongs
   there.
