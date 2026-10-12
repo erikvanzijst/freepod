@@ -3,7 +3,8 @@ import type { Product } from '../api/types'
 
 /** The catalog file that declares a product, mirroring the API's error text. */
 export function catalogFileFor(product: Product): string {
-  return `products/catalog/${product.slug ?? product.name}.yaml`
+  const slug = product.slug ?? product.name
+  return `products/catalog/${slug}/${slug}.yaml`
 }
 
 interface CatalogManagedNoticeProps {

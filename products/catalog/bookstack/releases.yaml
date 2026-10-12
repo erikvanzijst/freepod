@@ -1,0 +1,17 @@
+- version: "26.9.1"
+  notes: |-
+    A small fix-up release.
+
+    - The audit log shows times in your configured display timezone
+    - Permissions are set correctly when a chapter becomes a book
+    - Safer handling of ZIP imports
+    - Updated translations
+- version: "26.9.0"
+  notes: |-
+    A feature release with a reading progress bar and a better editor.
+
+    - A progress bar shows how far you are through a long page
+    - The new WYSIWYG editor got a range of fixes and improvements
+    - Changing your password now asks for your current one
+    - Markdown tables keep their column alignment
+    - Checkboxes are labeled properly for screen readers

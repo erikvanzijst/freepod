@@ -55,10 +55,12 @@ def test_refuses(fields, reason):
 @pytest.fixture
 def origin(tmp_path):
     work = tmp_path / "work"
-    (work / "products" / "catalog").mkdir(parents=True)
+    (work / "products" / "catalog" / "immich").mkdir(parents=True)
+    (work / "products" / "catalog" / "nextcloud").mkdir()
     (work / "products" / "immich").mkdir()
-    (work / "products" / "catalog" / "immich.yaml").write_text("tag: v3.2.0\n")
-    (work / "products" / "catalog" / "nextcloud.yaml").write_text("tag: 34\n")
+    (work / "products" / "catalog" / "catalog.schema.json").write_text("{}\n")
+    (work / "products" / "catalog" / "immich" / "immich.yaml").write_text("tag: v3.2.0\n")
+    (work / "products" / "catalog" / "nextcloud" / "nextcloud.yaml").write_text("tag: 34\n")
     (work / "products" / "immich" / "README.md").write_text("# Immich\n")
     git(work, "init", "-q", "-b", "master")
     git(work, "add", ".")
@@ -87,7 +89,7 @@ def service_clone(tmp_path, url):
 
 
 def tag_bump(work):
-    (work / "products/catalog/immich.yaml").write_text("tag: v3.2.1\n")
+    (work / "products/catalog/immich/immich.yaml").write_text("tag: v3.2.1\n")
 
 
 def test_a_tag_bump_applies_on_top_of_master(tmp_path, origin):
@@ -95,18 +97,22 @@ def test_a_tag_bump_applies_on_top_of_master(tmp_path, origin):
     clone = service_clone(tmp_path, url)
     base = clone.apply(make(patch=patch_of(work, tag_bump)))
     assert base == git(work, "rev-parse", "master").decode().strip()
-    assert (clone.path / "products/catalog/immich.yaml").read_text() == "tag: v3.2.1\n"
+    assert (clone.path / "products/catalog/immich/immich.yaml").read_text() == "tag: v3.2.1\n"
 
 
 @pytest.mark.parametrize("edit, reason", [
-    (lambda w: (w / "products/catalog/nextcloud.yaml").write_text("tag: 35\n"),
-     "changes products/catalog/nextcloud.yaml, outside"),
+    (lambda w: (w / "products/catalog/nextcloud/nextcloud.yaml").write_text("tag: 35\n"),
+     "changes products/catalog/nextcloud/nextcloud.yaml, outside"),
+    (lambda w: (w / "products/catalog/catalog.schema.json").write_text("{\"x\": 1}\n"),
+     "changes products/catalog/catalog.schema.json, outside"),
+    (lambda w: (w / "products/catalog/immich.yaml").write_text("tag: v3.2.1\n"),
+     "changes products/catalog/immich.yaml, outside"),
     (lambda w: ((w / ".github").mkdir(), (w / ".github/ci.yml").write_text("on: push\n")),
      "changes .github/ci.yml, outside"),
     (lambda w: (w / "products/immich/link").symlink_to("/etc/passwd"), "makes products/immich/link a symbolic link"),
     (lambda w: (w / "products/immichx").mkdir() or (w / "products/immichx/a").write_text("x"),
      "changes products/immichx/a, outside"),
-], ids=["other-product", "outside-products", "symlink", "prefix-lookalike"])
+], ids=["other-product", "shared-schema", "old-layout", "outside-products", "symlink", "prefix-lookalike"])
 def test_a_patch_outside_the_products_files_is_refused(tmp_path, origin, edit, reason):
     work, url = origin
     clone = service_clone(tmp_path, url)
@@ -114,11 +120,23 @@ def test_a_patch_outside_the_products_files_is_refused(tmp_path, origin, edit, r
         clone.apply(make(patch=patch_of(work, edit)))
 
 
+def test_a_releases_entry_in_the_products_folder_is_allowed(tmp_path, origin):
+    work, url = origin
+    clone = service_clone(tmp_path, url)
+
+    def bump_with_release(w):
+        tag_bump(w)
+        (w / "products/catalog/immich/releases.yaml").write_text("- version: 3.2.1\n  notes: Fixes.\n")
+
+    clone.apply(make(patch=patch_of(work, bump_with_release)))
+    assert (clone.path / "products/catalog/immich/releases.yaml").is_file()
+
+
 def test_a_patch_that_does_not_apply_is_refused(tmp_path, origin):
     work, url = origin
     patch = patch_of(work, tag_bump)
     git(work, "checkout", "-q", "master")
-    (work / "products/catalog/immich.yaml").write_text("tag: v3.3.0\n")
+    (work / "products/catalog/immich/immich.yaml").write_text("tag: v3.3.0\n")
     git(work, "commit", "-q", "-am", "someone else moved master")
     git(work, "push", "-q", url, "master")
     with pytest.raises(ResultError, match="does not apply to master"):

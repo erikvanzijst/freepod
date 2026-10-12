@@ -39,6 +39,7 @@ from app.services import (
     templates as template_service,
     deployments as deployment_service,
     products as product_service,
+    listings as listing_service,
     users as user_service,
     reconcile as reconcile_service,
     jobs as jobs_service,
@@ -48,6 +49,7 @@ from app.services import (
     var_crypto,
 )
 from app.services.errors import CaelusException, DeploymentInProgressException
+from pydantic import ValidationError as PydanticValidationError
 from app.services.usage import report as usage_report
 from app.services.reconcile_constants import (
     JOB_REASON_UPDATE,
@@ -239,6 +241,30 @@ def get_user(user_id: int) -> None:
         _echo_yaml_entity(user)
 
 
+def _read_listing_file(path: Path | None) -> list | None:
+    """Read a features or links file (YAML or JSON, which YAML also parses)."""
+    if path is None:
+        return None
+    try:
+        entries = yaml.safe_load(path.read_text())
+    except (OSError, yaml.YAMLError) as exc:
+        typer.echo(f"Error: {path} cannot be read: {exc}", err=True)
+        raise typer.Exit(code=1)
+    if not isinstance(entries, list):
+        typer.echo(f"Error: {path} must contain a list", err=True)
+        raise typer.Exit(code=1)
+    return entries
+
+
+def _listing_payload(model, **fields):
+    """Build a product payload, reporting invalid listing entries like the API does."""
+    try:
+        return model(**fields)
+    except PydanticValidationError as exc:
+        typer.echo(f"Error: Invalid product payload: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+
 @app.command("create-product")
 def create_product(
     name: str,
@@ -252,7 +278,28 @@ def create_product(
         help="Whether the product is offered to end users. New products stay hidden by default.",
     ),
     icon: Path | None = typer.Option(None, "--icon", help="Path to product icon image"),
+    tagline: str | None = typer.Option(None, "--tagline", help="One-sentence blurb for the storefront."),
+    license: str | None = typer.Option(None, "--license", help="The app's license, e.g. AGPL-3.0."),
+    features_file: Path | None = typer.Option(
+        None, "--features-file", help="YAML or JSON list of {title, body, icon} feature entries."
+    ),
+    links_file: Path | None = typer.Option(
+        None, "--links-file", help="YAML or JSON list of {label, url, kind} link entries."
+    ),
 ) -> None:
+    payload = _listing_payload(
+        ProductCreate,
+        name=name,
+        description=description,
+        template_id=template_id,
+        category=category,
+        replaces=replaces,
+        visibility=visibility,
+        tagline=tagline,
+        license=license,
+        features=_read_listing_file(features_file) or [],
+        links=_read_listing_file(links_file) or [],
+    )
     with session_scope() as session:
         _require_cli_user(session)
         try:
@@ -261,14 +308,7 @@ def create_product(
                 icon_data = icon.read_bytes()
             product = product_service.create_product(
                 session,
-                payload=ProductCreate(
-                    name=name,
-                    description=description,
-                    template_id=template_id,
-                    category=category,
-                    replaces=replaces,
-                    visibility=visibility,
-                ),
+                payload=payload,
                 icon_data=icon_data,
             )
         except CaelusException as e:
@@ -300,21 +340,35 @@ def update_product(
         "--force",
         help=FORCE_HELP,
     ),
+    tagline: str | None = typer.Option(None, "--tagline", help="One-sentence blurb for the storefront."),
+    license: str | None = typer.Option(None, "--license", help="The app's license, e.g. AGPL-3.0."),
+    features_file: Path | None = typer.Option(
+        None, "--features-file", help="YAML or JSON list of {title, body, icon} feature entries."
+    ),
+    links_file: Path | None = typer.Option(
+        None, "--links-file", help="YAML or JSON list of {label, url, kind} link entries."
+    ),
 ) -> None:
+    update = _listing_payload(
+        ProductUpdate,
+        id=product_id,
+        template_id=template_id,
+        description=description,
+        category=category,
+        replaces=replaces,
+        visibility=visibility,
+        tagline=tagline,
+        license=license,
+        features=_read_listing_file(features_file),
+        links=_read_listing_file(links_file),
+    )
     with session_scope() as session:
         actor = _require_cli_user(session)
         try:
             icon_data = icon.read_bytes() if icon is not None else None
             product = product_service.update_product(
                 session,
-                product=ProductUpdate(
-                    id=product_id,
-                    template_id=template_id,
-                    description=description,
-                    category=category,
-                    replaces=replaces,
-                    visibility=visibility,
-                ),
+                product=update,
                 icon_data=icon_data,
                 actor=actor,
                 force=force,
@@ -358,6 +412,30 @@ def get_product(product_id: int) -> None:
         except CaelusException as e:
             _exit_for_domain_error(e)
         _echo_yaml_entity(product)
+
+
+@app.command("get-product-listing")
+def get_product_listing(product_id: int) -> None:
+    """Print a product's store listing, as `GET /api/products/{id}/listing` returns it."""
+    with session_scope() as session:
+        _require_cli_user(session)
+        try:
+            listing = listing_service.get_listing(session, product_id=product_id)
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        _echo_yaml_entity(listing)
+
+
+@app.command("list-product-releases")
+def list_product_releases(product_id: int) -> None:
+    """Print a product's releases, newest first, as `GET /api/products/{id}/releases` does."""
+    with session_scope() as session:
+        _require_cli_user(session)
+        try:
+            releases = listing_service.list_releases(session, product_id=product_id)
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        _echo_yaml_entity(releases)
 
 
 @app.command("create-template")

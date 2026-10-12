@@ -13,7 +13,9 @@ import yaml
 
 PRODUCTS = Path(__file__).resolve().parents[2] / "products"
 CHARTS_REPOSITORY = "oci://ghcr.io/erikvanzijst/freepod/charts"
-CATALOG_FILES = sorted((PRODUCTS / "catalog").glob("*.y*ml"))
+CATALOG_FILES = sorted(
+    path for path in (PRODUCTS / "catalog").glob("*/*.yaml") if path.stem == path.parent.name
+)
 
 
 def _template_and_chart(catalog_file: Path) -> tuple[dict, dict]:

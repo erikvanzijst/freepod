@@ -1,0 +1,119 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: lemmy
+  name: Lemmy
+  tagline: Your own forum, part of a network of communities across the web.
+  description: |-
+    Lemmy is a link aggregator and discussion forum in the spirit of Reddit: communities for every topic, posts and links voted up by their members, and threaded comments underneath.
+
+    With Freepod you run your own Lemmy instance, hosted in the EU, and set its rules yourself. It’s part of a federated network, so your members can follow communities on other Lemmy servers, and theirs can join yours. Posts in federated communities are shared with the servers that follow them.
+
+    Use it from any browser, or from one of the many mobile apps the community has built.
+  category: Forums & communities
+  replaces: Reddit
+  icon: icon.png
+  license: AGPL-3.0
+  features:
+  - icon: forum
+    title: Communities
+    body: Create a community for every topic, each with its own moderators.
+  - icon: vote
+    title: Voting
+    body: Members vote posts up or down; sort by hot, new or top.
+  - icon: comments
+    title: Threaded comments
+    body: Nested discussions that stay readable as they grow.
+  - icon: federation
+    title: Federated
+    body: Follow and join communities on other Lemmy servers.
+  - icon: moderation
+    title: Moderation tools
+    body: Reports, bans and removal tools to keep things civil.
+  - icon: mobile
+    title: Many apps
+    body: Works in any browser, plus community-built apps for your phone.
+  links:
+  - label: Website
+    href: https://join-lemmy.org
+    kind: website
+  - label: Documentation
+    href: https://join-lemmy.org/docs/
+    kind: docs
+  - label: Source code
+    href: https://github.com/LemmyNet/lemmy
+    kind: source
+  - label: Release notes
+    href: https://github.com/LemmyNet/lemmy/releases
+    kind: releases
+  - label: Mobile apps
+    href: https://join-lemmy.org/apps
+    kind: website
+  screenshots:
+  - file: screenshots/web-feed.webp
+    caption: The Lemmy web app on a phone
+    form: mobile
+    credit:
+      text: Lemmy · AGPL-3.0
+      href: https://github.com/LemmyNet/joinlemmy-site
+  - file: screenshots/jerboa.webp
+    caption: Jerboa for Android
+    form: mobile
+    credit:
+      text: Lemmy · AGPL-3.0
+      href: https://github.com/LemmyNet/joinlemmy-site
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/dessalines/lemmy
+  match: ^(?P<version>\d+\.\d+\.\d+)$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/lemmy
+  chart_version: 0.5.6
+  system_values:
+    image:
+      tag: 0.19.20
+    admin:
+      username: admin
+    smtp:
+      host: smtp.mailer.svc.cluster.local
+      port: 25
+      fromAddress: lemmy@freepod.eu
+      tlsType: none
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      host:
+        type: string
+        title: Hostname
+        minLength: 1
+        maxLength: 253
+        description: The fully qualified domain name for your instance (e.g. lemmy.user.freepod.eu). Federation
+          bakes this into every user and community address, so it cannot be changed later without losing
+          your identity on the network.
+      siteName:
+        type: string
+        title: Instance name
+        minLength: 1
+        maxLength: 20
+        description: The name shown in the header and to other instances. Maximum 20 characters. You can
+          change this later from the admin settings.
+        pattern: ^[^\u0000-\u001f\u007f]+$
+      LEMMY_ADMIN_PASSWORD:
+        type: string
+        title: Admin password
+        minLength: 10
+        maxLength: 60
+        pattern: ^[^\u0000-\u001f\u007f]+$
+        x-caelus-target: runtime
+        x-caelus-sensitive: true
+        description: 'Password for the initial admin account (username ''admin''). Between 10 and 60 characters.
+          Store it somewhere safe: it won''t be shown again. It seeds the account on first start only;
+          to change it later, use Lemmy''s own settings page.'
+    required:
+    - host
+    - siteName
+    - LEMMY_ADMIN_PASSWORD

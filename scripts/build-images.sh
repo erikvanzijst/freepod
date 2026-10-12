@@ -312,7 +312,7 @@ if [[ "$TARGET" == "placeholder" ]]; then
   echo "Pushed ${PLACEHOLDER_REF}"
   echo ""
   echo "This does not reach any deployment on its own. Point placeholderImage in"
-  echo "products/custom/chart/values.yaml and products/catalog/custom.yaml at this"
+  echo "products/custom/chart/values.yaml and products/catalog/custom/custom.yaml at this"
   echo "version, bump the chart, and publish it with ./scripts/publish-charts.sh."
   echo "=============================================="
   exit 0

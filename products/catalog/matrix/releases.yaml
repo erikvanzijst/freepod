@@ -1,0 +1,24 @@
+- version: "1.9.4"
+  notes: |-
+    A feature and security release with stricter protection for your account and rooms.
+
+    - Repeated wrong passwords are rate limited
+    - Thread unread counts and latest replies stay right after messages are deleted
+    - Knocking on a room no longer shows its messages before you're let in
+    - Many federation and security fixes
+- version: "1.9.3"
+  notes: |-
+    A bug-fix release, mainly for servers carried over from older Matrix software.
+
+    - Fixes Element X getting stuck while syncing on such servers
+    - Fixes unexpected sign-outs on such servers after the previous update
+- version: "1.9.2"
+  notes: |-
+    A large update spanning thirteen releases, with QR-code sign-in, thread notifications and richer link previews.
+
+    - Sign in to Element X by scanning a QR code shown in Element Web
+    - Threads get their own read receipts and notifications; unread counts may jump once
+    - Richer, more reliable link previews
+    - New rooms use the latest room version, 12
+    - Statuses and profile fields sync to your apps
+    - Many security fixes, including for federation and sign-in

@@ -1,0 +1,16 @@
+- version: "11.11.1"
+  notes: |-
+    A maintenance release with security fixes.
+
+    - Fixes medium-severity security issues
+    - Updated built-in Zoom, Jira and Playbooks plugins
+    - Fixes for profile updates and bulk imports
+- version: "11.11.0"
+  notes: |-
+    A big step up that covers seven feature releases, with security fixes throughout.
+
+    - Schedule posts that repeat
+    - Schedule recaps
+    - Updated built-in plugins, including Calls and Agents
+    - Security fixes from every release since 11.4
+    - Chrome and Edge now need version 150 or newer

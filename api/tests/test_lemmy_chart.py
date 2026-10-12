@@ -19,7 +19,7 @@ import yaml
 
 PRODUCTS = Path(__file__).resolve().parents[2] / "products"
 CHART = PRODUCTS / "lemmy" / "chart"
-CATALOG = PRODUCTS / "catalog" / "lemmy.yaml"
+CATALOG = PRODUCTS / "catalog" / "lemmy" / "lemmy.yaml"
 LEMMY_REPOS = ("docker.io/dessalines/lemmy", "docker.io/dessalines/lemmy-ui")
 
 pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")

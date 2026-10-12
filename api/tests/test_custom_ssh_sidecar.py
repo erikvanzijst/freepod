@@ -186,7 +186,7 @@ def test_a_tenant_cannot_choose_the_sidecar_image_or_the_trusted_key():
     replace the container holding the platform's private-key counterpart, or to
     change what its sessions are allowed to do.
     """
-    catalog = yaml.safe_load((PRODUCTS / "catalog" / "custom.yaml").read_text())
+    catalog = yaml.safe_load((PRODUCTS / "catalog" / "custom" / "custom.yaml").read_text())
     schema = catalog["template"]["values_schema"]
     assert schema.get("additionalProperties") is False
 

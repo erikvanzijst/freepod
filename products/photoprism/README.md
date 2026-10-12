@@ -122,13 +122,13 @@ The published chart is then referenced from a Caelus product template:
 |---------------------|-------------------------------------------------------------|
 | Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/photoprism`      |
 | Chart version       | `0.1.2`                                                     |
-| User values schema  | see [`products/catalog/photoprism.yaml`](../catalog/photoprism.yaml) |
-| Default Helm values | see [`products/catalog/photoprism.yaml`](../catalog/photoprism.yaml) |
+| User values schema  | see [`products/catalog/photoprism/photoprism.yaml`](../catalog/photoprism/photoprism.yaml) |
+| Default Helm values | see [`products/catalog/photoprism/photoprism.yaml`](../catalog/photoprism/photoprism.yaml) |
 
 ## Upstream references
 
 What a version upgrade has to review beyond the tag in
-[`products/catalog/photoprism.yaml`](../catalog/photoprism.yaml), whose
+[`products/catalog/photoprism/photoprism.yaml`](../catalog/photoprism/photoprism.yaml), whose
 `upstream` block detects new releases.
 
 - **Release notes:** GitHub releases of `photoprism/photoprism`, which link the

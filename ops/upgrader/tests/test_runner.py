@@ -191,7 +191,7 @@ def test_a_real_run_publishes_the_proposal(deps, monkeypatch, github, origin):
     ref = "refs/heads/upgrade/vaultwarden-1.37.3"
     assert git_out(origin, "log", "-1", "--format=%an <%ae>|%cn", ref) == (
         "freepod-upgrader[bot] <4242+freepod-upgrader[bot]@users.noreply.github.com>|freepod-upgrader[bot]")
-    assert git_out(origin, "diff", "--name-only", f"master..{ref}") == "products/catalog/vaultwarden.yaml"
+    assert git_out(origin, "diff", "--name-only", f"master..{ref}") == "products/catalog/vaultwarden/vaultwarden.yaml"
     assert git_out(origin, "log", "-1", "--format=%s", ref) == "vaultwarden: Upgrade to 1.37.3"
 
 
@@ -211,7 +211,7 @@ def test_a_branch_that_already_exists_fails_the_product(deps, monkeypatch, githu
 @pytest.mark.parametrize(
     "kind, reason",
     [
-        ("other-product", "changes products/catalog/nextcloud.yaml, outside"),
+        ("other-product", "changes products/catalog/nextcloud/nextcloud.yaml, outside"),
         ("workflow", "changes .github/workflows/ci.yml, outside"),
         ("link", "links an issue or pull request"),
         ("mention", "has an @ outside backticks"),

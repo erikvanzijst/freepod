@@ -112,9 +112,9 @@ if mode.startswith("propose:"):
     kind = mode.split(":", 1)[1]
     if resumed:
         kind = "ok"
-    path, body = f"products/catalog/{slug}.yaml", f"## Summary\nUpgrade {slug}. token {token}\n"
+    path, body = f"products/catalog/{slug}/{slug}.yaml", f"## Summary\nUpgrade {slug}. token {token}\n"
     if kind == "other-product":
-        path = "products/catalog/nextcloud.yaml"
+        path = "products/catalog/nextcloud/nextcloud.yaml"
     if kind == "workflow":
         path = ".github/workflows/ci.yml"
     if kind == "link":
@@ -131,7 +131,7 @@ if mode.startswith("result:"):
     status = mode.split(":", 1)[1]
     result["status"] = status
     if status == "would_skip":
-        propose(f"products/catalog/{slug}.yaml", f"## Summary\nUpgrade {slug}.\n")
+        propose(f"products/catalog/{slug}/{slug}.yaml", f"## Summary\nUpgrade {slug}.\n")
         result.update(target_version="1.37.3", branch=f"upgrade/{slug}-1.37.3", draft=True,
                       skip_reason="PR #150 already sets 1.37.3")
     if status == "skipped":

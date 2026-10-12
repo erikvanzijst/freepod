@@ -8,8 +8,8 @@ import {
   Typography,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { deleteProduct, updateProduct } from '../api/endpoints'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { deleteProduct, getProductListing, updateProduct } from '../api/endpoints'
 import { resolveApiPath } from '../api/client'
 import type { Product } from '../api/types'
 import { formatDateTime } from '../utils/format'
@@ -34,14 +34,25 @@ export function SelectedProduct({ product, onError }: SelectedProductProps) {
   // own and withdrawing a product is often incident response.
   const curated = product.curated
 
+  // The license is listing content, which product reads leave out.
+  const listingQuery = useQuery({
+    queryKey: ['product-listing', product.id],
+    queryFn: () => getProductListing(product.id),
+  })
+
   const updateProductMutation = useMutation({
     mutationFn: (payload: {
       name?: string
+      tagline?: string | null
       description?: string | null
+      license?: string | null
       category?: string | null
       replaces?: string | null
     }) => updateProduct(product.id, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['product-listing', product.id] })
+    },
     onError,
   })
 
@@ -119,6 +130,12 @@ export function SelectedProduct({ product, onError }: SelectedProductProps) {
             </Typography>
           )}
           <InlineEditField
+            value={product.tagline}
+            emptyText="No tagline set."
+            readOnly={curated}
+            onSave={(tagline) => updateProductMutation.mutate({ tagline })}
+          />
+          <InlineEditField
             value={product.description}
             emptyText="No description provided."
             multiline
@@ -136,6 +153,12 @@ export function SelectedProduct({ product, onError }: SelectedProductProps) {
             emptyText="No 'replaces' set."
             readOnly={curated}
             onSave={(replaces) => updateProductMutation.mutate({ replaces })}
+          />
+          <InlineEditField
+            value={listingQuery.data?.license}
+            emptyText="No license set."
+            readOnly={curated}
+            onSave={(license) => updateProductMutation.mutate({ license })}
           />
           {curated && (
             <CatalogManagedNotice

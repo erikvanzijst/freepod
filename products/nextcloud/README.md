@@ -55,7 +55,7 @@ The published chart is then referenced from a Caelus product template:
 | Field               | Value                                                                               |
 |---------------------|-------------------------------------------------------------------------------------|
 | Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/nextcloud`                               |
-| Chart version       | `template.chart_version` in [`products/catalog/nextcloud.yaml`](../catalog/nextcloud.yaml) |
+| Chart version       | `template.chart_version` in [`products/catalog/nextcloud/nextcloud.yaml`](../catalog/nextcloud/nextcloud.yaml) |
 | User values schema  | see [User values schema](#user-values-schema) below                                 |
 | Default Helm values | see [Default values (system_values_json)](#default-values-system_values_json) below |
 
@@ -63,7 +63,7 @@ The published chart is then referenced from a Caelus product template:
 
 Defines the form fields on the user-facing deployment dialog; the schema itself
 is `template.values_schema` in
-[`products/catalog/nextcloud.yaml`](../catalog/nextcloud.yaml). Everything else
+[`products/catalog/nextcloud/nextcloud.yaml`](../catalog/nextcloud/nextcloud.yaml). Everything else
 (images, storage sizing, DB credentials, SMTP, TLS) is operator- or
 plan-controlled and is not exposed. The tenant chooses two things: the hostname
 and the admin password.
@@ -137,7 +137,7 @@ system value: each tenant supplies their own (see [Admin password](#admin-passwo
 ## Upstream references
 
 What a version upgrade has to review beyond the tag in
-[`products/catalog/nextcloud.yaml`](../catalog/nextcloud.yaml), whose `upstream`
+[`products/catalog/nextcloud/nextcloud.yaml`](../catalog/nextcloud/nextcloud.yaml), whose `upstream`
 block detects new releases.
 
 - **Release notes:** the `nextcloud/server` GitHub releases are only one-line

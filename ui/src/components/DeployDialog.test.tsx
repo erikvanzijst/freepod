@@ -89,17 +89,60 @@ const helloTemplate = {
 }
 
 describe('DeployDialog', () => {
-  it('renders product name and description in the header', async () => {
+  it('introduces the product with its tagline, never the long description', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
     getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
 
     renderWithQuery(
-      <DeployDialog product={helloWorld} userId={1} onClose={vi.fn()} />,
+      <DeployDialog product={{ ...helloWorld, tagline: 'Says hello.' }} userId={1} onClose={vi.fn()} />,
     )
 
     expect(screen.getByText('Hello World')).toBeInTheDocument()
-    expect(screen.getByText('The obligatory hello world')).toBeInTheDocument()
+    expect(screen.getByText('Says hello.')).toBeInTheDocument()
+    expect(screen.queryByText('The obligatory hello world')).toBeNull()
+  })
+
+  it('shows no subtitle for a product without a tagline', async () => {
+    listTemplatesMock.mockResolvedValue([helloTemplate])
+    listPlansMock.mockResolvedValue([freePlan])
+    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+
+    renderWithQuery(<DeployDialog product={helloWorld} userId={1} onClose={vi.fn()} />)
+
+    expect(screen.getByText('Hello World')).toBeInTheDocument()
+    expect(screen.queryByText('The obligatory hello world')).toBeNull()
+  })
+
+  it('preselects the requested plan', async () => {
+    const proPlan = {
+      ...freePlan,
+      id: 2,
+      name: 'Pro',
+      template_id: 200,
+      template: { ...freePlan.template, id: 200, plan_id: 2, price_cents: 900 },
+    }
+    listTemplatesMock.mockResolvedValue([helloTemplate])
+    listPlansMock.mockResolvedValue([freePlan, proPlan])
+    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+    checkHostnameMock.mockResolvedValue({ fqdn: 'test.example.com', usable: true, reason: null })
+    createDeploymentMock.mockResolvedValue({ deployment: { id: '1' }, checkout_url: null })
+
+    renderWithQuery(<DeployDialog product={helloWorld} userId={42} onClose={vi.fn()} initialPlanId={2} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('App settings:')).toBeInTheDocument()
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: /hostname/i }), { target: { value: 'test.example.com' } })
+    fireEvent.click(screen.getByRole('checkbox'))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Launch' })).toBeEnabled()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Launch' }))
+
+    await waitFor(() => {
+      expect(createDeploymentMock).toHaveBeenCalledWith(42, expect.objectContaining({ plan_template_id: 200 }))
+    })
   })
 
   it('shows Cancel and disabled Launch buttons', async () => {

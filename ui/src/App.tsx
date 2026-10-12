@@ -6,6 +6,7 @@ import Landing from './pages/Landing'
 import Settings from './pages/Settings'
 import LegalDoc from './pages/LegalDoc'
 import DevLanding from './pages/DevLanding'
+import AppPage from './pages/AppPage'
 import ScrollToTop from './components/ScrollToTop'
 import { AuthProvider, useAuth } from './state/AuthContext'
 
@@ -71,6 +72,7 @@ function AuthedApp() {
     <Routes>
       <Route path="/legal/:slug" element={<LegalDoc />} />
       <Route path="/dev" element={<DevLanding />} />
+      <Route path="/apps/:slug" element={<AppPage />} />
       {user ? (
         <Route element={<AppShellLayout />}>
           <Route path="/" element={<Dashboard />} />

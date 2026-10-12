@@ -5,17 +5,19 @@
  * and the CLI; these tests cover the affordances, so an operator is told where
  * to make the change instead of discovering a 400 by clicking.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 import { SelectedProduct } from './SelectedProduct'
 import { TemplateTabs } from './TemplateTabs'
+import { updateProduct } from '../api/endpoints'
 import type { Product, ProductTemplate } from '../api/types'
 
 vi.mock('../api/endpoints', () => ({
   createTemplate: vi.fn(),
-  updateProduct: vi.fn(),
+  updateProduct: vi.fn().mockResolvedValue({}),
   deleteProduct: vi.fn(),
+  getProductListing: vi.fn().mockResolvedValue({ product_id: 1, license: 'AGPL-3.0', features: [], links: [], screenshots: [] }),
   updateProductTemplate: vi.fn(),
   getMySubdomain: vi.fn().mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' }),
   getCnameTarget: vi.fn().mockResolvedValue(''),
@@ -34,6 +36,7 @@ function renderWithQuery(ui: React.ReactNode) {
 const baseProduct: Product = {
   id: 1,
   name: 'Immich',
+  tagline: 'Kept private.',
   description: 'Photos',
   template_id: 20,
   icon_url: null,
@@ -62,12 +65,18 @@ describe('SelectedProduct for a curated product', () => {
   it('names the catalog file and drops the click-to-edit affordances', () => {
     renderWithQuery(<SelectedProduct product={curatedProduct} onError={vi.fn()} />)
 
-    expect(screen.getByText('products/catalog/immich.yaml')).toBeInTheDocument()
+    expect(screen.getByText('products/catalog/immich/immich.yaml')).toBeInTheDocument()
     // The header and marketing fields render as plain text, not edit targets.
-    for (const text of ['Immich', 'Photos', 'Photos & video', 'Google Photos']) {
+    for (const text of ['Immich', 'Kept private.', 'Photos', 'Photos & video', 'Google Photos']) {
       expect(screen.getByText(text)).not.toHaveAttribute('role', 'button')
     }
     expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled()
+  })
+
+  it('shows the license as read-only text', async () => {
+    renderWithQuery(<SelectedProduct product={curatedProduct} onError={vi.fn()} />)
+
+    expect(await screen.findByText('AGPL-3.0')).not.toHaveAttribute('role', 'button')
   })
 
   it('leaves the visibility control enabled', () => {
@@ -127,5 +136,29 @@ describe('TemplateTabs for a curated product', () => {
 
     const labels = screen.getAllByRole('tab').map((tab) => tab.textContent)
     expect(labels).toContain('New')
+  })
+})
+
+describe('SelectedProduct for a database-authored product', () => {
+  it('saves an edited tagline', async () => {
+    renderWithQuery(<SelectedProduct product={baseProduct} onError={vi.fn()} />)
+
+    fireEvent.click(screen.getByText('Kept private.'))
+    const input = screen.getByDisplayValue('Kept private.')
+    fireEvent.change(input, { target: { value: 'Yours alone.' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => expect(updateProduct).toHaveBeenCalledWith(1, { tagline: 'Yours alone.' }))
+  })
+
+  it('saves an edited license', async () => {
+    renderWithQuery(<SelectedProduct product={baseProduct} onError={vi.fn()} />)
+
+    fireEvent.click(await screen.findByText('AGPL-3.0'))
+    const input = screen.getByDisplayValue('AGPL-3.0')
+    fireEvent.change(input, { target: { value: 'MIT' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => expect(updateProduct).toHaveBeenCalledWith(1, { license: 'MIT' }))
   })
 })

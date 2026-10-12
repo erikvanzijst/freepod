@@ -35,8 +35,9 @@ UPGRADER_REAL_GIT=$(command -v git)
 slugs=("$@")
 if [ ${#slugs[@]} -eq 0 ]; then
   git clone -q --depth 1 --branch master "$REPO_URL" "$work/catalog" || exit 1
-  for f in "$work"/catalog/products/catalog/*.yaml; do
-    grep -q '^upstream:' "$f" && ! grep -q 'OWNER/REPO' "$f" && slugs+=("$(basename "$f" .yaml)")
+  for d in "$work"/catalog/products/catalog/*/; do
+    f="$d$(basename "$d").yaml"
+    [ -f "$f" ] && grep -q '^upstream:' "$f" && ! grep -q 'OWNER/REPO' "$f" && slugs+=("$(basename "$d")")
   done
 fi
 
