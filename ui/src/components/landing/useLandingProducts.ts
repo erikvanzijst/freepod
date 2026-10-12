@@ -4,6 +4,8 @@ import { listProducts } from '../../api/endpoints'
 export interface ProductSummary {
   id: number
   name: string
+  slug?: string | null
+  tagline?: string | null
   description?: string | null
   iconUrl?: string | null
   category?: string | null
@@ -18,6 +20,8 @@ export async function loadVisibleProducts(): Promise<ProductSummary[]> {
     .map((product) => ({
       id: product.id,
       name: product.name,
+      slug: product.slug,
+      tagline: product.tagline,
       description: product.description,
       iconUrl: product.icon_url,
       category: product.category,

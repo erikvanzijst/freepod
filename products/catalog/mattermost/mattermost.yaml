@@ -1,0 +1,136 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: mattermost
+  name: Mattermost
+  tagline: Team chat with channels, threads and search, on your own server.
+  description: |-
+    Mattermost gives your team the chat workspace it knows from Slack or Microsoft Teams: channels for each topic, threads to keep conversations tidy, and direct messages for everything else.
+
+    On Freepod, Mattermost runs as your own private instance, hosted in the EU. Your conversations stay in your own workspace, not in a vendor’s data lake.
+
+    Connect the tools you already use with webhooks, slash commands and bots, and keep up from the desktop and mobile apps.
+  category: Team collaboration
+  replaces: Slack · Microsoft Teams
+  icon: icon.png
+  license: MIT
+  features:
+  - icon: forum
+    title: Channels & threads
+    body: Public and private channels, with threaded replies to stay on topic.
+  - icon: chat
+    title: Direct messages
+    body: One-to-one and group messages for quick conversations.
+  - icon: search
+    title: Search
+    body: Find messages and files across the channels you’re in.
+  - icon: integrations
+    title: Integrations
+    body: Webhooks, slash commands and bots connect your other tools.
+  - icon: attach
+    title: Files & formatting
+    body: Share files and write with Markdown, code blocks and emoji.
+  - icon: mobile
+    title: Desktop & mobile apps
+    body: Apps for Windows, macOS, Linux, iOS and Android.
+  links:
+  - label: Website
+    href: https://mattermost.com
+    kind: website
+  - label: Documentation
+    href: https://docs.mattermost.com
+    kind: docs
+  - label: Source code
+    href: https://github.com/mattermost/mattermost
+    kind: source
+  - label: Release notes
+    href: https://github.com/mattermost/mattermost/releases
+    kind: releases
+  - label: App Store
+    href: https://apps.apple.com/app/mattermost/id1257222717
+    kind: ios
+  - label: Google Play
+    href: https://play.google.com/store/apps/details?id=com.mattermost.rn
+    kind: android
+  screenshots:
+  - file: screenshots/channels.webp
+    caption: Channels, threads and files in one place
+    form: desktop
+    credit:
+      text: Mattermost, Inc. · BSD-3-Clause
+      href: https://github.com/mattermost/docs/tree/master/source/images
+  - file: screenshots/threads.webp
+    caption: Follow a thread without losing your place
+    form: desktop
+    credit:
+      text: Mattermost, Inc. · BSD-3-Clause
+      href: https://github.com/mattermost/docs/tree/master/source/images
+  - file: screenshots/boards.webp
+    caption: Plan work on Kanban boards with the Boards plugin
+    form: desktop
+    credit:
+      text: Mattermost, Inc. · BSD-3-Clause
+      href: https://github.com/mattermost/docs/tree/master/source/images
+  - file: screenshots/github.webp
+    caption: GitHub, GitLab and Jira updates right in your channels
+    form: desktop
+    credit:
+      text: Mattermost, Inc. · BSD-3-Clause
+      href: https://github.com/mattermost/docs/tree/master/source/images
+  - file: screenshots/desktop.webp
+    caption: Desktop apps with a tab for every server
+    form: desktop
+    credit:
+      text: Mattermost, Inc. · BSD-3-Clause
+      href: https://github.com/mattermost/docs/tree/master/source/images
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/mattermost/mattermost-team-edition
+  match: ^(?P<version>\d+\.\d+\.\d+)$
+  version_path: template.system_values.mattermost.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/mattermost
+  chart_version: 1.1.6
+  system_values:
+    mattermost:
+      image:
+        tag: 11.11.1
+    smtp:
+      host: smtp.mailer.svc.cluster.local
+      port: 25
+      from: mattermost@freepod.eu
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      host:
+        type: string
+        title: hostname
+        description: The public hostname where Mattermost will be accessible.
+      mattermost:
+        type: object
+        additionalProperties: false
+        properties:
+          siteName:
+            type: string
+            title: Site name
+            description: Name shown in the Mattermost UI and login screen.
+            maxLength: 30
+          siteDescription:
+            type: string
+            title: Site description
+            description: Text displayed above the login form.
+            maxLength: 500
+          extraEnv:
+            type: object
+            additionalProperties: false
+            properties:
+              TZ:
+                type: string
+                title: Timezone
+                description: IANA timezone for Mattermost (e.g. Europe/Amsterdam, America/New_York).
+                default: Europe/Amsterdam
+    required:
+    - host

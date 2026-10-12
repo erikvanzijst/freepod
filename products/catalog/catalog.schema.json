@@ -1,5 +1,45 @@
 {
   "$defs": {
+    "CatalogScreenshot": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "caption": {
+          "minLength": 1,
+          "title": "Caption",
+          "type": "string"
+        },
+        "form": {
+          "enum": [
+            "desktop",
+            "mobile"
+          ],
+          "title": "Form",
+          "type": "string"
+        },
+        "credit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScreenshotCredit"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "file",
+        "caption",
+        "form"
+      ],
+      "title": "CatalogScreenshot",
+      "type": "object"
+    },
     "DockerTagSource": {
       "additionalProperties": false,
       "properties": {
@@ -66,6 +106,66 @@
       "title": "HelmChartSource",
       "type": "object"
     },
+    "ListingFeature": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "body": {
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        },
+        "icon": {
+          "minLength": 1,
+          "title": "Icon",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "body",
+        "icon"
+      ],
+      "title": "ListingFeature",
+      "type": "object"
+    },
+    "ListingLink": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "href": {
+          "title": "Href",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "website",
+            "docs",
+            "source",
+            "releases",
+            "ios",
+            "android"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "href",
+        "kind"
+      ],
+      "title": "ListingLink",
+      "type": "object"
+    },
     "ProductBlock": {
       "additionalProperties": false,
       "description": "The catalog-managed fields of a `product` row.",
@@ -77,6 +177,18 @@
         "name": {
           "title": "Name",
           "type": "string"
+        },
+        "tagline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tagline"
         },
         "description": {
           "anyOf": [
@@ -125,6 +237,40 @@
           ],
           "default": null,
           "title": "Icon"
+        },
+        "license": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License"
+        },
+        "features": {
+          "items": {
+            "$ref": "#/$defs/ListingFeature"
+          },
+          "title": "Features",
+          "type": "array"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/ListingLink"
+          },
+          "title": "Links",
+          "type": "array"
+        },
+        "screenshots": {
+          "items": {
+            "$ref": "#/$defs/CatalogScreenshot"
+          },
+          "maxItems": 12,
+          "title": "Screenshots",
+          "type": "array"
         }
       },
       "required": [
@@ -132,6 +278,33 @@
         "name"
       ],
       "title": "ProductBlock",
+      "type": "object"
+    },
+    "ScreenshotCredit": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "href": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Href"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "ScreenshotCredit",
       "type": "object"
     },
     "TemplateBlock": {
@@ -229,7 +402,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "One `products/catalog/<slug>.yaml` file.",
+  "description": "One `products/catalog/<slug>/<slug>.yaml` document.",
   "properties": {
     "schema_version": {
       "title": "Schema Version",

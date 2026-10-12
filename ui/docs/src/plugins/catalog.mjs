@@ -4,7 +4,7 @@
 //
 // The UI image builds with ui/ as its context, so the Docker build passes the
 // catalog in as a named build context and points CATALOG_DIR at it.
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { basename, extname, join, resolve } from 'node:path'
 import yaml from 'js-yaml'
 
@@ -15,21 +15,42 @@ export function catalogDir(siteDir) {
   return process.env.CATALOG_DIR ?? resolve(siteDir, '..', '..', 'products', 'catalog')
 }
 
-function readProducts(dir) {
+// Each product is a folder holding `<slug>.yaml` and the assets it names.
+function readDocuments(dir) {
   if (!existsSync(dir)) throw new Error(`catalog not found at ${dir}; set CATALOG_DIR`)
-  return readdirSync(dir)
-    .filter((f) => f.endsWith('.yaml'))
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+    .map((e) => e.name)
     .sort()
-    .map((f) => yaml.load(readFileSync(join(dir, f), 'utf8')).product)
-    .filter((p) => !EXCLUDED.has(p.slug))
-    .map((p) => ({
-      slug: p.slug,
-      name: p.name,
-      description: p.description,
-      category: p.category ?? null,
-      // Served from the catalog's icons directory, a static directory of the site.
-      icon: `/${basename(p.icon)}`,
-    }))
+    .map((slug) => ({ slug, product: yaml.load(readFileSync(join(dir, slug, `${slug}.yaml`), 'utf8')).product }))
+    .filter(({ slug }) => !EXCLUDED.has(slug))
+}
+
+/**
+ * Copy each product's icon to `<siteDir>/.catalog-icons/<slug>.<ext>` and
+ * return that directory, for the site to serve as a static directory. Copying
+ * keeps the rest of each catalog folder, screenshots included, out of the site.
+ */
+export function stageIcons(siteDir) {
+  const dir = catalogDir(siteDir)
+  const out = join(siteDir, '.catalog-icons')
+  rmSync(out, { recursive: true, force: true })
+  mkdirSync(out, { recursive: true })
+  for (const { slug, product } of readDocuments(dir)) {
+    if (product.icon) copyFileSync(join(dir, slug, product.icon), join(out, `${slug}${extname(product.icon)}`))
+  }
+  return out
+}
+
+function readProducts(dir) {
+  return readDocuments(dir).map(({ slug, product }) => ({
+    slug,
+    name: product.name,
+    tagline: product.tagline ?? null,
+    category: product.category ?? null,
+    // Served from the staged icon directory (see stageIcons).
+    icon: product.icon ? `/${slug}${extname(product.icon)}` : null,
+  }))
 }
 
 function checkPages(products, pagesDir) {
@@ -49,7 +70,7 @@ export default function catalogPlugin(context) {
   const pagesDir = join(context.siteDir, 'apps', 'products')
   return {
     name: 'freepod-catalog',
-    getPathsToWatch: () => [join(dir, '*.yaml'), join(pagesDir, '*')],
+    getPathsToWatch: () => [join(dir, '*', '*.yaml'), join(pagesDir, '*')],
     async loadContent() {
       const products = readProducts(dir)
       checkPages(products, pagesDir)

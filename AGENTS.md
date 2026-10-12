@@ -183,7 +183,7 @@ This repository is a monorepo with:
   [cli-subdomain-claim](openspec/specs/cli-subdomain-claim/spec.md),
   [hostname-validation](openspec/specs/hostname-validation/spec.md) · Rationale:
   [account-subdomain-claim](openspec/changes/archive/2026-09-09-account-subdomain-claim/design.md)
-- Products are either **curated** (declared in `products/catalog/<slug>.yaml`,
+- Products are either **curated** (declared in `products/catalog/<slug>/<slug>.yaml`,
   reconciled into the database on rollout, and read-only through the API, CLI,
   and admin UI apart from `visibility`) or **non-curated** (database-authored).
   Only `CatalogReconciler` writes `product.curated` and `product.slug`.

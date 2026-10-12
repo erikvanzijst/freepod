@@ -94,3 +94,92 @@ def save_icon(processed_data: bytes, rel_path: str) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_bytes(processed_data)
     return file_path
+
+
+# ---------------------------------------------------------------------------
+# Screenshots (app-store-listings design D7)
+# ---------------------------------------------------------------------------
+
+SCREENSHOT_FORMATS = ("PNG", "JPEG", "WEBP")
+SCREENSHOT_MAX_BYTES = 1024 * 1024
+SCREENSHOT_MAX_DIMENSION = 4096
+SCREENSHOTS_MAX_COUNT = 12
+SCREENSHOTS_MAX_TOTAL_BYTES = 5 * 1024 * 1024
+# The page's strip is 340 CSS px tall; thumbnails cover 2x density.
+SCREENSHOT_THUMBNAIL_HEIGHT = 680
+SCREENSHOT_FULL_MAX_EDGE = 2400
+SCREENSHOT_QUALITY = 82
+# Part of every rendition's name, so changing the pipeline republishes them all.
+SCREENSHOT_PIPELINE_VERSION = 1
+
+
+def check_screenshot(image_data: bytes) -> None:
+    """Validate a committed screenshot without decoding its pixels.
+
+    Raises:
+        ValueError: naming the limit the image breaks.
+    """
+    if len(image_data) > SCREENSHOT_MAX_BYTES:
+        raise ValueError(
+            f"is {len(image_data)} bytes; the limit is {SCREENSHOT_MAX_BYTES} bytes (1 MB)"
+        )
+    try:
+        img = Image.open(io.BytesIO(image_data))
+    except Exception as e:
+        raise ValueError(f"is not a readable image: {e}") from e
+    if img.format not in SCREENSHOT_FORMATS:
+        raise ValueError(f"is {img.format}; screenshots must be PNG, JPEG or WebP")
+    if max(img.size) > SCREENSHOT_MAX_DIMENSION:
+        raise ValueError(
+            f"is {img.width}x{img.height}; the long edge limit is {SCREENSHOT_MAX_DIMENSION} px"
+        )
+
+
+def screenshot_rel_path(image_data: bytes) -> str:
+    """Static-storage path of a screenshot's full-size rendition.
+
+    Keyed by the *source* bytes, so whether the renditions exist can be checked
+    without rendering them.
+    """
+    digest = hashlib.sha1(f"v{SCREENSHOT_PIPELINE_VERSION}:".encode() + image_data).hexdigest()
+    return f"screenshots/{digest}.webp"
+
+
+def render_screenshot(image_data: bytes) -> tuple[bytes, bytes]:
+    """Render a screenshot's full-size and thumbnail WebP files.
+
+    Returns:
+        ``(full, thumbnail)`` encoded bytes.
+
+    Raises:
+        ValueError: If the image cannot be decoded.
+    """
+    try:
+        img = Image.open(io.BytesIO(image_data))
+        img = ImageOps.exif_transpose(img)
+        img.load()
+    except Exception as e:
+        raise ValueError(f"is not a readable image: {e}") from e
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGBA")
+
+    full = img.copy()
+    full.thumbnail((SCREENSHOT_FULL_MAX_EDGE, SCREENSHOT_FULL_MAX_EDGE), Image.LANCZOS)
+
+    thumb = img.copy()
+    if thumb.height > SCREENSHOT_THUMBNAIL_HEIGHT:
+        width = max(1, round(thumb.width * SCREENSHOT_THUMBNAIL_HEIGHT / thumb.height))
+        thumb = thumb.resize((width, SCREENSHOT_THUMBNAIL_HEIGHT), Image.LANCZOS)
+
+    return _webp(full), _webp(thumb)
+
+
+def _webp(img: Image.Image) -> bytes:
+    output = io.BytesIO()
+    img.save(output, format="WEBP", quality=SCREENSHOT_QUALITY, method=6)
+    return output.getvalue()
+
+
+def save_static(data: bytes, rel_path: str) -> Path:
+    """Write bytes to static storage at ``rel_path``."""
+    return save_icon(data, rel_path)

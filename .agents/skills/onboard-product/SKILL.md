@@ -7,7 +7,7 @@ description: Onboard a new third-party application into Freepod as a curated pro
 
 Freepod offers curated self-hosted applications that tenants deploy with one
 click. Each is a Freepod-owned Helm chart (`products/<slug>/chart/`) plus a
-catalog file (`products/catalog/<slug>.yaml`) that the platform reconciles into
+catalog file (`products/catalog/<slug>/<slug>.yaml`) that the platform reconciles into
 its database on rollout. This skill takes one new application from nothing to a
 pull request that adds both.
 
@@ -155,8 +155,13 @@ been deployed on dev and used.
 
 ## 9. Hand off the pull request
 
-The PR adds the chart, its README, the catalog file and icon, and the test
-registrations from §1. The README carries an **Upstream references** section in
+The PR adds the chart, its README, the product's catalog folder, and the test
+registrations from §1. The folder holds the catalog file, its icon, and the
+app page's listing content: a one-sentence `tagline`, a Markdown
+`description`, `license`, `features`, `links`, and `screenshots` committed under
+`screenshots/`, each with a `credit` naming its source and license unless the
+image is ours. Only use images whose license allows it (see
+`product-catalog-format` for the size limits). The README carries an **Upstream references** section in
 the shape the existing ones use: where release notes live, which artifacts are
 the reference deployment, and the pitfalls you found. The upgrade skill depends
 on that section every night.

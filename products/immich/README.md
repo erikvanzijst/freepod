@@ -110,7 +110,7 @@ sizing) go.
 ## Upstream references
 
 What a version upgrade has to review beyond the tag in
-[`products/catalog/immich.yaml`](../catalog/immich.yaml), whose `upstream` block
+[`products/catalog/immich/immich.yaml`](../catalog/immich/immich.yaml), whose `upstream` block
 detects new releases.
 
 - **Release notes:** GitHub releases of `immich-app/immich`.

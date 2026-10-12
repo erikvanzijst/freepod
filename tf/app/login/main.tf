@@ -60,6 +60,8 @@ resource "helm_release" "oauth2_proxy" {
             "GET=^/api/products/[0-9]+/templates/?$",
             "GET=^/api/products/[0-9]+/templates/[0-9]+/?$",
             "GET=^/api/products/[0-9]+/icon/?$",
+            "GET=^/api/products/[0-9]+/listing/?$",
+            "GET=^/api/products/[0-9]+/releases/?$",
             "GET=^/api/products/[0-9]+/plans/?$",
             "GET=^/api/plans/[0-9]+/?$",
             "GET=^/api/plans/[0-9]+/templates/?$",

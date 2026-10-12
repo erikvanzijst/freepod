@@ -20,9 +20,13 @@ PLACEHOLDER = "OWNER/REPO"
 
 
 def eligible(clone: Path) -> list[str]:
-    """Slugs of the catalog files with a real `upstream` block, in slug order."""
+    """Slugs of the catalog documents with a real `upstream` block, in slug order.
+
+    Each product is a folder, `products/catalog/<slug>/<slug>.yaml`."""
     slugs = []
-    for path in sorted((clone / "products" / "catalog").glob("*.yaml")):
+    for path in sorted((clone / "products" / "catalog").glob("*/*.yaml")):
+        if path.stem != path.parent.name:
+            continue
         doc = yaml.safe_load(path.read_text()) or {}
         upstream = doc.get("upstream")
         source = upstream.get("source") if isinstance(upstream, dict) else None

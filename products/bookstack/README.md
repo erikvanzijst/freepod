@@ -82,13 +82,13 @@ is published. To publish by hand, from the repository root:
 |---------------------|--------------------------------------------------------------------|
 | Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/bookstack`              |
 | Chart version       | `0.1.6`                                                            |
-| User values schema  | see [`products/catalog/bookstack.yaml`](../catalog/bookstack.yaml) |
-| Default Helm values | see [`products/catalog/bookstack.yaml`](../catalog/bookstack.yaml) |
+| User values schema  | see [`products/catalog/bookstack/bookstack.yaml`](../catalog/bookstack/bookstack.yaml) |
+| Default Helm values | see [`products/catalog/bookstack/bookstack.yaml`](../catalog/bookstack/bookstack.yaml) |
 
 ## Upstream references
 
 What a version upgrade has to review beyond the tag in
-[`products/catalog/bookstack.yaml`](../catalog/bookstack.yaml), whose
+[`products/catalog/bookstack/bookstack.yaml`](../catalog/bookstack/bookstack.yaml), whose
 `upstream` block detects new releases.
 
 - **Release notes:** `https://www.bookstackapp.com/blog/` (one post per

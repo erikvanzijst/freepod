@@ -79,7 +79,8 @@ before/without per-request auth:
 - Products & templates: `GET /api/products`, `GET /api/products/{id}`,
   `GET /api/products/{id}/templates`,
   `GET /api/products/{id}/templates/{tid}`,
-  `GET /api/products/{id}/icon`
+  `GET /api/products/{id}/icon`, `GET /api/products/{id}/listing`,
+  `GET /api/products/{id}/releases`
 - Plans: `GET /api/products/{id}/plans`, `GET /api/plans/{id}`,
   `GET /api/plans/{id}/templates`
 - CNAME target: `GET /api/cname-target`
@@ -332,19 +333,22 @@ Rationale: [cli-ssh-access](../openspec/changes/archive/2026-09-02-cli-ssh-acces
 
 Products come in two kinds, and the difference is a single column, `curated`:
 non-curated products are database-authored and fully editable; curated products
-are declared in `products/catalog/<slug>.yaml`, applied on rollout, and
-read-only through the API, CLI, and admin UI apart from `visibility`.
-`CatalogReconciler` has exactly two verbs — insert and repoint — and never
-mutates or deletes template rows, so the template table is an append-only
-ledger and running deployments keep resolving their `applied_template_id`.
-Only the reconciler writes `product.curated` and `product.slug`; file presence
-is the sole carrier of curation, so releasing a product is deleting its
-catalog file.
+are declared in a per-product folder, `products/catalog/<slug>/` (the
+`<slug>.yaml` document, its icon, `screenshots/` and `releases.yaml`), applied
+on rollout, and read-only through the API, CLI, and admin UI apart from
+`visibility`. For templates `CatalogReconciler` inserts and repoints, and
+otherwise only fills in a still-null `version`; it never changes spec fields
+or deletes template rows, so the template table is an append-only ledger and
+running deployments keep resolving their `applied_template_id`. Listing fields,
+screenshots (rendered into static storage as a thumbnail and a full-size WebP)
+and release rows are made to equal the catalog on every run. Only the
+reconciler writes `product.curated` and `product.slug`; folder presence is the
+sole carrier of curation, so releasing a product is deleting its folder.
 
 The catalog commands are operator and build tooling, CLI-only and exempt from
 parity: `caelus catalog lint` validates files without a database (CI),
 `apply` reconciles into the database (run by an init container on rollout),
-and `curate` generates a catalog file from database state. Urgent intervention
+and `curate` generates a product folder from database state. Urgent intervention
 accepts `?force=true` / `--force` on updates — never on deletion — and every
 forced write is logged. The catalog directory is baked into the API image and
 applied by a `catalog` init container after `migrate`; a malformed catalog
@@ -354,7 +358,9 @@ Spec: [product-catalog-format](../openspec/specs/product-catalog-format/spec.md)
 [catalog-reconciliation](../openspec/specs/catalog-reconciliation/spec.md),
 [catalog-cli](../openspec/specs/catalog-cli/spec.md),
 [curated-product-governance](../openspec/specs/curated-product-governance/spec.md),
-[product-visibility](../openspec/specs/product-visibility/spec.md) · Rationale:
+[product-visibility](../openspec/specs/product-visibility/spec.md),
+[product-listing-metadata](../openspec/specs/product-listing-metadata/spec.md),
+[product-releases](../openspec/specs/product-releases/spec.md) · Rationale:
 [curated-product-catalog](../openspec/changes/archive/2026-08-03-curated-product-catalog/design.md)
 
 ## Product Icon and Static File Serving
@@ -363,7 +369,22 @@ Spec: [product-catalog-format](../openspec/specs/product-catalog-format/spec.md)
 - `GET /api/static/{path}` serves files from `STATIC_PATH` (configurable via `STATIC_PATH` env var, defaults to `./static`).
 - Path traversal outside `STATIC_PATH` is blocked.
 - Responses include `ETag` headers and support `If-None-Match` for `304 Not Modified`.
+- Every file is named by its content hash (icons, screenshot renditions), so
+  responses carry `Cache-Control: public, max-age=31536000, immutable`.
 - Public access (no auth required).
+
+### Store Listings
+- Product reads carry `tagline`; a product nested in a template or deployment
+  is a summary (`id`, `name`, `slug`, `icon_url`, `tagline`, `template_id`).
+- `GET /api/products/{product_id}/listing` serves the rest of an app page:
+  `license`, `features`, `links`, `screenshots` (a `thumbnail_url` and a
+  full-size `url` each) and the canonical `version` with
+  `version_available_at`.
+- `GET /api/products/{product_id}/releases` lists release notes, newest first.
+- Screenshots, versions and releases are written only by the catalog
+  reconciler; `tagline`, `license`, `features` and `links` are also writable
+  for non-curated products (`--tagline`, `--license`, `--features-file`,
+  `--links-file`). CLI: `get-product-listing`, `list-product-releases`.
 
 ### Product Icon Workflow
 - **Create with icon**: `POST /api/products` accepts multipart form with:

@@ -1,0 +1,10 @@
+- version: "261007"
+  notes: |-
+    Smarter AI features: more accurate labels and NSFW detection, and easier face recognition. Your existing labels are kept.
+
+    - More accurate automatic labels, taking more of each picture into account
+    - More accurate NSFW detection
+    - New face clusters are named automatically when all matches agree
+    - Corrections you make while recognition runs are kept
+    - A Retry button for failed uploads
+    - Changes from background tasks show up without reloading the page

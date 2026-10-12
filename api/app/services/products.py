@@ -27,7 +27,8 @@ CATALOG_DIR_LABEL = "products/catalog"
 
 def catalog_file_for(product: ProductORM) -> str:
     """The catalog file that declares ``product``, for use in error messages."""
-    return f"{CATALOG_DIR_LABEL}/{product.slug or product.name}.yaml"
+    slug = product.slug or product.name
+    return f"{CATALOG_DIR_LABEL}/{slug}/{slug}.yaml"
 
 
 def _assert_mutable(
@@ -81,7 +82,7 @@ def _assert_deletable(product: ProductORM, *, subject: str = "product") -> None:
     raise ValidationException(
         f"Cannot delete this {subject}: product '{product.name}' is managed by the catalog, "
         f"and deletion cannot be forced because the next reconciliation would recreate it. "
-        f"Remove {catalog_file_for(product)}, let the rollout release the product, then delete it."
+        f"Remove {catalog_file_for(product)} and its folder, let the rollout release the product, then delete it."
     )
 
 
@@ -107,7 +108,8 @@ def create_product(
             f"Image file too large. Maximum size is {MAX_ICON_SIZE // (1024 * 1024)}MB"
         )
 
-    product = ProductORM.model_validate(payload)
+    # JSON mode turns the listing entries into the plain dicts the columns hold.
+    product = ProductORM.model_validate(payload.model_dump(mode="json"))
     session.add(product)
 
     try:
@@ -222,6 +224,10 @@ def update_product(
             product.description,
             product.category,
             product.replaces,
+            product.tagline,
+            product.license,
+            product.features,
+            product.links,
         )
     )
     if touches_catalog_state:
@@ -240,6 +246,14 @@ def update_product(
         product_orm.category = product.category
     if product.replaces is not None:
         product_orm.replaces = product.replaces
+    if product.tagline is not None:
+        product_orm.tagline = product.tagline
+    if product.license is not None:
+        product_orm.license = product.license
+    if product.features is not None:
+        product_orm.features = [feature.model_dump(mode="json") for feature in product.features]
+    if product.links is not None:
+        product_orm.links = [link.model_dump(mode="json") for link in product.links]
 
     previous_visibility = product_orm.visibility
     if product.visibility is not None:

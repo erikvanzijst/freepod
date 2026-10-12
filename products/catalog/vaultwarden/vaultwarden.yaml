@@ -1,0 +1,117 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: vaultwarden
+  name: Vaultwarden
+  tagline: Your passwords and passkeys, synced everywhere with the Bitwarden apps.
+  description: |-
+    Vaultwarden is a lightweight server for your password vault that works with the official Bitwarden apps and browser extensions. Save a login once and it fills in on your laptop, your phone and in every browser you use.
+
+    On Freepod, Vaultwarden runs as your own private instance, hosted in the EU. Your vault is encrypted on your own devices before it’s synced, so the server stores it in a form it can’t read.
+
+    Share passwords with family or a team through organizations, and protect your account with two-step login. Vaultwarden is an independent open-source project and isn’t affiliated with Bitwarden, Inc.
+  category: Passwords & passkeys
+  replaces: 1Password · LastPass
+  icon: icon.png
+  license: AGPL-3.0
+  features:
+  - icon: apps
+    title: Bitwarden apps
+    body: Use the official Bitwarden apps and browser extensions on every device.
+  - icon: autofill
+    title: Autofill
+    body: Logins fill in automatically in your browser and on your phone.
+  - icon: key
+    title: Passkeys
+    body: Store passkeys alongside your passwords and sign in to sites without one.
+  - icon: groups
+    title: Shared vaults
+    body: Organizations and collections for sharing with family or a team.
+  - icon: send
+    title: Send
+    body: Share a note or file securely with a link that expires.
+  - icon: lock
+    title: Two-step login
+    body: Protect your vault with an authenticator app or a security key.
+  links:
+  - label: Source code
+    href: https://github.com/dani-garcia/vaultwarden
+    kind: source
+  - label: Documentation
+    href: https://github.com/dani-garcia/vaultwarden/wiki
+    kind: docs
+  - label: Release notes
+    href: https://github.com/dani-garcia/vaultwarden/releases
+    kind: releases
+  - label: Bitwarden for iOS
+    href: https://apps.apple.com/app/bitwarden-password-manager/id1137397744
+    kind: ios
+  - label: Bitwarden for Android
+    href: https://play.google.com/store/apps/details?id=com.x8bit.bitwarden
+    kind: android
+  screenshots:
+  - file: screenshots/vault.webp
+    caption: Every login, card and note in one vault
+    form: desktop
+  - file: screenshots/bitwarden-mobile-vault.webp
+    caption: Your vault in the Bitwarden app for iOS and Android
+    form: mobile
+    credit:
+      text: 'Bitwarden mobile app · Image: Bitwarden, Inc.'
+      href: https://bitwarden.com/brand/
+  - file: screenshots/item.webp
+    caption: Two-step codes stored right next to the password
+    form: desktop
+  - file: screenshots/generator.webp
+    caption: Generate strong passwords and passphrases
+    form: desktop
+  - file: screenshots/bitwarden-mobile-generator.webp
+    caption: Generate passwords on your phone too
+    form: mobile
+    credit:
+      text: 'Bitwarden mobile app · Image: Bitwarden, Inc.'
+      href: https://bitwarden.com/brand/
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/vaultwarden/server
+  match: ^(?P<version>\d+\.\d+\.\d+)$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/vaultwarden
+  chart_version: 3.4.5
+  system_values:
+    image:
+      tag: 1.37.4
+    smtp:
+      host: smtp.mailer.svc.cluster.local
+      port: 25
+      from: vaultwarden@freepod.eu
+      enabled: true
+      security: 'off'
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      host:
+        type: string
+        title: Hostname
+        description: The fully qualified domain name used to access Vaultwarden (e.g. password.freepod.eu)
+      signups:
+        type: object
+        additionalProperties: false
+        properties:
+          allowed:
+            type: boolean
+            title: Allow open registration
+            description: 'Allow anyone who knows the address to create an account. Leave off unless you
+              need it: your own account is created for you, and you can invite others from the web vault.'
+            default: false
+          verify:
+            type: boolean
+            title: Require email verification on signups
+            description: New users must confirm their email address before they can log in.
+            default: true
+    required:
+    - host

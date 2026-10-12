@@ -106,7 +106,7 @@ def test_rest_update_of_a_curated_product_is_rejected(client, db_session):
     resp = client.put(f"/api/products/{product['id']}", json={"description": "edited"})
     assert resp.status_code == 400
     # The refusal names the file to edit instead of merely stating the rule.
-    assert "products/catalog/immich.yaml" in resp.json()["detail"]
+    assert "products/catalog/immich/immich.yaml" in resp.json()["detail"]
 
     assert client.get(f"/api/products/{product['id']}").json()["description"] == "desc"
 
@@ -117,7 +117,7 @@ def test_rest_template_creation_on_a_curated_product_is_rejected(client, db_sess
 
     resp = client.post(f"/api/products/{product['id']}/templates", json=TEMPLATE_PAYLOAD)
     assert resp.status_code == 400
-    assert "products/catalog/immich.yaml" in resp.json()["detail"]
+    assert "products/catalog/immich/immich.yaml" in resp.json()["detail"]
 
 
 def test_rest_icon_upload_on_a_curated_product_is_rejected(client, db_session):
@@ -130,7 +130,7 @@ def test_rest_icon_upload_on_a_curated_product_is_rejected(client, db_session):
         files={"icon": ("icon.png", b"not-an-image", "image/png")},
     )
     assert resp.status_code == 400
-    assert "products/catalog/immich.yaml" in resp.json()["detail"]
+    assert "products/catalog/immich/immich.yaml" in resp.json()["detail"]
 
 
 def test_non_curated_products_are_unaffected(client):
@@ -249,7 +249,7 @@ def test_force_deleting_a_curated_product_is_refused(client, db_session):
         resp = client.delete(url)
         assert resp.status_code == 400, url
         # The refusal points at the supported path rather than the override.
-        assert "products/catalog/immich.yaml" in resp.json()["detail"]
+        assert "products/catalog/immich/immich.yaml" in resp.json()["detail"]
 
     assert client.get(f"/api/products/{product['id']}").status_code == 200
 
@@ -263,7 +263,7 @@ def test_force_deleting_a_curated_products_template_is_refused(client, db_sessio
         f"/api/products/{product['id']}/templates/{template['id']}?force=true"
     )
     assert resp.status_code == 400
-    assert "products/catalog/immich.yaml" in resp.json()["detail"]
+    assert "products/catalog/immich/immich.yaml" in resp.json()["detail"]
 
     assert (
         client.get(f"/api/products/{product['id']}/templates/{template['id']}").status_code == 200
@@ -325,7 +325,7 @@ def test_cli_update_of_a_curated_product_is_rejected(cli_runner):
 
     result = runner.invoke(app, ["update-product", str(product["id"]), "--description", "edited"])
     assert result.exit_code == 1
-    assert "products/catalog/immich.yaml" in result.output
+    assert "products/catalog/immich/immich.yaml" in result.output
 
 
 def test_cli_forced_update_succeeds(cli_runner):
@@ -372,7 +372,7 @@ def test_cli_deletion_of_a_curated_product_is_never_forceable(cli_runner):
     for args in (["delete-product", str(product["id"])], ["delete-product", str(product["id"]), "--force"]):
         result = runner.invoke(app, args)
         assert result.exit_code == 1, args
-        assert "products/catalog/immich.yaml" in result.output
+        assert "products/catalog/immich/immich.yaml" in result.output
 
 
 def test_cli_non_curated_product_is_unaffected(cli_runner):

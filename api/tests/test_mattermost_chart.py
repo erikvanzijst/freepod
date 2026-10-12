@@ -19,7 +19,7 @@ import yaml
 
 PRODUCTS = Path(__file__).resolve().parents[2] / "products"
 CHART = PRODUCTS / "mattermost" / "chart"
-CATALOG = PRODUCTS / "catalog" / "mattermost.yaml"
+CATALOG = PRODUCTS / "catalog" / "mattermost" / "mattermost.yaml"
 REPOSITORY = "mattermost/mattermost-team-edition"
 
 pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")

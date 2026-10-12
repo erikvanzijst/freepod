@@ -1,17 +1,20 @@
 """The git-managed product catalog: document format, validation, reconciliation.
 
-`products/catalog/<slug>.yaml` is the desired state for *published* products;
-the `product` and `product_template_version` rows are the applied state. This
-module holds both halves of that relationship:
+`products/catalog/<slug>/` is the desired state for a *published* product: its
+`<slug>.yaml` document, icon, screenshots and `releases.yaml`. The `product`,
+`product_template_version` and `product_release` rows are the applied state.
+This module holds both halves of that relationship:
 
 - the catalog document models and their validation rules, which run without a
   database so `catalog lint` can gate a pull request in CI, and
 - `CatalogReconciler`, which closes the gap between the two.
 
-The reconciler has exactly two verbs, insert and repoint. It never updates a
-template's spec fields and never soft-deletes one, so `product_template_version`
-stays an append-only ledger that deployments can keep referencing, and a re-run
-against an unchanged catalog is a no-op.
+For templates the reconciler has two verbs, insert and repoint, plus filling
+in a template's `version` while it is still null. It never updates a template's
+spec fields and never soft-deletes one, so `product_template_version` stays an
+append-only ledger that deployments can keep referencing. Product fields,
+screenshots and releases are made to equal the catalog on every run, so a
+re-run against an unchanged catalog is a no-op.
 
 It deliberately does *not* live in `app/services/reconcile.py`. Despite the
 name it shares nothing with `DeploymentReconciler`: no `Provisioner`, no Helm,
@@ -26,6 +29,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, Union
 
@@ -36,12 +40,28 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from sqlalchemy import text
 from sqlmodel import Session, select
 
-from app.models import ProductORM, ProductTemplateVersionORM, ProductVisibility
+from app.models import (
+    ListingFeature,
+    ListingLink,
+    ProductORM,
+    ProductReleaseORM,
+    ProductTemplateVersionORM,
+    ProductVisibility,
+    ScreenshotCredit,
+    StoredScreenshot,
+    screenshot_thumbnail_path,
+)
 from app.services.errors import CaelusException, ValidationException
 from app.services.images import (
+    SCREENSHOTS_MAX_COUNT,
+    SCREENSHOTS_MAX_TOTAL_BYTES,
+    check_screenshot,
     generate_icon_filename,
     process_icon,
+    render_screenshot,
     save_icon,
+    save_static,
+    screenshot_rel_path,
 )
 from app.services.template_values import check_var_markers
 
@@ -51,10 +71,12 @@ logger = logging.getLogger(__name__)
 # is rejected rather than applied with the parts we happen to recognize.
 CATALOG_SCHEMA_VERSION = 1
 
-# Emitted next to the catalog files so editors can offer completion; ignored by
-# the loader, which only reads `*.yaml`/`*.yml`.
+# Emitted at the catalog root so editors can offer completion; documents live
+# one folder down, hence the `../` in the modeline.
 SCHEMA_FILENAME = "catalog.schema.json"
-SCHEMA_MODELINE = f"# yaml-language-server: $schema=./{SCHEMA_FILENAME}"
+SCHEMA_MODELINE = f"# yaml-language-server: $schema=../{SCHEMA_FILENAME}"
+RELEASES_FILENAME = "releases.yaml"
+RELEASE_NOTES_MAX_CHARS = 8000
 
 # Arbitrary but fixed: the key concurrent `catalog apply` runs contend on.
 CATALOG_ADVISORY_LOCK_KEY = 0x6361656C_7573_0001
@@ -89,16 +111,42 @@ class CatalogModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+def _validate_asset_path(v: str, what: str) -> str:
+    path = Path(v)
+    if not v or path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"{what} '{v}' must be a relative path inside the product's folder")
+    return v
+
+
+class CatalogScreenshot(CatalogModel):
+    # Path to an image file, relative to the product's catalog folder.
+    file: str
+    caption: str = Field(min_length=1)
+    form: Literal["desktop", "mobile"]
+    credit: ScreenshotCredit | None = None
+
+    @field_validator("file")
+    @classmethod
+    def _validate_file(cls, v: str) -> str:
+        return _validate_asset_path(v, "screenshot file")
+
+
 class ProductBlock(CatalogModel):
     """The catalog-managed fields of a `product` row."""
 
     slug: str
     name: str
+    tagline: str | None = None
+    # The long description, as Markdown.
     description: str | None = None
     category: str | None = None
     replaces: str | None = None
-    # Path to an image file, relative to the catalog directory root.
+    # Path to an image file, relative to the product's catalog folder.
     icon: str | None = None
+    license: str | None = None
+    features: list[ListingFeature] = Field(default_factory=list)
+    links: list[ListingLink] = Field(default_factory=list)
+    screenshots: list[CatalogScreenshot] = Field(default_factory=list, max_length=SCREENSHOTS_MAX_COUNT)
 
     @field_validator("slug")
     @classmethod
@@ -112,14 +160,7 @@ class ProductBlock(CatalogModel):
     @field_validator("icon")
     @classmethod
     def _validate_icon(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        path = Path(v)
-        if path.is_absolute() or ".." in path.parts:
-            raise ValueError(
-                f"icon '{v}' must be a relative path inside the catalog directory"
-            )
-        return v
+        return v if v is None else _validate_asset_path(v, "icon")
 
 
 class GithubReleaseSource(CatalogModel):
@@ -215,7 +256,7 @@ class TemplateBlock(CatalogModel):
 
 
 class CatalogDocument(CatalogModel):
-    """One `products/catalog/<slug>.yaml` file."""
+    """One `products/catalog/<slug>/<slug>.yaml` document."""
 
     schema_version: int
     product: ProductBlock
@@ -233,6 +274,21 @@ class CatalogDocument(CatalogModel):
         return v
 
 
+class CatalogRelease(CatalogModel):
+    """One entry of a product's `releases.yaml`."""
+
+    version: str = Field(min_length=1)
+    notes: str = Field(min_length=1, max_length=RELEASE_NOTES_MAX_CHARS)
+
+
+@dataclass(frozen=True)
+class LoadedScreenshot:
+    """A declared screenshot with its validated source bytes."""
+
+    declared: CatalogScreenshot
+    source: bytes
+
+
 @dataclass(frozen=True)
 class CatalogFile:
     """A validated document together with where it came from.
@@ -244,6 +300,9 @@ class CatalogFile:
     path: Path
     document: CatalogDocument
     icon_bytes: bytes | None = None
+    screenshots: tuple[LoadedScreenshot, ...] = ()
+    # Newest first, as in the file; empty when the folder has no releases file.
+    releases: tuple[CatalogRelease, ...] = ()
 
     @property
     def slug(self) -> str:
@@ -348,10 +407,10 @@ def document_spec_hash(document: CatalogDocument) -> str:
 
 
 def load_document(path: Path, *, catalog_dir: Path) -> CatalogFile:
-    """Parse and validate a single catalog file.
+    """Parse and validate one product folder's document and its assets.
 
-    Every failure names ``path``, since the operator's next action is editing
-    that file.
+    Every failure names the file to edit. Asset paths resolve against the
+    document's folder, ``path.parent``.
     """
     try:
         raw = yaml.safe_load(path.read_text())
@@ -368,39 +427,102 @@ def load_document(path: Path, *, catalog_dir: Path) -> CatalogFile:
     except ValidationError as exc:
         raise CatalogError(f"{path}: {_format_validation_error(exc)}") from exc
 
-    if document.product.slug != path.stem:
+    if document.product.slug != path.stem or path.parent.name != path.stem:
         raise CatalogError(
-            f"{path}: declares product.slug '{document.product.slug}' but is named "
-            f"'{path.name}'; the slug must equal the filename stem"
+            f"{path}: declares product.slug '{document.product.slug}' but lives at "
+            f"'{path.parent.name}/{path.name}'; the slug must equal both the folder name "
+            f"and the filename stem"
         )
 
-    icon_bytes = _load_icon(document, path=path, catalog_dir=catalog_dir)
-    return CatalogFile(path=path, document=document, icon_bytes=icon_bytes)
+    return CatalogFile(
+        path=path,
+        document=document,
+        icon_bytes=_load_icon(document, path=path),
+        screenshots=_load_screenshots(document, path=path),
+        releases=_load_releases(path.parent / RELEASES_FILENAME),
+    )
 
 
-def _load_icon(document: CatalogDocument, *, path: Path, catalog_dir: Path) -> bytes | None:
+def _resolve_asset(rel: str, *, path: Path, what: str) -> Path:
+    """Resolve an asset path against the document's folder, refusing escapes.
+
+    Each product folder must stay a self-contained unit for apply, lint, the
+    image build and the upgrader's patch allowlist, so a path leaving it (via a
+    symlink, say) is refused.
+    """
+    folder = path.parent.resolve()
+    resolved = (folder / rel).resolve()
+    if not resolved.is_relative_to(folder):
+        raise CatalogError(f"{path}: {what} '{rel}' resolves outside the product folder {folder}")
+    if not resolved.is_file():
+        raise CatalogError(f"{path}: {what} '{rel}' does not exist")
+    return resolved
+
+
+def _load_icon(document: CatalogDocument, *, path: Path) -> bytes | None:
     """Read and process the document's icon, or return None when it declares no icon."""
     if document.product.icon is None:
         return None
-
-    icon_path = (catalog_dir / document.product.icon).resolve()
-    root = catalog_dir.resolve()
-    # The catalog directory must stay a self-contained unit for apply, lint, and
-    # the image build, so a path escaping it (via a symlink, say) is refused.
-    if not icon_path.is_relative_to(root):
-        raise CatalogError(
-            f"{path}: icon '{document.product.icon}' resolves outside the catalog "
-            f"directory {root}"
-        )
-    if not icon_path.is_file():
-        raise CatalogError(f"{path}: icon '{document.product.icon}' does not exist")
-
+    icon_path = _resolve_asset(document.product.icon, path=path, what="icon")
     try:
         return process_icon(icon_path.read_bytes())
     except (OSError, ValueError) as exc:
         raise CatalogError(
             f"{path}: icon '{document.product.icon}' cannot be processed as an image: {exc}"
         ) from exc
+
+
+def _load_screenshots(document: CatalogDocument, *, path: Path) -> tuple[LoadedScreenshot, ...]:
+    """Read and check each declared screenshot; rendering waits for the reconciler."""
+    loaded = []
+    total = 0
+    for shot in document.product.screenshots:
+        source_path = _resolve_asset(shot.file, path=path, what="screenshot")
+        try:
+            source = source_path.read_bytes()
+            check_screenshot(source)
+        except (OSError, ValueError) as exc:
+            raise CatalogError(f"{path}: screenshot '{shot.file}' {exc}") from exc
+        total += len(source)
+        loaded.append(LoadedScreenshot(declared=shot, source=source))
+    if total > SCREENSHOTS_MAX_TOTAL_BYTES:
+        raise CatalogError(
+            f"{path}: screenshots total {total} bytes; the limit per product is "
+            f"{SCREENSHOTS_MAX_TOTAL_BYTES} bytes (5 MB)"
+        )
+    return tuple(loaded)
+
+
+def _load_releases(path: Path) -> tuple[CatalogRelease, ...]:
+    """Parse a product's releases file; a folder without one has no releases."""
+    if not path.exists():
+        return ()
+    try:
+        raw = yaml.safe_load(path.read_text())
+    except OSError as exc:
+        raise CatalogError(f"{path}: cannot be read: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise CatalogError(f"{path}: is not valid YAML: {exc}") from exc
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise CatalogError(f"{path}: must contain a YAML list of releases, newest first")
+
+    releases = []
+    seen: set[str] = set()
+    for index, item in enumerate(raw):
+        if isinstance(item, dict) and not isinstance(item.get("version", ""), str):
+            # YAML reads `3.10` as a float; refuse rather than guess its spelling.
+            raise CatalogError(f"{path}: entry {index}: version must be quoted as a string")
+        try:
+            release = CatalogRelease.model_validate(item)
+        except ValidationError as exc:
+            raise CatalogError(f"{path}: entry {index}: {_format_validation_error(exc)}") from exc
+        if release.version in seen:
+            raise CatalogError(f"{path}: version '{release.version}' is listed more than once")
+        seen.add(release.version)
+        releases.append(release)
+    return tuple(releases)
 
 
 def _format_validation_error(exc: ValidationError) -> str:
@@ -425,19 +547,31 @@ def load_catalog(catalog_dir: Path) -> list[CatalogFile]:
     if not catalog_dir.is_dir():
         raise CatalogError(f"catalog path {catalog_dir} is not a directory")
     try:
-        paths = sorted(
-            path
-            for path in catalog_dir.iterdir()
-            if path.is_file() and path.suffix in (".yaml", ".yml")
-        )
+        children = sorted(catalog_dir.iterdir())
     except OSError as exc:
         raise CatalogError(f"catalog directory {catalog_dir} cannot be read: {exc}") from exc
 
+    paths = []
+    for child in children:
+        if child.name.startswith("."):
+            continue
+        if child.is_file() and child.suffix in (".yaml", ".yml"):
+            # A document from the flat layout; fail loudly rather than skip it.
+            raise CatalogError(
+                f"{child}: catalog documents live in per-product folders; move it to "
+                f"{catalog_dir / child.stem / (child.stem + '.yaml')}"
+            )
+        if not child.is_dir():
+            continue
+        document = child / f"{child.name}.yaml"
+        if not document.is_file():
+            raise CatalogError(f"{child}: product folder has no {child.name}.yaml document")
+        paths.append(document)
+
     entries = [load_document(path, catalog_dir=catalog_dir) for path in paths]
 
-    # Slug uniqueness cannot be checked per document. It survives the
-    # slug-equals-stem rule only because `immich.yaml` and `immich.yml` share a
-    # stem, so identify both files when it happens.
+    # Folder and filename both carry the slug, so duplicates cannot arise from
+    # files alone; the check stays as a guard for any future layout change.
     by_slug: dict[str, Path] = {}
     for entry in entries:
         if (previous := by_slug.get(entry.slug)) is not None:
@@ -495,10 +629,14 @@ def document_from_product(
         product=ProductBlock(
             slug=slug,
             name=product.name,
+            tagline=product.tagline,
             description=product.description,
             category=product.category,
             replaces=product.replaces,
             icon=icon,
+            license=product.license,
+            features=product.features or [],
+            links=product.links or [],
         ),
         upstream=placeholder_upstream(),
         template=TemplateBlock(
@@ -512,7 +650,10 @@ def document_from_product(
 
 
 def curate_product(session: Session, *, identifier: str, catalog_dir: Path) -> list[Path]:
-    """Write a product's catalog document and icon, and return the paths written.
+    """Write a product's catalog folder (document and icon), and return the paths written.
+
+    Screenshots are not written: static storage holds only their renditions,
+    not the committed sources.
 
     ``identifier`` is the product's slug or its name, case-insensitively: a
     product being graduated has no slug yet, since only the reconciler assigns
@@ -536,19 +677,19 @@ def curate_product(session: Session, *, identifier: str, catalog_dir: Path) -> l
 
     slug = product.slug or slugify(product.name)
     icon_bytes = _read_product_icon(product)
-    icon_rel = f"icons/{slug}.png" if icon_bytes is not None else None
+    icon_rel = "icon.png" if icon_bytes is not None else None
     document = document_from_product(product, template, slug=slug, icon=icon_rel)
 
-    catalog_dir.mkdir(parents=True, exist_ok=True)
+    folder = catalog_dir / slug
+    folder.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
     if icon_bytes is not None:
-        icon_path = catalog_dir / icon_rel
-        icon_path.parent.mkdir(parents=True, exist_ok=True)
+        icon_path = folder / icon_rel
         icon_path.write_bytes(icon_bytes)
         written.append(icon_path)
 
-    document_path = catalog_dir / f"{slug}.yaml"
+    document_path = folder / f"{slug}.yaml"
     document_path.write_text(dump_document(document))
     written.append(document_path)
     written.append(write_json_schema(catalog_dir))
@@ -596,6 +737,62 @@ def dump_document(document: CatalogDocument) -> str:
         width=100,
     )
     return f"{SCHEMA_MODELINE}\n{body}"
+
+
+# ---------------------------------------------------------------------------
+# Template versions (product-releases)
+# ---------------------------------------------------------------------------
+
+_TEMPLATE_SCALARS = ("chart_ref", "chart_version", "chart_digest")
+
+
+def derive_version(upstream: UpstreamBlock, spec: dict[str, Any]) -> str | None:
+    """The `version` group of ``upstream.match`` applied at ``version_path``.
+
+    ``spec`` holds a template's `chart_ref`, `chart_version`, `chart_digest` and
+    `system_values`, from a document or a row alike. A path outside the
+    template, one that does not resolve, or a value that does not match yields
+    None. Matching uses `re.match`, as the upgrade skill does.
+    """
+    parts = upstream.version_path.split(".")
+    if len(parts) < 2 or parts[0] != "template":
+        return None
+    if parts[1] in _TEMPLATE_SCALARS:
+        if len(parts) != 2:
+            return None
+        value: Any = spec.get(parts[1])
+    elif parts[1] == "system_values":
+        value = spec.get("system_values") or {}
+        for key in parts[2:]:
+            if not isinstance(value, dict) or key not in value:
+                return None
+            value = value[key]
+    else:
+        return None
+    # An unquoted tag such as 261007 arrives from YAML as an int.
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        return None
+    found = re.match(upstream.match, str(value))
+    return found.group("version") if found else None
+
+
+def _document_spec(document: CatalogDocument) -> dict[str, Any]:
+    block = document.template
+    return {
+        "chart_ref": block.chart_ref,
+        "chart_version": block.chart_version,
+        "chart_digest": block.chart_digest,
+        "system_values": block.system_values,
+    }
+
+
+def _row_spec(template: ProductTemplateVersionORM) -> dict[str, Any]:
+    return {
+        "chart_ref": template.chart_ref,
+        "chart_version": template.chart_version,
+        "chart_digest": template.chart_digest,
+        "system_values": template.system_values_json or {},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -702,10 +899,15 @@ class CatalogReconciler:
         document = entry.document
         product = self._resolve_product(entry, report=report)
 
-        product.name = document.product.name
-        product.description = document.product.description
-        product.category = document.product.category
-        product.replaces = document.product.replaces
+        block = document.product
+        product.name = block.name
+        product.tagline = block.tagline
+        product.description = block.description
+        product.category = block.category
+        product.replaces = block.replaces
+        product.license = block.license
+        product.features = [feature.model_dump(mode="json") for feature in block.features]
+        product.links = [link.model_dump(mode="json") for link in block.links]
         product.curated = True
         product.slug = document.product.slug
         # `visibility` is intentionally absent here: it is initialized on
@@ -715,6 +917,7 @@ class CatalogReconciler:
         self._session.flush()
 
         self._materialize_icon(entry, product=product, report=report, dry_run=dry_run)
+        self._materialize_screenshots(entry, product=product, report=report, dry_run=dry_run)
 
         template = self._resolve_template(entry, product=product, report=report)
         if product.template_id != template.id:
@@ -726,6 +929,9 @@ class CatalogReconciler:
             product.template_id = template.id
             self._session.add(product)
             self._session.flush()
+
+        self._stamp_versions(entry, product=product, report=report)
+        self._sync_releases(entry, product=product, report=report)
 
     def _resolve_product(self, entry: CatalogFile, *, report: CatalogApplyReport) -> ProductORM:
         """Find the product this file declares, adopting or creating as needed."""
@@ -807,6 +1013,7 @@ class CatalogReconciler:
             system_values_json=block.system_values,
             values_schema_json=block.values_schema,
             catalog_commit=self._commit_sha,
+            version=derive_version(entry.document.upstream, _document_spec(entry.document)),
         )
         self._session.add(template)
         self._session.flush()
@@ -865,6 +1072,116 @@ class CatalogReconciler:
             entry.slug,
             f"wrote {rel_path}" if not path_matches else f"repopulated {rel_path}",
         )
+
+    def _materialize_screenshots(
+        self,
+        entry: CatalogFile,
+        *,
+        product: ProductORM,
+        report: CatalogApplyReport,
+        dry_run: bool,
+    ) -> None:
+        """Ensure both renditions of every screenshot exist, and list them in order.
+
+        Rendering is the expensive step, so it runs only when a rendition file
+        is missing; like icons, presence is verified on disk rather than
+        inferred from the stored entries.
+        """
+        from app.config import get_settings
+
+        static_path = get_settings().static_path
+        stored = []
+        for shot in entry.screenshots:
+            rel_path = screenshot_rel_path(shot.source)
+            thumb_path = screenshot_thumbnail_path(rel_path)
+            missing = [
+                path for path in (rel_path, thumb_path) if not (static_path / path).is_file()
+            ]
+            if missing:
+                if not dry_run:
+                    try:
+                        full, thumb = render_screenshot(shot.source)
+                    except ValueError as exc:
+                        raise CatalogError(
+                            f"{entry.path}: screenshot '{shot.declared.file}' {exc}"
+                        ) from exc
+                    save_static(full, rel_path)
+                    save_static(thumb, thumb_path)
+                report.record("screenshot-materialized", entry.slug, f"wrote {rel_path}")
+            declared = shot.declared
+            stored.append(
+                StoredScreenshot(
+                    path=rel_path, caption=declared.caption, form=declared.form, credit=declared.credit
+                ).model_dump(mode="json")
+            )
+        if product.screenshots != stored:
+            product.screenshots = stored
+            self._session.add(product)
+            self._session.flush()
+
+    def _stamp_versions(
+        self, entry: CatalogFile, *, product: ProductORM, report: CatalogApplyReport
+    ) -> None:
+        """Fill in the null `version` of the product's template rows.
+
+        The one write the reconciler makes to an existing template row, and only
+        ever from null: a set version is history and is never rewritten.
+        """
+        unstamped = self._session.exec(
+            select(ProductTemplateVersionORM).where(
+                ProductTemplateVersionORM.product_id == product.id,
+                ProductTemplateVersionORM.deleted_at == None,  # noqa: E711
+                ProductTemplateVersionORM.version == None,  # noqa: E711
+            )
+        ).all()
+        for template in unstamped:
+            version = derive_version(entry.document.upstream, _row_spec(template))
+            if version is None:
+                continue
+            template.version = version
+            self._session.add(template)
+            report.record("version-stamped", entry.slug, f"template {template.id} -> {version}")
+        self._session.flush()
+
+    def _sync_releases(
+        self, entry: CatalogFile, *, product: ProductORM, report: CatalogApplyReport
+    ) -> None:
+        """Make the product's release rows equal its `releases.yaml`."""
+        existing = {
+            release.version: release
+            for release in self._session.exec(
+                select(ProductReleaseORM).where(ProductReleaseORM.product_id == product.id)
+            ).all()
+        }
+        wanted = {release.version for release in entry.releases}
+
+        for version, release in existing.items():
+            if version not in wanted:
+                self._session.delete(release)
+                report.record("release-deleted", entry.slug, version)
+        # Deletions first, so a version moving position never collides.
+        self._session.flush()
+
+        now = datetime.now(UTC)
+        for position, declared in enumerate(entry.releases):
+            release = existing.get(declared.version)
+            if release is None:
+                self._session.add(
+                    ProductReleaseORM(
+                        product_id=product.id,
+                        version=declared.version,
+                        notes=declared.notes,
+                        position=position,
+                    )
+                )
+                report.record("release-inserted", entry.slug, declared.version)
+            elif (release.notes, release.position) != (declared.notes, position):
+                release.notes = declared.notes
+                release.position = position
+                release.updated_at = now
+                self._session.add(release)
+                report.record("release-updated", entry.slug, declared.version)
+        self._session.flush()
 
     def _release_undeclared(self, declared: set[str], *, report: CatalogApplyReport) -> None:
         """Uncurate every curated product no catalog file declares.

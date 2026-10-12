@@ -18,7 +18,9 @@ interface NewProductHeaderProps {
 export function NewProductHeader({ onCreated, onError }: NewProductHeaderProps) {
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
+  const [tagline, setTagline] = useState('')
   const [description, setDescription] = useState('')
+  const [license, setLicense] = useState('')
   const [category, setCategory] = useState('')
   const [replaces, setReplaces] = useState('')
   const [iconFile, setIconFile] = useState<File | null>(null)
@@ -30,7 +32,9 @@ export function NewProductHeader({ onCreated, onError }: NewProductHeaderProps) 
       createProduct(
         {
           name: name.trim(),
+          tagline: tagline.trim() || null,
           description: description.trim() || null,
+          license: license.trim() || null,
           category: category.trim() || null,
           replaces: replaces.trim() || null,
         },
@@ -80,11 +84,18 @@ export function NewProductHeader({ onCreated, onError }: NewProductHeaderProps) 
             slotProps={{ input: { sx: { fontSize: '1.5rem', fontWeight: 500 } } }}
           />
           <TextField
+            value={tagline}
+            onChange={(e) => setTagline(e.target.value)}
+            variant="standard"
+            placeholder="Tagline: one sentence for the storefront (optional)"
+          />
+          <TextField
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             variant="standard"
             multiline
-            placeholder="Description (optional)"
+            minRows={3}
+            placeholder="Description, Markdown (optional)"
           />
           <TextField
             value={category}
@@ -97,6 +108,12 @@ export function NewProductHeader({ onCreated, onError }: NewProductHeaderProps) 
             onChange={(e) => setReplaces(e.target.value)}
             variant="standard"
             placeholder="Replaces (optional)"
+          />
+          <TextField
+            value={license}
+            onChange={(e) => setLicense(e.target.value)}
+            variant="standard"
+            placeholder="License, e.g. AGPL-3.0 (optional)"
           />
           <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 1 }}>
             <Button

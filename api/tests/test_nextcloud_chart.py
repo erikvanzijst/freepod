@@ -20,7 +20,7 @@ import yaml
 
 PRODUCTS = Path(__file__).resolve().parents[2] / "products"
 CHART = PRODUCTS / "nextcloud" / "chart"
-CATALOG = PRODUCTS / "catalog" / "nextcloud.yaml"
+CATALOG = PRODUCTS / "catalog" / "nextcloud" / "nextcloud.yaml"
 VAR = "NEXTCLOUD_ADMIN_PASSWORD"
 
 pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")

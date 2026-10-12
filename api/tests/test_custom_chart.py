@@ -238,7 +238,7 @@ def test_catalog_system_values_are_valid_values_for_this_chart():
     `additional properties 'object_storage' not allowed`.
     """
     catalog = yaml.safe_load(
-        (Path(__file__).resolve().parents[2] / "products" / "catalog" / "custom.yaml").read_text()
+        (Path(__file__).resolve().parents[2] / "products" / "catalog" / "custom" / "custom.yaml").read_text()
     )
 
     # Exactly what the reconciler hands to `helm upgrade`: catalog system values
@@ -609,7 +609,7 @@ def test_the_schema_rejects_an_unknown_auth_key():
 
 
 def _tenant_schema() -> dict:
-    catalog = Path(__file__).resolve().parents[2] / "products" / "catalog" / "custom.yaml"
+    catalog = Path(__file__).resolve().parents[2] / "products" / "catalog" / "custom" / "custom.yaml"
     return yaml.safe_load(catalog.read_text())["template"]["values_schema"]
 
 

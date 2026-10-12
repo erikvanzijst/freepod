@@ -1,6 +1,6 @@
 ---
 name: upgrade-product
-description: For one named Freepod curated product (products/catalog/<slug>.yaml with an upstream block), detect a new upstream release, review what changed in how upstream deploys it, and propose one reviewed pull request, which the runner opens. Runs unattended, one product per session; supports a dry run.
+description: For one named Freepod curated product (products/catalog/<slug>/<slug>.yaml with an upstream block), detect a new upstream release, review what changed in how upstream deploys it, and propose one reviewed pull request, which the runner opens. Runs unattended, one product per session; supports a dry run.
 ---
 
 # Freepod product upgrade
@@ -97,9 +97,10 @@ files, never your prose report.
 1. **Never write to GitHub.** No push, no label, no PR, no comment, no merge.
    Your output is local commits, the result files and a run report; the runner
    decides what reaches GitHub.
-2. **Only your product's files.** Your commits change
-   `products/catalog/<slug>.yaml` and files under `products/<slug>/`, nothing
-   else. The runner refuses a patch that touches anything outside them.
+2. **Only your product's files.** Your commits change files under your
+   product's catalog folder, `products/catalog/<slug>/`, and under
+   `products/<slug>/`, nothing else (not even `products/catalog/catalog.schema.json`).
+   The runner refuses a patch that touches anything outside them.
 3. **Never republish a chart version.** CI publishes a product chart only when
    its `Chart.yaml` `version` is new. Any change to a chart therefore needs a
    version bump in `Chart.yaml` and the same version in the catalog's
@@ -129,8 +130,11 @@ files, never your prose report.
 (commit style, comments, documentation layering); step 0 has you read it. The
 parts that matter most here:
 
-- **Catalog.** Each curated product is one file, `products/catalog/<slug>.yaml`
-  (format: `openspec/specs/product-catalog-format/spec.md`). Its `upstream`
+- **Catalog.** Each curated product is one folder, `products/catalog/<slug>/`
+  (format: `openspec/specs/product-catalog-format/spec.md`), holding the
+  document `<slug>.yaml`, its icon and screenshots, and `releases.yaml`, the
+  user-facing release notes shown on the product's public app page. The
+  document's `upstream`
   block holds `source`, `match` (a regex whose named group `version` orders
   candidates) and `version_path` (the dotted path where the winning tag is
   written **verbatim**).
@@ -174,7 +178,8 @@ scratch=$(mktemp -d)                                  # upstream clones, PR bodi
 
 Work in this one clone (the `/workspace/trees` worktree convention in
 `AGENTS.md` doesn't apply to you). Keep scratch files under `$scratch`. Read
-`AGENTS.md` and your product's `products/catalog/<slug>.yaml`.
+`AGENTS.md` and your product's `products/catalog/<slug>/<slug>.yaml` and
+`releases.yaml`.
 
 ### 1. Take inventory
 
@@ -366,6 +371,9 @@ Branch from a fresh `origin/master`: `upgrade/<slug>-<target-version>`.
   product's files, so name that edit under *Needs human review* instead of
   making it. Follow the repo's comment rules: comment only a non-obvious
   *why*. Make the PR a **draft**.
+- **Release entry** (every upgrade): add an entry for the target version at
+  the top of `products/catalog/<slug>/releases.yaml`, in the same commit as the
+  version change, creating the file if it is missing. See *Release entry*.
 - **README "Upstream references" fixes** (step 5) go in the same PR, as a
   separate commit (`<Product>: Update upstream references`).
 - Commit subject: `<Product>: Upgrade to <version>` (e.g.
@@ -374,7 +382,8 @@ Branch from a fresh `origin/master`: `upgrade/<slug>-<target-version>`.
 
 ### 7. Validate
 
-- `cd api && uv sync && uv run caelus catalog lint`. The lint needs no database.
+- `cd api && uv sync && uv run caelus catalog lint`. The lint needs no database
+  and also validates `releases.yaml`.
 - If you changed a chart: `cd api && uv run pytest
   tests/test_chart_release_label_contract.py`, `helm lint` and
   `helm template t products/<slug>/chart --set host=example.test`, and read the
@@ -397,7 +406,7 @@ opens the PR from exactly these files, labeled `product-upgrade`, against
 proposal when:
 
 - the patch doesn't apply to the current `master`, holds no commits, changes a
-  path outside `products/catalog/<slug>.yaml` and `products/<slug>/`, or adds a
+  path outside `products/catalog/<slug>/` and `products/<slug>/`, or adds a
   symbolic link or submodule;
 - `branch` isn't `upgrade/<slug>-<target_version>`;
 - the title isn't one line reading `<Product>: Upgrade to <target_version>`;
@@ -406,6 +415,38 @@ proposal when:
 
 A refusal comes back to you as one more turn, naming the problem. The runner
 records the PR's URL itself.
+
+---
+
+## Release entry
+
+`releases.yaml` is a list, newest first, of `version` and Markdown `notes`.
+It is what the people who use the app read on its public page, so it is not
+the PR changelog:
+
+```yaml
+- version: "3.3.1"
+  notes: |-
+    People sharing got clearer, and memories behave better on phones.
+
+    - You can now see at a glance which people are shared with a partner
+    - Memories stay full screen while you swipe through them on mobile
+```
+
+- `version` is the `version` group of `upstream.match` applied to the new tag
+  (`3.3.1` for `v3.3.1`), quoted, so YAML never reads it as a number.
+- One entry covers every upstream release the upgrade spans: fold the
+  skipped-over releases' user-visible changes into it.
+- Open with one plain sentence, then at most about six bullets of changes a
+  user would notice, in everyday words. Leave out contributor credits,
+  issue and PR numbers or links, @-mentions, and changes only operators or
+  developers would notice.
+- When every covered change is a dependency bump, build fix or the like, write
+  that the update brings maintenance and security fixes instead of listing
+  them.
+- Add the entry as text at the top of the file, like any other catalog edit
+  (hard rule 4). Notes stay under 8,000 characters, and `catalog lint`
+  rejects a duplicate version.
 
 ---
 

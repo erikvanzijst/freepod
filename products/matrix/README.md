@@ -89,7 +89,7 @@ to a single worker process, since it only serves static files.
 ## Upstream references
 
 What a version upgrade has to review beyond the tag in
-[`products/catalog/matrix.yaml`](../catalog/matrix.yaml), whose `upstream` block
+[`products/catalog/matrix/matrix.yaml`](../catalog/matrix/matrix.yaml), whose `upstream` block
 detects new releases.
 
 - **Release notes:** GitHub releases of `matrix-construct/tuwunel`.
@@ -133,4 +133,4 @@ is published. To publish by hand, from the repository root:
 ## Caelus product template
 
 The product is curated: its template, including the values schema, lives in
-[`products/catalog/matrix.yaml`](../catalog/matrix.yaml).
+[`products/catalog/matrix/matrix.yaml`](../catalog/matrix/matrix.yaml).
