@@ -1,0 +1,139 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: matrix
+  name: Matrix
+  tagline: Private, encrypted chat on your own server, connected to the whole Matrix network.
+  description: |-
+    Matrix is an open network for secure chat, a bit like email for messaging: people on different servers can talk to each other. With Freepod you run your own server, powered by Tuwunel, with the Element web app included.
+
+    On Freepod, your server is hosted in the EU. Private conversations are end-to-end encrypted, so only the people in them can read them, not even the servers that relay them.
+
+    Your address lives on your own server rather than a big platform’s. Chat from the browser, or install Element X on iOS and Android.
+  category: Chat & messaging
+  replaces: WhatsApp · Discord
+  icon: icon.png
+  license: Apache-2.0
+  features:
+  - icon: lock
+    title: End-to-end encryption
+    body: Private chats can only be read by the people in them.
+  - icon: federation
+    title: Federated
+    body: Talk to anyone on any Matrix server, just like email.
+  - icon: address
+    title: Your own address
+    body: Your Matrix ID lives on your own server, not a company’s.
+  - icon: groups
+    title: Rooms & spaces
+    body: Group chats and rooms, organized into spaces for each community.
+  - icon: attach
+    title: Files & media
+    body: Share photos, videos and files in any conversation.
+  - icon: mobile
+    title: Element apps
+    body: Element on the web is included; Element X runs on iOS and Android.
+  links:
+  - label: Matrix
+    href: https://matrix.org
+    kind: website
+  - label: Tuwunel documentation
+    href: https://matrix-construct.github.io/tuwunel/
+    kind: docs
+  - label: Tuwunel source code
+    href: https://github.com/matrix-construct/tuwunel
+    kind: source
+  - label: Release notes
+    href: https://github.com/matrix-construct/tuwunel/releases
+    kind: releases
+  - label: Element X for iOS
+    href: https://apps.apple.com/app/element-x-secure-chat-call/id1631335820
+    kind: ios
+  - label: Element X for Android
+    href: https://play.google.com/store/apps/details?id=io.element.android.x
+    kind: android
+  screenshots:
+  - file: screenshots/element-web.webp
+    caption: Element on the web, in light or dark
+    form: desktop
+    credit:
+      text: The Matrix.org Foundation · CC BY-SA 4.0
+      href: https://matrix.org/ecosystem/clients/element/
+  - file: screenshots/element-x-2.webp
+    caption: 'Element X: all your chats on your phone'
+    form: mobile
+    credit:
+      text: Element · AGPL-3.0
+      href: https://github.com/element-hq/element-x-android/tree/develop/fastlane/metadata/android/en-US/images
+  - file: screenshots/element-x-3.webp
+    caption: Encrypted one-to-one chats
+    form: mobile
+    credit:
+      text: Element · AGPL-3.0
+      href: https://github.com/element-hq/element-x-android/tree/develop/fastlane/metadata/android/en-US/images
+  - file: screenshots/sign-in.webp
+    caption: Sign in to your own homeserver
+    form: desktop
+  - file: screenshots/element-x-4.webp
+    caption: Group chats for your team or family
+    form: mobile
+    credit:
+      text: Element · AGPL-3.0
+      href: https://github.com/element-hq/element-x-android/tree/develop/fastlane/metadata/android/en-US/images
+  - file: screenshots/element-x-1.webp
+    caption: Element X for iOS and Android
+    form: mobile
+    credit:
+      text: Element · AGPL-3.0
+      href: https://github.com/element-hq/element-x-android/tree/develop/fastlane/metadata/android/en-US/images
+upstream:
+  source:
+    type: github-release
+    repo: matrix-construct/tuwunel
+  match: ^v(?P<version>\d+\.\d+\.\d+)$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/matrix
+  chart_version: 0.3.2
+  system_values:
+    image:
+      tag: v1.9.4
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    title: matrix values
+    type: object
+    properties:
+      serverName:
+        title: Hostname
+        description: The hostname of your homeserver, e.g. `matrix.me.freepod.eu`.
+        type: string
+        minLength: 1
+        maxLength: 253
+        pattern: ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+      TUWUNEL_REGISTRATION_TOKEN:
+        title: Registration token
+        type: string
+        minLength: 8
+        maxLength: 128
+        pattern: ^[^\u0000-\u001f\u007f]+$
+        x-caelus-target: runtime
+        x-caelus-sensitive: true
+        description: Anyone with this token can create an account on your homeserver, so share it
+          only with people you want to invite. It won't be shown again; you can set a new one by
+          editing your app.
+      federation:
+        type: object
+        properties:
+          enabled:
+            title: Federation
+            type: boolean
+            default: true
+            description: Lets you talk to users and join rooms on other matrix servers.
+        required:
+        - enabled
+        additionalProperties: false
+    required:
+    - serverName
+    - TUWUNEL_REGISTRATION_TOKEN
+    - federation
+    additionalProperties: false

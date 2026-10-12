@@ -23,6 +23,8 @@ from sqlmodel import SQLModel, Session
 from app.db import get_session
 from app.deps import get_current_user, get_optional_user, require_admin
 from app.models import (
+    ProductListingRead,
+    ProductReleaseRead,
     ProductRead,
     ProductCreate,
     ProductTemplateVersionRead,
@@ -31,6 +33,7 @@ from app.models import (
     UserORM,
 )
 from app.services import templates as template_service, products as product_service
+from app.services import listings as listing_service
 
 T = TypeVar("T", bound=SQLModel)
 
@@ -129,15 +132,19 @@ async def parse_product_request(request: Request, model_cls: type[T] = ProductCr
         return payload, icon_data
     else:
         try:
-            if body:
-                payload = model_cls.model_validate(json.loads(body))
-            else:
-                payload = model_cls.model_validate({})
-        except Exception:
+            payload_dict = json.loads(body) if body else {}
+        except json.JSONDecodeError as e:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Invalid JSON body",
-            )
+            ) from e
+        try:
+            payload = model_cls.model_validate(payload_dict)
+        except PydanticValidationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Invalid product payload: {e}",
+            ) from e
         return payload, None
 
 
@@ -218,12 +225,16 @@ def list_products(
 
     ## Behavior
     Anonymous visitors and regular users get the end-user listing: only
-    non-deleted products whose `visibility` is `public`. Administrators get the
-    administrative listing, which additionally includes products whose
-    `visibility` is `admin`. Soft-deleted products are excluded either way.
+    non-deleted products whose `visibility` is `public` or `unlisted`.
+    Administrators get the administrative listing, which additionally includes
+    products whose `visibility` is `admin`. Soft-deleted products are excluded
+    either way. Each product reports its `visibility`, so a storefront can
+    leave `unlisted` products out.
 
-    Each product includes its marketing metadata (`category`, `replaces`) and
-    an `icon_url` when an icon is set.
+    Each product includes its marketing metadata (`category`, `replaces`,
+    `tagline`) and an `icon_url` when an icon is set. Store-listing content
+    (license, features, links, screenshots) is served by
+    `GET /api/products/{product_id}/listing` instead.
     """
     return product_service.list_products(
         session, include_hidden=bool(current_user and current_user.is_admin)
@@ -257,6 +268,65 @@ def get_product(
     - **404 Not Found** — no product with this id exists.
     """
     return product_service.get_product(session, product_id=product_id)
+
+
+@router.get(
+    "/{product_id}/listing",
+    response_model=ProductListingRead,
+    summary="Get a product's store listing",
+    response_description="The product's license, features, links, screenshots and current version.",
+    responses={404: {"description": "No product exists with this id."}},
+)
+def get_product_listing(
+    product_id: int = Path(..., description="ID of the product whose listing to retrieve."),
+    session: Session = Depends(get_session),
+) -> ProductListingRead:
+    """Fetch the store-listing content of a product, for its public app page.
+
+    ## Authorization
+    Public — no authentication required.
+
+    ## Behavior
+    Returns `license`, `features`, `links` and `screenshots` in their declared
+    order, each screenshot with a `thumbnail_url` for in-page display, a full-size
+    `url`, its `caption`, `form` and optional `credit`. `version` is the
+    canonical template's upstream version and `version_available_at` the moment
+    that version first became available on Freepod (its oldest template row);
+    both are null when the version is unknown. Product reads carry none of this
+    content, so lists and nested products stay small.
+
+    ## Errors
+    - **404 Not Found** — no product with this id exists.
+    """
+    return listing_service.get_listing(session, product_id=product_id)
+
+
+@router.get(
+    "/{product_id}/releases",
+    response_model=list[ProductReleaseRead],
+    summary="List a product's releases",
+    response_description="The product's release notes, newest first.",
+    responses={404: {"description": "No product exists with this id."}},
+)
+def list_product_releases(
+    product_id: int = Path(..., description="ID of the product whose releases to list."),
+    session: Session = Depends(get_session),
+) -> list[ProductReleaseRead]:
+    """List a product's user-facing release notes, newest first.
+
+    ## Authorization
+    Public — no authentication required.
+
+    ## Behavior
+    A plain, unpaginated array with one entry per version Freepod onboarded:
+    `version`, Markdown `notes`, and `available_at`, the moment that version
+    first became available on Freepod, or null when no template carries it.
+    Releases come from the product's catalog folder and have no write endpoint.
+
+    ## Errors
+    - **404 Not Found** — no product with this id exists.
+    """
+    return listing_service.list_releases(session, product_id=product_id)
 
 
 @router.put(
@@ -310,12 +380,13 @@ async def update_product(
     - Setting `template_id` selects the product's current template version; the
       referenced template must belong to this product or a 404 is raised.
     - Setting `visibility` to `public` offers the product in the end-user
-      product list; setting it to `admin` withdraws it, leaving existing
+      product list; `unlisted` offers it there too but marks it to be left
+      out of the storefront; `admin` withdraws it, leaving existing
       deployments untouched.
     - A supplied `icon` replaces the product's existing icon; the returned
       product carries the new `icon_url`.
     - For a **curated** (catalog-managed) product every field except
-      `visibility` is owned by `products/catalog/<slug>.yaml` and is refused
+      `visibility` is owned by `products/catalog/<slug>/<slug>.yaml` and is refused
       with a 400 unless `?force=true` is supplied. `visibility` is runtime
       state and stays editable without `force`. `slug` and `curated`
       themselves are written only by the reconciler and are not accepted here.
@@ -375,7 +446,7 @@ def delete_product_endpoint(
 
     A **curated** product cannot be deleted, with or without `force`: the next
     reconciliation would recreate it under a new id while existing deployments
-    kept referencing the old row. Remove its `products/catalog/<slug>.yaml`
+    kept referencing the old row. Remove its `products/catalog/<slug>/<slug>.yaml`
     file, let the rollout release the product, then delete it normally.
 
     ## Errors

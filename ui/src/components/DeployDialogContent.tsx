@@ -12,7 +12,7 @@ import {
 } from '@mui/material'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import { resolveApiPath } from '../api/client'
-import type { Plan, Product } from '../api/types'
+import type { Plan, ProductSummary } from '../api/types'
 import { UserValuesForm } from './UserValuesForm'
 import type { VarSubmission } from './UserValuesForm'
 import { PendingVarsNotice } from './PendingVarsNotice'
@@ -20,7 +20,7 @@ import { PlanCardContent } from './PlanCardContent'
 import { TosAgreement } from './TosAgreement'
 
 interface DeployDialogContentProps {
-  product: Product
+  product: ProductSummary
   valuesSchemaJson: Record<string, unknown> | null
   initialValuesJson: Record<string, unknown> | null
   onChange: (userValues: Record<string, unknown> | null) => void
@@ -97,9 +97,9 @@ export function DeployDialogContent({
         </Avatar>
         <Box>
           <Typography variant="h6">{product.name}</Typography>
-          {product.description && (
+          {product.tagline && (
             <Typography variant="body2" color="text.secondary">
-              {product.description}
+              {product.tagline}
             </Typography>
           )}
         </Box>

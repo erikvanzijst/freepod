@@ -1,0 +1,113 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: immich
+  name: Immich
+  tagline: Your photos and videos, backed up from your phone and kept private.
+  description: |-
+    Immich is a fast, good-looking photo and video library that feels instantly familiar if you’re coming from Google Photos or iCloud. Install the app on your phone and every new picture is backed up automatically. Then browse your whole collection by date, by place, or by the people in it.
+
+    On Freepod, Immich runs as your own private instance, hosted in the EU. Face recognition and smart search run on that instance, not on an advertising platform, so nobody mines your memories to sell you things.
+
+    Share albums with family, give your partner access to your library, or send a link to anyone. Your originals stay exactly as you took them, and you can download them whenever you like.
+  category: Photos
+  replaces: Google Photos · iCloud Photos
+  icon: icon.png
+  license: AGPL-3.0
+  features:
+  - icon: sync
+    title: Automatic backup
+    body: The iOS and Android apps upload new photos and videos in the background.
+  - icon: faces
+    title: People & places
+    body: Faces are recognized and grouped, and every photo lands on a map.
+  - icon: search
+    title: Smart search
+    body: 'Find photos by what’s in them: “dog on the beach” just works.'
+  - icon: share
+    title: Sharing
+    body: Shared albums, partner sharing, and public links with a password or expiry date.
+  - icon: memories
+    title: Memories
+    body: Revisit this day in years past, right at the top of your timeline.
+  - icon: original
+    title: Full quality
+    body: Originals are kept as-is, including RAW files, Live Photos and video.
+  links:
+  - label: Website
+    href: https://immich.app
+    kind: website
+  - label: Documentation
+    href: https://docs.immich.app
+    kind: docs
+  - label: Source code
+    href: https://github.com/immich-app/immich
+    kind: source
+  - label: Release notes
+    href: https://github.com/immich-app/immich/releases
+    kind: releases
+  - label: App Store
+    href: https://apps.apple.com/app/immich/id1613945652
+    kind: ios
+  - label: Google Play
+    href: https://play.google.com/store/apps/details?id=app.alextran.immich
+    kind: android
+  screenshots:
+  - file: screenshots/web-and-mobile.webp
+    caption: Your library on the web and on your phone
+    form: desktop
+    credit:
+      text: Immich · AGPL-3.0
+      href: https://github.com/immich-app/immich/tree/main/docs/static/img
+  - file: screenshots/people.webp
+    caption: Find everyone with face recognition
+    form: desktop
+    credit:
+      text: Immich · MIT
+      href: https://github.com/immich-app/static-pages
+  - file: screenshots/mobile-backup.webp
+    caption: Automatic backup from your phone
+    form: desktop
+    credit:
+      text: Immich · MIT
+      href: https://github.com/immich-app/static-pages
+  - file: screenshots/sharing.webp
+    caption: Share albums and links, or your library with a partner
+    form: desktop
+    credit:
+      text: Immich · MIT
+      href: https://github.com/immich-app/static-pages
+  - file: screenshots/folders.webp
+    caption: Browse by folder when you want to
+    form: desktop
+    credit:
+      text: Immich · MIT
+      href: https://github.com/immich-app/static-pages
+upstream:
+  source:
+    type: github-release
+    repo: immich-app/immich
+  match: ^v(?P<version>\d+\.\d+\.\d+)$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/immich
+  chart_version: 0.2.6
+  system_values:
+    image:
+      tag: v3.3.1
+    smtp:
+      host: smtp.mailer.svc.cluster.local
+      port: 25
+      from: immich@freepod.eu
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      host:
+        title: Hostname
+        type: string
+        minLength: 1
+        description: The domainname for your Immich instance
+    required:
+    - host
+    additionalProperties: false

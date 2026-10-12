@@ -1,5 +1,7 @@
 import { Box, Container, Skeleton, Stack, Typography } from '@mui/material'
+import { Link as RouterLink } from 'react-router-dom'
 import { resolveApiPath } from '../../api/client'
+import { appHref } from '../apppage/appHref'
 import {
   accentForProduct,
   cardSurface,
@@ -19,14 +21,20 @@ const gridSx = {
   mt: { xs: 6, md: 8 },
 } as const
 
-/** A single product card, enriched with marketing metadata when available. */
+/** A single product card, linking to the app's page. */
 function AppCard({ product }: { product: ProductSummary }) {
   const color = accentForProduct(product.name)
-  const blurb = product.description ?? ''
+  // The tagline only: the description is the app page's long Markdown text.
+  const blurb = product.tagline ?? ''
 
   return (
     <Box
+      component={RouterLink}
+      to={appHref(product)}
       sx={{
+        display: 'block',
+        color: 'inherit',
+        textDecoration: 'none',
         height: '100%',
         p: 3.5,
         borderRadius: 4,

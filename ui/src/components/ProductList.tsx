@@ -65,7 +65,7 @@ export function ProductList({ products, selectedProductId, onSelectProduct, show
                       overflow: 'hidden',
                     }}
                   >
-                    {product.description || 'No description'}
+                    {product.tagline || product.description || 'No description'}
                   </Typography>
                 </Box>
               </CardContent>

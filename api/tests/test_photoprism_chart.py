@@ -24,7 +24,7 @@ import yaml
 
 PRODUCTS = Path(__file__).resolve().parents[2] / "products"
 CHART = PRODUCTS / "photoprism" / "chart"
-CATALOG = PRODUCTS / "catalog" / "photoprism.yaml"
+CATALOG = PRODUCTS / "catalog" / "photoprism" / "photoprism.yaml"
 REPOSITORY = "docker.io/photoprism/photoprism"
 
 pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")

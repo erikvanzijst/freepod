@@ -222,7 +222,7 @@ Both files are chart-local because vaultwarden is not in the curated catalog
 ## Upstream references
 
 What a version upgrade has to review beyond the tag in
-[`products/catalog/vaultwarden.yaml`](../catalog/vaultwarden.yaml), whose `upstream` block
+[`products/catalog/vaultwarden/vaultwarden.yaml`](../catalog/vaultwarden/vaultwarden.yaml), whose `upstream` block
 detects new releases.
 
 - **Release notes:** GitHub releases of `dani-garcia/vaultwarden` (tags have no `v` prefix).

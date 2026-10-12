@@ -25,6 +25,8 @@ from tests.conftest import TEST_DATABASE_URL
 API_ROOT = Path(__file__).resolve().parents[1]
 BEFORE_VISIBILITY = "a7b8c9d0e1f2"
 VISIBILITY = "b1c2d3e4f5a6"
+BEFORE_UNLISTED = "9e3b5a7c2d14"
+UNLISTED = "c2e3d9b293fb"
 
 
 def _alembic(*args: str, schema: str) -> None:
@@ -117,3 +119,102 @@ def test_downgrade_removes_the_column(migrated_schema):
             {"schema": schema},
         ).scalars().all()
     assert "visibility" not in columns
+
+
+# ---------------------------------------------------------------------------
+# The `unlisted` value
+# ---------------------------------------------------------------------------
+
+
+def _enum_labels(engine, schema: str) -> list[str]:
+    with engine.begin() as conn:
+        return conn.execute(
+            text(
+                "SELECT e.enumlabel FROM pg_enum e "
+                "JOIN pg_type t ON t.oid = e.enumtypid "
+                "JOIN pg_namespace n ON n.oid = t.typnamespace "
+                "WHERE t.typname = 'productvisibility' AND n.nspname = :schema "
+                "ORDER BY e.enumsortorder"
+            ),
+            {"schema": schema},
+        ).scalars().all()
+
+
+def _visibilities(engine) -> list[tuple[str, str]]:
+    with engine.begin() as conn:
+        return conn.execute(
+            text("SELECT name, visibility::text FROM product ORDER BY name")
+        ).all()
+
+
+@pytest.fixture
+def before_unlisted(migrated_schema):
+    """A throwaway schema at the revision before `unlisted`, with one product per value."""
+    schema, engine = migrated_schema
+    _alembic("upgrade", BEFORE_UNLISTED, schema=schema)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO product (name, created_at, visibility) VALUES "
+                "('listed', now(), 'public'), ('hidden', now(), 'admin')"
+            )
+        )
+    return schema, engine
+
+
+def test_unlisted_upgrade_changes_no_existing_product(before_unlisted):
+    schema, engine = before_unlisted
+
+    _alembic("upgrade", UNLISTED, schema=schema)
+
+    assert _enum_labels(engine, schema) == ["public", "admin", "unlisted"]
+    assert _visibilities(engine) == [("hidden", "admin"), ("listed", "public")]
+
+
+def test_unlisted_is_accepted_and_the_default_stays_admin(before_unlisted):
+    schema, engine = before_unlisted
+    _alembic("upgrade", UNLISTED, schema=schema)
+
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE product SET visibility = 'unlisted' WHERE name = 'listed'"))
+        conn.execute(text("INSERT INTO product (name, created_at) VALUES ('fresh', now())"))
+
+    assert _visibilities(engine) == [
+        ("fresh", "admin"),
+        ("hidden", "admin"),
+        ("listed", "unlisted"),
+    ]
+
+
+def test_unlisted_upgrade_is_idempotent_against_an_existing_value(before_unlisted):
+    """`IF NOT EXISTS`: a value already present is not an error."""
+    schema, engine = before_unlisted
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TYPE productvisibility ADD VALUE 'unlisted'"))
+
+    _alembic("upgrade", UNLISTED, schema=schema)
+
+    assert _enum_labels(engine, schema) == ["public", "admin", "unlisted"]
+
+
+def test_unlisted_downgrade_makes_unlisted_products_public(before_unlisted):
+    schema, engine = before_unlisted
+    _alembic("upgrade", UNLISTED, schema=schema)
+    with engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO product (name, created_at, visibility) VALUES ('dev', now(), 'unlisted')")
+        )
+
+    _alembic("downgrade", BEFORE_UNLISTED, schema=schema)
+
+    assert _enum_labels(engine, schema) == ["public", "admin"]
+    assert _visibilities(engine) == [("dev", "public"), ("hidden", "admin"), ("listed", "public")]
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO product (name, created_at) VALUES ('fresh', now())"))
+        default = conn.execute(
+            text("SELECT visibility::text FROM product WHERE name = 'fresh'")
+        ).scalar_one()
+    assert default == "admin"
+
+    _alembic("upgrade", UNLISTED, schema=schema)
+    assert _enum_labels(engine, schema) == ["public", "admin", "unlisted"]

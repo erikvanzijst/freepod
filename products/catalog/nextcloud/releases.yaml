@@ -1,0 +1,29 @@
+- version: "35.0.1"
+  notes: |-
+    A bug-fix release for Nextcloud 35.
+
+    - Pressing Delete in Files now asks before deleting
+    - Link shares are kept when files move to a new owner
+    - Insert Mermaid diagrams from the Blocks menu in Text
+    - Clearer feedback on the login, sign-up and sharing forms
+    - Large folders open faster in the viewer
+    - Fixes a case where logs could contain sensitive information
+- version: "35.0.0"
+  notes: |-
+    Nextcloud 35 is a major release with a redesigned search and tidier settings.
+
+    - A new search box in the top bar, with keyboard shortcuts and filters
+    - Personal settings are organized into clear sections
+    - Give each person you share with their own permissions
+    - A reduce-animation option in the appearance settings
+    - Filter by tag
+    - Your profile page works better on phones
+- version: "34.0.4"
+  notes: |-
+    Two maintenance releases with security fixes and many small improvements to sharing, files, photos and documents.
+
+    - Pasting a table from Excel into a text document keeps it a table
+    - Photos shows the right dates and handles deleted photos properly
+    - Accept or decline calendars shared from another Nextcloud
+    - Expiry dates on email shares are right across time zones
+    - Many fixes for sharing, previews and encryption

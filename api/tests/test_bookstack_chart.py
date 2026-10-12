@@ -23,7 +23,7 @@ import yaml
 
 PRODUCTS = Path(__file__).resolve().parents[2] / "products"
 CHART = PRODUCTS / "bookstack" / "chart"
-CATALOG = PRODUCTS / "catalog" / "bookstack.yaml"
+CATALOG = PRODUCTS / "catalog" / "bookstack" / "bookstack.yaml"
 REPOSITORY = "docker.io/solidnerd/bookstack"
 
 pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")

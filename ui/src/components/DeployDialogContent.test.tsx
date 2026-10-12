@@ -18,7 +18,8 @@ function renderWithQuery(ui: React.ReactNode) {
 const product: Product = {
   id: 1,
   name: 'TestApp',
-  description: 'A test application',
+  tagline: 'A test application',
+  description: 'A long **Markdown** description',
   template_id: 10,
   icon_url: null,
   visibility: 'public',
@@ -35,7 +36,7 @@ const schema = {
 }
 
 describe('DeployDialogContent', () => {
-  it('renders product name and description', () => {
+  it('renders product name and tagline, not the long description', () => {
     renderWithQuery(
       <DeployDialogContent
         product={product}
@@ -47,6 +48,7 @@ describe('DeployDialogContent', () => {
 
     expect(screen.getByText('TestApp')).toBeInTheDocument()
     expect(screen.getByText('A test application')).toBeInTheDocument()
+    expect(screen.queryByText(/long/)).toBeNull()
   })
 
   it('renders form fields from schema', () => {

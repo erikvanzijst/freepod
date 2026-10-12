@@ -107,7 +107,16 @@ app.include_router(ssh.router, prefix="/api")
 app.include_router(registry.router, prefix="/api")
 
 _init_static_dir()
-app.mount("/api/static", StaticFiles(directory=str(_settings.static_path)), name="static")
+class ImmutableStaticFiles(StaticFiles):
+    """Static files named by their content hash, so safe to cache for a year."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
+app.mount("/api/static", ImmutableStaticFiles(directory=str(_settings.static_path)), name="static")
 
 register_exception_handlers(app)
 

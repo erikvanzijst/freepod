@@ -7,7 +7,7 @@ too — it is whatever they built — and the chart's job is to run it without
 letting them run somebody else's.
 
 Like the curated products, its product and template come from the catalog:
-[`products/catalog/custom.yaml`](../catalog/custom.yaml) pins the chart version,
+[`products/catalog/custom/custom.yaml`](../catalog/custom/custom.yaml) pins the chart version,
 the system values, and the user values schema that drives the deployment form.
 
 ## What it deploys
@@ -157,7 +157,7 @@ after the platform's retention period.
 Two distinct keys, and the distinction is the same one object storage draws:
 
 - `relationalStorage.enabled` is the **product's** static declaration, set in
-  `products/catalog/custom.yaml` under `template.system_values`. It is
+  `products/catalog/custom/custom.yaml` under `template.system_values`. It is
   identical for every deployment of this product and a tenant cannot set it.
 - `caelus.database.{host,port,name,user,secretName}` are the **per-deployment**
   facts the reconciler injects after provisioning. The chart reads
@@ -332,7 +332,7 @@ new. To publish by hand, from the repository root:
 
 A published version is never overwritten: bump `placeholder/VERSION`, then
 repoint `placeholderImage` in `chart/values.yaml` and
-`products/catalog/custom.yaml` and bump the chart version with it, so running
+`products/catalog/custom/custom.yaml` and bump the chart version with it, so running
 deployments are not swapped out from under themselves by a mutated tag.
 
 ## Manual install
@@ -366,7 +366,7 @@ is published. To publish by hand, from the repository root:
 
 ## Catalog entry
 
-[`products/catalog/custom.yaml`](../catalog/custom.yaml). Its `values_schema` is
+[`products/catalog/custom/custom.yaml`](../catalog/custom/custom.yaml). Its `values_schema` is
 a **different, much smaller** schema than `chart/values.schema.json`: that one
 validates the fully merged values Helm-side, this one defines the fields a
 tenant may set and drives the deployment form. Two of its choices are

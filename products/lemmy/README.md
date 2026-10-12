@@ -209,7 +209,7 @@ is published. To publish by hand, from the repository root:
 
 Curated: the chart reference, the pinned Lemmy version, the operator-wide
 values (SMTP, admin username) and the tenant-facing values schema are all
-declared in [`products/catalog/lemmy.yaml`](../catalog/lemmy.yaml). The schema
+declared in [`products/catalog/lemmy/lemmy.yaml`](../catalog/lemmy/lemmy.yaml). The schema
 routes `LEMMY_ADMIN_PASSWORD` to the pod as a sensitive runtime var, as
 described above. Format:
 [product-catalog-format](../../openspec/specs/product-catalog-format/spec.md).
@@ -217,7 +217,7 @@ described above. Format:
 ## Upstream references
 
 What a version upgrade has to review beyond the tag in
-[`products/catalog/lemmy.yaml`](../catalog/lemmy.yaml), whose `upstream` block
+[`products/catalog/lemmy/lemmy.yaml`](../catalog/lemmy/lemmy.yaml), whose `upstream` block
 detects new releases on the backend image. That one tag drives both
 `dessalines/lemmy` and `dessalines/lemmy-ui`, so check that both exist.
 

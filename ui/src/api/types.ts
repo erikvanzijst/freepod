@@ -30,23 +30,36 @@ export interface Subdomain {
   domain: string | null
 }
 
-/** Whether a product is offered to end users ('public') or hidden ('admin'). */
-export type ProductVisibility = 'public' | 'admin'
+/** Whether a product is offered to end users ('public'), offered through the API and CLI but kept out of the storefront ('unlisted'), or hidden ('admin'). */
+export type ProductVisibility = 'public' | 'unlisted' | 'admin'
 
 export interface Product {
   id: number
   name: string
+  /** One-sentence blurb for the storefront. */
+  tagline?: string | null
+  /** The long description, as Markdown. */
   description?: string | null
   template_id?: number | null
   icon_url?: string | null
   category?: string | null
   replaces?: string | null
   visibility: ProductVisibility
-  /** Catalog key joining this product to `products/catalog/<slug>.yaml`; null for database-authored products. */
+  /** Catalog key joining this product to `products/catalog/<slug>/<slug>.yaml`; null for database-authored products. */
   slug?: string | null
   /** Whether the catalog owns this product. Written only by the reconciler; everything but `visibility` is read-only when true. */
   curated: boolean
   created_at: IsoDate
+}
+
+/** A product nested inside another resource, such as a template or a deployment's template. */
+export interface ProductSummary {
+  id: number
+  name: string
+  slug?: string | null
+  icon_url?: string | null
+  tagline?: string | null
+  template_id?: number | null
 }
 
 export interface ProductTemplate {
@@ -57,8 +70,58 @@ export interface ProductTemplate {
   chart_digest?: string | null
   system_values_json?: Record<string, unknown> | null
   values_schema_json?: Record<string, unknown> | null
+  /** The upstream version this template deploys, when the catalog knows it. */
+  version?: string | null
   created_at: IsoDate
-  product: Product
+  product: ProductSummary
+}
+
+export interface ListingFeature {
+  title: string
+  body: string
+  /** A key into the UI's feature icon set; unknown keys render a generic icon. */
+  icon: string
+}
+
+export type ListingLinkKind = 'website' | 'docs' | 'source' | 'releases' | 'ios' | 'android'
+
+export interface ListingLink {
+  label: string
+  href: string
+  kind: ListingLinkKind
+}
+
+export interface ScreenshotCredit {
+  text: string
+  href?: string | null
+}
+
+export interface ListingScreenshot {
+  /** A small rendition for in-page display. */
+  thumbnail_url: string
+  /** The full-size rendition, for the viewer only. */
+  url: string
+  caption: string
+  form: 'desktop' | 'mobile'
+  credit?: ScreenshotCredit | null
+}
+
+/** `GET /products/{id}/listing`: the store listing, kept out of product reads. */
+export interface ProductListing {
+  product_id: number
+  license?: string | null
+  features: ListingFeature[]
+  links: ListingLink[]
+  screenshots: ListingScreenshot[]
+  version?: string | null
+  version_available_at?: IsoDate | null
+}
+
+export interface ProductRelease {
+  version: string
+  /** Markdown. */
+  notes: string
+  available_at?: IsoDate | null
 }
 
 export interface HostnameCheckResult {

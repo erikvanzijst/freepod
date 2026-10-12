@@ -116,12 +116,12 @@ class Clone:
             raise ResultError(f"change.patch does not apply to master: {detail}")
         if self.run("rev-parse", "HEAD") == base:
             raise ResultError("change.patch holds no commits")
-        allowed = (f"products/catalog/{p.slug}.yaml", f"products/{p.slug}/")
+        allowed = (f"products/catalog/{p.slug}/", f"products/{p.slug}/")
         raw = self.run("diff", "--raw", "--no-renames", "-z", base, "HEAD")
         fields = raw.split("\0")
         for meta, path in zip(fields[0::2], fields[1::2]):
             modes = meta.lstrip(":").split()[:2]
-            if path != allowed[0] and not path.startswith(allowed[1]):
+            if not path.startswith(allowed):
                 raise ResultError(
                     f"change.patch changes {path}, outside {allowed[0]} and {allowed[1]}")
             for mode in modes:

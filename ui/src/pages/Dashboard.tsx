@@ -17,27 +17,24 @@ import { useAuth } from '../state/AuthContext'
 import { isTransitionalStatus } from '../utils/deploymentStatus'
 import { ProductList } from '../components/ProductList'
 import { DeployDialog } from '../components/DeployDialog'
+import { InstallFlow } from '../components/InstallFlow'
 import { ConfirmDeleteDialog } from '../components/ConfirmDeleteDialog'
 import { DeploymentCard } from '../components/DeploymentCard'
 import { PageHeading } from '../components/PageHeading'
 import { ClaimSubdomain } from '../components/subdomain/ClaimSubdomain'
 import { ClaimSubdomainBanner } from '../components/subdomain/ClaimSubdomainBanner'
-import { ClaimSubdomainDialog } from '../components/subdomain/ClaimSubdomainDialog'
 import { useMySubdomain } from '../components/subdomain/useMySubdomain'
 
 function Dashboard() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const [deletePendingIds, setDeletePendingIds] = useState<Set<string>>(new Set())
-  const [deployProduct, setDeployProduct] = useState<Product | null>(null)
+  const [installProduct, setInstallProduct] = useState<Product | null>(null)
   const [editDeployment, setEditDeployment] = useState<Deployment | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Deployment | null>(null)
-  const [claimOpen, setClaimOpen] = useState(false)
   // Session state only: dismissing is not an answer, so it is not recorded
   // anywhere and the invitation returns on reload.
   const [invitationDismissed, setInvitationDismissed] = useState(false)
-  // The deploy the claim interrupted, resumed once a domain name is held.
-  const [pendingDeploy, setPendingDeploy] = useState<Product | null>(null)
 
   const subdomainQuery = useMySubdomain()
   const holdsSubdomain = Boolean(subdomainQuery.data?.subdomain)
@@ -95,33 +92,6 @@ function Dashboard() {
       return changed ? next : previous
     })
   }, [deploymentsQuery.data])
-
-  const openDeploy = (product: Product) => {
-    // The claim gates opening the deploy dialog rather than sitting inside it,
-    // so no half-filled form is ever thrown away to ask for a domain name.
-    if (!holdsSubdomain) {
-      setPendingDeploy(product)
-      setClaimOpen(true)
-      return
-    }
-    setDeployProduct(product)
-  }
-
-  const claimDialog = platformDomain && user ? (
-    <ClaimSubdomainDialog
-      open={claimOpen}
-      domain={platformDomain}
-      email={user.email}
-      onClose={() => {
-        setClaimOpen(false)
-        setPendingDeploy(null)
-      }}
-      onClaimed={() => {
-        if (pendingDeploy) setDeployProduct(pendingDeploy)
-        setPendingDeploy(null)
-      }}
-    />
-  ) : null
 
   const claimPending =
     !subdomainQuery.isLoading && !holdsSubdomain && Boolean(platformDomain) && Boolean(user)
@@ -194,20 +164,12 @@ function Dashboard() {
           selectedProductId={null}
           onSelectProduct={(id) => {
             const product = deployableProducts.find((p) => p.id === id)
-            if (product) openDeploy(product)
+            if (product) setInstallProduct(product)
           }}
         />
       </Box>
 
-      {claimDialog}
-
-      {deployProduct && user && (
-        <DeployDialog
-          product={deployProduct}
-          userId={user.id}
-          onClose={() => setDeployProduct(null)}
-        />
-      )}
+      {installProduct && <InstallFlow product={installProduct} onClose={() => setInstallProduct(null)} />}
 
       {editDeployment && user && editDeployment.desired_template?.product && (
         <DeployDialog

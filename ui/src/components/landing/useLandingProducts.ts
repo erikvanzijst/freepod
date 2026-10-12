@@ -1,26 +1,27 @@
 import { useQuery } from '@tanstack/react-query'
 import { listProducts } from '../../api/endpoints'
 
-/** Demo/internal products that should never appear on the public landing page. */
-export const EXCLUDED_PRODUCTS = new Set(['hello world', 'naas'])
-
 export interface ProductSummary {
   id: number
   name: string
+  slug?: string | null
+  tagline?: string | null
   description?: string | null
   iconUrl?: string | null
   category?: string | null
   replaces?: string | null
 }
 
-/** Fetch the public-facing products (excluding demos), preserving API order. */
+/** Fetch the storefront's products (`public` only), preserving API order. */
 export async function loadVisibleProducts(): Promise<ProductSummary[]> {
   const products = await listProducts()
   return products
-    .filter((product) => !EXCLUDED_PRODUCTS.has(product.name.trim().toLowerCase()))
+    .filter((product) => product.visibility === 'public')
     .map((product) => ({
       id: product.id,
       name: product.name,
+      slug: product.slug,
+      tagline: product.tagline,
       description: product.description,
       iconUrl: product.icon_url,
       category: product.category,

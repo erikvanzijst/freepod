@@ -1,0 +1,144 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: photoprism
+  name: PhotoPrism
+  tagline: A photo library that tags, sorts and finds your pictures for you.
+  description: |-
+    PhotoPrism brings order to large photo collections without asking you to sort anything. It recognizes what’s in each picture, groups faces, reads the location, and turns all of it into labels you can browse and search.
+
+    On Freepod, PhotoPrism runs as your own private instance, hosted in the EU. The recognition happens on that instance, so your photos never pass through an advertising platform.
+
+    Open it in any browser, or add it to your phone’s home screen as an app. Share albums with a link, and download your originals whenever you like.
+  category: Photos
+  replaces: Google Photos · iCloud Photos
+  icon: icon.png
+  license: AGPL-3.0
+  features:
+  - icon: label
+    title: Automatic labels
+    body: Pictures are tagged by what’s in them, so “mountain” or “cat” finds them.
+  - icon: faces
+    title: Faces
+    body: Recognizes people across your library and groups their photos.
+  - icon: map
+    title: Places
+    body: Browse your photos on a world map, by country and city.
+  - icon: search
+    title: Powerful search
+    body: Combine label, place, date, color and camera in one search.
+  - icon: original
+    title: RAW & Live Photos
+    body: Originals are kept as-is, including RAW files, Live Photos and video.
+  - icon: share
+    title: Sharing
+    body: Share an album with anyone by link, no account needed.
+  links:
+  - label: Website
+    href: https://www.photoprism.app
+    kind: website
+  - label: Documentation
+    href: https://docs.photoprism.app
+    kind: docs
+  - label: Source code
+    href: https://github.com/photoprism/photoprism
+    kind: source
+  - label: Release notes
+    href: https://docs.photoprism.app/release-notes/
+    kind: releases
+  screenshots:
+  - file: screenshots/library.webp
+    caption: Every photo with its date, camera and place
+    form: desktop
+    credit:
+      text: Sample photos from Unsplash
+      href: https://unsplash.com/license
+  - file: screenshots/places.webp
+    caption: Your photos on a map, grouped by place
+    form: desktop
+    credit:
+      text: Sample photos from Unsplash · Map © MapTiler © OpenStreetMap contributors
+      href: https://www.openstreetmap.org/copyright
+  - file: screenshots/mobile-library.webp
+    caption: Browse your library from any phone
+    form: mobile
+    credit:
+      text: Sample photos from Unsplash
+      href: https://unsplash.com/license
+  - file: screenshots/labels.webp
+    caption: Labels it recognizes for you
+    form: desktop
+    credit:
+      text: Sample photos from Unsplash
+      href: https://unsplash.com/license
+  - file: screenshots/albums.webp
+    caption: Albums for trips and occasions
+    form: desktop
+    credit:
+      text: Sample photos from Unsplash
+      href: https://unsplash.com/license
+  - file: screenshots/mobile-albums.webp
+    caption: Albums, on mobile too
+    form: mobile
+    credit:
+      text: Sample photos from Unsplash
+      href: https://unsplash.com/license
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/photoprism/photoprism
+  # Upstream versions are release dates (YYMMDD). The suffixed tags (-ce,
+  # -legacy, -postgres, -arm64) are aliases or unmaintained variants and are
+  # deliberately excluded.
+  match: ^(?P<version>\d{6})$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/photoprism
+  chart_version: 0.1.5
+  system_values:
+    image:
+      # Keep this quoted: unquoted it parses as an integer and the chart's
+      # values schema rejects it.
+      tag: "261007"
+    admin:
+      username: admin
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      host:
+        type: string
+        title: Hostname
+        minLength: 1
+        maxLength: 253
+        description: The fully qualified domain name for your library (e.g. photos.user.freepod.eu).
+      admin:
+        type: object
+        additionalProperties: false
+        properties:
+          username:
+            type: string
+            title: Username
+            minLength: 2
+            maxLength: 64
+            default: admin
+            description: The name you will sign in with. This account owns the library and can invite
+              others later from PhotoPrism's own settings. It cannot be
+              changed afterwards.
+        required:
+        - username
+      PHOTOPRISM_ADMIN_PASSWORD:
+        type: string
+        title: Password
+        minLength: 8
+        maxLength: 72
+        pattern: ^[^\u0000-\u001f\u007f]+$
+        x-caelus-target: runtime
+        x-caelus-sensitive: true
+        description: 'The password for your account. Store it somewhere safe: 
+          it won''t be shown again. To change it later, use PhotoPrism''s own settings page.'
+    required:
+    - host
+    - admin
+    - PHOTOPRISM_ADMIN_PASSWORD

@@ -240,7 +240,7 @@ is published. To publish by hand, from the repository root:
 
 Curated: the chart reference, the pinned Mattermost version, the operator-wide
 values (SMTP) and the tenant-facing values schema are all declared in
-[`products/catalog/mattermost.yaml`](../catalog/mattermost.yaml). The UI renders
+[`products/catalog/mattermost/mattermost.yaml`](../catalog/mattermost/mattermost.yaml). The UI renders
 `host` with its `HostnameField` component because that property's `title` is
 `hostname`. Format:
 [product-catalog-format](../../openspec/specs/product-catalog-format/spec.md).
@@ -251,7 +251,7 @@ the system values, then passes the result to `helm upgrade --install`.
 ## Upstream references
 
 What a version upgrade has to review beyond the tag in
-[`products/catalog/mattermost.yaml`](../catalog/mattermost.yaml), whose
+[`products/catalog/mattermost/mattermost.yaml`](../catalog/mattermost/mattermost.yaml), whose
 `upstream` block detects new releases on the Team Edition image.
 
 - **Release notes:** the changelogs in Mattermost's documentation, one page per

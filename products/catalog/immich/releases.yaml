@@ -1,0 +1,34 @@
+- version: "3.3.1"
+  notes: |-
+    People sharing got clearer and more reliable, and memories behave better on phones.
+
+    - You can now see at a glance which people are shared
+    - Memories stay full screen while you swipe through them on mobile
+    - Partner-shared photos now show up under people, even when hidden from your timeline
+    - The memories page shows the date again
+    - Scrolling the photo grid on mobile is smoother
+- version: "3.3.0"
+  notes: |-
+    You can now share people with other users, and Immich remembers birthdays.
+
+    - Share a person with someone you trust so you both see the same names and faces
+    - Birthday memories show up on the right day
+    - Edits you make on your phone are stacked with the original automatically
+    - Sharper thumbnails and previews
+    - Better text recognition in your photos
+- version: "3.2.4"
+  notes: |-
+    A small fix-up release that stops a slow memory leak.
+
+    - Fixes a memory leak that could slow your instance down over time
+    - The mobile sync status page no longer goes blank
+- version: "3.2.2"
+  notes: |-
+    A big feature release with a redesigned search, a memories page, and face recognition you can share with people you trust.
+
+    - A cleaner search window on the web, with more filters close at hand
+    - A new memories page to look back on past memories and keep your favorites
+    - Recognize the people you know in photos others share with you, by joining a group with users you trust. Joining resets face recognition, so names and birthdays need to be set again
+    - Rename tags, and tag photos automatically with workflows
+    - Open every photo in the part of the map you're looking at
+    - Many fixes in the mobile app, including less battery drain while your server is unreachable

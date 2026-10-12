@@ -2,7 +2,7 @@ import { Dialog, DialogContent } from '@mui/material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 import { createDeployment, updateDeployment, listTemplates, listPlans, getDeployment, getTosAcceptance, recordTosAcceptance } from '../api/endpoints'
-import type { Deployment, Plan, Product, ProductTemplate } from '../api/types'
+import type { Deployment, Plan, ProductSummary, ProductTemplate } from '../api/types'
 import { validateUserValues } from './UserValuesForm'
 import type { VarSubmission } from './UserValuesForm'
 import { DeployDialogContent } from './DeployDialogContent'
@@ -14,13 +14,17 @@ import { LEGAL_DOCS } from '../content/legal'
 const TOS_VERSION = LEGAL_DOCS.terms.version
 
 interface DeployDialogProps {
-  product: Product
+  product: ProductSummary
   userId: number
   onClose: () => void
   deployment?: Deployment
+  /** A plan to preselect, e.g. the one chosen on the app's public page. */
+  initialPlanId?: number
+  /** Called instead of `onClose` once a new deployment launches. */
+  onLaunched?: () => void
 }
 
-export function DeployDialog({ product, userId, onClose, deployment }: DeployDialogProps) {
+export function DeployDialog({ product, userId, onClose, deployment, initialPlanId, onLaunched }: DeployDialogProps) {
   const queryClient = useQueryClient()
   const [userValues, setUserValues] = useState<Record<string, unknown> | null>(null)
   const [vars, setVars] = useState<Record<string, VarSubmission>>({})
@@ -83,13 +87,15 @@ export function DeployDialog({ product, userId, onClose, deployment }: DeployDia
     return (plansQuery.data ?? []).filter((p) => p.template_id != null)
   }, [isEditMode, deployment, plansQuery.data])
 
-  // Auto-select if there's only one plan
+  // The user's choice wins, then a requested plan, then the only plan there is.
   const effectivePlanTemplateId = useMemo(() => {
     if (isEditMode) return null
     if (selectedPlanTemplateId) return selectedPlanTemplateId
+    const requested = plans.find((p) => p.id === initialPlanId)
+    if (requested?.template_id) return requested.template_id
     if (plans.length === 1 && plans[0].template_id) return plans[0].template_id
     return null
-  }, [isEditMode, selectedPlanTemplateId, plans])
+  }, [isEditMode, selectedPlanTemplateId, plans, initialPlanId])
 
   const createMutation = useMutation({
     mutationFn: async (payload: {
@@ -117,6 +123,8 @@ export function DeployDialog({ product, userId, onClose, deployment }: DeployDia
       queryClient.invalidateQueries({ queryKey: ['deployments'] })
       if (data.checkout_url) {
         window.location.href = data.checkout_url
+      } else if (onLaunched) {
+        onLaunched()
       } else {
         onClose()
       }

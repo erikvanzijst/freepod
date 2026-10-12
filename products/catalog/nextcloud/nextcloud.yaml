@@ -1,0 +1,130 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: nextcloud
+  name: Nextcloud
+  tagline: Your files on every device, in a cloud you own.
+  description: |-
+    Nextcloud keeps your documents, photos and other files in sync across your computer and phone, just like Google Drive or Dropbox. Work on a file on your laptop and it’s already on your phone when you need it.
+
+    On Freepod, Nextcloud runs as your own private instance, hosted in the EU. Your files aren’t scanned to build an advertising profile of you.
+
+    Share a folder with family or colleagues, or send a link with a password and an expiry date. If you delete or overwrite something by mistake, earlier versions and the trash bin have you covered.
+  category: Files & documents
+  replaces: Google Drive · Dropbox
+  icon: icon.png
+  license: AGPL-3.0
+  features:
+  - icon: sync
+    title: Sync everywhere
+    body: Desktop apps for Windows, macOS and Linux keep a folder in sync.
+  - icon: mobile
+    title: Phone apps
+    body: Browse your files on iOS and Android, and upload new photos automatically.
+  - icon: share
+    title: Sharing
+    body: Share with other users, or by link with a password and expiry date.
+  - icon: history
+    title: Versions & trash
+    body: Go back to an earlier version of a file, or restore one you deleted.
+  - icon: photos
+    title: Photos
+    body: A timeline of the pictures and videos in your files.
+  - icon: calendar
+    title: Calendar & contacts sync
+    body: Keep calendars and your address book in sync across your phone and computer.
+  links:
+  - label: Website
+    href: https://nextcloud.com
+    kind: website
+  - label: Documentation
+    href: https://docs.nextcloud.com
+    kind: docs
+  - label: Source code
+    href: https://github.com/nextcloud/server
+    kind: source
+  - label: Release notes
+    href: https://nextcloud.com/changelog/
+    kind: releases
+  - label: App Store
+    href: https://apps.apple.com/app/nextcloud/id1125420102
+    kind: ios
+  - label: Google Play
+    href: https://play.google.com/store/apps/details?id=com.nextcloud.client
+    kind: android
+  screenshots:
+  - file: screenshots/files.webp
+    caption: All your files, in folders you choose
+    form: desktop
+  - file: screenshots/sharing.webp
+    caption: Share folders with family or colleagues
+    form: desktop
+  - file: screenshots/files-grid.webp
+    caption: Previews for your photos and documents
+    form: desktop
+    credit:
+      text: Sample photos from Unsplash
+      href: https://unsplash.com/license
+  - file: screenshots/photos.webp
+    caption: All your photos and videos on one timeline
+    form: desktop
+    credit:
+      text: Nextcloud GmbH and contributors · CC BY-SA 4.0
+      href: https://github.com/nextcloud/photos/tree/master/screenshots
+  - file: screenshots/calendar.webp
+    caption: Your calendar, in sync with your phone
+    form: desktop
+    credit:
+      text: Nextcloud Calendar contributors · AGPL-3.0
+      href: https://github.com/nextcloud/calendar/tree/main/screenshots
+  - file: screenshots/contacts.webp
+    caption: Your address book, everywhere
+    form: desktop
+    credit:
+      text: Nextcloud GmbH and contributors · CC BY-SA 4.0
+      href: https://github.com/nextcloud/screenshots
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/library/nextcloud
+  match: ^(?P<version>\d+\.\d+\.\d+)-apache$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/nextcloud
+  chart_version: 0.2.8
+  system_values:
+    image:
+      tag: 35.0.1-apache
+    smtp:
+      host: smtp.mailer.svc.cluster.local
+      port: 25
+      fromAddress: nextcloud
+      domain: freepod.eu
+    admin:
+      username: admin
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    properties:
+      host:
+        title: Hostname
+        type: string
+        minLength: 1
+        description: The hostname for your Nextcloud instance
+      NEXTCLOUD_ADMIN_PASSWORD:
+        type: string
+        title: Admin password
+        minLength: 10
+        maxLength: 72
+        # The image passes it to `occ maintenance:install --admin-pass`, which
+        # reads a leading hyphen as an option and fails the first install.
+        pattern: ^[^\u0000-\u001f\u007f\-][^\u0000-\u001f\u007f]*$
+        x-caelus-target: runtime
+        x-caelus-sensitive: true
+        description: 'The password for the account named admin, which owns your Nextcloud and
+          can invite others. It is set on first start only; to change it
+          later, use Nextcloud''s own settings (Personal settings → Security).'
+    required:
+    - host
+    - NEXTCLOUD_ADMIN_PASSWORD
+    additionalProperties: false

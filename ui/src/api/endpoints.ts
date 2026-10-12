@@ -1,5 +1,5 @@
 import { requestBlob, requestJson, requestMultipart } from './client'
-import type { Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Subdomain, TosAcceptance, UsageQuery, UsageReport, User, VarWrite } from './types'
+import type { Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductListing, ProductRelease, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Subdomain, TosAcceptance, UsageQuery, UsageReport, User, VarWrite } from './types'
 
 export function getMe() {
   return requestJson<User>('/me')
@@ -46,7 +46,9 @@ export function listProducts() {
 export function createProduct(
   payload: {
     name: string
+    tagline?: string | null
     description?: string | null
+    license?: string | null
     category?: string | null
     replaces?: string | null
     visibility?: ProductVisibility
@@ -62,6 +64,16 @@ export function createProduct(
   })
 }
 
+/** The store listing behind a product's public app page. Readable anonymously. */
+export function getProductListing(productId: number) {
+  return requestJson<ProductListing>(`/products/${productId}/listing`)
+}
+
+/** A product's release notes, newest first. Readable anonymously. */
+export function listReleases(productId: number) {
+  return requestJson<ProductRelease[]>(`/products/${productId}/releases`)
+}
+
 export function deleteProduct(productId: number) {
   return requestJson<null>(`/products/${productId}`, { method: 'DELETE' })
 }
@@ -70,7 +82,9 @@ export function updateProduct(
   productId: number,
   payload: {
     name?: string
+    tagline?: string | null
     description?: string | null
+    license?: string | null
     template_id?: number
     category?: string | null
     replaces?: string | null

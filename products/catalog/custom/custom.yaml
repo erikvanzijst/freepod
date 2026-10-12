@@ -1,0 +1,69 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: custom
+  name: Custom user app
+  description: External developer app harness
+  icon: icon.png
+upstream:
+  source:
+    type: github-release
+    repo: OWNER/REPO
+  match: ^v(?P<version>.+)$
+  version_path: template.system_values.placeholderImage
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/custom
+  chart_version: 0.13.0
+  system_values:
+    placeholderImage: ghcr.io/erikvanzijst/freepod/custom-placeholder:0.2.0
+    nodePool: tenant
+    objectStorage:
+      enabled: true
+    relationalStorage:
+      enabled: true
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    # `custom` runs tenant-supplied code and cannot enumerate that code's
+    # environment in advance, so its vars projection accepts undeclared keys
+    # while its chart values stay closed. This is the one product the marker
+    # exists for (design.md D1).
+    x-caelus-vars-additional: true
+    properties:
+      hostname:
+        type: string
+        title: hostname
+        minLength: 1
+        maxLength: 253
+        description: The fully qualified hostname for the app.
+      image:
+        type: string
+        description: User-built image as "{user_id}@{digest}" (a digest reference with the registry host
+          stripped), or empty to serve placeholderImage.
+        pattern: ^$|^[0-9]+@sha256:[a-f0-9]{64}$
+      auth:
+        type: object
+        title: Sign in with Freepod
+        description: When enabled, visitors sign in with their Freepod account and the app receives
+          X-Freepod-User, X-Freepod-Email and X-Freepod-Name. `public` lists RE2 path patterns served
+          without signing in.
+        properties:
+          enabled:
+            type: boolean
+            title: Sign in with Freepod
+            description: Visitors sign in with their Freepod account before reaching the app, which then
+              receives their identity in the X-Freepod-User, X-Freepod-Email and X-Freepod-Name headers.
+          public:
+            type: array
+            title: Public paths
+            description: Paths served without signing in, as RE2 regular expressions matched against the
+              path only, e.g. ^/$ for the landing page. Signed-in visitors still carry their identity there.
+            maxItems: 32
+            items:
+              type: string
+              minLength: 1
+              maxLength: 256
+        additionalProperties: false
+    required:
+    - hostname
+    additionalProperties: false

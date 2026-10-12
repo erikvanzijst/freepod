@@ -1,4 +1,11 @@
-## ADDED Requirements
+# deploy-dialog-shared Specification
+
+## Purpose
+
+Defines the shared `DeployDialogContent` component that renders the deploy
+form for both the Dashboard's deploy dialog and the admin template preview.
+
+## Requirements
 
 ### Requirement: Shared deploy dialog content component
 The system SHALL provide a `DeployDialogContent` component that renders the deploy form UI (product header with icon and description, `UserValuesForm`, and action buttons) and accepts all data as props without performing any data fetching or mutations internally.
@@ -29,8 +36,17 @@ The refactored `DeployDialog` on the Dashboard SHALL maintain identical behavior
 - **WHEN** a user clicks a product on the Dashboard and fills out the deploy form
 - **THEN** the deploy flow SHALL work identically to before the refactor
 
-## Requirements from edit-deployment-config
-
 ### Requirement: DeployDialogContent accepts initialHostname and configurable button text
-- The `DeployDialogContent` component MUST accept an optional `initialHostname` prop that is threaded through `UserValuesForm` to `HostnameField`
-- The `DeployDialogContent` component MUST accept an optional `submitLabel` prop (default: `"Launch"`) to configure the submit button text
+The `DeployDialogContent` component MUST accept an optional `initialHostname` prop that is threaded through `UserValuesForm` to `HostnameField`, and an optional `submitLabel` prop (default: `"Launch"`) to configure the submit button text.
+
+#### Scenario: Initial hostname is prefilled
+- **WHEN** `DeployDialogContent` is rendered with an `initialHostname`
+- **THEN** the hostname field starts with that value
+
+#### Scenario: Submit label defaults to Launch
+- **WHEN** `DeployDialogContent` is rendered without a `submitLabel`
+- **THEN** the submit button reads "Launch"
+
+#### Scenario: Custom submit label
+- **WHEN** `DeployDialogContent` is rendered with `submitLabel` "Save"
+- **THEN** the submit button reads "Save"

@@ -4,9 +4,9 @@ import { usePluginData } from '@docusaurus/useGlobalData'
 interface Product {
   slug: string
   name: string
-  description: string
+  tagline: string | null
   category: string | null
-  icon: string
+  icon: string | null
 }
 
 /** Icon, category and summary for a catalog product, read from products/catalog. */
@@ -17,10 +17,10 @@ export default function ProductHeader({ slug }: { slug: string }) {
   if (!product) throw new Error(`unknown catalog product: ${slug}`)
   return (
     <div className="product-header">
-      <img src={icon} alt="" width={48} height={48} />
+      {product.icon && <img src={icon} alt="" width={48} height={48} />}
       <div>
         <div className="product-header__category">{product.category}</div>
-        <div>{product.description}</div>
+        {product.tagline && <div>{product.tagline}</div>}
       </div>
     </div>
   )

@@ -1,0 +1,17 @@
+- version: "1.37.4"
+  notes: |-
+    A security release that fixes several vulnerabilities, including one that let removed organization members keep seeing shared items.
+
+    - Removed organization members lose access to the organization's items, as they should
+    - Fixes for two-step login, organization invitations, attachments and sharing
+    - Organization admins can no longer view the organization's API key. If you have admins you don't fully trust, rotate the key
+    - `bw send receive` in Bitwarden CLI 2026.4.2 or older no longer works; update the CLI to receive Sends
+- version: "1.37.3"
+  notes: |-
+    Keeps up with the newest Bitwarden apps and tightens security.
+
+    - Works with Bitwarden apps version 2026.8.0 and newer
+    - Changing your password works again from the newest web vault
+    - Remembered devices for two-step login are forgotten when your password or two-step settings change
+    - Sign-in attempts are rate limited more strictly
+    - Importing an organization no longer fails on missing groups

@@ -1,9 +1,9 @@
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Optional, Any
+from typing import Any, Literal, Optional
 from uuid import UUID, uuid4
 
-from pydantic import ConfigDict, computed_field, field_validator, model_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field as PydanticField, computed_field, field_validator, model_serializer, model_validator
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import (
     BigInteger,
@@ -158,14 +158,82 @@ class ProductVisibility(StrEnum):
     Runtime state, deliberately independent of curation: a catalog-managed
     product may be hidden, and a database-authored one may be public. New
     products start ADMIN so onboarding is never visible before it is ready.
+    UNLISTED is PUBLIC to the API; only the storefront leaves it out.
     """
 
     PUBLIC = "public"
+    UNLISTED = "unlisted"
     ADMIN = "admin"
+
+
+# ---------------------------------------------------------------------------
+# Store-listing content (product-listing-metadata)
+# ---------------------------------------------------------------------------
+
+
+LISTING_LINK_KINDS = ("website", "docs", "source", "releases", "ios", "android")
+ListingLinkKind = Literal["website", "docs", "source", "releases", "ios", "android"]
+ScreenshotForm = Literal["desktop", "mobile"]
+
+
+def _require_https(url: str, what: str) -> str:
+    if not url.startswith("https://") or len(url) <= len("https://"):
+        raise ValueError(f"{what} '{url}' must be an absolute https:// URL")
+    return url
+
+
+class ListingModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ListingFeature(ListingModel):
+    title: str = PydanticField(min_length=1)
+    body: str = PydanticField(min_length=1)
+    # A key into the UI's icon set; an unknown key renders a generic icon.
+    icon: str = PydanticField(min_length=1)
+
+
+class ListingLink(ListingModel):
+    label: str = PydanticField(min_length=1)
+    href: str
+    kind: ListingLinkKind
+
+    @field_validator("href")
+    @classmethod
+    def _https(cls, v: str) -> str:
+        return _require_https(v, "link href")
+
+
+class ScreenshotCredit(ListingModel):
+    text: str = PydanticField(min_length=1)
+    href: str | None = None
+
+    @field_validator("href")
+    @classmethod
+    def _https(cls, v: str | None) -> str | None:
+        return v if v is None else _require_https(v, "credit href")
+
+
+class StoredScreenshot(ListingModel):
+    """A materialized screenshot as stored on the product row."""
+
+    # Static-storage path of the full-size rendition; the thumbnail sits next
+    # to it (see `screenshot_thumbnail_path`).
+    path: str
+    caption: str = PydanticField(min_length=1)
+    form: ScreenshotForm
+    credit: ScreenshotCredit | None = None
+
+
+def screenshot_thumbnail_path(path: str) -> str:
+    stem, dot, ext = path.rpartition(".")
+    return f"{stem}-thumb{dot}{ext}" if dot else f"{path}-thumb"
 
 
 class ProductBase(SQLModel):
     name: str
+    tagline: str | None = None
+    # The long description, as Markdown.
     description: str | None = None
     template_id: Optional[int] = None
     category: str | None = None
@@ -192,8 +260,8 @@ class ProductORM(ProductBase, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field()
-    # The stable key joining this row to its `products/catalog/<slug>.yaml`
-    # file, deliberately independent of `name` so renaming a product does not
+    # The stable key joining this row to its `products/catalog/<slug>/` folder,
+    # deliberately independent of `name` so renaming a product does not
     # orphan its catalog entry. Null for database-authored products.
     slug: Optional[str] = Field(default=None, nullable=True)
     # Whether the catalog owns this product. Written *only* by the
@@ -209,6 +277,21 @@ class ProductORM(ProductBase, table=True):
     )
     # Relative path to product icon under STATIC_PATH (e.g., "icons/<sha1>.png")
     rel_icon_path: Optional[str] = Field(default=None, nullable=True)
+    license: Optional[str] = Field(default=None, sa_column=Column(Text(), nullable=True))
+    # Listing lists, always read and written whole, so JSON rather than tables.
+    features: list[dict[str, Any]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False, server_default=text("'[]'")),
+    )
+    links: list[dict[str, Any]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False, server_default=text("'[]'")),
+    )
+    # Written only by the catalog reconciler; see StoredScreenshot.
+    screenshots: list[dict[str, Any]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False, server_default=text("'[]'")),
+    )
     visibility: ProductVisibility = Field(
         default=ProductVisibility.ADMIN,
         sa_column=Column(
@@ -234,9 +317,12 @@ class ProductORM(ProductBase, table=True):
 
 
 class ProductCreate(ProductBase):
-    # `slug` and `curated` are reconciler-owned, so an attempt to set them out
-    # of band is rejected rather than silently ignored.
+    # `slug`, `curated` and `screenshots` are reconciler-owned, so an attempt to
+    # set them out of band is rejected rather than silently ignored.
     model_config = ConfigDict(extra="forbid")
+    license: str | None = None
+    features: list[ListingFeature] = PydanticField(default_factory=list)
+    links: list[ListingLink] = PydanticField(default_factory=list)
 
 
 class ProductUpdate(SQLModel):
@@ -248,6 +334,10 @@ class ProductUpdate(SQLModel):
     category: str | None = None
     replaces: str | None = None
     visibility: ProductVisibility | None = None
+    tagline: str | None = None
+    license: str | None = None
+    features: list[ListingFeature] | None = None
+    links: list[ListingLink] | None = None
 
 
 class ProductReadBase(ProductBase):
@@ -263,22 +353,43 @@ class ProductReadBase(ProductBase):
     @model_validator(mode="before")
     @classmethod
     def _compute_icon_url(cls, data: Any) -> Any:
-        """Derive icon_url from rel_icon_path when serializing from ORM."""
-        from app.config import get_static_url_base
+        return _with_icon_url(cls, data)
 
+
+def _with_icon_url(cls: type[SQLModel], data: Any) -> Any:
+    """Derive icon_url from rel_icon_path when serializing from ORM."""
+    from app.config import get_static_url_base
+
+    if isinstance(data, dict):
+        rel = data.get("rel_icon_path")
+    else:
+        rel = getattr(data, "rel_icon_path", None)
+    if rel:
         if isinstance(data, dict):
-            rel = data.get("rel_icon_path")
+            data.setdefault("icon_url", f"{get_static_url_base()}/{rel}")
         else:
-            rel = getattr(data, "rel_icon_path", None)
-        if rel:
-            if isinstance(data, dict):
-                data.setdefault("icon_url", f"{get_static_url_base()}/{rel}")
-            else:
-                # For ORM objects, we need to return a dict so we can inject icon_url
-                d = {k: getattr(data, k) for k in cls.model_fields if hasattr(data, k)}
-                d["icon_url"] = f"{get_static_url_base()}/{rel}"
-                return d
-        return data
+            # For ORM objects, we need to return a dict so we can inject icon_url
+            d = {k: getattr(data, k) for k in cls.model_fields if hasattr(data, k)}
+            d["icon_url"] = f"{get_static_url_base()}/{rel}"
+            return d
+    return data
+
+
+class ProductSummary(SQLModel):
+    """A product nested inside another resource: just enough to name and show it."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    slug: Optional[str] = None
+    icon_url: Optional[str] = None
+    tagline: Optional[str] = None
+    template_id: Optional[int] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _compute_icon_url(cls, data: Any) -> Any:
+        return _with_icon_url(cls, data)
 
 
 class ProductRead(ProductReadBase):
@@ -296,6 +407,10 @@ class ProductTemplateVersionBase(SQLModel):
 
 class ProductTemplateVersionORM(ProductTemplateVersionBase, table=True):
     __tablename__ = "product_template_version"
+    __table_args__ = (
+        # Serves the per-version `min(created_at)` behind availability dates.
+        Index("ix_product_template_version_product_version", "product_id", "version"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     chart_ref: str
@@ -314,6 +429,9 @@ class ProductTemplateVersionORM(ProductTemplateVersionBase, table=True):
     # and read schemas, never read by application logic, and never part of
     # template matching (a null value simply means "not catalog-produced").
     catalog_commit: Optional[str] = Field(default=None, sa_column=Column(Text(), nullable=True))
+    # The upstream version this row deploys, stamped by the catalog reconciler
+    # from the document's `upstream` block. Metadata, never part of matching.
+    version: Optional[str] = Field(default=None, sa_column=Column(Text(), nullable=True))
     product: ProductORM = Relationship(
         back_populates="templates",
         sa_relationship_kwargs={"foreign_keys": "ProductTemplateVersionORM.product_id", "lazy": "joined"},
@@ -329,6 +447,51 @@ class ProductTemplateVersionORM(ProductTemplateVersionBase, table=True):
     deleted_at: Optional[datetime] = Field(default=None)
 
 
+class ProductReleaseORM(SQLModel, table=True):
+    """User-facing release notes for one product version, synced by the catalog
+    reconciler from the product's `releases.yaml`."""
+
+    __tablename__ = "product_release"
+    __table_args__ = (
+        UniqueConstraint("product_id", "version", name="uq_product_release_product_version"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    product_id: int = Field(sa_column=Column(Integer, ForeignKey("product.id"), nullable=False))
+    version: str = Field(sa_column=Column(Text(), nullable=False))
+    notes: str = Field(sa_column=Column(Text(), nullable=False))
+    # Order in the releases file, 0 being the newest.
+    position: int = Field(sa_column=Column(Integer, nullable=False))
+    created_at: datetime = Field(default_factory=_utcnow, nullable=False)
+    updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
+
+
+class ScreenshotRead(SQLModel):
+    thumbnail_url: str
+    url: str
+    caption: str
+    form: ScreenshotForm
+    credit: Optional[ScreenshotCredit] = None
+
+
+class ProductListingRead(SQLModel):
+    """The store-listing content of one product, served apart from product reads."""
+
+    product_id: int
+    license: Optional[str] = None
+    features: list[ListingFeature] = PydanticField(default_factory=list)
+    links: list[ListingLink] = PydanticField(default_factory=list)
+    screenshots: list[ScreenshotRead] = PydanticField(default_factory=list)
+    version: Optional[str] = None
+    version_available_at: Optional[datetime] = None
+
+
+class ProductReleaseRead(SQLModel):
+    version: str
+    notes: str
+    available_at: Optional[datetime] = None
+
+
 class ProductTemplateVersionCreate(ProductTemplateVersionBase):
     product_id: Optional[int] = None
 
@@ -336,7 +499,8 @@ class ProductTemplateVersionCreate(ProductTemplateVersionBase):
 class ProductTemplateVersionRead(ProductTemplateVersionBase):
     id: Optional[int]
     created_at: datetime
-    product: ProductReadBase
+    version: Optional[str] = None
+    product: ProductSummary
 
 
 # ---------------------------------------------------------------------------

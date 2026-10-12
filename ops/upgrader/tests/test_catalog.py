@@ -8,7 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def write(clone, slug, body):
-    path = clone / "products" / "catalog" / f"{slug}.yaml"
+    path = clone / "products" / "catalog" / slug / f"{slug}.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body)
 
@@ -24,6 +24,8 @@ def test_placeholder_and_missing_upstream_are_excluded(tmp_path):
     write(tmp_path, "immich", upstream("    type: github-release\n    repo: immich-app/immich"))
     write(tmp_path, "static", "template: {}\n")
     (tmp_path / "products" / "catalog" / "catalog.schema.json").write_text("{}")
+    # A stray document that is not `<folder>/<folder>.yaml` is not a product.
+    (tmp_path / "products" / "catalog" / "immich" / "releases.yaml").write_text("upstream: {}\n")
     assert eligible(tmp_path) == ["immich", "nextcloud", "vaultwarden"]
 
 
