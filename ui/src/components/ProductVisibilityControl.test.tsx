@@ -48,6 +48,38 @@ describe('ProductVisibilityControl', () => {
     expect(screen.getByText('Offered to end users in the product catalog.')).toBeInTheDocument()
   })
 
+  it('describes an unlisted product as hidden from the storefront only', () => {
+    renderWithQuery(
+      <ProductVisibilityControl product={{ ...product, visibility: 'unlisted' }} onError={vi.fn()} />,
+    )
+
+    expect(screen.getByRole('combobox', { name: 'Visibility' })).toHaveTextContent('Unlisted')
+    expect(
+      screen.getByText('Available via the API and CLI, hidden from the storefront.'),
+    ).toBeInTheDocument()
+  })
+
+  it('offers all three settings', async () => {
+    renderWithQuery(<ProductVisibilityControl product={product} onError={vi.fn()} />)
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Visibility' }))
+
+    const options = await screen.findAllByRole('option')
+    expect(options.map((option) => option.textContent)).toEqual(['Public', 'Unlisted', 'Admin only'])
+  })
+
+  it('persists a change to unlisted', async () => {
+    updateProductMock.mockResolvedValue({ ...product, visibility: 'unlisted' })
+
+    renderWithQuery(
+      <ProductVisibilityControl product={{ ...product, visibility: 'public' }} onError={vi.fn()} />,
+    )
+    await selectOption('Unlisted')
+
+    await waitFor(() =>
+      expect(updateProductMock).toHaveBeenCalledWith(7, { visibility: 'unlisted' }),
+    )
+  })
+
   it('persists a change to public', async () => {
     updateProductMock.mockResolvedValue({ ...product, visibility: 'public' })
 

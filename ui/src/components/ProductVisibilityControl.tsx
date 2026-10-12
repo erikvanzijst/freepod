@@ -17,11 +17,12 @@ interface ProductVisibilityControlProps {
 
 const HELPER_TEXT: Record<ProductVisibility, string> = {
   public: 'Offered to end users in the product catalog.',
+  unlisted: 'Available via the API and CLI, hidden from the storefront.',
   admin: 'Hidden from end users; visible to administrators only.',
 }
 
 /**
- * Publish or withdraw a product from the end-user catalog.
+ * Publish, unlist or withdraw a product from the end-user catalog.
  *
  * Visibility is runtime state rather than catalog state, so this control stays
  * available for every product — a change takes effect immediately instead of
@@ -52,6 +53,7 @@ export function ProductVisibilityControl({ product, onError }: ProductVisibility
         disabled={visibilityMutation.isPending}
       >
         <MenuItem value="public">Public</MenuItem>
+        <MenuItem value="unlisted">Unlisted</MenuItem>
         <MenuItem value="admin">Admin only</MenuItem>
       </Select>
       <FormHelperText>{HELPER_TEXT[product.visibility]}</FormHelperText>

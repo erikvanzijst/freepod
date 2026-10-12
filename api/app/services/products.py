@@ -136,14 +136,16 @@ def list_products(session: Session, *, include_hidden: bool = False) -> list[Pro
     Args:
         session: Database session
         include_hidden: When False (the end-user listing) only products with
-            ``visibility = public`` are returned. When True (the administrative
-            listing) every non-deleted product is returned, filtered on
-            ``deleted_at`` alone, so experimental and deprecated products stay
-            discoverable to operators.
+            ``visibility`` of ``public`` or ``unlisted`` are returned. When
+            True (the administrative listing) every non-deleted product is
+            returned, filtered on ``deleted_at`` alone, so experimental and
+            deprecated products stay discoverable to operators.
     """
     statement = select(ProductORM).where(ProductORM.deleted_at == None)
     if not include_hidden:
-        statement = statement.where(ProductORM.visibility == ProductVisibility.PUBLIC)
+        statement = statement.where(
+            ProductORM.visibility.in_([ProductVisibility.PUBLIC, ProductVisibility.UNLISTED])
+        )
     return [ProductRead.model_validate(p) for p in session.exec(statement).all()]
 
 

@@ -337,6 +337,23 @@ def test_an_admins_visibility_change_survives_reconciliation(db_session, catalog
     assert product.description == "changed"
 
 
+def test_an_unlisted_product_stays_unlisted_through_reconciliation(
+    db_session, catalog_dir, static_dir
+):
+    write_document(catalog_dir, document())
+    reconcile(db_session, catalog_dir)
+    product = products(db_session)[0]
+    product.visibility = ProductVisibility.UNLISTED
+    db_session.commit()
+
+    write_document(catalog_dir, document(**{"product.description": "changed"}))
+    reconcile(db_session, catalog_dir)
+
+    db_session.refresh(product)
+    assert product.visibility == ProductVisibility.UNLISTED
+    assert product.description == "changed"
+
+
 def test_adoption_leaves_visibility_unchanged(db_session, catalog_dir, static_dir):
     product = make_product(db_session, "Immich", visibility=ProductVisibility.PUBLIC)
     make_template(db_session, product)

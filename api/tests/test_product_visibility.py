@@ -1,8 +1,8 @@
 """Product visibility: the end-user product list versus the admin listing.
 
 `GET /api/products` returns what the caller may see. Anonymous visitors and
-regular users get only products whose ``visibility`` is ``public``;
-administrators get every non-deleted product. ``caelus list-products`` mirrors
+regular users get only products whose ``visibility`` is ``public`` or
+``unlisted``; administrators get every non-deleted product. ``caelus list-products`` mirrors
 this, keyed on the acting CLI user.
 """
 
@@ -51,6 +51,37 @@ def _create_product(client, name: str, **payload) -> dict:
     resp = client.post("/api/products", json={"name": name, "description": "desc", **payload})
     assert resp.status_code == 201, resp.text
     return resp.json()
+
+
+HOSTNAME_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "ingress": {
+            "type": "object",
+            "properties": {"host": {"type": "string", "title": "hostname"}},
+        }
+    },
+}
+
+
+def _add_canonical_template(client, product_id: int, **kwargs) -> int:
+    resp = client.post(
+        f"/api/products/{product_id}/templates",
+        json={
+            "chart_ref": "oci://example/chart",
+            "chart_version": "1.0.0",
+            "values_schema_json": HOSTNAME_SCHEMA,
+        },
+        **kwargs,
+    )
+    assert resp.status_code == 201, resp.text
+    template_id = resp.json()["id"]
+    resp = client.put(
+        f"/api/products/{product_id}", json={"template_id": template_id}, **kwargs
+    )
+    assert resp.status_code == 200, resp.text
+    return template_id
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +146,106 @@ def test_get_product_by_id_still_resolves_a_hidden_product(client):
     resp = client.get(f"/api/products/{product['id']}")
     assert resp.status_code == 200
     assert resp.json()["visibility"] == "admin"
+
+
+# ---------------------------------------------------------------------------
+# Unlisted: public to the API, left out of the storefront by the UI
+# ---------------------------------------------------------------------------
+
+
+def test_product_can_be_created_unlisted(client):
+    product = _create_product(client, "dev-only", visibility="unlisted")
+    assert product["visibility"] == "unlisted"
+
+
+def test_unlisted_product_is_listed_for_anonymous_visitors_with_its_visibility(client):
+    _create_product(client, "shown", visibility="public")
+    _create_product(client, "dev-only", visibility="unlisted")
+    _create_product(client, "hidden", visibility="admin")
+
+    resp = client.get("/api/products", headers=ANONYMOUS)
+    assert resp.status_code == 200
+    assert sorted((p["name"], p["visibility"]) for p in resp.json()) == [
+        ("dev-only", "unlisted"),
+        ("shown", "public"),
+    ]
+
+
+def test_unlisted_product_is_listed_for_regular_users(user_client):
+    non_admin, _ = user_client
+    for name, visibility in (("dev-only", "unlisted"), ("hidden", "admin")):
+        resp = non_admin.post(
+            "/api/products",
+            json={"name": name, "description": "desc", "visibility": visibility},
+            headers=AUTH_HEADER,
+        )
+        assert resp.status_code == 201, resp.text
+
+    resp = non_admin.get("/api/products", headers=USER_AUTH_HEADER)
+    assert resp.status_code == 200
+    assert [(p["name"], p["visibility"]) for p in resp.json()] == [("dev-only", "unlisted")]
+
+
+def test_admin_sees_unlisted_products(client):
+    _create_product(client, "dev-only", visibility="unlisted")
+    _create_product(client, "hidden", visibility="admin")
+
+    assert sorted(_admin_names(client)) == ["dev-only", "hidden"]
+
+
+def test_unlisting_a_public_product_keeps_it_in_the_end_user_list(client):
+    product = _create_product(client, "demo", visibility="public")
+
+    resp = client.put(f"/api/products/{product['id']}", json={"visibility": "unlisted"})
+    assert resp.status_code == 200
+    assert resp.json()["visibility"] == "unlisted"
+
+    assert _end_user_names(client) == ["demo"]
+
+
+def test_unlisted_product_plans_and_templates_read_anonymously(client, db_session):
+    product = _create_product(client, "dev-only", visibility="unlisted")
+    template_id = _add_canonical_template(client, product["id"])
+    create_free_plan_template(db_session, product["id"])
+
+    resp = client.get(f"/api/products/{product['id']}", headers=ANONYMOUS)
+    assert resp.status_code == 200
+    assert resp.json()["template_id"] == template_id
+
+    plans = client.get(f"/api/products/{product['id']}/plans", headers=ANONYMOUS)
+    assert plans.status_code == 200
+    assert [plan["name"] for plan in plans.json()] == ["Free"]
+
+    template = client.get(
+        f"/api/products/{product['id']}/templates/{template_id}", headers=ANONYMOUS
+    )
+    assert template.status_code == 200
+
+
+def test_regular_user_deploys_an_unlisted_product(user_client, db_session):
+    non_admin, _ = user_client
+    resp = non_admin.post(
+        "/api/products",
+        json={"name": "dev-only", "description": "desc", "visibility": "unlisted"},
+        headers=AUTH_HEADER,
+    )
+    assert resp.status_code == 201, resp.text
+    product_id = resp.json()["id"]
+    template_id = _add_canonical_template(non_admin, product_id, headers=AUTH_HEADER)
+    ptv_id = create_free_plan_template(db_session, product_id)
+    user_id = non_admin.get("/api/me", headers=USER_AUTH_HEADER).json()["id"]
+
+    deployment = non_admin.post(
+        f"/api/users/{user_id}/deployments",
+        json={
+            "desired_template_id": template_id,
+            "user_values_json": {"ingress": {"host": "unlisted.example.com"}},
+            "plan_template_id": ptv_id,
+        },
+        headers=USER_AUTH_HEADER,
+    )
+    assert deployment.status_code == 201, deployment.text
+    assert deployment.json()["deployment"]["desired_template_id"] == template_id
 
 
 # ---------------------------------------------------------------------------
@@ -201,26 +332,7 @@ def test_withdrawing_a_product_leaves_existing_deployments_untouched(client, db_
     user_id = create_user(client, "vis-deploy@example.com")["id"]
     product = _create_product(client, "deployed", visibility="public")
 
-    template_resp = client.post(
-        f"/api/products/{product['id']}/templates",
-        json={
-            "chart_ref": "oci://example/chart",
-            "chart_version": "1.0.0",
-            "values_schema_json": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "ingress": {
-                        "type": "object",
-                        "properties": {"host": {"type": "string", "title": "hostname"}},
-                    }
-                },
-            },
-        },
-    )
-    assert template_resp.status_code == 201
-    template_id = template_resp.json()["id"]
-    client.put(f"/api/products/{product['id']}", json={"template_id": template_id})
+    template_id = _add_canonical_template(client, product["id"])
     ptv_id = create_free_plan_template(db_session, product["id"])
 
     deployment_resp = client.post(
@@ -347,3 +459,25 @@ def test_cli_update_product_leaves_visibility_untouched_when_omitted(cli_runner)
     )
     assert result.exit_code == 0
     assert _yaml(result)["visibility"] == "public"
+
+
+def test_cli_update_product_unlists_like_the_api(cli_runner):
+    runner, app = cli_runner
+
+    created = _yaml(runner.invoke(app, ["create-product", "cli-dev-only", "desc"]))
+    result = runner.invoke(
+        app, ["update-product", str(created["id"]), "--visibility", "unlisted"]
+    )
+    assert result.exit_code == 0
+    assert _yaml(result)["visibility"] == "unlisted"
+    assert _cli_names(runner, app) == ["cli-dev-only"]
+
+
+def test_cli_create_product_accepts_unlisted(cli_runner):
+    runner, app = cli_runner
+
+    result = runner.invoke(
+        app, ["create-product", "cli-unlisted", "desc", "--visibility", "unlisted"]
+    )
+    assert result.exit_code == 0
+    assert _yaml(result)["visibility"] == "unlisted"

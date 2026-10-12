@@ -287,7 +287,10 @@ def update_product(
     visibility: ProductVisibility | None = typer.Option(
         None,
         "--visibility",
-        help="Publish the product to end users ('public') or withdraw it ('admin').",
+        help=(
+            "Publish the product to end users ('public'), offer it through the API "
+            "and CLI only, hidden from the storefront ('unlisted'), or withdraw it ('admin')."
+        ),
     ),
     icon: Path | None = typer.Option(
         None, "--icon", help="Path to a product icon image. Replaces any existing icon."
