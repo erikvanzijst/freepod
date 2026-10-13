@@ -1,57 +1,12 @@
-## Overview
+# edit-deployment-frontend Specification
 
-```
-+--------------------------------------------------------------+
-|                      Dashboard                               |
-|                                                              |
-| +------------------+  +------------------+                   |
-| |  Deploy Card     |  |  Deploy Card     |                   |
-| |                  |  |                  |                   |
-| |  Status: ready   |  |  Status: error   |                   |
-| | [Open][Edit][Del]|  | [Open]      [Del]|                   |
-| +------------------+  +------------------+                   |
-|     |                      (no Edit button)                  |
-|     | click Edit                                             |
-|     v                                                        |
-| +----------------------------------------------------------+ |
-| | DeployDialog (edit mode)                                 | |
-| | +------------------------------------------------------+ | |
-| | | DeployDialogContent                                  | | |
-| | | +--------------------------------------------------+ | | |
-| | | | UserValuesForm                                   | | | |
-| | | |   hostname: [my.app.example.com]  <-- pre-filled | | | |
-| | | |   theme:    [dark]                <-- pre-filled | | | |
-| | | +--------------------------------------------------+ | | |
-| | +------------------------------------------------------+ | |
-| | [Cancel]                                        [Update] | |
-| +----------------------------------------------------------+ |
-|     |                                                        |
-|     | submit                                                 |
-|     v                                                        |
-| PUT /api/users/{id}/deployments/{id}                         |
-|   { desired_template_id: (same), user_values_json: {...} }   |
-+--------------------------------------------------------------+
-```
+## Purpose
 
-```
-HostnameField validation logic (with initialHostname):
+Lets a user change a deployment's settings from the dashboard, through the
+deploy dialog in edit mode, which pre-fills the deployment's current values and
+submits them to the update endpoint.
 
-  current FQDN == initialHostname  --> status: valid (skip API)
-  current FQDN != initialHostname  --> GET /api/hostnames/{fqdn}
-  current FQDN reverts back        --> status: valid (skip API)
-```
-
-```
-valuesToSend fallback (create mode, simplified):
-
-  BEFORE: userValues ?? default_values_json ?? undefined
-  AFTER:  userValues ?? {}
-
-  Reconciler merge chain makes this safe:
-    deep_merge(default_values_json, {}) == default_values_json
-```
-
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Dashboard shows Edit button on deployment cards
 The Dashboard MUST display an Edit button on each deployment card. The Edit button MUST only be visible when the deployment's status is `ready`. Clicking the Edit button MUST open the `DeployDialog` in edit mode for that deployment.
