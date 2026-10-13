@@ -150,7 +150,7 @@ export function AddSshKeyDialog({
               position: 'absolute',
               inset: 8,
               zIndex: 2,
-              borderRadius: 3,
+              borderRadius: '12px',
               border: `1.5px dashed ${accent.cyan}`,
               background: 'rgba(56,189,248,0.07)',
               backdropFilter: 'blur(2px)',
