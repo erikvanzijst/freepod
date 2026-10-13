@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { resolveApiPath } from '../../api/client'
 import { getProductListing, listPlans, listReleases } from '../../api/endpoints'
-import { useLandingProducts } from '../landing/useLandingProducts'
+import { useListedProducts } from '../landing/useLandingProducts'
 import { appHref } from './appHref'
 import type { AppListing } from './listing'
 
@@ -10,10 +10,11 @@ const STALE = 5 * 60 * 1000
 /**
  * The listing for `/apps/:slug`, assembled from the product, its plans, its
  * store listing and its releases. `listing` is null while products load or
- * when no storefront product has this slug.
+ * when no product the user can see has this slug. Unlisted products resolve
+ * too: the storefront hides them, a direct link does not.
  */
 export function useAppListing(slug: string | undefined) {
-  const products = useLandingProducts()
+  const products = useListedProducts()
   const product = products.data?.find((p) => appHref(p) === `/apps/${slug}`)
   const enabled = product !== undefined
 

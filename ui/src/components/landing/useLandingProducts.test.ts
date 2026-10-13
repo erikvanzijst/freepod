@@ -60,6 +60,7 @@ describe('loadVisibleProducts', () => {
         iconUrl: null,
         category: 'Photos & video',
         replaces: null,
+        visibility: 'public',
       },
     ])
   })
