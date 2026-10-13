@@ -4,10 +4,11 @@ import { useSearchParams } from 'react-router-dom'
 import { getProductListing, listDeployments, listPlans, listProducts } from '../../api/endpoints'
 import { resolveApiPath } from '../../api/client'
 import { useAuth } from '../../state/AuthContext'
-import { useLandingProducts, type ProductSummary } from '../landing/useLandingProducts'
+import { useLandingProducts, useListedProducts, type ProductSummary } from '../landing/useLandingProducts'
 import { usePricing } from '../landing/usePricing'
 import { installSearch, useInstallRequest } from '../useInstallRequest'
 import { appHref } from '../apppage/appHref'
+import { matchesQuery } from '../../utils/search'
 import type { Screenshot } from '../apppage/listing'
 
 export interface GalleryApp extends ProductSummary {
@@ -17,16 +18,18 @@ export interface GalleryApp extends ProductSummary {
   running: number
 }
 
-function matches(app: GalleryApp, q: string): boolean {
-  if (!q) return true
-  const hay = [app.name, app.tagline, app.category, app.replaces, app.description].join(' ').toLowerCase()
-  return q.toLowerCase().split(/\s+/).every((term) => hay.includes(term))
+/** The fields a catalog search looks in; the dashboard searches the same ones. */
+export function catalogSearchFields(app: Pick<ProductSummary, 'name' | 'tagline' | 'category' | 'replaces' | 'description'>) {
+  return [app.name, app.tagline, app.category, app.replaces, app.description]
 }
 
 /** The gallery's apps, filters (kept in the URL) and the signed-in user's running counts. */
 export function useGallery() {
   const { user } = useAuth()
-  const products = useLandingProducts()
+  const storefront = useLandingProducts()
+  const listed = useListedProducts()
+  // Administrators also see unlisted and admin-only products, badged as such.
+  const products = user?.is_admin ? listed : storefront
   const pricing = usePricing()
   const deployments = useQuery({
     queryKey: ['deployments', user?.id],
@@ -48,6 +51,17 @@ export function useGallery() {
       { replace: true },
     )
 
+  const clearFilters = () =>
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        next.delete('q')
+        next.delete('category')
+        return next
+      },
+      { replace: true },
+    )
+
   const apps = useMemo<GalleryApp[]>(() => {
     const prices = new Map((pricing.data ?? []).map((p) => [p.id, p.isFallback ? null : p.fromCents]))
     const running = new Map<number, number>()
@@ -55,11 +69,13 @@ export function useGallery() {
       const id = d.desired_template?.product_id
       if (id !== undefined) running.set(id, (running.get(id) ?? 0) + 1)
     }
-    return (products.data ?? []).map((p) => ({
+    // Public apps first; for administrators, unlisted and admin-only ones follow.
+    const ordered = [...(products.data ?? [])].sort((a, b) => Number(a.visibility !== 'public') - Number(b.visibility !== 'public'))
+    return ordered.map((p) => ({
       ...p,
       iconUrl: p.iconUrl ? resolveApiPath(p.iconUrl) : null,
       href: appHref(p),
-      fromCents: pricing.data ? (prices.get(p.id) ?? null) : undefined,
+      fromCents: pricing.data && prices.has(p.id) ? (prices.get(p.id) ?? null) : undefined,
       running: running.get(p.id) ?? 0,
     }))
   }, [products.data, pricing.data, deployments.data])
@@ -70,9 +86,9 @@ export function useGallery() {
     return [...counts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name))
   }, [apps])
 
-  const results = apps.filter((app) => (!category || app.category === category) && matches(app, q))
+  const results = apps.filter((app) => (!category || app.category === category) && matchesQuery(catalogSearchFields(app), q))
 
-  return { apps, results, categories, q, category, setFilter, loading: products.isLoading, signedIn: Boolean(user) }
+  return { apps, results, categories, q, category, setFilter, clearFilters, loading: products.isLoading, signedIn: Boolean(user) }
 }
 
 /** The listing content a preview shows: screenshots, features and plans. */

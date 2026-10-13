@@ -15,8 +15,9 @@ import { DatabaseFields } from './DatabaseFields'
  * database-specific "being prepared" state, which would duplicate the
  * deployment's own status in a second place that could disagree with it.
  */
-export function useDatabaseDetails(userId: number, deploymentId: string) {
+export function useDatabaseDetails(userId: number, deploymentId: string, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ['deployment-database', userId, deploymentId],
     queryFn: () => getDeploymentDatabase(userId, deploymentId),
     retry: (_count, err) => !(err instanceof ApiError && err.status === 404),

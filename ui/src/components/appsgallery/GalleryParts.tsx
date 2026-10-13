@@ -1,4 +1,4 @@
-import { createElement, useState } from 'react'
+import { createElement, useRef, useState } from 'react'
 import { Box, Button, IconButton, InputAdornment, Stack, TextField, Typography } from '@mui/material'
 import SearchRounded from '@mui/icons-material/SearchRounded'
 import CloseRounded from '@mui/icons-material/CloseRounded'
@@ -10,6 +10,7 @@ import { FeatureIcon } from '../apppage/FeatureList'
 import InstallButton from '../apppage/InstallButton'
 import ScreenshotStrip from '../apppage/ScreenshotStrip'
 import ScreenshotLightbox from '../apppage/ScreenshotLightbox'
+import { useSlashToFocus } from '../../utils/useSlashToFocus'
 import type { GalleryApp } from './useGallery'
 import { usePreview } from './useGallery'
 
@@ -47,12 +48,71 @@ export function GalleryIntro() {
   )
 }
 
-export function SearchField({ value, onChange, fullWidth = false }: { value: string; onChange: (v: string) => void; fullWidth?: boolean }) {
+interface SearchFieldProps {
+  value: string
+  onChange: (v: string) => void
+  fullWidth?: boolean
+  placeholder?: string
+  /** Focus this field when "/" is pressed; only one field on screen should claim it. */
+  slashShortcut?: boolean
+}
+
+const kbdSx = {
+  display: { xs: 'none', sm: 'inline-grid' },
+  placeItems: 'center',
+  minWidth: 22,
+  height: 22,
+  px: 0.5,
+  borderRadius: '6px',
+  border: `1px solid ${line.soft}`,
+  fontFamily: MONO,
+  fontSize: 12,
+  color: fg.faint,
+  mr: 0.5,
+} as const
+
+export function SearchField({
+  value,
+  onChange,
+  fullWidth = false,
+  placeholder = 'Search apps, or what you need them for…',
+  slashShortcut = false,
+}: SearchFieldProps) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  useSlashToFocus(inputRef, slashShortcut)
+
+  // Callers keep the query in the URL, which React Router updates a render or
+  // more behind the keystroke. The field shows its own text and ignores the URL
+  // echoing values it sent, adopting only values it never sent (a reset elsewhere,
+  // back/forward).
+  const [draft, setDraft] = useState(value)
+  const [sent, setSent] = useState<string[]>([])
+  const [seen, setSeen] = useState(value)
+  if (value !== seen) {
+    setSeen(value)
+    const echoed = sent.indexOf(value)
+    if (echoed === -1) {
+      setDraft(value)
+      setSent([])
+    } else {
+      setSent(sent.slice(echoed + 1))
+    }
+  }
+  const change = (next: string) => {
+    setDraft(next)
+    setSent((previous) => [...previous, next])
+    onChange(next)
+  }
+
   return (
     <TextField
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder="Search apps, or what you need them for…"
+      inputRef={inputRef}
+      value={draft}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') inputRef.current?.blur()
+      }}
+      onChange={(e) => change(e.target.value)}
+      placeholder={placeholder}
       fullWidth={fullWidth}
       size="small"
       slotProps={{
@@ -62,12 +122,20 @@ export function SearchField({ value, onChange, fullWidth = false }: { value: str
               <SearchRounded sx={{ fontSize: 20, color: fg.faint }} />
             </InputAdornment>
           ),
-          endAdornment: value && (
+          endAdornment: draft ? (
             <InputAdornment position="end">
-              <IconButton aria-label="Clear search" edge="end" size="small" onClick={() => onChange('')} sx={{ color: fg.muted }}>
+              <IconButton aria-label="Clear search" edge="end" size="small" onClick={() => change('')} sx={{ color: fg.muted }}>
                 <CloseRounded sx={{ fontSize: 18 }} />
               </IconButton>
             </InputAdornment>
+          ) : (
+            slashShortcut && (
+              <InputAdornment position="end">
+                <Box component="kbd" title="Press / to search" sx={kbdSx}>
+                  /
+                </Box>
+              </InputAdornment>
+            )
           ),
           sx: { borderRadius: 999, fontFamily: SANS, fontSize: 15, height: 44, background: 'rgba(255,255,255,0.03)' },
         },
@@ -164,6 +232,30 @@ export function RunningBadge({ count }: { count: number }) {
     >
       <Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', background: '#22C55E' }} />
       {count > 1 ? `${count} running` : 'Running'}
+    </Box>
+  )
+}
+
+/** Marks a product only administrators see in the catalog. */
+export function VisibilityBadge({ app }: { app: GalleryApp }) {
+  if (app.visibility === 'public') return null
+  return (
+    <Box
+      component="span"
+      title={app.visibility === 'unlisted' ? 'Hidden from the catalog; reachable by link' : 'Hidden from end users'}
+      sx={{
+        px: 0.9,
+        py: 0.1,
+        borderRadius: '6px',
+        fontSize: 11.5,
+        fontFamily: MONO,
+        letterSpacing: '0.04em',
+        color: app.visibility === 'unlisted' ? '#FCD34D' : '#F9A8D4',
+        border: `1px solid ${app.visibility === 'unlisted' ? 'rgba(252,211,77,0.35)' : 'rgba(249,168,212,0.35)'}`,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {app.visibility === 'unlisted' ? 'Unlisted' : 'Admin only'}
     </Box>
   )
 }

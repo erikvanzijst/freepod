@@ -3,13 +3,30 @@ import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded'
 import { useSearchParams } from 'react-router-dom'
 import { fg, line } from '../landing/landingTokens'
 import AppIcon from '../apppage/AppIcon'
-import { AlternativeTo, AppPreviewBody, CategoryChips, GalleryIntro, NoResults, PriceTag, RunningBadge, SearchField } from './GalleryParts'
+import { AlternativeTo, AppPreviewBody, CategoryChips, GalleryIntro, NoResults, PriceTag, RunningBadge, SearchField, VisibilityBadge } from './GalleryParts'
 import type { GalleryApp, useGallery } from './useGallery'
 
 type Gallery = ReturnType<typeof useGallery>
 
-/** The catalog as a list of rows; a row expands in place to show screenshots, features and plans. */
-export function RowsLayout({ g, onInstall }: { g: Gallery; onInstall: (app: GalleryApp, planId?: number) => void }) {
+interface CatalogProps {
+  g: Gallery
+  onInstall: (app: GalleryApp, planId?: number) => void
+}
+
+/** The catalog page: intro, then the searchable list. */
+export function RowsLayout(props: CatalogProps) {
+  return (
+    <Container maxWidth="lg" sx={{ pt: { xs: 5, md: 9 }, pb: 14 }}>
+      <GalleryIntro />
+      <Box sx={{ mt: 5 }}>
+        <CatalogList {...props} />
+      </Box>
+    </Container>
+  )
+}
+
+/** Search, category filter and rows; a row expands in place to show screenshots, features and plans. */
+export function CatalogList({ g, onInstall }: CatalogProps) {
   const [params, setParams] = useSearchParams()
   const open = params.get('open')
   const toggle = (slug: string) =>
@@ -24,10 +41,9 @@ export function RowsLayout({ g, onInstall }: { g: Gallery; onInstall: (app: Gall
     )
 
   return (
-    <Container maxWidth="lg" sx={{ pt: { xs: 5, md: 9 }, pb: 14 }}>
-      <GalleryIntro />
-      <Box sx={{ mt: 5, mb: 2.5, maxWidth: 640 }}>
-        <SearchField value={g.q} onChange={(v) => g.setFilter('q', v)} fullWidth />
+    <>
+      <Box sx={{ mb: 2.5, maxWidth: 640 }}>
+        <SearchField value={g.q} onChange={(v) => g.setFilter('q', v)} fullWidth slashShortcut />
       </Box>
       <CategoryChips categories={g.categories} total={g.apps.length} active={g.category} onSelect={(c) => g.setFilter('category', c)} />
 
@@ -61,6 +77,7 @@ export function RowsLayout({ g, onInstall }: { g: Gallery; onInstall: (app: Gall
                   <Stack direction="row" alignItems="center" spacing={1.25}>
                     <Typography sx={{ fontWeight: 600, fontSize: 17 }}>{app.name}</Typography>
                     <Typography sx={{ fontSize: 13, color: fg.faint, display: { xs: 'none', sm: 'block' } }}>{app.category}</Typography>
+                    <VisibilityBadge app={app} />
                     <RunningBadge count={app.running} />
                   </Stack>
                   <Typography sx={{ fontSize: 14.5, color: fg.muted, lineHeight: 1.45 }}>{app.tagline}</Typography>
@@ -89,8 +106,8 @@ export function RowsLayout({ g, onInstall }: { g: Gallery; onInstall: (app: Gall
         })}
       </Box>
       {!g.loading && g.results.length === 0 && (
-        <NoResults q={g.q || g.category} onReset={() => { g.setFilter('q', ''); g.setFilter('category', '') }} />
+        <NoResults q={g.q || g.category} onReset={g.clearFilters} />
       )}
-    </Container>
+    </>
   )
 }

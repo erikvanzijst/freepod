@@ -1,14 +1,14 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { ApiError } from '../api/client'
-import type { Deployment, DeploymentDatabase } from '../api/types'
-import { DeploymentCard } from './DeploymentCard'
+import { ApiError } from '../../api/client'
+import type { Deployment, DeploymentDatabase } from '../../api/types'
+import { DeploymentRow } from './DeploymentRow'
 
 const getDeploymentDatabaseMock = vi.fn()
 const getDeploymentSftpMock = vi.fn()
 
-vi.mock('../api/endpoints', () => ({
+vi.mock('../../api/endpoints', () => ({
   getDeploymentDatabase: (...args: unknown[]) => getDeploymentDatabaseMock(...args),
   getDeploymentSftp: (...args: unknown[]) => getDeploymentSftpMock(...args),
 }))
@@ -34,7 +34,7 @@ function deployment(status: Deployment['status']): Deployment {
     user_id: 1,
     created_at: '2026-08-01T00:00:00Z',
     user: { id: 1, email: 'o@example.com', is_admin: false, created_at: '2026-08-01T00:00:00Z' },
-    desired_template: { id: 1 } as Deployment['desired_template'],
+    desired_template: { id: 1, product: { id: 1, name: 'Immich' } } as Deployment['desired_template'],
     name: 'app',
     namespace: 'ns',
     status,
@@ -42,20 +42,16 @@ function deployment(status: Deployment['status']): Deployment {
   }
 }
 
-function renderCard(status: Deployment['status']) {
+function renderRow(status: Deployment['status'], { expand = true } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const ui = (dep: Deployment) => (
     <QueryClientProvider client={client}>
-      <DeploymentCard
-        deployment={dep}
-        userId={1}
-        deletePending={false}
-        onEdit={vi.fn()}
-        onDelete={vi.fn()}
-      />
+      <DeploymentRow deployment={dep} userId={1} deletePending={false} onEdit={vi.fn()} onDelete={vi.fn()} />
     </QueryClientProvider>
   )
   const result = render(ui(deployment(status)))
+  // The access actions live in the expanded row.
+  if (expand) fireEvent.click(screen.getByRole('button', { expanded: false }))
   return { ...result, settle: () => result.rerender(ui(deployment('ready'))) }
 }
 
@@ -65,25 +61,48 @@ beforeEach(() => {
   getDeploymentSftpMock.mockRejectedValue(new ApiError('no sftp', 404))
 })
 
-describe('DeploymentCard database action', () => {
+describe('DeploymentRow access requests', () => {
+  it('asks for nothing until the row is expanded', async () => {
+    getDeploymentDatabaseMock.mockResolvedValue(DETAILS)
+    renderRow('ready', { expand: false })
+    await act(async () => {})
+
+    expect(getDeploymentDatabaseMock).not.toHaveBeenCalled()
+    expect(getDeploymentSftpMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { expanded: false }))
+
+    expect(await screen.findByRole('button', { name: /database/i })).toBeInTheDocument()
+    expect(getDeploymentDatabaseMock).toHaveBeenCalledTimes(1)
+    expect(getDeploymentSftpMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('DeploymentRow database action', () => {
   it('offers no Database action when the deployment has no database', async () => {
     getDeploymentDatabaseMock.mockRejectedValue(new ApiError('no database', 404))
-    renderCard('ready')
+    renderRow('ready')
 
     await waitFor(() => expect(getDeploymentDatabaseMock).toHaveBeenCalled())
     expect(screen.queryByRole('button', { name: /database/i })).not.toBeInTheDocument()
+  })
+
+  it('offers it once the details resolve', async () => {
+    getDeploymentDatabaseMock.mockResolvedValue(DETAILS)
+    renderRow('ready')
+
+    expect(await screen.findByRole('button', { name: /database/i })).toBeInTheDocument()
   })
 
   it('picks the details up when a transitional deployment settles', async () => {
     // Provisioning: the database is not there yet, which is the deployment's
     // own state rather than a state of the database.
     getDeploymentDatabaseMock.mockRejectedValue(new ApiError('no database', 404))
-    const { settle } = renderCard('provisioning')
+    const { settle } = renderRow('provisioning')
 
     await waitFor(() => expect(getDeploymentDatabaseMock).toHaveBeenCalled())
     expect(screen.queryByRole('button', { name: /database/i })).not.toBeInTheDocument()
 
-    // It settles, and the panel re-requests without the reader reloading.
     getDeploymentDatabaseMock.mockResolvedValue(DETAILS)
     settle()
 
