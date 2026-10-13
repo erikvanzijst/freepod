@@ -16,6 +16,9 @@ the generic Freepod card rather than as Immich.
   emitted as a content-hashed asset.
 - nginx serves `app-<slug>.html` for `/apps/<slug>` and falls back to
   `index.html` for a slug with no page.
+- nginx rewrites the absolute `https://freepod.eu` URLs in the preview tags
+  of `/`, `/dev` and the app pages to the requesting host, so dev's previews
+  point at dev.
 - The UI image's build stage receives the catalog as the docs stage already
   does, through the `catalog` named build context and `CATALOG_DIR`.
 

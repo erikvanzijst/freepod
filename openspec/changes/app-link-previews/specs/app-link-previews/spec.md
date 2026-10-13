@@ -43,3 +43,17 @@ it.
 - **WHEN** a visitor opens `/apps/<slug>` for a product that exists only in
   the database
 - **THEN** the SPA renders the page with the generic preview tags
+
+### Requirement: Preview URLs follow the serving host
+The build SHALL write `https://freepod.eu` URLs into the preview tags, and
+nginx SHALL rewrite them to `https://<request host>` in the responses for
+`/`, `/dev` and the app pages only. Any other response, including the SPA
+served for other paths, SHALL be left unchanged.
+
+#### Scenario: Dev environment
+- **WHEN** a crawler fetches `https://dev.freepod.eu/apps/immich`
+- **THEN** its `og:url` and `og:image` point at `https://dev.freepod.eu`
+
+#### Scenario: SPA route
+- **WHEN** a visitor opens `/settings` or an unknown app slug
+- **THEN** the served `index.html` is not rewritten

@@ -47,3 +47,15 @@ a new URL that crawlers refetch.
 The pages are `app-<slug>.html` at the root, not `apps/<slug>.html`: a
 `dist/apps/` directory would make nginx's `try_files $uri/` treat `/apps` as a
 directory without an index.
+
+### D6: Environment URLs rewritten by nginx, on the landing pages only
+
+One image serves every environment, so the build cannot know its host, and
+Open Graph wants absolute URLs. nginx's `sub_filter` rewrites
+`https://freepod.eu/` to `https://$host/` in the locations for `/`, `/dev`
+and the app pages; on prod it is a no-op. `https` is literal because Traefik
+terminates TLS, and `$host` is safe because Traefik only routes its own
+hosts. SPA routes, served from `location /`, are left alone. Rejected: an
+entrypoint rewriting the HTML from a per-environment variable (a new
+variable and files changed at start-up) and relative URLs (crawlers resolve
+them inconsistently).

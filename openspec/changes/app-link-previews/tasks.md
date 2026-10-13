@@ -8,6 +8,8 @@
 
 - [x] 2.1 Map `/apps/<slug>` to `app-<slug>.html` in `ui/nginx.conf`, falling back to `index.html`, and verify against a local nginx
 
+- [x] 2.2 Rewrite the preview URLs to the requesting host in the landing pages' locations only, and verify `/`, `/dev` and an app page are rewritten and SPA routes are not
+
 ## 3. Integration
 
 - [x] 3.1 Run `npx tsc -b`, eslint on touched UI files, vitest and `npm run build`
