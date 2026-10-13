@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TemplateTabNew } from './TemplateTabNew'
 import type { Product, ProductTemplate } from '../api/types'
 
@@ -50,6 +50,9 @@ const existingTemplate: ProductTemplate = {
   created_at: '2026-01-01T00:00:00Z',
   product,
 }
+
+beforeEach(() => vi.useFakeTimers())
+afterEach(() => vi.useRealTimers())
 
 describe('TemplateTabNew', () => {
   it('pre-populates chart ref from newest template', async () => {

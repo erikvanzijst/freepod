@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HostnameField } from './HostnameField'
 
 const checkHostnameMock = vi.fn()
@@ -7,6 +7,9 @@ const checkHostnameMock = vi.fn()
 vi.mock('../api/endpoints', () => ({
   checkHostname: (...args: unknown[]) => checkHostnameMock(...args),
 }))
+
+beforeEach(() => vi.useFakeTimers())
+afterEach(() => vi.useRealTimers())
 
 describe('HostnameField', () => {
   describe('mode selection', () => {
@@ -119,8 +122,7 @@ describe('HostnameField', () => {
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'x' } })
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: '' } })
 
-      // Wait longer than the debounce
-      await new Promise((r) => setTimeout(r, 500))
+      await act(() => vi.advanceTimersByTimeAsync(500))
       expect(checkHostnameMock).not.toHaveBeenCalled()
     })
 
