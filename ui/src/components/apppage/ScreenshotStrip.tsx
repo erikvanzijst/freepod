@@ -1,12 +1,19 @@
 import { useRef } from 'react'
 import { Box, IconButton, Stack } from '@mui/material'
+import type { ResponsiveStyleValue } from '@mui/system'
 import ChevronLeftRounded from '@mui/icons-material/ChevronLeftRounded'
 import ChevronRightRounded from '@mui/icons-material/ChevronRightRounded'
 import { fg, line } from '../landing/landingTokens'
 import type { Screenshot } from './listing'
 
 /** Horizontally scrolling screenshot strip, App Store / Play Store style. */
-export function ScreenshotStrip({ shots, onOpen }: { shots: Screenshot[]; onOpen: (i: number) => void }) {
+interface ScreenshotStripProps {
+  shots: Screenshot[]
+  onOpen: (i: number) => void
+  height?: ResponsiveStyleValue<number>
+}
+
+export function ScreenshotStrip({ shots, onOpen, height = { xs: 190, md: 340 } }: ScreenshotStripProps) {
   const ref = useRef<HTMLDivElement | null>(null)
   const scroll = (dir: number) => ref.current?.scrollBy({ left: dir * ref.current.clientWidth * 0.8, behavior: 'smooth' })
   const arrowSx = {
@@ -52,7 +59,7 @@ export function ScreenshotStrip({ shots, onOpen }: { shots: Screenshot[]; onOpen
             sx={{
               flex: '0 0 auto',
               p: 0,
-              height: { xs: 190, md: 340 },
+              height,
               aspectRatio: shot.form === 'mobile' ? '390 / 844' : '16 / 10',
               borderRadius: '12px',
               overflow: 'hidden',
