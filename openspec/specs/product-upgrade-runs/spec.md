@@ -1,10 +1,12 @@
 ## Purpose
 
+
 What a run of the upgrade service is: when one starts, which products it covers, how
 each product is executed and bounded, why only one runs at a time, and what becomes of a
 run that a restart cuts short.
 
 ## Requirements
+
 
 ### Requirement: The catalog runs nightly
 The service MUST start a run over the whole catalog once a day, at the local time
@@ -252,8 +254,8 @@ Before publishing, the service MUST check the proposal. It MUST refuse it when:
 
 - `meta.json`, `body.md` or `change.patch` is missing;
 - the patch is empty or does not apply;
-- the patch touches any path other than `products/catalog/<slug>.yaml` and files under
-  `products/<slug>/`;
+- the patch touches any path other than files under the product's catalog folder,
+  `products/catalog/<slug>/`, and files under `products/<slug>/`;
 - the patch creates a symbolic link or a submodule entry;
 - `target_version` does not form a valid branch name;
 - the title is not one line of the form `<Product>: Upgrade to <target_version>`;
@@ -276,12 +278,17 @@ In a dry run, nothing is published, and the outcome stays `would_open`. The prop
 still checked, so that a dry run catches what a real run would refuse.
 
 #### Scenario: A real run publishes
-- **WHEN** a real run's session for `immich` ends with `would_open`, target `v2.2.0`, `draft` true, and a patch that changes `products/catalog/immich.yaml`
+- **WHEN** a real run's session for `immich` ends with `would_open`, target `v2.2.0`, `draft` true, and a patch that changes `products/catalog/immich/immich.yaml` and `products/catalog/immich/releases.yaml`
 - **THEN** the service pushes `upgrade/immich-v2.2.0` and opens a draft pull request labeled `product-upgrade`
 - **AND** the product is recorded as `opened`, with that pull request's URL
 
 #### Scenario: A patch touches another product
-- **WHEN** a session for `immich` proposes a patch that also changes `products/catalog/nextcloud.yaml`
+- **WHEN** a session for `immich` proposes a patch that also changes `products/catalog/nextcloud/nextcloud.yaml`
+- **THEN** nothing is pushed
+- **AND** the session gets its repair turn, told that the patch touches a path outside `immich`'s
+
+#### Scenario: A patch touches the shared catalog schema
+- **WHEN** a session for `immich` proposes a patch that changes `products/catalog/catalog.schema.json`
 - **THEN** nothing is pushed
 - **AND** the session gets its repair turn, told that the patch touches a path outside `immich`'s
 

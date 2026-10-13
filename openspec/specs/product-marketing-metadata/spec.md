@@ -2,6 +2,7 @@
 
 ## Purpose
 
+
 Store per-product marketing copy (`category` and `replaces`) on the product so
 it is served by the API and editable via the REST API, CLI, and admin UI,
 instead of being hardcoded in the frontend. The anonymous landing page renders
@@ -10,6 +11,7 @@ existing `description` — and the hero constellation lists the distinct product
 categories rather than product names.
 
 ## Requirements
+
 
 ### Requirement: Product model stores marketing metadata
 The product model (`ProductORM`) SHALL store the following nullable marketing
@@ -25,8 +27,9 @@ Both fields SHALL be optional; a product with neither set is valid.
 Purely presentational tokens (such as a per-product accent color) are NOT
 product data and SHALL NOT be stored on the model. The former `engine` note (a
 brand-vs-software label) is NOT modeled and SHALL NOT be stored on the product.
-No separate `tagline` field is added; the landing-page blurb is sourced from
-the product's existing `description`.
+The one-sentence blurb is the product's `tagline`, a listing field defined by
+the `product-listing-metadata` capability; `description` holds the long
+description.
 
 #### Scenario: Product persists marketing metadata
 - **WHEN** a product is created or updated with `category` and `replaces`
@@ -124,13 +127,14 @@ file SHALL be identified as the place to change them.
 The anonymous landing page SHALL render each product's `category` and
 `replaces` from the product API instead of the hardcoded `APPS`
 map in `landingTokens.ts`, and SHALL render the one-sentence blurb from the
-product's existing `description` field. When a field is empty, the landing page
-SHALL gracefully omit the corresponding element rather than render a placeholder
-or break. The hardcoded marketing content for these fields SHALL be removed once
-the page reads them from the API; non-product presentational tokens (such as
-accent color) MAY remain in the UI. The former `engine` note SHALL no longer be
-rendered: its `AppEntry` field and its card rendering SHALL be removed. No
-separate `tagline` field is introduced.
+product's `tagline` field. When a field is empty, the landing page SHALL
+gracefully omit the corresponding element rather than render a placeholder or
+break; in particular it SHALL NOT fall back to the long `description`. The
+hardcoded marketing content for these fields SHALL be removed once the page
+reads them from the API; non-product presentational tokens (such as accent
+color) MAY remain in the UI. The former `engine` note SHALL no longer be
+rendered: its `AppEntry` field and its card rendering SHALL be removed. Each
+product card SHALL link to that product's `/apps/:slug` page.
 
 The hero "constellation" SHALL list the distinct product categories (deduplicated,
 in first-seen order) rather than product names, since the apps and pricing
@@ -141,15 +145,23 @@ unrecognized category.
 
 #### Scenario: Landing page shows API-provided metadata
 - **WHEN** the landing page renders a product whose API record has
-  `category`, `replaces`, and a `description`
+  `category`, `replaces`, and a `tagline`
 - **THEN** the page displays the category, the replaces line, and the
-  description as the blurb for that product
+  tagline as the blurb for that product
 
 #### Scenario: Graceful fallback for empty fields
-- **WHEN** the landing page renders a product whose `category` (or any other
-  marketing field) is empty
+- **WHEN** the landing page renders a product whose `category`, `tagline` (or
+  any other marketing field) is empty
 - **THEN** the page omits that element and renders the rest of the product
   without error
+
+#### Scenario: Long description is not used as a blurb
+- **WHEN** a product has a `description` but no `tagline`
+- **THEN** its landing card shows no blurb
+
+#### Scenario: Card links to the app page
+- **WHEN** a visitor selects the Immich card on the landing page
+- **THEN** they are taken to `/apps/immich`
 
 #### Scenario: Engine note is no longer rendered
 - **WHEN** the landing page renders any product

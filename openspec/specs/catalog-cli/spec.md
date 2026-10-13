@@ -2,11 +2,13 @@
 
 ## Purpose
 
+
 Defines the `caelus catalog apply|curate|lint` command surface, what each
 verb guarantees, and why this group is intentionally exempt from the
 repository's REST parity convention.
 
 ## Requirements
+
 
 ### Requirement: The CLI provides a catalog command group
 The CLI SHALL provide a `catalog` command group exposing `apply`, `curate`, and
@@ -27,12 +29,14 @@ the CLI, and the admin UI.
 - **THEN** no corresponding REST endpoints SHALL be required for parity
 
 ### Requirement: Apply reconciles a catalog directory into the database
-`catalog apply` SHALL read every catalog file in a given directory, validate
-them, and apply them through the reconciler within a single transaction. It
-SHALL support a dry-run mode that reports the actions it would take — products
-created, products adopted, templates inserted, and canonical pointers moved —
-without writing to the database. A validation or reconciliation failure SHALL
-cause a non-zero exit status and leave the database unchanged.
+`catalog apply` SHALL read every product folder in a given catalog directory,
+validate them, and apply them through the reconciler within a single
+transaction. It SHALL support a dry-run mode that reports the actions it would
+take — products created, products adopted, templates inserted, canonical
+pointers moved, template versions stamped, screenshots materialized, and
+releases inserted, updated or deleted — without writing to the database. A
+validation or reconciliation failure SHALL cause a non-zero exit status and
+leave the database unchanged.
 
 #### Scenario: Apply reconciles the directory
 - **WHEN** an admin runs `catalog apply` against a valid catalog directory
@@ -43,28 +47,35 @@ cause a non-zero exit status and leave the database unchanged.
 - **THEN** the planned actions SHALL be reported
 - **AND** the database SHALL be unchanged
 
+#### Scenario: Dry run reports release changes
+- **WHEN** an admin runs `catalog apply` in dry-run mode after a version was
+  added to a product's `releases.yaml`
+- **THEN** the report SHALL include the release it would insert
+
 #### Scenario: Failure is atomic
 - **WHEN** one catalog file in the directory is invalid
 - **THEN** the command SHALL exit non-zero
 - **AND** no changes from any file in that run SHALL be persisted
 
 ### Requirement: Curate generates catalog files from database state
-`catalog curate` SHALL write a product's catalog document and its icon into the
-catalog directory, derived from the current database state, so that a hand-tuned
-product can be graduated into the catalog without hand-authoring YAML. Curate
-SHALL round-trip exactly: applying a generated file to the database it came from
-MUST match the existing template by spec equality and insert no new template
-rows.
+`catalog curate` SHALL write a product's catalog folder, `<slug>/`, into the
+catalog directory, derived from the current database state: its catalog
+document and its icon, so that a hand-tuned product can be graduated into the
+catalog without hand-authoring YAML. The document SHALL include the product's
+listing text fields. Curate SHALL round-trip exactly: applying a generated
+folder to the database it came from MUST match the existing template by spec
+equality and insert no new template rows.
 
 Writing the files SHALL NOT curate the product. Curation takes effect only when
 the reconciler applies the committed catalog during a rollout, so the command
 SHALL report the steps that remain, naming the files it wrote.
 
 #### Scenario: Curate writes the catalog document and icon
-- **WHEN** an admin runs `catalog curate` for a product
-- **THEN** the product's catalog document SHALL be written into the catalog
-  directory
-- **AND** its icon SHALL be written to the icon path the document references
+- **WHEN** an admin runs `catalog curate` for a product with slug `photos`
+- **THEN** the document SHALL be written to `photos/photos.yaml` in the
+  catalog directory
+- **AND** its icon SHALL be written into `photos/` at the path the document
+  references
 
 #### Scenario: Curate reports the remaining steps
 - **WHEN** `catalog curate` completes
@@ -84,7 +95,7 @@ SHALL report the steps that remain, naming the files it wrote.
 
 #### Scenario: Curate targets a single product
 - **WHEN** an admin runs `catalog curate` for a named product
-- **THEN** only that product's catalog document SHALL be written
+- **THEN** only that product's catalog folder SHALL be written
 
 #### Scenario: Generated upstream block requires completion
 - **WHEN** a product's catalog document is generated
@@ -94,17 +105,18 @@ SHALL report the steps that remain, naming the files it wrote.
 ### Requirement: Lint validates catalog files without a database
 `catalog lint` SHALL validate a catalog directory using only the files
 themselves, so it can run in continuous integration where no database or
-cluster is reachable. It SHALL verify that each file parses, declares a
-supported `schema_version`, has a slug matching its filename, declares unique
+cluster is reachable. It SHALL verify that the directory uses the per-product
+folder layout, that each document parses, declares a supported
+`schema_version`, has a slug matching its folder and filename, declares unique
 slugs across the directory, does not declare `visibility`, contains a
-`values_schema` that is a valid JSON Schema document, and declares an
-`upstream.match` expression that compiles and defines a `version` capture
-group. It SHALL also verify that any referenced icon file exists inside the
-catalog directory and can be processed as an image, so that a missing or
-corrupt icon is caught in review rather than failing a rollout. It SHALL also
-verify that the generated `catalog.schema.json` has not drifted from the
-Pydantic models it is generated from; `catalog lint --write-schema`
-regenerates it.
+`values_schema` that is a valid JSON Schema document, declares valid listing
+fields, and declares an `upstream.match` expression that compiles and defines a
+`version` capture group. It SHALL also verify that any referenced icon and
+screenshot file exists inside the product's folder and can be processed as an
+image, and that any `releases.yaml` is valid, so that a missing or corrupt
+asset is caught in review rather than failing a rollout. It SHALL also verify
+that the generated `catalog.schema.json` has not drifted from the Pydantic
+models it is generated from; `catalog lint --write-schema` regenerates it.
 
 #### Scenario: Lint passes on a valid catalog
 - **WHEN** continuous integration runs `catalog lint` on a valid catalog
@@ -112,9 +124,18 @@ regenerates it.
 - **THEN** the command SHALL exit zero
 
 #### Scenario: Lint rejects a missing icon file
-- **WHEN** a catalog file references an icon path that does not exist in the
-  catalog directory
+- **WHEN** a catalog file references an icon path that does not exist in its
+  product folder
 - **THEN** `catalog lint` SHALL exit non-zero and identify the offending file
+
+#### Scenario: Lint rejects a missing screenshot file
+- **WHEN** a catalog file references a screenshot that does not exist in its
+  product folder
+- **THEN** `catalog lint` SHALL exit non-zero and identify the offending file
+
+#### Scenario: Lint rejects an invalid releases file
+- **WHEN** a product's `releases.yaml` lists a version twice
+- **THEN** `catalog lint` SHALL exit non-zero and identify the file
 
 #### Scenario: Lint rejects an invalid values schema
 - **WHEN** a catalog file's `values_schema` is not a valid JSON Schema document
