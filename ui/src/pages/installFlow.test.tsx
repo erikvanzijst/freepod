@@ -56,6 +56,7 @@ vi.mock('../components/subdomain/ClaimSubdomainDialog', () => ({
 vi.mock('../components/apppage/useAppListing', () => ({
   useAppListing: () => ({
     loading: false,
+    visibility: 'public',
     listing: {
       id: 2,
       slug: 'immich',

@@ -11,6 +11,7 @@ import { AppNotFound } from '../components/apppage/AppNotFound'
 import { useAppListing } from '../components/apppage/useAppListing'
 import { useAppInstall } from '../components/apppage/useAppInstall'
 import { InstallFlow } from '../components/InstallFlow'
+import { useNoIndex } from '../utils/useNoIndex'
 
 const navLinks = [
   { label: 'Apps', href: '/apps' },
@@ -25,7 +26,7 @@ const navLinks = [
  */
 export function AppPage() {
   const { slug } = useParams()
-  const { listing, loading } = useAppListing(slug)
+  const { listing, loading, visibility } = useAppListing(slug)
   const { start, dialogOpen, setDialogOpen, setEmail, returnTo } = useStartSignup()
   const navigate = useNavigate()
   const { install, flow, close, launched } = useAppInstall(listing?.id, start)
@@ -38,6 +39,8 @@ export function AppPage() {
       document.title = previous
     }
   }, [name])
+  // Only storefront apps belong in search results: not unlisted ones, nor a missing app.
+  useNoIndex(visibility ? visibility !== 'public' : !loading)
 
   return (
     <Box sx={{ background: ink.base, color: fg.primary, fontFamily: SANS, minHeight: '100vh' }}>
