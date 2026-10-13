@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { createPortal } from 'react-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import type { Product } from '../api/types'
+import Dashboard from './Dashboard'
+import AppPage from './AppPage'
 
 const auth = vi.hoisted(() => ({ user: null as null | { id: number; email: string }, setEmail: vi.fn() }))
 const subdomain = vi.hoisted(() => ({ value: 'alex' as string | null }))
@@ -15,21 +18,26 @@ vi.mock('../api/endpoints', () => ({
   listProducts: () => Promise.resolve(products),
   listDeployments: () => Promise.resolve([]),
   deleteDeployment: vi.fn(),
+  listPlans: () => Promise.resolve([]),
+  getProductListing: () => Promise.resolve({ product_id: 2, features: [], links: [], screenshots: [] }),
 }))
 // The dialogs have their own tests; here they only report how they were opened.
+// Portaled like the real ones, so they stay reachable above the catalog panel.
 vi.mock('../components/DeployDialog', () => ({
-  DeployDialog: (props: { product: Product; initialPlanId?: number; onClose: () => void; onLaunched?: () => void }) => (
-    <div role="dialog" aria-label="deploy">
-      deploy {props.product.name} plan {props.initialPlanId ?? 'none'}
-      <button onClick={props.onClose}>Cancel</button>
-      <button onClick={props.onLaunched ?? props.onClose}>Launch</button>
-    </div>
-  ),
+  DeployDialog: (props: { product: Product; initialPlanId?: number; onClose: () => void; onLaunched?: () => void }) =>
+    createPortal(
+      <div role="dialog" aria-label="deploy">
+        deploy {props.product.name} plan {props.initialPlanId ?? 'none'}
+        <button onClick={props.onClose}>Cancel</button>
+        <button onClick={props.onLaunched ?? props.onClose}>Launch</button>
+      </div>,
+      document.body,
+    ),
 }))
 // Like the real one, a claim reports the held name and then closes the dialog.
 vi.mock('../components/subdomain/ClaimSubdomainDialog', () => ({
   ClaimSubdomainDialog: (props: { open: boolean; onClose: () => void; onClaimed?: (name: string) => void }) =>
-    props.open ? (
+    props.open ? createPortal(
       <div role="dialog" aria-label="claim">
         <button
           onClick={() => {
@@ -41,12 +49,14 @@ vi.mock('../components/subdomain/ClaimSubdomainDialog', () => ({
           Claim
         </button>
         <button onClick={props.onClose}>Not now</button>
-      </div>
+      </div>,
+      document.body,
     ) : null,
 }))
 vi.mock('../components/apppage/useAppListing', () => ({
   useAppListing: () => ({
     loading: false,
+    visibility: 'public',
     listing: {
       id: 2,
       slug: 'immich',
@@ -89,8 +99,6 @@ function Location() {
 }
 
 async function renderAt(path: string) {
-  const { default: Dashboard } = await import('./Dashboard')
-  const { default: AppPage } = await import('./AppPage')
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
@@ -184,18 +192,32 @@ describe('Install on an app page', () => {
   })
 })
 
-describe('Picking an app on the dashboard', () => {
-  it('opens the deploy dialog', async () => {
+describe('Installing from the dashboard', () => {
+  async function installFromPanel() {
     await renderAt('/')
-    fireEvent.click(await screen.findByText('Immich'))
+    // A new user's starter app opens the catalog panel on that app's row.
+    fireEvent.click(await screen.findByRole('button', { name: /Immich/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Install' }))
+  }
+
+  it('opens the deploy dialog over the dashboard', async () => {
+    await installFromPanel()
 
     expect(await screen.findByRole('dialog', { name: 'deploy' })).toHaveTextContent('deploy Immich plan none')
+    expect(screen.getByLabelText('location')).toHaveTextContent(/^\/\?/)
+  })
+
+  it('closes the dialog and the panel once the app launches', async () => {
+    await installFromPanel()
+    fireEvent.click(await screen.findByRole('button', { name: 'Launch' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'deploy' })).toBeNull())
+    expect(screen.getByLabelText('location')).toHaveTextContent(/^\/$/)
   })
 
   it('asks for a subdomain first when the user holds none', async () => {
     subdomain.value = null
-    await renderAt('/')
-    fireEvent.click(await screen.findByText('Immich'))
+    await installFromPanel()
 
     expect(await screen.findByRole('dialog', { name: 'claim' })).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'deploy' })).toBeNull()

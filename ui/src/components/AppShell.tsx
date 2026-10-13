@@ -29,6 +29,13 @@ const keycloakAccountUrl = import.meta.env.VITE_KEYCLOAK_ACCOUNT_URL as
   | string
   | undefined
 
+const navLinkSx = {
+  fontSize: 15,
+  color: fg.muted,
+  transition: 'color 0.2s',
+  '&:hover': { color: fg.primary },
+} as const
+
 function AppShell({ children }: PropsWithChildren) {
   const { user, loading, email, setEmail } = useAuth()
   const showDialog = !loading && !user
@@ -98,30 +105,27 @@ function AppShell({ children }: PropsWithChildren) {
             </Typography>
           </Stack>
           <Box sx={{ flex: 1 }} />
-          {/* The wordmark handles "home". Besides the developer page and docs, the bar
-              carries no section nav; Admin and session actions live in the
-              account menu. */}
+          {/* The wordmark handles "home". Besides the catalog, the developer page and
+              docs, the bar carries no section nav; Admin and session actions live
+              in the account menu. */}
+          <Box
+            component={NavLink}
+            to="/apps"
+            sx={navLinkSx}
+          >
+            Apps
+          </Box>
           <Box
             component={NavLink}
             to="/dev"
-            sx={{
-              fontSize: 15,
-              color: fg.muted,
-              transition: 'color 0.2s',
-              '&:hover': { color: fg.primary },
-            }}
+            sx={{ ...navLinkSx, display: { xs: 'none', sm: 'block' } }}
           >
             Developers
           </Box>
           <Box
             component="a"
             href="/docs/"
-            sx={{
-              fontSize: 15,
-              color: fg.muted,
-              transition: 'color 0.2s',
-              '&:hover': { color: fg.primary },
-            }}
+            sx={navLinkSx}
           >
             Docs
           </Box>

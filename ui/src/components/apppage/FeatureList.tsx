@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { Box, Stack, Typography } from '@mui/material'
+import { Box, Stack, Typography, type SxProps, type Theme } from '@mui/material'
 import type { SvgIconComponent } from '@mui/icons-material'
 import SyncRounded from '@mui/icons-material/SyncRounded'
 import FaceRetouchingNaturalRounded from '@mui/icons-material/FaceRetouchingNaturalRounded'
@@ -65,6 +65,10 @@ const featureIcons: Record<string, SvgIconComponent> = {
   edit: EditNoteRounded,
   diagram: AccountTreeRounded,
   calendar: CalendarMonthRounded,
+}
+
+export function FeatureIcon({ icon, sx }: { icon: string; sx?: SxProps<Theme> }) {
+  return createElement(featureIcons[icon] ?? AutoAwesomeRounded, { sx })
 }
 
 /** The app's key features as compact icon bullets, two columns on wide screens. */

@@ -1,76 +1,36 @@
-## Overview
+# edit-deployment-frontend Specification
 
-```
-+--------------------------------------------------------------+
-|                      Dashboard                               |
-|                                                              |
-| +------------------+  +------------------+                   |
-| |  Deploy Card     |  |  Deploy Card     |                   |
-| |                  |  |                  |                   |
-| |  Status: ready   |  |  Status: error   |                   |
-| | [Open][Edit][Del]|  | [Open]      [Del]|                   |
-| +------------------+  +------------------+                   |
-|     |                      (no Edit button)                  |
-|     | click Edit                                             |
-|     v                                                        |
-| +----------------------------------------------------------+ |
-| | DeployDialog (edit mode)                                 | |
-| | +------------------------------------------------------+ | |
-| | | DeployDialogContent                                  | | |
-| | | +--------------------------------------------------+ | | |
-| | | | UserValuesForm                                   | | | |
-| | | |   hostname: [my.app.example.com]  <-- pre-filled | | | |
-| | | |   theme:    [dark]                <-- pre-filled | | | |
-| | | +--------------------------------------------------+ | | |
-| | +------------------------------------------------------+ | |
-| | [Cancel]                                        [Update] | |
-| +----------------------------------------------------------+ |
-|     |                                                        |
-|     | submit                                                 |
-|     v                                                        |
-| PUT /api/users/{id}/deployments/{id}                         |
-|   { desired_template_id: (same), user_values_json: {...} }   |
-+--------------------------------------------------------------+
-```
+## Purpose
 
-```
-HostnameField validation logic (with initialHostname):
+Lets a user change a deployment's settings from the dashboard, through the
+deploy dialog in edit mode, which pre-fills the deployment's current values and
+submits them to the update endpoint.
 
-  current FQDN == initialHostname  --> status: valid (skip API)
-  current FQDN != initialHostname  --> GET /api/hostnames/{fqdn}
-  current FQDN reverts back        --> status: valid (skip API)
-```
+## Requirements
 
-```
-valuesToSend fallback (create mode, simplified):
+### Requirement: Deployment rows offer Settings for running and failed deployments
+The Dashboard MUST offer a Settings action in the expanded view of each
+deployment row whose status is `ready` or `error`, and MUST NOT offer it in
+any other status. Selecting it MUST open the `DeployDialog` in edit mode for
+that deployment.
 
-  BEFORE: userValues ?? default_values_json ?? undefined
-  AFTER:  userValues ?? {}
+#### Scenario: Settings offered on a running deployment
+- **WHEN** a deployment's status is `ready` and its row is expanded
+- **THEN** the row offers Settings alongside its access actions and Remove app
 
-  Reconciler merge chain makes this safe:
-    deep_merge(default_values_json, {}) == default_values_json
-```
+#### Scenario: Settings offered on a failed deployment
+- **WHEN** a deployment's status is `error` and its row is expanded
+- **THEN** the row offers Settings, so that the settings can be saved again
 
-## ADDED Requirements
-
-### Requirement: Dashboard shows Edit button on deployment cards
-The Dashboard MUST display an Edit button on each deployment card. The Edit button MUST only be visible when the deployment's status is `ready`. Clicking the Edit button MUST open the `DeployDialog` in edit mode for that deployment.
-
-#### Scenario: Edit button visible on ready deployment
-- **WHEN** a deployment's status is `ready`
-- **THEN** the deployment card shows an Edit button alongside the existing Open and Delete buttons
-
-#### Scenario: Edit button hidden during provisioning
+#### Scenario: Settings hidden during provisioning
 - **WHEN** a deployment's status is `provisioning`
-- **THEN** the Edit button is not rendered on the deployment card
+- **THEN** its row does not offer Settings
 
-#### Scenario: Edit button hidden during error
-- **WHEN** a deployment's status is `error`
-- **THEN** the Edit button is not rendered on the deployment card
-
-#### Scenario: Edit button opens DeployDialog in edit mode
-- **WHEN** the user clicks the Edit button on a deployment card
-- **THEN** the `DeployDialog` opens with the deployment's product, current `user_values_json` pre-populated in the form, and submit wired to the update endpoint
+#### Scenario: Settings opens DeployDialog in edit mode
+- **WHEN** the user selects Settings on a deployment row
+- **THEN** the `DeployDialog` opens with the deployment's product, current
+  `user_values_json` pre-populated in the form, and submit wired to the update
+  endpoint
 
 ### Requirement: DeployDialog supports edit mode
 The `DeployDialog` component MUST accept an optional `deployment` prop. When `deployment` is provided, the dialog operates in edit mode:

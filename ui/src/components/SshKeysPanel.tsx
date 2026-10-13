@@ -59,7 +59,7 @@ function KeyRow({ item, onDelete }: { item: SshKey; onDelete: (key: SshKey) => v
       sx={{
         py: 2,
         px: { xs: 0, sm: 0.5 },
-        borderRadius: 2,
+        borderRadius: '12px',
         transition: 'background 0.15s',
         '&:hover': { background: 'rgba(255,255,255,0.02)' },
         '&:hover .key-actions': { opacity: 1 },

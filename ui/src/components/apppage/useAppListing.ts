@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { resolveApiPath } from '../../api/client'
 import { getProductListing, listPlans, listReleases } from '../../api/endpoints'
-import { useLandingProducts } from '../landing/useLandingProducts'
+import { useListedProducts } from '../landing/useLandingProducts'
 import { appHref } from './appHref'
 import type { AppListing } from './listing'
 
@@ -10,10 +10,12 @@ const STALE = 5 * 60 * 1000
 /**
  * The listing for `/apps/:slug`, assembled from the product, its plans, its
  * store listing and its releases. `listing` is null while products load or
- * when no storefront product has this slug.
+ * when no product the user can see has this slug. Unlisted products resolve
+ * too: the storefront hides them, a direct link does not. `visibility` says
+ * which kind it is.
  */
 export function useAppListing(slug: string | undefined) {
-  const products = useLandingProducts()
+  const products = useListedProducts()
   const product = products.data?.find((p) => appHref(p) === `/apps/${slug}`)
   const enabled = product !== undefined
 
@@ -31,7 +33,7 @@ export function useAppListing(slug: string | undefined) {
     staleTime: STALE,
   })
 
-  if (!product) return { listing: null, loading: products.isLoading }
+  if (!product) return { listing: null, loading: products.isLoading, visibility: undefined }
 
   const listing: AppListing = {
     id: product.id,
@@ -59,5 +61,9 @@ export function useAppListing(slug: string | undefined) {
       .filter((p) => p.template)
       .map((p) => ({ id: p.id, name: p.name, priceCents: p.template!.price_cents, description: p.template!.description ?? '' })),
   }
-  return { listing, loading: plans.isLoading || content.isLoading || releases.isLoading }
+  return {
+    listing,
+    loading: plans.isLoading || content.isLoading || releases.isLoading,
+    visibility: product.visibility,
+  }
 }

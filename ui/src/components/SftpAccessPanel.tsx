@@ -9,8 +9,9 @@ import { SftpCredentialsFields } from './SftpCredentialsFields'
  * product exposes no files" — a normal state, not an error — so it is never
  * retried, and callers can treat `data` presence as "SFTP is available".
  */
-export function useSftpCredentials(userId: number, deploymentId: string) {
+export function useSftpCredentials(userId: number, deploymentId: string, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ['deployment-sftp', userId, deploymentId],
     queryFn: () => getDeploymentSftp(userId, deploymentId),
     retry: (_count, err) => !(err instanceof ApiError && err.status === 404),

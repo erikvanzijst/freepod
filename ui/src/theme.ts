@@ -72,7 +72,7 @@ export const theme = createTheme({
     },
   },
   shape: {
-    borderRadius: 16,
+    borderRadius: 10,
   },
   components: {
     MuiCssBaseline: {
@@ -103,7 +103,7 @@ export const theme = createTheme({
           background: cardSurface.background,
           border: cardSurface.border,
           backdropFilter: cardSurface.backdropFilter,
-          borderRadius: 20,
+          borderRadius: 12,
         },
       },
     },
@@ -182,7 +182,7 @@ export const theme = createTheme({
     MuiListItemButton: {
       styleOverrides: {
         root: {
-          borderRadius: 12,
+          borderRadius: 8,
           '&.Mui-selected': {
             background: `${accent.blue}1f`,
             '&:hover': { background: `${accent.blue}2a` },

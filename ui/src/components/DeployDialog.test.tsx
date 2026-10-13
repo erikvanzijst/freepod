@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DeployDialog } from './DeployDialog'
 import type { Deployment, Product, ProductTemplate } from '../api/types'
 
@@ -87,6 +87,11 @@ const helloTemplate = {
   },
   created_at: '2026-01-01T00:00:00Z',
 }
+
+// The hostname check is debounced; on fake timers waitFor runs that clock
+// itself, so no test depends on how fast the machine is.
+beforeEach(() => vi.useFakeTimers())
+afterEach(() => vi.useRealTimers())
 
 describe('DeployDialog', () => {
   it('introduces the product with its tagline, never the long description', async () => {
