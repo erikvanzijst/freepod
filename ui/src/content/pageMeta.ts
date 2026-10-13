@@ -4,7 +4,8 @@
  * Crawlers don't run JavaScript, so these tags must be in the HTML nginx
  * serves for each path. The `pageMeta` Vite plugin renders `/` into
  * index.html and emits one extra HTML file per other path here (`dev.html`
- * for `/dev`), which nginx maps to that path.
+ * for `/dev`) and per catalog app (`app-immich.html` for `/apps/immich`),
+ * which nginx maps to that path.
  */
 
 export interface PageMeta {
@@ -17,7 +18,10 @@ export interface PageMeta {
   description: string
   /** Shorter card text for og:/twitter:description. */
   summary: string
-  /** Under `public/`, rendered from `og/<name>.html` by `og/generate.sh`. */
+  /**
+   * Path of the card image: under `public/`, rendered from `og/<name>.html` by
+   * `og/generate.sh`, or a build asset for an app page (`og/apps.ts`).
+   */
   image: string
 }
 
@@ -44,6 +48,32 @@ export const PAGE_META: Record<'home' | 'dev', PageMeta> = {
       'Ship your own apps with one command, by hand or with your coding agent. Any stack, Postgres, object storage and sign-in included. Hosted in Europe.',
     image: 'og-image-dev-v2.png',
   },
+}
+
+/** The fields of a catalog app that its page's link preview shows. */
+export interface AppMetaSource {
+  slug: string
+  name: string
+  tagline?: string
+  /** The description's first paragraph. */
+  lead?: string
+}
+
+/**
+ * Link-preview metadata for one catalog app's page at `/apps/<slug>`, served
+ * from `app-<slug>.html`. The card text is the tagline, and search results get
+ * the description's first paragraph.
+ */
+export function appPageMeta(app: AppMetaSource, image: string): PageMeta {
+  const summary = app.tagline ?? `${app.name}, hosted in Europe on Freepod.`
+  return {
+    path: `/apps/${app.slug}`,
+    file: `app-${app.slug}.html`,
+    title: `${app.name} on Freepod`,
+    description: app.lead ?? summary,
+    summary,
+    image,
+  }
 }
 
 const escape = (value: string) =>

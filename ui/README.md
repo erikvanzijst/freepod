@@ -34,6 +34,9 @@ Build:
 npm run build
 ```
 
+The build reads `../products/catalog` (or `CATALOG_DIR`) to give each app page
+at `/apps/<slug>` its own link-preview tags and card image (`og/apps.ts`).
+
 ## App Structure
 - `src/App.tsx`: route switch (`/` Dashboard, `/settings` and `/admin`, each with nested panel routes).
 - `src/components/AppShell.tsx`: global layout shell, top app bar, nav buttons, signed-in chip, email switch button, decorative radial background, and email dialog gating.

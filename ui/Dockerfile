@@ -20,6 +20,9 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
+# The app pages' link previews are rendered from the catalog too.
+COPY --from=catalog . /catalog/
+ENV CATALOG_DIR=/catalog
 RUN npm run build
 
 FROM nginx:alpine
