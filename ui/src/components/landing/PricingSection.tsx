@@ -157,7 +157,7 @@ function PriceCard({ product, onSignup }: {
         <Typography
           sx={{ fontFamily: SANS, fontSize: 14, color: fg.muted, mt: 1.5 }}
         >
-          Replaces{' '}
+          An alternative to{' '}
           <Box component="span" sx={{ color: fg.primary, fontWeight: 600 }}>
             {product.replaces}
           </Box>

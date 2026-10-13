@@ -83,7 +83,7 @@ export function AppListingView({ listing, onInstall }: { listing: AppListing; on
   const selected = listing.plans[plan]
   const price = priceSummary(listing)
   const hasFreePlan = listing.plans.some((p) => p.priceCents === 0)
-  const meta = [listing.category, listing.replaces.length > 0 && `Replaces ${listing.replaces.join(' · ')}`].filter(Boolean).join(' · ')
+  const meta = [listing.category, listing.replaces.length > 0 && `An alternative to ${listing.replaces.join(' · ')}`].filter(Boolean).join(' · ')
 
   const sections: ReactNode[] = [
     listing.features.length > 0 && <FeatureList features={listing.features} />,

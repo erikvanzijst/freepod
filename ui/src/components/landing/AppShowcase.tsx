@@ -114,7 +114,7 @@ function AppCard({ product }: { product: ProductSummary }) {
       {product.replaces && (
         <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
           <Typography sx={{ fontFamily: SANS, fontSize: 13.5, color: fg.faint }}>
-            Replaces{' '}
+            An alternative to{' '}
             <Box component="span" sx={{ color: fg.primary, fontWeight: 600 }}>
               {product.replaces}
             </Box>

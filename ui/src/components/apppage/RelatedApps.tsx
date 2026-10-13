@@ -93,7 +93,7 @@ export function RelatedApps({ currentName, category, title = 'More apps on Freep
                 </Stack>
                 {p.replaces && (
                   <Typography noWrap sx={{ mt: 2, fontSize: 13.5, color: fg.faint }}>
-                    Replaces <Box component="span" sx={{ color: fg.muted }}>{p.replaces}</Box>
+                    An alternative to <Box component="span" sx={{ color: fg.muted }}>{p.replaces}</Box>
                   </Typography>
                 )}
               </Box>

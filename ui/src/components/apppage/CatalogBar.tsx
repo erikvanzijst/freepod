@@ -41,7 +41,7 @@ export function AppSearch({ width = 280 }: { width?: number | string }) {
             <Typography sx={{ fontSize: 14.5, lineHeight: 1.3 }}>{p.name}</Typography>
             {p.replaces && (
               <Typography noWrap sx={{ fontSize: 12, lineHeight: 1.4, color: fg.faint }}>
-                Replaces {p.replaces}
+                An alternative to {p.replaces}
               </Typography>
             )}
           </Box>
