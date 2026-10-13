@@ -12,7 +12,7 @@ import { deploymentView, toneColor } from './deploymentView'
 import { ProblemNotice, StatusLine, OpenButton, type DeploymentCardProps } from './DeploymentParts'
 import { useDeploymentAccess } from './useDeploymentAccess'
 
-/** 2: a row like the catalog's; it expands in place to everything else about the app. */
+/** A deployment as a row like the catalog's; it expands in place to everything else about the app. */
 export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDelete }: DeploymentCardProps) {
   const view = deploymentView(deployment)
   const [open, setOpen] = useState(Boolean(view.problem))

@@ -76,6 +76,15 @@ describe('deploymentView problems', () => {
     expect(problem?.details).toBe('helm: timed out')
   })
 
+  it('links to support with the deployment and its error filled in', () => {
+    const link = deploymentView(deployment({ status: 'error', last_error: 'helm: timed out' })).problem?.support ?? ''
+    expect(link).toMatch(/^mailto:support@freepod\.eu\?/)
+    const params = new URLSearchParams(link.split('?')[1])
+    expect(params.get('subject')).toBe('Help with photos.example.test')
+    expect(params.get('body')).toContain('Deployment: d1')
+    expect(params.get('body')).toContain('Error: helm: timed out')
+  })
+
   it('flags a failed payment on a running app', () => {
     expect(deploymentView(deployment(subscription('Personal', 499, 'arrears'))).problem?.title).toBe('Payment failed')
   })

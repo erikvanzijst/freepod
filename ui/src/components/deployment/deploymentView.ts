@@ -2,6 +2,7 @@ import type { Deployment } from '../../api/types'
 import { resolveApiPath } from '../../api/client'
 import { ensureUrl } from '../../utils/format'
 import { formatEuro } from '../landing/usePricing'
+import { supportMailto } from '../../content/contact'
 
 export type Tone = 'ok' | 'busy' | 'waiting' | 'problem' | 'muted'
 
@@ -10,6 +11,8 @@ export interface DeploymentProblem {
   message: string
   /** The raw error, for support; hidden behind "Show details". */
   details?: string
+  /** A mailto link to support that names the deployment and carries `details`. */
+  support?: string
 }
 
 /** A deployment in the words a non-technical user reads on its card. */
@@ -58,12 +61,21 @@ function status(d: Deployment): DeploymentView['status'] {
   }
 }
 
+function supportRequest(d: Deployment): string {
+  const facts = [`Deployment: ${d.id}`]
+  if (d.hostname) facts.push(`Address: ${d.hostname}`)
+  if (d.last_error) facts.push(`Error: ${d.last_error}`)
+  // Room above the facts for the user's own words.
+  return supportMailto(`Help with ${d.hostname || d.name}`, `\n\n${facts.join('\n')}`)
+}
+
 function problem(d: Deployment): DeploymentProblem | undefined {
   if (d.status === 'error') {
     return {
       title: 'Something went wrong',
       message: "Your app couldn't finish its last change. Saving its settings again might dislodge it. If not, please contact support.",
       details: d.last_error ?? undefined,
+      support: supportRequest(d),
     }
   }
   if (d.subscription?.payment_status === 'arrears' && d.status !== 'pending') {

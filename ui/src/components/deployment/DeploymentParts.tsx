@@ -5,6 +5,7 @@ import ErrorOutlineRounded from '@mui/icons-material/ErrorOutlineRounded'
 import CreditCardOffRounded from '@mui/icons-material/CreditCardOffRounded'
 import type { Deployment } from '../../api/types'
 import { fg, MONO } from '../landing/landingTokens'
+import { SUPPORT_EMAIL } from '../../content/contact'
 import { toneColor, type DeploymentProblem, type DeploymentView } from './deploymentView'
 
 export interface DeploymentCardProps {
@@ -58,6 +59,17 @@ export function StatusLine({ view, size = 14 }: { view: DeploymentView; size?: n
   )
 }
 
+const linkSx = {
+  p: 0,
+  border: 0,
+  background: 'none',
+  color: fg.faint,
+  fontSize: 12.5,
+  cursor: 'pointer',
+  textDecoration: 'underline',
+  '&:hover': { color: fg.primary },
+} as const
+
 /** A problem in plain words, with the raw error tucked away for support. */
 export function ProblemNotice({ problem, compact = false }: { problem: DeploymentProblem; compact?: boolean }) {
   const [details, setDetails] = useState(false)
@@ -70,21 +82,26 @@ export function ProblemNotice({ problem, compact = false }: { problem: Deploymen
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography sx={{ fontWeight: 600, fontSize: 14.5 }}>{problem.title}</Typography>
           <Typography sx={{ fontSize: 13.5, color: fg.muted, lineHeight: 1.5 }}>{problem.message}</Typography>
+          {(problem.support || problem.details) && (
+            <Stack direction="row" spacing={2} sx={{ mt: 0.75 }}>
+              {problem.support && (
+                <Box component="a" href={problem.support} sx={{ ...linkSx, color: fg.muted }}>
+                  Email {SUPPORT_EMAIL}
+                </Box>
+              )}
+              {problem.details && (
+                <Box component="button" onClick={() => setDetails((v) => !v)} aria-expanded={details} sx={linkSx}>
+                  {details ? 'Hide details' : 'Show details'}
+                </Box>
+              )}
+            </Stack>
+          )}
           {problem.details && (
-            <>
-              <Box
-                component="button"
-                onClick={() => setDetails((v) => !v)}
-                sx={{ mt: 0.75, p: 0, border: 0, background: 'none', color: fg.faint, fontSize: 12.5, cursor: 'pointer', textDecoration: 'underline' }}
-              >
-                {details ? 'Hide details' : 'Show details'}
-              </Box>
-              <Collapse in={details}>
-                <Typography sx={{ mt: 1, fontFamily: MONO, fontSize: 11.5, color: fg.faint, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {problem.details}
-                </Typography>
-              </Collapse>
-            </>
+            <Collapse in={details}>
+              <Typography sx={{ mt: 1, fontFamily: MONO, fontSize: 11.5, color: fg.faint, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {problem.details}
+              </Typography>
+            </Collapse>
           )}
         </Box>
       </Stack>
