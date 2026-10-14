@@ -29,7 +29,7 @@ export function AppPage() {
   const { listing, loading, visibility } = useAppListing(slug)
   const { start, dialogOpen, setDialogOpen, setEmail, returnTo } = useStartSignup()
   const navigate = useNavigate()
-  const { install, flow, close, launched } = useAppInstall(listing?.id, start)
+  const { install, flow, close, launched, plan } = useAppInstall(listing?.id, start)
 
   const name = listing?.name
   useEffect(() => {
@@ -46,12 +46,12 @@ export function AppPage() {
     <Box sx={{ background: ink.base, color: fg.primary, fontFamily: SANS, minHeight: '100vh' }}>
       <LandingNav onSignup={start} links={navLinks} />
       <Box component="main">
-        {listing && !loading && <AppListingView key={listing.slug} listing={listing} onInstall={install} />}
+        {listing && !loading && <AppListingView key={listing.slug} listing={listing} initialPlan={plan} onInstall={install} />}
         {!listing && !loading && <AppNotFound />}
       </Box>
       <LandingFooter />
 
-      {flow && <InstallFlow product={flow.product} planId={flow.planId} onClose={close} onLaunched={launched} />}
+      {flow && <InstallFlow product={flow.product} plan={flow.plan} onClose={close} onLaunched={launched} />}
 
       <EmailDialog
         open={dialogOpen}

@@ -6,6 +6,7 @@ import type { Deployment, Plan, ProductSummary, ProductTemplate } from '../api/t
 import { validateUserValues } from './UserValuesForm'
 import type { VarSubmission } from './UserValuesForm'
 import { DeployDialogContent } from './DeployDialogContent'
+import { findPlan } from './useInstallRequest'
 import { LEGAL_DOCS } from '../content/legal'
 
 // Version (effective date) of the Terms of Service this build displays; recorded
@@ -18,13 +19,13 @@ interface DeployDialogProps {
   userId: number
   onClose: () => void
   deployment?: Deployment
-  /** A plan to preselect, e.g. the one chosen on the app's public page. */
-  initialPlanId?: number
+  /** The name of a plan to preselect, e.g. the one chosen on the app's public page. */
+  initialPlan?: string
   /** Called instead of `onClose` once a new deployment launches. */
   onLaunched?: () => void
 }
 
-export function DeployDialog({ product, userId, onClose, deployment, initialPlanId, onLaunched }: DeployDialogProps) {
+export function DeployDialog({ product, userId, onClose, deployment, initialPlan, onLaunched }: DeployDialogProps) {
   const queryClient = useQueryClient()
   const [userValues, setUserValues] = useState<Record<string, unknown> | null>(null)
   const [vars, setVars] = useState<Record<string, VarSubmission>>({})
@@ -91,11 +92,11 @@ export function DeployDialog({ product, userId, onClose, deployment, initialPlan
   const effectivePlanTemplateId = useMemo(() => {
     if (isEditMode) return null
     if (selectedPlanTemplateId) return selectedPlanTemplateId
-    const requested = plans.find((p) => p.id === initialPlanId)
+    const requested = findPlan(plans, initialPlan)
     if (requested?.template_id) return requested.template_id
     if (plans.length === 1 && plans[0].template_id) return plans[0].template_id
     return null
-  }, [isEditMode, selectedPlanTemplateId, plans, initialPlanId])
+  }, [isEditMode, selectedPlanTemplateId, plans, initialPlan])
 
   const createMutation = useMutation({
     mutationFn: async (payload: {

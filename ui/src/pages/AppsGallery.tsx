@@ -40,7 +40,7 @@ export function AppsGallery() {
       </Box>
       <LandingFooter />
 
-      {flow && <InstallFlow product={flow.product} planId={flow.planId} onClose={close} onLaunched={() => navigate('/')} />}
+      {flow && <InstallFlow product={flow.product} plan={flow.plan} onClose={close} onLaunched={() => navigate('/')} />}
 
       <EmailDialog
         open={dialogOpen}

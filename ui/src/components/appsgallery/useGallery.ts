@@ -136,14 +136,14 @@ export function useGalleryInstall(startSignup: (path: string) => void) {
       ? products.data?.find((p) => p.id === productId && p.template_id)
       : undefined
 
-  const install = (app: GalleryApp, planId?: number) => {
+  const install = (app: GalleryApp, plan?: string) => {
     if (user) {
       setProductId(app.id)
-      request.request(planId)
+      request.request(plan)
     } else {
-      startSignup(app.href + installSearch(planId))
+      startSignup(app.href + installSearch(plan))
     }
   }
 
-  return { install, flow: product ? { product, planId: request.planId } : null, close: request.clear }
+  return { install, flow: product ? { product, plan: request.plan } : null, close: request.clear }
 }

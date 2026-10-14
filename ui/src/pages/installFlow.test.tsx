@@ -24,10 +24,10 @@ vi.mock('../api/endpoints', () => ({
 // The dialogs have their own tests; here they only report how they were opened.
 // Portaled like the real ones, so they stay reachable above the catalog panel.
 vi.mock('../components/DeployDialog', () => ({
-  DeployDialog: (props: { product: Product; initialPlanId?: number; onClose: () => void; onLaunched?: () => void }) =>
+  DeployDialog: (props: { product: Product; initialPlan?: string; onClose: () => void; onLaunched?: () => void }) =>
     createPortal(
       <div role="dialog" aria-label="deploy">
-        deploy {props.product.name} plan {props.initialPlanId ?? 'none'}
+        deploy {props.product.name} plan {props.initialPlan ?? 'none'}
         <button onClick={props.onClose}>Cancel</button>
         <button onClick={props.onLaunched ?? props.onClose}>Launch</button>
       </div>,
@@ -129,9 +129,9 @@ describe('Install on an app page', () => {
   it('opens the deploy dialog over the page with the chosen plan', async () => {
     await installImmich()
 
-    expect(await screen.findByRole('dialog', { name: 'deploy' })).toHaveTextContent('deploy Immich plan 6')
+    expect(await screen.findByRole('dialog', { name: 'deploy' })).toHaveTextContent('deploy Immich plan Pro')
     expect(screen.getByRole('heading', { level: 1, name: 'Immich' })).toBeInTheDocument()
-    expect(screen.getByLabelText('location')).toHaveTextContent('/apps/immich?install=1&plan=6')
+    expect(screen.getByLabelText('location')).toHaveTextContent('/apps/immich?install=1&plan=Pro')
   })
 
   it('stays on the page when the dialog is closed', async () => {
@@ -155,7 +155,7 @@ describe('Install on an app page', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Claim' }))
 
-    expect(await screen.findByRole('dialog', { name: 'deploy' })).toHaveTextContent('deploy Immich plan 6')
+    expect(await screen.findByRole('dialog', { name: 'deploy' })).toHaveTextContent('deploy Immich plan Pro')
   })
 
   it('ends the install when the claim is declined', async () => {
@@ -179,16 +179,39 @@ describe('Install on an app page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(auth.setEmail).toHaveBeenCalledWith('new@example.com')
-    expect(screen.getByLabelText('location')).toHaveTextContent('/apps/immich?install=1&plan=6')
-    expect(await screen.findByRole('dialog', { name: 'deploy' })).toHaveTextContent('deploy Immich plan 6')
+    expect(screen.getByLabelText('location')).toHaveTextContent('/apps/immich?install=1&plan=Pro')
+    expect(await screen.findByRole('dialog', { name: 'deploy' })).toHaveTextContent('deploy Immich plan Pro')
   })
 
   it('ignores an install request for an anonymous visitor', async () => {
     auth.user = null
-    await renderAt('/apps/immich?install=1&plan=6')
+    await renderAt('/apps/immich?install=1&plan=Pro')
 
     await screen.findByRole('heading', { level: 1, name: 'Immich' })
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+describe('A ?plan= deep link', () => {
+  it('preselects the named plan, ignoring case', async () => {
+    await renderAt('/apps/immich?plan=free')
+
+    expect(await screen.findByRole('button', { name: 'Install with Free' })).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: /Install Immich/ })[0])
+    expect(await screen.findByRole('dialog', { name: 'deploy' })).toHaveTextContent('deploy Immich plan Free')
+  })
+
+  it('falls back to the default plan for an unknown name', async () => {
+    await renderAt('/apps/immich?plan=Enterprise')
+
+    expect(await screen.findByRole('button', { name: 'Install with Pro' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('opens the install straight away with install=1', async () => {
+    await renderAt('/apps/immich?plan=Free&install=1')
+
+    expect(await screen.findByRole('dialog', { name: 'deploy' })).toHaveTextContent('deploy Immich plan Free')
   })
 })
 

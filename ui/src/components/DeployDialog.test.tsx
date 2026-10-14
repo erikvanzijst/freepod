@@ -133,7 +133,7 @@ describe('DeployDialog', () => {
     checkHostnameMock.mockResolvedValue({ fqdn: 'test.example.com', usable: true, reason: null })
     createDeploymentMock.mockResolvedValue({ deployment: { id: '1' }, checkout_url: null })
 
-    renderWithQuery(<DeployDialog product={helloWorld} userId={42} onClose={vi.fn()} initialPlanId={2} />)
+    renderWithQuery(<DeployDialog product={helloWorld} userId={42} onClose={vi.fn()} initialPlan="pro" />)
 
     await waitFor(() => {
       expect(screen.getByText('App settings:')).toBeInTheDocument()

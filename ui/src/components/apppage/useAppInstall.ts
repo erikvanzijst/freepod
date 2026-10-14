@@ -19,14 +19,16 @@ export function useAppInstall(productId: number | undefined, startSignup: (path:
   const product =
     user && request.requested ? products.data?.find((p) => p.id === productId && p.template_id) : undefined
 
-  const install = (planId?: number) => {
-    if (user) request.request(planId)
-    else startSignup(location.pathname + installSearch(planId))
+  const install = (plan?: string) => {
+    if (user) request.request(plan)
+    else startSignup(location.pathname + installSearch(plan))
   }
 
   return {
     install,
-    flow: product ? { product, planId: request.planId } : null,
+    flow: product ? { product, plan: request.plan } : null,
+    /** The plan named in the URL, to preselect on the page. */
+    plan: request.plan,
     close: request.clear,
     launched: () => navigate('/'),
   }

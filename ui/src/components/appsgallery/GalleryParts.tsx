@@ -298,7 +298,7 @@ function planLine(plans: { priceCents: number }[]): string {
  * An expanded row's store content at a glance: screenshots, features and
  * plans, with install and a link to the full page.
  */
-export function AppPreviewBody({ app, onInstall }: { app: GalleryApp; onInstall: (planId?: number) => void }) {
+export function AppPreviewBody({ app, onInstall }: { app: GalleryApp; onInstall: (plan?: string) => void }) {
   const { screenshots, features, plans } = usePreview(app.id)
   const [shot, setShot] = useState<number | null>(null)
 

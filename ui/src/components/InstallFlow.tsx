@@ -7,8 +7,8 @@ import { useMySubdomain } from './subdomain/useMySubdomain'
 
 interface InstallFlowProps {
   product: ProductSummary
-  /** A plan to preselect in the deploy dialog. */
-  planId?: number
+  /** The name of a plan to preselect in the deploy dialog. */
+  plan?: string
   onClose: () => void
   /** Called instead of `onClose` once a launch succeeds. */
   onLaunched?: () => void
@@ -20,7 +20,7 @@ interface InstallFlowProps {
  * rather than sitting inside it, so no half-filled form is thrown away to ask
  * for a domain name.
  */
-export function InstallFlow({ product, planId, onClose, onLaunched }: InstallFlowProps) {
+export function InstallFlow({ product, plan, onClose, onLaunched }: InstallFlowProps) {
   const { user } = useAuth()
   const subdomain = useMySubdomain()
   const [claimed, setClaimed] = useState(false)
@@ -51,7 +51,7 @@ export function InstallFlow({ product, planId, onClose, onLaunched }: InstallFlo
     <DeployDialog
       product={product}
       userId={user.id}
-      initialPlanId={planId}
+      initialPlan={plan}
       onClose={onClose}
       onLaunched={onLaunched}
     />

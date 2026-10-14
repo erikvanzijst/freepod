@@ -125,7 +125,7 @@ export function AddAppDrawer({ open, onClose }: { open: boolean; onClose: () => 
           <CatalogList g={g} onInstall={install} />
         </Box>
       </Drawer>
-      {flow && <InstallFlow product={flow.product} planId={flow.planId} onClose={close} onLaunched={onClose} />}
+      {flow && <InstallFlow product={flow.product} plan={flow.plan} onClose={close} onLaunched={onClose} />}
     </>
   )
 }

@@ -10,7 +10,7 @@ type Gallery = ReturnType<typeof useGallery>
 
 interface CatalogProps {
   g: Gallery
-  onInstall: (app: GalleryApp, planId?: number) => void
+  onInstall: (app: GalleryApp, plan?: string) => void
 }
 
 /** The catalog page: intro, then the searchable list. */
@@ -98,7 +98,7 @@ export function CatalogList({ g, onInstall }: CatalogProps) {
                   <Box sx={{ mb: 2.5 }}>
                     <AlternativeTo app={app} />
                   </Box>
-                  <AppPreviewBody app={app} onInstall={(planId) => onInstall(app, planId)} />
+                  <AppPreviewBody app={app} onInstall={(plan) => onInstall(app, plan)} />
                 </Box>
               </Collapse>
             </Box>

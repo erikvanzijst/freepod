@@ -16,6 +16,7 @@ import { ScreenshotStrip } from './ScreenshotStrip'
 import { Markdown } from './Markdown'
 import { planPrice, planSummary } from './listingFormat'
 import { defaultPlanIndex, fromPriceCents, type AppListing } from './listing'
+import { findPlan } from '../useInstallRequest'
 
 const divider = <Box sx={{ borderTop: `1px solid ${line.soft}`, my: { xs: 4, md: 5 } }} />
 
@@ -76,10 +77,23 @@ function StatBar({ listing }: { listing: AppListing }) {
  * card beneath. On phones the header shrinks to a title row so screenshots
  * show at once, and the install action moves to a bar pinned to the bottom.
  * Every section is optional, so a sparsely described app still renders cleanly.
+ * `initialPlan` names a plan to preselect instead of the default, as from a
+ * `?plan=<name>` deep link; an unknown name falls back to the default.
  */
-export function AppListingView({ listing, onInstall }: { listing: AppListing; onInstall: (planId?: number) => void }) {
+export function AppListingView({
+  listing,
+  initialPlan,
+  onInstall,
+}: {
+  listing: AppListing
+  initialPlan?: string
+  onInstall: (plan?: string) => void
+}) {
   const [shot, setShot] = useState<number | null>(null)
-  const [plan, setPlan] = useState(() => defaultPlanIndex(listing))
+  const [plan, setPlan] = useState(() => {
+    const requested = findPlan(listing.plans, initialPlan)
+    return requested ? listing.plans.indexOf(requested) : defaultPlanIndex(listing)
+  })
   const selected = listing.plans[plan]
   const price = priceSummary(listing)
   const hasFreePlan = listing.plans.some((p) => p.priceCents === 0)
@@ -135,7 +149,7 @@ export function AppListingView({ listing, onInstall }: { listing: AppListing; on
             )}
           </Box>
           <Stack alignItems="flex-end" spacing={1} sx={{ display: { xs: 'none', md: 'flex' } }}>
-            <InstallButton onClick={() => onInstall(selected?.id)}>Install {listing.name}</InstallButton>
+            <InstallButton onClick={() => onInstall(selected?.name)}>Install {listing.name}</InstallButton>
             <Typography sx={{ fontSize: 13, color: fg.faint }}>
               {hasFreePlan ? 'Free plan available · cancel anytime' : 'Cancel anytime'}
             </Typography>
@@ -203,7 +217,7 @@ export function AppListingView({ listing, onInstall }: { listing: AppListing; on
                 )}
               </>
             )}
-            <InstallButton fullWidth onClick={() => onInstall(selected?.id)} sx={{ mt: selected ? 2.5 : 0 }}>
+            <InstallButton fullWidth onClick={() => onInstall(selected?.name)} sx={{ mt: selected ? 2.5 : 0 }}>
               {selected && listing.plans.length > 1 ? `Install with ${selected.name}` : `Install ${listing.name}`}
             </InstallButton>
             <Typography sx={{ mt: 1.5, textAlign: 'center', fontSize: 13, color: fg.faint }}>
@@ -242,7 +256,7 @@ export function AppListingView({ listing, onInstall }: { listing: AppListing; on
             </>
           )}
         </Box>
-        <InstallButton onClick={() => onInstall(selected?.id)} sx={{ px: 3, py: 1.1, fontSize: 15.5 }}>Install</InstallButton>
+        <InstallButton onClick={() => onInstall(selected?.name)} sx={{ px: 3, py: 1.1, fontSize: 15.5 }}>Install</InstallButton>
       </Stack>
 
       <ScreenshotLightbox shots={listing.screenshots} index={shot} onIndexChange={setShot} onClose={() => setShot(null)} />

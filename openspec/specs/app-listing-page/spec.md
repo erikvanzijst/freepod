@@ -86,6 +86,23 @@ one. A plan's one-line summary SHALL be the first line of its description.
 - **WHEN** a product has a free plan and paid plans of 5 and 9 euros a month
 - **THEN** the 5-euro plan is preselected
 
+### Requirement: A link can preselect a plan by name
+The page SHALL accept an optional `plan` query parameter naming one of the
+product's plans, matched without regard to case, and SHALL preselect that plan
+instead of the default. A name that matches no plan SHALL be ignored, leaving
+the default selected. The install request that survives sign-up SHALL carry the
+chosen plan in the same parameter, by name.
+
+#### Scenario: Deep link to a plan
+- **WHEN** a visitor opens `/apps/immich?plan=free`
+- **THEN** the Free plan is preselected, and Install opens the deploy dialog
+  with the Free plan selected
+
+#### Scenario: Unknown plan name
+- **WHEN** a visitor opens `/apps/immich?plan=Enterprise` and Immich has no
+  such plan
+- **THEN** the page opens with its default plan preselected and no error
+
 ### Requirement: Install opens the deploy dialog for a signed-in visitor
 For a signed-in visitor, Install SHALL open the existing deploy dialog for
 that product over the app page, with the plan chosen on the page preselected.
