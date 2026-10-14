@@ -1,0 +1,103 @@
+# Bespoke Docmost chart values. Flat and explicit: every image, size and env
+# the deployment uses is declared here.
+
+image:
+  repository: docker.io/docmost/docmost
+  # Defaults to the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Public hostname: the ingress rule host and APP_URL.
+host: "docmost.local"
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+
+# The owner's account, created through Docmost's first-run setup by the
+# application container's postStart hook. Docmost signs in by email, which
+# comes from caelus.owner.email under Caelus and from `email` standalone.
+admin:
+  name: Admin
+  email: admin@example.com
+  # Blank generates one on first install; a tenant-supplied
+  # DOCMOST_ADMIN_PASSWORD var overrides it.
+  password: ""
+
+smtp:
+  host: ""
+  port: 25
+  from: docmost@example.com
+  fromName: Docmost
+
+persistence:
+  # Attachments, images and avatars (STORAGE_DRIVER=local).
+  # caelus.plan.storageSize overrides the size.
+  storage:
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    storageClassName: ""
+
+postgres:
+  image:
+    repository: docker.io/library/postgres
+    tag: "18"
+    pullPolicy: IfNotPresent
+  auth:
+    username: docmost
+    database: docmost
+    # Blank generates one on first install and reuses it from the <release>-db
+    # Secret thereafter.
+    password: ""
+  persistence:
+    accessMode: ReadWriteOnce
+    size: 5Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+
+redis:
+  image:
+    repository: docker.io/library/redis
+    tag: "8"
+    pullPolicy: IfNotPresent
+  # Upstream's reference compose: BullMQ needs every key kept, and the queue
+  # survives a restart.
+  args:
+    - redis-server
+    - --appendonly
+    - "yes"
+    - --maxmemory-policy
+    - noeviction
+  persistence:
+    accessMode: ReadWriteOnce
+    size: 1Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 15m
+      memory: 8Mi
+
+# Measured idle: ~440Mi resident (Node, no tuning) and ~15m.
+resources:
+  requests:
+    cpu: 15m
+    memory: 448Mi
+
+# Escape hatch for Docmost settings this chart does not model.
+extraEnv: {}
+
+# Injected per deployment by the Caelus reconciler.
+caelus:
+  releaseId: ""
+  plan: {}
+  owner: {}
+  ingress:
+    enabled: false
+    tls: {}
+  vars: {}
+
+sshSidecarImage: ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2

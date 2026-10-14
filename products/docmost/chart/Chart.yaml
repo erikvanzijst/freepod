@@ -1,0 +1,20 @@
+apiVersion: v2
+name: docmost
+description: >-
+  Self-contained Freepod chart for Docmost. Renders the full deployment
+  (docmost, postgres, redis) directly.
+type: application
+version: 0.1.2
+appVersion: "0.96.0"
+keywords:
+  - docmost
+  - wiki
+  - documentation
+  - postgres
+maintainers:
+  - name: Caelus Team
+
+dependencies:
+  - name: ssh-sidecar
+    version: "0.5.1"
+    repository: "file://../../_lib/ssh-sidecar-chart"
