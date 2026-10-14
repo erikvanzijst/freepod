@@ -3,6 +3,11 @@ Bundled PostgreSQL, at the version upstream's reference compose runs. The image
 starts as root and drops to the postgres user itself, so no security context is
 imposed on it. Mounted where the compose mounts it: from 18 the image keeps
 PGDATA in a versioned subdirectory of /var/lib/postgresql.
+
+A StatefulSet rather than a Deployment: a deleted or evicted pod is replaced
+only once it is gone, so two servers never share the data directory. The
+volume is the fixed-name claim below rather than a volumeClaimTemplate, so it
+stays Helm-owned like `storage`.
 */}}
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -36,7 +41,7 @@ spec:
       targetPort: postgres
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ .Release.Name }}-postgres
   labels:
@@ -44,8 +49,7 @@ metadata:
     {{- include "docmost.componentSelector" (dict "root" . "name" "postgres") | nindent 4 }}
 spec:
   replicas: 1
-  strategy:
-    type: Recreate
+  serviceName: {{ .Release.Name }}-postgres
   selector:
     matchLabels:
       {{- include "docmost.componentSelector" (dict "root" . "name" "postgres") | nindent 6 }}

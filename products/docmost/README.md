@@ -10,8 +10,8 @@ library chart (which provides read-only file access to the stored files).
 | Component | Object(s) |
 |-----------|-----------|
 | Docmost (web, API and collaboration WebSocket on one port) | Deployment `<release>-docmost` (+ SSH sidecar, + wait-for-Postgres init), Service `:3000` |
-| PostgreSQL | Deployment `<release>-postgres` + PVC `postgres-data` + Service `:5432` |
-| Redis (job queues, collaboration fan-out) | Deployment `<release>-redis` + PVC `redis-data` + Service `:6379` |
+| PostgreSQL | StatefulSet `<release>-postgres` + PVC `postgres-data` + Service `:5432` |
+| Redis (job queues, collaboration fan-out) | StatefulSet `<release>-redis` + PVC `redis-data` + Service `:6379` |
 | Files | PVC `storage` (plan-sized) at `/app/data/storage` (`STORAGE_DRIVER=local`) |
 | Credentials | Secret `<release>-db` (database, `APP_SECRET`), Secret `<release>-admin` (first-start owner password, standalone installs only) |
 | Ingress | `<release>-ingress` (per-deployment TLS via `caelus.ingress.tls`) |
@@ -78,7 +78,7 @@ is published. To publish by hand, from the repository root:
 | Field               | Value                                                              |
 |---------------------|--------------------------------------------------------------------|
 | Chart ref           | `oci://ghcr.io/erikvanzijst/freepod/charts/docmost`                |
-| Chart version       | `0.1.1`                                                            |
+| Chart version       | `0.1.2`                                                            |
 | User values schema  | see [`products/catalog/docmost/docmost.yaml`](../catalog/docmost/docmost.yaml) |
 | Default Helm values | see [`products/catalog/docmost/docmost.yaml`](../catalog/docmost/docmost.yaml) |
 

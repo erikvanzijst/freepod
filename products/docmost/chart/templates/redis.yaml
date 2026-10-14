@@ -1,7 +1,7 @@
 {{- /*
 Bundled Redis for Docmost's job queues and collaboration fan-out, configured as
 upstream's reference compose runs it. The image starts as root and drops to the
-redis user itself.
+redis user itself. A StatefulSet for the reason postgres.yaml gives.
 */}}
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -34,7 +34,7 @@ spec:
       targetPort: redis
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ .Release.Name }}-redis
   labels:
@@ -42,8 +42,7 @@ metadata:
     {{- include "docmost.componentSelector" (dict "root" . "name" "redis") | nindent 4 }}
 spec:
   replicas: 1
-  strategy:
-    type: Recreate
+  serviceName: {{ .Release.Name }}-redis
   selector:
     matchLabels:
       {{- include "docmost.componentSelector" (dict "root" . "name" "redis") | nindent 6 }}
