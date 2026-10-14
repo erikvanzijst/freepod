@@ -10,8 +10,6 @@ from app.deps import require_self
 from app.models import UserORM, VarsRead, VarsWrite
 from app.services import deployments as deployment_service
 from app.services import vars as vars_service
-from app.services.errors import DeploymentInProgressException, NotFoundException
-from app.services.reconcile_constants import DEPLOYMENT_STATUS_DELETING
 
 router = APIRouter(
     prefix="/users/{user_id}/deployments/{deployment_id}/vars",
@@ -34,25 +32,12 @@ def _deployment(
     caller: UserORM,
 ):
     """Resolve the deployment and the phase, or fail the way a read would."""
-    if phase not in vars_service.VAR_PHASES:
-        raise NotFoundException("Unknown phase")
+    vars_service.require_phase(phase)
     return deployment_service.get_deployment_orm(
         session,
         deployment_id=deployment_id,
         user_id=None if caller.is_admin else user_id,
     )
-
-
-def _assert_writable(deployment) -> None:
-    """A deployment on its way out takes its vars with it (E12).
-
-    Every other status accepts a write: a staged change to a deployment that
-    is provisioning is legal and lands in its next release.
-    """
-    if deployment.status == DEPLOYMENT_STATUS_DELETING:
-        raise DeploymentInProgressException(
-            "Deployment is being deleted; its vars cannot be written"
-        )
 
 
 @router.get(
@@ -169,7 +154,7 @@ def merge_vars(
     deployment = _deployment(
         session, user_id=user_id, deployment_id=deployment_id, phase=phase, caller=current_user
     )
-    _assert_writable(deployment)
+    vars_service.assert_writable(deployment)
     vars_service.write_vars(
         session, deployment=deployment, actor=current_user, entries=payload.vars
     )
@@ -223,7 +208,7 @@ def replace_vars(
     deployment = _deployment(
         session, user_id=user_id, deployment_id=deployment_id, phase=phase, caller=current_user
     )
-    _assert_writable(deployment)
+    vars_service.assert_writable(deployment)
     vars_service.write_vars(
         session,
         deployment=deployment,
@@ -333,7 +318,7 @@ def delete_var(
     deployment = _deployment(
         session, user_id=user_id, deployment_id=deployment_id, phase=phase, caller=current_user
     )
-    _assert_writable(deployment)
+    vars_service.assert_writable(deployment)
     vars_service.delete_var(session, deployment=deployment, actor=current_user, key=key)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

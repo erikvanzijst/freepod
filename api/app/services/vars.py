@@ -34,7 +34,12 @@ from app.models import (
     VarsRead,
 )
 from app.services import var_crypto
-from app.services.errors import NotFoundException, ValidationException
+from app.services.errors import (
+    DeploymentInProgressException,
+    NotFoundException,
+    ValidationException,
+)
+from app.services.reconcile_constants import DEPLOYMENT_STATUS_DELETING
 from app.services.template_values import (
     SENSITIVE_KEY,
     check_var_name,
@@ -269,6 +274,24 @@ def write_vars(
             continue
         session.add(
             DeploymentVarORM(deployment_id=deployment.id, key=key, created_by=actor.id)
+        )
+
+
+def require_phase(phase: str) -> None:
+    """An unknown phase is a missing resource, as its path segment would be."""
+    if phase not in VAR_PHASES:
+        raise NotFoundException("Unknown phase")
+
+
+def assert_writable(deployment: DeploymentORM) -> None:
+    """A deployment on its way out takes its vars with it (E12).
+
+    Every other status accepts a write: a staged change to a deployment that
+    is provisioning is legal and lands in its next release.
+    """
+    if deployment.status == DEPLOYMENT_STATUS_DELETING:
+        raise DeploymentInProgressException(
+            "Deployment is being deleted; its vars cannot be written"
         )
 
 
