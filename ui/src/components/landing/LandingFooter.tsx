@@ -4,12 +4,13 @@ import { isAppRoute } from '../../utils/links'
 import { DISPLAY, fg, line, MONO, SANS } from './landingTokens'
 import { LEGAL_NAV } from '../../content/legal'
 import { RepoLink } from '../RepoLink'
+import { SUPPORT_EMAIL } from '../../content/contact'
 
 const columns = [
   {
     heading: 'Product',
     links: [
-      { label: 'Apps', href: '/#apps' },
+      { label: 'Apps', href: '/apps' },
       { label: 'Why Freepod', href: '/#why' },
       { label: 'Pricing', href: '/#pricing' },
       { label: 'Developers', href: '/dev' },
@@ -19,9 +20,8 @@ const columns = [
   {
     heading: 'Company',
     links: [
-      { label: 'About', href: '#' },
-      { label: 'Mission', href: '/#why' },
-      { label: 'Contact', href: '#' },
+      { label: 'About', href: '/#about' },
+      { label: 'Contact', href: `mailto:${SUPPORT_EMAIL}` },
     ],
   },
   {
@@ -67,8 +67,8 @@ export function LandingFooter() {
             <Typography
               sx={{ fontFamily: SANS, fontSize: 14.5, color: fg.muted, mt: 2, lineHeight: 1.6 }}
             >
-              The European cloud that keeps your data yours. Private, open-source
-              apps — free of ads, tracking and lock-in.
+              Open-source apps, each in a private pod of your own. Hosted in the
+              EU, with no ads or tracking.
             </Typography>
             <RepoLink />
           </Box>
@@ -115,7 +115,7 @@ export function LandingFooter() {
             © {new Date().getFullYear()} Freepod. All rights reserved.
           </Typography>
           <Typography sx={{ fontFamily: MONO, fontSize: 12, color: fg.faint, letterSpacing: '0.08em' }}>
-            Hosted in the EU · Made for digital sovereignty
+            Hosted in the EU · Built on open source
           </Typography>
         </Stack>
       </Container>

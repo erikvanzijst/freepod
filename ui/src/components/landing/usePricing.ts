@@ -10,6 +10,8 @@ export interface ProductPrice extends ProductSummary {
   fromCents: number
   /** True when no paid plan exists and the fallback price is shown. */
   isFallback: boolean
+  /** Whether a free plan exists. */
+  hasFree: boolean
 }
 
 /** Format a cents amount as a euro string, hiding ".00" for round values. */
@@ -27,8 +29,10 @@ async function loadPricing(): Promise<ProductPrice[]> {
     visible.map(async (product) => {
       let fromCents = FALLBACK_PRICE_CENTS
       let isFallback = true
+      let hasFree = false
       try {
         const plans = await listPlans(product.id)
+        hasFree = plans.some((plan) => plan.template?.price_cents === 0)
         const paidPrices = plans
           .map((plan) => plan.template?.price_cents ?? 0)
           .filter((cents) => cents > 0)
@@ -39,7 +43,7 @@ async function loadPricing(): Promise<ProductPrice[]> {
       } catch {
         // Keep the fallback price if a product's plans can't be loaded.
       }
-      return { ...product, fromCents, isFallback }
+      return { ...product, fromCents, isFallback, hasFree }
     }),
   )
 

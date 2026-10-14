@@ -24,7 +24,7 @@ export function DevelopersBand() {
           <Box
             sx={{
               p: { xs: 3, md: 6 },
-              borderRadius: 5,
+              borderRadius: '14px',
               ...cardSurface,
               display: 'grid',
               gridTemplateColumns: { xs: '1fr', md: '6fr 5fr' },

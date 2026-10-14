@@ -31,11 +31,11 @@ export const PAGE_META: Record<'home' | 'dev', PageMeta> = {
   home: {
     path: '/',
     file: 'index.html',
-    title: 'Freepod — Your digital life, truly yours.',
+    title: 'Freepod — Your digital life, in a cloud you control.',
     description:
-      'Freepod runs private, dedicated pods of open-source apps — your photos, files, chat and passwords — hosted in Europe. No ads, no tracking, no lock-in.',
+      'Private alternatives to the cloud services you use every day, for your photos, files, passwords and chats. Each app runs in a pod of its own, hosted in the EU, with no ads or tracking.',
     summary:
-      'Private pods running the best open-source apps — photos, files, chat, passwords. Hosted in Europe. No ads, no tracking.',
+      'Private alternatives for your photos, files, passwords and chats, each in a pod of your own. Hosted in the EU.',
     image: 'og-image.png',
   },
   dev: {

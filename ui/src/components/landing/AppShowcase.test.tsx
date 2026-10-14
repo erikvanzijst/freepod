@@ -23,8 +23,13 @@ function product(id: number, name: string, fields: Partial<Product>): Product {
 vi.mock('../../api/endpoints', () => ({
   listProducts: () =>
     Promise.resolve([
-      product(1, 'Immich', { tagline: 'Your photos, kept private.', description: 'A long **Markdown** description.' }),
-      product(2, 'Lemmy', { tagline: null, description: 'Only a long description.' }),
+      product(1, 'Lemmy', { category: 'Forums & communities', tagline: null, description: 'Only a long description.' }),
+      product(2, 'Immich', {
+        tagline: 'Your photos, kept private.',
+        description: 'A long **Markdown** description.',
+        replaces: 'Google Photos · iCloud Photos',
+      }),
+      product(3, 'PhotoPrism', { tagline: 'Another photo app.', replaces: 'Google Photos' }),
     ]),
 }))
 
@@ -50,18 +55,28 @@ function renderShowcase() {
 }
 
 describe('AppShowcase', () => {
-  it('shows the tagline as the blurb and links each card to its app page', async () => {
+  it('shows each need once, with what it replaces and the apps that do it, linking to the catalog', async () => {
     renderShowcase()
 
-    expect(await screen.findByText('Your photos, kept private.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Immich/ })).toHaveAttribute('href', '/apps/immich')
-    expect(screen.getByRole('link', { name: /Lemmy/ })).toHaveAttribute('href', '/apps/lemmy')
+    const photos = (await screen.findByText('Photos')).closest('a')!
+    expect(photos).toHaveAttribute('href', '/apps?category=Photos')
+    expect(photos).toHaveTextContent('An alternative to Google Photos or iCloud Photos')
+    expect(photos).toHaveTextContent('Your photos, kept private.')
+    expect(photos).toHaveTextContent('With Immich or PhotoPrism')
+  })
+
+  it('puts the most familiar needs first', async () => {
+    renderShowcase()
+
+    await screen.findByText('Photos')
+    const headings = screen.getAllByRole('link').map((a) => a.getAttribute('href'))
+    expect(headings.indexOf('/apps?category=Photos')).toBeLessThan(headings.indexOf('/apps?category=Forums%20%26%20communities'))
   })
 
   it('never falls back to the long description', async () => {
     renderShowcase()
 
-    await screen.findByText('Lemmy')
+    await screen.findByText('Forums & communities')
     expect(screen.queryByText('Only a long description.')).toBeNull()
     expect(screen.queryByText(/A long/)).toBeNull()
   })

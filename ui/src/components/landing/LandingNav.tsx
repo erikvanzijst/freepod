@@ -16,7 +16,7 @@ interface LandingNavProps {
 }
 
 const defaultLinks: NavLink[] = [
-  { label: 'Apps', href: '#apps' },
+  { label: 'Apps', href: '/apps' },
   { label: 'Why Freepod', href: '#why' },
   { label: 'Pricing', href: '#pricing' },
   { label: 'Developers', href: '/dev' },

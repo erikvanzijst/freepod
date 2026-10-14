@@ -1,200 +1,125 @@
+import { createElement } from 'react'
 import { Box, Container, Skeleton, Stack, Typography } from '@mui/material'
+import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import { Link as RouterLink } from 'react-router-dom'
 import { resolveApiPath } from '../../api/client'
-import { appHref } from '../apppage/appHref'
-import {
-  accentForProduct,
-  cardSurface,
-  DISPLAY,
-  fg,
-  MONO,
-  SANS,
-} from './landingTokens'
+import { AppIcon } from '../apppage/AppIcon'
+import { accent, cardSurface, categoryIcon, DISPLAY, fg, line, MONO, SANS } from './landingTokens'
 import SectionHeading from './SectionHeading'
 import Reveal from './Reveal'
-import { useLandingProducts, type ProductSummary } from './useLandingProducts'
+import { useLandingProducts } from './useLandingProducts'
+import { groupByNeed, orList, type Need } from './needs'
 
-const gridSx = {
-  display: 'grid',
-  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' },
-  gap: 2.5,
-  mt: { xs: 6, md: 8 },
-} as const
+const SHOWN = 6
 
-/** A single product card, linking to the app's page. */
-function AppCard({ product }: { product: ProductSummary }) {
-  const color = accentForProduct(product.name)
-  // The tagline only: the description is the app page's long Markdown text.
-  const blurb = product.tagline ?? ''
-
+/** One need: what it replaces, in words a visitor knows, with the apps that do it in small print. */
+function NeedCard({ need }: { need: Need }) {
   return (
     <Box
       component={RouterLink}
-      to={appHref(product)}
+      to={`/apps?category=${encodeURIComponent(need.category)}`}
       sx={{
-        display: 'block',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        p: 3,
+        borderRadius: '12px',
         color: 'inherit',
         textDecoration: 'none',
-        height: '100%',
-        p: 3.5,
-        borderRadius: 4,
         ...cardSurface,
-        transition: 'transform 0.25s, border-color 0.25s, box-shadow 0.25s',
-        '&:hover': {
-          transform: 'translateY(-4px)',
-          borderColor: `${color}66`,
-          boxShadow: `0 18px 50px ${color}22`,
-        },
+        transition: 'transform 0.25s, border-color 0.25s',
+        '&:hover': { transform: 'translateY(-3px)', borderColor: 'rgba(255,255,255,0.2)' },
       }}
     >
-      <Stack direction="row" alignItems="center" justifyContent="space-between">
-        <Box
-          sx={{
-            width: 52,
-            height: 52,
-            borderRadius: 2.5,
-            display: 'grid',
-            placeItems: 'center',
-            background: `linear-gradient(150deg, ${color}33, ${color}11)`,
-            border: `1px solid ${color}44`,
-            overflow: 'hidden',
-          }}
-        >
-          {product.iconUrl ? (
-            <Box
-              component="img"
-              src={resolveApiPath(product.iconUrl)}
-              alt=""
-              sx={{ width: 30, height: 30, objectFit: 'contain' }}
-            />
-          ) : (
-            <Typography sx={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 24, color }}>
-              {product.name[0]}
-            </Typography>
-          )}
-        </Box>
-        {product.category && (
-          <Typography
-            sx={{
-              fontFamily: MONO,
-              fontSize: 11,
-              letterSpacing: '0.14em',
-              textTransform: 'uppercase',
-              color: fg.faint,
-              textAlign: 'right',
-            }}
-          >
-            {product.category}
-          </Typography>
-        )}
-      </Stack>
-
-      <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mt: 3 }}>
-        <Typography
-          sx={{
-            fontFamily: DISPLAY,
-            fontWeight: 600,
-            fontSize: 26,
-            color: fg.primary,
-            letterSpacing: '-0.01em',
-          }}
-        >
-          {product.name}
-        </Typography>
-      </Stack>
-
-      {blurb && (
-        <Typography
-          sx={{ fontFamily: SANS, fontSize: 15, lineHeight: 1.6, color: fg.muted, mt: 1.5 }}
-        >
-          {blurb}
+      <Box
+        sx={{
+          width: 44,
+          height: 44,
+          borderRadius: '10px',
+          display: 'grid',
+          placeItems: 'center',
+          background: `linear-gradient(150deg, ${accent.blue}33, ${accent.magenta}1f)`,
+          border: `1px solid ${accent.blue}40`,
+        }}
+      >
+        {createElement(categoryIcon(need.category), { sx: { fontSize: 23, color: fg.primary } })}
+      </Box>
+      <Typography sx={{ fontFamily: DISPLAY, fontWeight: 500, fontSize: 24, mt: 2.25, color: fg.primary }}>{need.category}</Typography>
+      {need.alternatives.length > 0 && (
+        <Typography sx={{ fontFamily: SANS, fontSize: 15, color: accent.cyan, mt: 0.5 }}>
+          An alternative to {orList(need.alternatives.slice(0, 3))}
         </Typography>
       )}
-
-      {product.replaces && (
-        <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-          <Typography sx={{ fontFamily: SANS, fontSize: 13.5, color: fg.faint }}>
-            An alternative to{' '}
-            <Box component="span" sx={{ color: fg.primary, fontWeight: 600 }}>
-              {product.replaces}
-            </Box>
-          </Typography>
-        </Box>
+      {need.blurb && (
+        <Typography sx={{ fontFamily: SANS, fontSize: 15, lineHeight: 1.55, color: fg.muted, mt: 1.5 }}>{need.blurb}</Typography>
       )}
+      <Box sx={{ flex: 1 }} />
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 2.5, pt: 1.75, borderTop: `1px solid ${line.softer}` }}>
+        <Stack direction="row" spacing={-0.75}>
+          {need.apps.map((app) => (
+            <AppIcon key={app.id} name={app.name} src={app.iconUrl ? resolveApiPath(app.iconUrl) : null} size={22} />
+          ))}
+        </Stack>
+        <Typography noWrap sx={{ fontFamily: SANS, fontSize: 13.5, color: fg.faint }}>
+          With {orList(need.apps.map((a) => a.name))}
+        </Typography>
+      </Stack>
     </Box>
   )
 }
 
-/** Skeleton placeholder shown while products load. */
-function AppCardSkeleton() {
-  const bar = { bgcolor: 'rgba(255,255,255,0.07)' }
-  return (
-    <Box sx={{ p: 3.5, borderRadius: 4, ...cardSurface }}>
-      <Skeleton variant="rounded" width={52} height={52} sx={bar} />
-      <Skeleton variant="text" width="45%" height={34} sx={{ ...bar, mt: 3 }} />
-      <Skeleton variant="text" width="95%" sx={bar} />
-      <Skeleton variant="text" width="80%" sx={bar} />
-    </Box>
-  )
-}
-
-/** Grid of the real apps Freepod provisions, each framed as a Big-Tech swap. */
+/** What people keep in the cloud, each with the Freepod apps that do it, linking into the catalog. */
 export function AppShowcase() {
-  const { data, isLoading } = useLandingProducts()
+  const { data: products, isLoading } = useLandingProducts()
+  const needs = groupByNeed(products ?? [])
 
   return (
-    <Box component="section" id="apps" sx={{ py: { xs: 9, md: 14 }, scrollMarginTop: 80 }}>
+    <Box component="section" id="apps" sx={{ py: { xs: 9, md: 13 }, scrollMarginTop: 80 }}>
       <Container maxWidth="lg">
         <SectionHeading
-          eyebrow="The apps"
-          title="Familiar tools, without the surveillance."
-          subtitle="Every Freepod app is a best-in-class open-source project, running as your own dedicated instance. Same conveniences you rely on — none of the data harvesting."
+          eyebrow="What you can run"
+          title="For everything you keep in the cloud."
+          subtitle="Freepod offers a collection of high quality, curated open source applications. Each a private alternative to a service you already know."
         />
 
-        {isLoading || !data ? (
-          <Box sx={gridSx}>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <AppCardSkeleton key={i} />
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' },
+            gap: 2,
+            mt: { xs: 6, md: 7 },
+          }}
+        >
+          {isLoading &&
+            Array.from({ length: SHOWN }).map((_, i) => (
+              <Skeleton key={i} variant="rounded" height={240} sx={{ borderRadius: '12px', bgcolor: 'rgba(255,255,255,0.05)' }} />
             ))}
-          </Box>
-        ) : (
-          <Box sx={gridSx}>
-            {data.map((product, i) => (
-              <Reveal key={product.id} delay={(i % 3) * 90}>
-                <AppCard product={product} />
-              </Reveal>
-            ))}
-
-            {/* "more on the way" tile */}
-            <Reveal delay={(data.length % 3) * 90}>
-              <Box
-                sx={{
-                  height: '100%',
-                  minHeight: 220,
-                  p: 3.5,
-                  borderRadius: 4,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'center',
-                  border: '1px dashed rgba(255,255,255,0.14)',
-                  background: 'rgba(255,255,255,0.015)',
-                }}
-              >
-                <Typography
-                  sx={{ fontFamily: DISPLAY, fontWeight: 500, fontSize: 22, color: fg.primary }}
-                >
-                  More on the way
-                </Typography>
-                <Typography
-                  sx={{ fontFamily: SANS, fontSize: 14.5, color: fg.muted, mt: 1, lineHeight: 1.6 }}
-                >
-                  We add carefully vetted open-source apps over time. Have a
-                  request? Your vote helps decide what comes next.
-                </Typography>
-              </Box>
+          {needs.slice(0, SHOWN).map((need, i) => (
+            <Reveal key={need.category} delay={(i % 3) * 80}>
+              <NeedCard need={need} />
             </Reveal>
+          ))}
+        </Box>
+
+        <Box sx={{ textAlign: 'center', mt: 5 }}>
+          <Box
+            component={RouterLink}
+            to="/apps"
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 0.75,
+              fontFamily: MONO,
+              fontSize: 13.5,
+              letterSpacing: '0.06em',
+              color: fg.muted,
+              textDecoration: 'none',
+              '&:hover': { color: fg.primary },
+            }}
+          >
+            See all the apps <ArrowForwardRoundedIcon sx={{ fontSize: 18 }} />
           </Box>
-        )}
+        </Box>
       </Container>
     </Box>
   )

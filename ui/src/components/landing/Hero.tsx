@@ -1,21 +1,15 @@
-import { Box, Button, Chip, Container, Stack, Typography } from '@mui/material'
+import { Box, Button, Container, Stack, Typography } from '@mui/material'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
-import {
-  accent,
-  categoryIcon,
-  DISPLAY,
-  fg,
-  MONO,
-  SANS,
-} from './landingTokens'
+import { Link as RouterLink } from 'react-router-dom'
+import { accent, DISPLAY, fg, MONO, primaryButtonSx, SANS, secondaryButtonSx } from './landingTokens'
 import AuroraBackground from './AuroraBackground'
-import { useLandingProducts } from './useLandingProducts'
+import PodPreview from './PodPreview'
 
 interface HeroProps {
   onSignup: () => void
 }
 
-const trustPoints = ['EU-hosted', 'No ads, ever', 'Open source', 'Export anytime']
+const facts = ['Hosted in the EU', 'Open-source apps', 'No ads or tracking']
 
 /** Build-up: staggered fade for the hero stack on first paint. */
 const reveal = (i: number) => ({
@@ -25,218 +19,108 @@ const reveal = (i: number) => ({
 })
 
 export function Hero({ onSignup }: HeroProps) {
-  const { data: products } = useLandingProducts()
-
-  // Distinct, non-empty category labels in first-seen order. The constellation
-  // shows these instead of product names (which the Apps/Pricing sections
-  // already list), framing the breadth of the offering by category.
-  const categories = Array.from(
-    new Set(
-      (products ?? [])
-        .map((product) => product.category?.trim())
-        .filter((category): category is string => Boolean(category)),
-    ),
-  )
-
   return (
     <Box component="section" sx={{ position: 'relative', overflow: 'hidden' }}>
       <AuroraBackground />
 
       <Container
-        maxWidth="md"
+        maxWidth="lg"
         sx={{
           position: 'relative',
           zIndex: 1,
-          textAlign: 'center',
-          pt: { xs: 9, md: 14 },
-          pb: { xs: 10, md: 16 },
+          pt: { xs: 8, md: 13 },
+          pb: { xs: 9, md: 14 },
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '3fr 2fr' },
+          gap: { xs: 7, md: 8 },
+          alignItems: 'center',
         }}
       >
-        {/* Eyebrow */}
-        <Box sx={reveal(0)}>
+        <Box>
           <Typography
             component="p"
             sx={{
+              ...reveal(0),
               fontFamily: MONO,
               fontSize: 13,
-              letterSpacing: '0.22em',
+              letterSpacing: '0.2em',
               textTransform: 'uppercase',
               color: accent.cyan,
               mb: 3,
             }}
           >
-            The European cloud · Open source · No lock-in
+            Your own cloud, made simple
           </Typography>
-        </Box>
 
-        {/* Headline */}
-        <Box sx={reveal(1)}>
           <Typography
             component="h1"
             sx={{
+              ...reveal(1),
               fontFamily: DISPLAY,
               fontWeight: 500,
               color: fg.primary,
-              fontSize: { xs: 46, sm: 64, md: 80 },
-              lineHeight: 1.02,
+              fontSize: { xs: 40, sm: 50, md: 52, lg: 58 },
+              lineHeight: 1.03,
               letterSpacing: '-0.025em',
             }}
           >
-            Your digital life,
-            <br />
-            truly{' '}
-            <Box
-              component="em"
-              sx={{
-                fontStyle: 'italic',
-                backgroundImage: `linear-gradient(120deg, ${accent.blue}, ${accent.pink})`,
-                WebkitBackgroundClip: 'text',
-                backgroundClip: 'text',
-                color: 'transparent',
-              }}
-            >
-              yours.
+            Your digital life,{' '}
+            <Box component="span" sx={{ display: { sm: 'block' } }}>
+              in a cloud{' '}
+              <Box
+                component="em"
+                sx={{
+                  fontStyle: 'italic',
+                  pr: '0.04em',
+                  backgroundImage: `linear-gradient(120deg, ${accent.blue}, ${accent.pink})`,
+                  WebkitBackgroundClip: 'text',
+                  backgroundClip: 'text',
+                  color: 'transparent',
+                }}
+              >
+                you
+              </Box>{' '}
+              control.
             </Box>
           </Typography>
-        </Box>
 
-        {/* Subhead */}
-        <Box sx={reveal(2)}>
           <Typography
             sx={{
+              ...reveal(2),
               fontFamily: SANS,
               color: fg.muted,
-              fontSize: { xs: 17, md: 20 },
+              fontSize: { xs: 17, md: 19 },
               lineHeight: 1.6,
-              maxWidth: 660,
-              mx: 'auto',
+              maxWidth: 600,
               mt: 3.5,
             }}
           >
-            Freepod runs private, dedicated instances (pods) of the best open-source
-            apps — your photos, files, chat and passwords — hosted in Europe.
-            No ads. No tracking. No holding your data hostage. Take everything
-            with you, any time you like.
+            Freepod gives you private alternatives to the cloud services you use every day, for your photos,
+            files, passwords and chats. Each app runs in a pod of its own, under your own name, hosted in the EU.
+            And your data is always yours to take with you.
           </Typography>
-        </Box>
 
-        {/* CTAs */}
-        <Box sx={reveal(3)}>
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={2}
-            justifyContent="center"
-            sx={{ mt: 5 }}
-          >
-            <Button
-              onClick={onSignup}
-              endIcon={<ArrowForwardRoundedIcon />}
-              sx={{
-                borderRadius: 999,
-                px: 4,
-                py: 1.5,
-                fontSize: 17,
-                fontWeight: 600,
-                color: '#fff',
-                background: 'linear-gradient(120deg, #2563EB, #7C5BFF 55%, #EC4899)',
-                boxShadow: '0 14px 40px rgba(124,91,255,0.4)',
-                transition: 'transform 0.2s, box-shadow 0.2s',
-                '&:hover': {
-                  transform: 'translateY(-2px)',
-                  boxShadow: '0 18px 48px rgba(124,91,255,0.5)',
-                  background:
-                    'linear-gradient(120deg, #1d4fd0, #6d4bf0 55%, #db3b89)',
-                },
-              }}
-            >
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ ...reveal(3), mt: 5 }}>
+            <Button onClick={onSignup} endIcon={<ArrowForwardRoundedIcon />} sx={primaryButtonSx}>
               Create your account
             </Button>
-            <Button
-              href="#apps"
-              sx={{
-                borderRadius: 999,
-                px: 3.5,
-                py: 1.5,
-                fontSize: 17,
-                fontWeight: 600,
-                color: fg.primary,
-                border: '1px solid rgba(255,255,255,0.18)',
-                background: 'rgba(255,255,255,0.03)',
-                '&:hover': {
-                  background: 'rgba(255,255,255,0.08)',
-                  borderColor: 'rgba(255,255,255,0.3)',
-                },
-              }}
-            >
-              Explore the apps
+            <Button component={RouterLink} to="/apps" sx={secondaryButtonSx}>
+              Browse the apps
             </Button>
           </Stack>
-        </Box>
 
-        {/* Trust strip */}
-        <Box sx={reveal(4)}>
-          <Stack
-            direction="row"
-            flexWrap="wrap"
-            justifyContent="center"
-            spacing={1.25}
-            useFlexGap
-            sx={{ mt: 5 }}
-          >
-            {trustPoints.map((point) => (
-              <Chip
-                key={point}
-                label={point}
-                size="small"
-                sx={{
-                  fontFamily: SANS,
-                  color: fg.muted,
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  px: 0.5,
-                }}
-              />
+          <Stack direction="row" flexWrap="wrap" useFlexGap spacing={2.5} sx={{ ...reveal(4), mt: 4 }}>
+            {facts.map((fact) => (
+              <Stack key={fact} direction="row" alignItems="center" spacing={1}>
+                <Box sx={{ width: 5, height: 5, borderRadius: '50%', background: accent.cyan }} />
+                <Typography sx={{ fontFamily: SANS, fontSize: 14.5, color: fg.muted }}>{fact}</Typography>
+              </Stack>
             ))}
           </Stack>
         </Box>
 
-        {/* Category constellation preview */}
-        <Box sx={reveal(5)}>
-          <Stack
-            direction="row"
-            flexWrap="wrap"
-            justifyContent="center"
-            spacing={1.5}
-            useFlexGap
-            sx={{ mt: 7 }}
-          >
-            {categories.map((category) => {
-              const Icon = categoryIcon(category)
-              return (
-                <Stack
-                  key={category}
-                  direction="row"
-                  alignItems="center"
-                  spacing={1}
-                  sx={{
-                    px: 2,
-                    py: 1,
-                    borderRadius: 999,
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    backdropFilter: 'blur(8px)',
-                  }}
-                >
-                  <Icon sx={{ fontSize: 18, color: fg.muted }} />
-                  <Typography
-                    sx={{ fontFamily: SANS, fontSize: 14, color: fg.primary }}
-                  >
-                    {category}
-                  </Typography>
-                </Stack>
-              )
-            })}
-          </Stack>
+        <Box sx={reveal(3)}>
+          <PodPreview />
         </Box>
       </Container>
     </Box>
