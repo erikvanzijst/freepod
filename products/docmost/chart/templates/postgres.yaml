@@ -1,0 +1,104 @@
+{{- /*
+Bundled PostgreSQL, at the version upstream's reference compose runs. The image
+starts as root and drops to the postgres user itself, so no security context is
+imposed on it. Mounted where the compose mounts it: from 18 the image keeps
+PGDATA in a versioned subdirectory of /var/lib/postgresql.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  # Fixed name, like `storage`, so the volume is re-adopted on upgrade.
+  name: postgres-data
+  labels:
+    {{- include "docmost.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.postgres.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.persistence.size }}
+  {{- if .Values.postgres.persistence.storageClassName }}
+  storageClassName: {{ .Values.postgres.persistence.storageClassName }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-postgres
+  labels:
+    {{- include "docmost.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "docmost.componentSelector" (dict "root" . "name" "postgres") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-postgres
+  labels:
+    {{- include "docmost.labels" . | nindent 4 }}
+    {{- include "docmost.componentSelector" (dict "root" . "name" "postgres") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "docmost.componentSelector" (dict "root" . "name" "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "docmost.componentSelector" (dict "root" . "name" "postgres") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            {{- range $key := list "POSTGRES_DB" "POSTGRES_USER" "POSTGRES_PASSWORD" }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Release.Name }}-db
+                  key: {{ $key }}
+            {{- end }}
+          # Over TCP: the image's first-boot init runs a temporary server that
+          # listens on the socket only, which a socket check would report as
+          # ready.
+          startupProbe:
+            exec:
+              command: ["sh", "-c", 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+          {{- with .Values.postgres.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data

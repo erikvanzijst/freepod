@@ -1,0 +1,10 @@
+- version: "0.96.0"
+  notes: |-
+    Compare page versions side by side, add footnotes, and write right-to-left text.
+
+    - Compare any two versions of a page in its history
+    - Footnotes in the editor
+    - Right-to-left text is detected automatically
+    - All of a page's attachments in one gallery, and a lightbox for images and video
+    - Search filters for labels, and a jump to the match within a page
+    - Includes security fixes

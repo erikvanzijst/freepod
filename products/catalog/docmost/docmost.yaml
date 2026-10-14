@@ -1,0 +1,119 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: docmost
+  name: Docmost
+  tagline: A collaborative wiki where your team writes together, in real time.
+  description: |-
+    Docmost is a wiki and documentation space for teams. Several people can edit the same page at once and see each other's changes as they type. Pages nest inside spaces, and each space has its own members and permissions.
+
+    On Freepod, Docmost runs as your own private instance, hosted in the EU. Add diagrams with Draw.io, Excalidraw or Mermaid, discuss a passage in an inline comment, and go back to any earlier version from the page history.
+
+    Moving on later? Export any page or space as Markdown or HTML.
+  category: Knowledge & wikis
+  replaces: Confluence · Notion
+  icon: icon.png
+  license: AGPL-3.0
+  features:
+  - icon: groups
+    title: Real-time collaboration
+    body: Edit a page together and see everyone's cursor as they type.
+  - icon: library
+    title: Spaces & nested pages
+    body: Give each team or project its own space, with pages inside pages.
+  - icon: diagram
+    title: Diagrams
+    body: Draw.io, Excalidraw and Mermaid diagrams, right in the page.
+  - icon: comments
+    title: Inline comments
+    body: Discuss a passage right where it is written.
+  - icon: history
+    title: Page history
+    body: Compare any two versions of a page and restore an earlier one.
+  - icon: lock
+    title: Permissions
+    body: Groups and per-space roles decide who can read and who can edit.
+  links:
+  - label: Website
+    href: https://docmost.com
+    kind: website
+  - label: Documentation
+    href: https://docmost.com/docs
+    kind: docs
+  - label: Source code
+    href: https://github.com/docmost/docmost
+    kind: source
+  - label: Release notes
+    href: https://github.com/docmost/docmost/releases
+    kind: releases
+  screenshots:
+  - file: screenshots/release.webp
+    caption: Pages with checklists and Mermaid diagrams
+    form: desktop
+  - file: screenshots/handbook.webp
+    caption: Nested pages, tables and callouts
+    form: desktop
+  - file: screenshots/search.webp
+    caption: Search across every space
+    form: desktop
+  - file: screenshots/home.webp
+    caption: Your spaces and recent pages at a glance
+    form: desktop
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/docmost/docmost
+  # Plain releases only: the beta (0.97.0-beta.1, 0.96.0-cf.beta.26) and the
+  # moving latest / 0.96 tags are excluded.
+  match: ^(?P<version>\d+\.\d+\.\d+)$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/docmost
+  chart_version: 0.1.1
+  system_values:
+    image:
+      tag: 0.96.0
+    smtp:
+      host: smtp.mailer.svc.cluster.local
+      port: 25
+      from: docmost@freepod.eu
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      host:
+        type: string
+        title: Hostname
+        minLength: 1
+        maxLength: 253
+        description: The fully qualified domain name for your wiki (e.g. wiki.user.freepod.eu).
+      admin:
+        type: object
+        additionalProperties: false
+        properties:
+          name:
+            type: string
+            title: Your name
+            minLength: 1
+            maxLength: 50
+            pattern: ^[^\u0000-\u001f\u007f]+$
+            description: How you appear to others in Docmost. You sign in with the email address of
+              your Freepod account. You can change both later from your Docmost profile.
+        required:
+        - name
+      DOCMOST_ADMIN_PASSWORD:
+        type: string
+        title: Password
+        minLength: 8
+        maxLength: 70
+        pattern: ^[^\u0000-\u001f\u007f]+$
+        x-caelus-target: runtime
+        x-caelus-sensitive: true
+        description: 'The password for your account, which owns the workspace and can invite others.
+          Store it somewhere safe: it won''t be shown again. It is set on first start only; to
+          change it later, use Docmost''s own account settings.'
+    required:
+    - host
+    - admin
+    - DOCMOST_ADMIN_PASSWORD

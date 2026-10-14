@@ -70,6 +70,7 @@ EXTRA_VALUES: dict[str, dict[str, str]] = {
 SESSION_ROOTS: dict[str, str | None] = {
     "bookstack": "volume:/uploads",
     "custom": "app-container",
+    "docmost": "volume:/storage",
     "helloworld": "volume:/data",
     "immich": "volume:/library",
     "lemmy": "volume:/media",

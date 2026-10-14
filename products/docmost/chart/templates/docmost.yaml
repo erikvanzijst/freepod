@@ -1,0 +1,180 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-docmost
+  labels:
+    {{- include "docmost.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "docmost.componentSelector" (dict "root" . "name" "docmost") | nindent 4 }}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-docmost
+  labels:
+    {{- include "docmost.labels" . | nindent 4 }}
+    {{- include "docmost.componentSelector" (dict "root" . "name" "docmost") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "docmost.componentSelector" (dict "root" . "name" "docmost") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "docmost.componentSelector" (dict "root" . "name" "docmost") | nindent 8 }}
+        {{- include "docmost.podLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      # Not runAsNonRoot here: the SSH sidecar in this pod runs as root.
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        # Docmost migrates at start and exits when the database is not there
+        # yet, which on a first install it never is.
+        - name: wait-for-postgres
+          image: {{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          command:
+            - sh
+            - -c
+            - until pg_isready -h {{ .Release.Name }}-postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 2; done
+      containers:
+        - name: docmost
+          image: {{ .Values.image.repository }}:{{ include "docmost.appTag" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          ports:
+            - containerPort: 3000
+              name: http
+          # The tenant's vars come first and the chart's Secret last, because a
+          # later envFrom source overrides an earlier one and no var may
+          # displace a credential. Standalone installs have no vars Secret and
+          # read the generated admin password.
+          envFrom:
+            {{- with .Values.caelus.vars.secretName }}
+            - secretRef:
+                name: {{ . | quote }}
+            {{- else }}
+            - secretRef:
+                name: {{ $.Release.Name }}-admin
+            {{- end }}
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          env:
+            - name: APP_URL
+              value: {{ printf "https://%s" .Values.host | quote }}
+            - name: PORT
+              value: "3000"
+            - name: REDIS_URL
+              value: {{ printf "redis://%s-redis:6379" .Release.Name | quote }}
+            - name: STORAGE_DRIVER
+              value: local
+            - name: DISABLE_TELEMETRY
+              value: "true"
+            # Server-side fetches (link previews, embeds) stay off private
+            # addresses, which here would be the cluster's own services.
+            - name: ALLOWED_PRIVATE_NETWORKS
+              value: none
+            {{- if .Values.smtp.host }}
+            - name: MAIL_DRIVER
+              value: smtp
+            - name: SMTP_HOST
+              value: {{ .Values.smtp.host | quote }}
+            - name: SMTP_PORT
+              value: {{ .Values.smtp.port | quote }}
+            - name: SMTP_SECURE
+              value: "false"
+            - name: SMTP_IGNORETLS
+              value: "true"
+            - name: MAIL_FROM_ADDRESS
+              value: {{ .Values.smtp.from | quote }}
+            - name: MAIL_FROM_NAME
+              value: {{ .Values.smtp.fromName | quote }}
+            {{- end }}
+            - name: DOCMOST_ADMIN_EMAIL
+              value: {{ .Values.caelus.owner.email | default .Values.admin.email | quote }}
+            - name: DOCMOST_ADMIN_NAME
+              value: {{ .Values.admin.name | quote }}
+            {{- range $key, $value := .Values.extraEnv }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          # Creates the workspace and the owner's account through Docmost's
+          # first-run setup, which answers 403 once a workspace exists. Probes
+          # wait for the hook, so the pod is not Ready and the ingress has no
+          # endpoint until then: nobody else can claim a fresh instance. A hook
+          # that fails restarts the container, which retries it.
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - node
+                  - -e
+                  - |
+                    const api = "http://127.0.0.1:3000/api";
+                    const env = process.env;
+                    const deadline = Date.now() + 600_000;
+                    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+                    (async () => {
+                      while (!(await fetch(`${api}/health`).then((r) => r.ok, () => false))) {
+                        if (Date.now() > deadline) throw new Error("Docmost did not become healthy");
+                        await sleep(1000);
+                      }
+                      const res = await fetch(`${api}/auth/setup`, {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({
+                          name: env.DOCMOST_ADMIN_NAME,
+                          email: env.DOCMOST_ADMIN_EMAIL,
+                          password: env.DOCMOST_ADMIN_PASSWORD,
+                        }),
+                      });
+                      if (!res.ok && res.status !== 403) {
+                        throw new Error(`setup answered ${res.status}: ${await res.text()}`);
+                      }
+                    })().catch((e) => { console.error(e.message); process.exit(1); });
+          # /api/health checks Postgres and Redis, which is right for readiness
+          # and wrong for liveness: a slow database would restart a healthy
+          # server.
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /api/health/live, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          volumeMounts:
+            - name: storage
+              mountPath: /app/data/storage
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage
+             "sessionRoot" "volume:/storage"
+             "mounts" (list (dict "volume" "storage" "path" "/storage"))) | nindent 8 }}
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: storage

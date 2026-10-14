@@ -1,0 +1,19 @@
+{{- /*
+Fixed name (not release-prefixed) so an existing volume in the namespace is
+re-adopted on upgrade rather than replaced by a fresh, empty PVC.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: storage
+  labels:
+    {{- include "docmost.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.storage.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.caelus.plan.storageSize | default .Values.persistence.storage.size }}
+  {{- if .Values.persistence.storage.storageClassName }}
+  storageClassName: {{ .Values.persistence.storage.storageClassName }}
+  {{- end }}
