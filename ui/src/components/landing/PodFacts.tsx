@@ -6,21 +6,11 @@ import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded'
 import VisibilityOffRoundedIcon from '@mui/icons-material/VisibilityOffRounded'
 import { accent, DISPLAY, fg, line, MONO, SANS } from './landingTokens'
 import Reveal from './Reveal'
+import euFlag from '../../assets/flag-europe.svg'
 
-/** The flag of Europe: twelve gold stars in a circle on blue. */
+/** The flag of Europe (Wikimedia Commons, public domain). */
 function EuFlag() {
-  const stars = Array.from({ length: 12 }, (_, i) => {
-    const a = (i * Math.PI) / 6
-    return { x: 15 + 6 * Math.sin(a), y: 10 - 6 * Math.cos(a) }
-  })
-  return (
-    <Box component="svg" viewBox="0 0 30 20" sx={{ width: 26, height: 17, borderRadius: '3px', display: 'block' }}>
-      <rect width="30" height="20" fill="#003399" />
-      {stars.map((s, i) => (
-        <circle key={i} cx={s.x} cy={s.y} r="0.95" fill="#FFCC00" />
-      ))}
-    </Box>
-  )
+  return <Box component="img" src={euFlag} alt="" sx={{ width: 26, height: 17, borderRadius: '3px', display: 'block' }} />
 }
 
 interface Fact {
