@@ -6,6 +6,7 @@ import LandingFooter from '../components/landing/LandingFooter'
 import DevHero, { DevActions } from '../components/landing/dev/DevHero'
 import DemoSection from '../components/landing/dev/DemoSection'
 import FeatureExplorer from '../components/landing/dev/FeatureExplorer'
+import DevPricing from '../components/landing/dev/DevPricing'
 import EmailDialog from '../components/EmailDialog'
 import useStartSignup from '../components/landing/useStartSignup'
 import { PAGE_META } from '../content/pageMeta'
@@ -13,6 +14,7 @@ import { PAGE_META } from '../content/pageMeta'
 const navLinks = [
   { label: 'Demo', href: '#demo' },
   { label: 'Features', href: '#features' },
+  { label: 'Pricing', href: '#pricing' },
   { label: 'Docs', href: '/docs/developers' },
   { label: 'Apps', href: '/' },
 ]
@@ -40,6 +42,7 @@ export function DevLanding() {
         <DevHero onSignup={start} />
         <DemoSection />
         <FeatureExplorer />
+        <DevPricing />
         <DevActions onSignup={start} sx={{ mt: { xs: -3, md: -6 }, pb: { xs: 9, md: 12 } }} />
       </Box>
       <LandingFooter />
