@@ -34,6 +34,8 @@ from app.models import (
     UsageBucket,
     UsageDimension,
     DeploymentORM,
+    VarWrite,
+    VarsWrite,
 )
 from app.services import (
     templates as template_service,
@@ -47,6 +49,7 @@ from app.services import (
     subscriptions as subscription_service,
     registry_tokens,
     var_crypto,
+    vars as vars_service,
 )
 from app.services.errors import CaelusException, DeploymentInProgressException
 from pydantic import ValidationError as PydanticValidationError
@@ -172,6 +175,41 @@ def _exit_for_domain_error(exc: CaelusException) -> None:
     logger.warning("CLI command failed with domain error: %s", exc)
     typer.echo(f"Error: {exc}", err=True)
     raise typer.Exit(code=1)
+
+
+def _read_source(source: str) -> str:
+    """A file's text, where `-` is standard input -- so a secret need not be
+    an argument, which other processes and shell history can see."""
+    return sys.stdin.read() if source == "-" else Path(source).read_text()
+
+
+def _parse_vars_input(*, vars_json: str | None, vars_file: str | None) -> dict[str, VarWrite]:
+    """Vars in the API's one wire shape, `{"vars": {KEY: {value, sensitive}}}`.
+
+    Read as YAML, a superset of JSON, so the output of `caelus var list` can be
+    submitted back: its read-only fields are ignored, and a sensitive entry,
+    which carries no `value`, leaves that var unchanged.
+    """
+    if vars_json is not None and vars_file is not None:
+        raise ValueError("Provide only one of --vars-json or --vars-file")
+    if vars_json is None and vars_file is None:
+        return {}
+    try:
+        text = vars_json if vars_json is not None else _read_source(vars_file)
+    except OSError as exc:
+        raise ValueError(f"Unable to read --vars-file: {exc}") from exc
+    shape = 'Vars must be an object of the form {"vars": {"KEY": {"value": "..."}}}'
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ValueError(shape) from exc
+    # A bare map would validate as an empty write, every key silently dropped.
+    if not isinstance(parsed, dict) or "vars" not in parsed:
+        raise ValueError(shape)
+    try:
+        return VarsWrite.model_validate(parsed).vars
+    except PydanticValidationError as exc:
+        raise ValueError(shape) from exc
 
 
 def _echo_yaml_entity(entity: object) -> None:
@@ -554,6 +592,12 @@ def delete_template(
         _echo_yaml_entity(template)
 
 
+_VARS_JSON_HELP = (
+    'Vars as JSON or YAML in the API\'s shape, e.g. \'{"vars": {"KEY": {"value": "v"}}}\'.'
+)
+_VARS_FILE_HELP = "Path to a file holding the vars, in the --vars-json shape; '-' reads stdin."
+
+
 @app.command("create-deployment")
 def create_deployment(
     *,
@@ -570,8 +614,15 @@ def create_deployment(
         "--user-values-file",
         help="Path to a JSON file containing a JSON object for deployment user values.",
     ),
+    vars_json: str | None = typer.Option(
+        None, "--vars-json", help=_VARS_JSON_HELP
+    ),
+    vars_file: str | None = typer.Option(
+        None, "--vars-file", help=_VARS_FILE_HELP
+    ),
 ) -> None:
     try:
+        parsed_vars = _parse_vars_input(vars_json=vars_json, vars_file=vars_file)
         parsed_user_values = _parse_json_object_input(
             json_text=user_values_json,
             json_file=user_values_file,
@@ -607,6 +658,7 @@ def create_deployment(
                     desired_template_id=desired_template_id,
                     plan_template_id=plan_template_id,
                     user_values_json=parsed_user_values,
+                    vars=parsed_vars,
                 ),
             )
         except CaelusException as e:
@@ -915,7 +967,19 @@ def update_deployment(
         "--user-values-file",
         help="Path to a JSON file containing a JSON object for new deployment user values.",
     ),
+    vars_json: str | None = typer.Option(
+        None, "--vars-json", help=_VARS_JSON_HELP + " Merged into the deployment's vars."
+    ),
+    vars_file: str | None = typer.Option(
+        None, "--vars-file", help=_VARS_FILE_HELP
+    ),
 ) -> None:
+    try:
+        parsed_vars = _parse_vars_input(vars_json=vars_json, vars_file=vars_file)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
     # Only override user values when a flag is given; otherwise pass None so the
     # service reuses the deployment's existing stored values (unchanged behavior).
     parsed_user_values: dict | None = None
@@ -942,6 +1006,7 @@ def update_deployment(
                     id=deployment_id,
                     desired_template_id=desired_template_id,
                     user_values_json=parsed_user_values,
+                    vars=parsed_vars,
                 ),
             )
         except CaelusException as e:
@@ -1861,6 +1926,126 @@ def ssh_key_rm(
         except CaelusException as e:
             _exit_for_domain_error(e)
         typer.echo(f"Removed {fingerprint}")
+
+
+# ── Vars ──────────────────────────────────────────────────────────────
+
+var_app = typer.Typer(
+    help="Manage a deployment's vars, the environment its pod runs with.",
+    no_args_is_help=True,
+)
+app.add_typer(var_app, name="var")
+
+_PHASE_OPTION = typer.Option(vars_service.RUNTIME_PHASE, "--phase", help="When the vars are consumed.")
+
+
+def _var_deployment(
+    session: Session, operator: UserORM, *, user_id: int, deployment_id: UUID, phase: str
+) -> DeploymentORM:
+    """The deployment, scoped to `user_id` even for an administrator, so a
+    mistyped pair is not found rather than another account's vars."""
+    if user_id != operator.id and not operator.is_admin:
+        typer.echo("Error: acting on another user's vars requires admin privileges", err=True)
+        raise typer.Exit(code=1)
+    vars_service.require_phase(phase)
+    return deployment_service.get_deployment_orm(session, deployment_id=deployment_id, user_id=user_id)
+
+
+@var_app.command("list")
+def var_list(user_id: int, deployment_id: UUID, phase: str = _PHASE_OPTION) -> None:
+    """List a deployment's vars. A sensitive var is listed without its value."""
+    with session_scope() as session:
+        operator = _require_cli_user(session)
+        try:
+            deployment = _var_deployment(session, operator, user_id=user_id, deployment_id=deployment_id, phase=phase)
+            _echo_yaml_entity(vars_service.read_vars(session, deployment))
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+
+
+@var_app.command("get")
+def var_get(user_id: int, deployment_id: UUID, key: str, phase: str = _PHASE_OPTION) -> None:
+    """Show one var, in the same shape as the list."""
+    with session_scope() as session:
+        operator = _require_cli_user(session)
+        try:
+            deployment = _var_deployment(session, operator, user_id=user_id, deployment_id=deployment_id, phase=phase)
+            _echo_yaml_entity(vars_service.read_var(session, deployment, key))
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+
+
+@var_app.command("set")
+def var_set(
+    user_id: int,
+    deployment_id: UUID,
+    assignments: list[str] = typer.Argument(
+        None, help="KEY=VALUE, or a bare KEY to be prompted for without echo."
+    ),
+    secret: bool = typer.Option(False, "--secret", help="Store these vars write-only."),
+    source: str | None = typer.Option(
+        None, "--file", help="Vars in the --vars-json shape, e.g. the output of `var list`; '-' reads stdin."
+    ),
+    replace: bool = typer.Option(
+        False, "--replace", help="Delete every var not given, instead of merging."
+    ),
+    phase: str = _PHASE_OPTION,
+) -> None:
+    """Write vars, staged for the deployment's next rollout.
+
+    Like the API, this does not roll the deployment out: `pending` reports that
+    the pod's environment differs, and `update-deployment` applies it.
+    """
+    try:
+        entries = _parse_vars_input(vars_json=None, vars_file=source)
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+    for assignment in assignments or []:
+        key, sep, value = assignment.partition("=")
+        if not sep:
+            value = typer.prompt(key, hide_input=True)
+        entries[key] = VarWrite(value=value)
+    if not entries and not replace:
+        typer.echo("Error: No vars given.", err=True)
+        raise typer.Exit(code=1)
+    if secret:
+        for entry in entries.values():
+            entry.sensitive = True
+
+    with session_scope() as session:
+        operator = _require_cli_user(session)
+        try:
+            deployment = _var_deployment(session, operator, user_id=user_id, deployment_id=deployment_id, phase=phase)
+            vars_service.assert_writable(deployment)
+            vars_service.write_vars(
+                session, deployment=deployment, actor=operator, entries=entries, replace=replace
+            )
+            session.commit()
+            _echo_yaml_entity(vars_service.read_vars(session, deployment))
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+
+
+@var_app.command("rm")
+def var_rm(
+    user_id: int,
+    deployment_id: UUID,
+    keys: list[str] = typer.Argument(..., help="The vars to delete."),
+    phase: str = _PHASE_OPTION,
+) -> None:
+    """Delete vars. A key the deployment does not have is not an error."""
+    with session_scope() as session:
+        operator = _require_cli_user(session)
+        try:
+            deployment = _var_deployment(session, operator, user_id=user_id, deployment_id=deployment_id, phase=phase)
+            vars_service.assert_writable(deployment)
+            for key in keys:
+                vars_service.delete_var(session, deployment=deployment, actor=operator, key=key)
+            session.commit()
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        typer.echo(f"Removed {', '.join(keys)}")
 
 
 if __name__ == "__main__":
