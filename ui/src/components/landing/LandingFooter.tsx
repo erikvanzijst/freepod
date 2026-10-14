@@ -11,7 +11,6 @@ const columns = [
     heading: 'Product',
     links: [
       { label: 'Apps', href: '/apps' },
-      { label: 'Why Freepod', href: '/#why' },
       { label: 'Pricing', href: '/#pricing' },
       { label: 'Developers', href: '/dev' },
       { label: 'Docs', href: '/docs/' },
@@ -20,7 +19,7 @@ const columns = [
   {
     heading: 'Company',
     links: [
-      { label: 'About', href: '/#about' },
+      { label: 'About', href: '/#why' },
       { label: 'Contact', href: `mailto:${SUPPORT_EMAIL}` },
     ],
   },

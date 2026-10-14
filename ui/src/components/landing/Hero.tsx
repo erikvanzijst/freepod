@@ -1,13 +1,9 @@
 import { Box, Button, Container, Stack, Typography } from '@mui/material'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import { Link as RouterLink } from 'react-router-dom'
-import { accent, DISPLAY, fg, MONO, primaryButtonSx, SANS, secondaryButtonSx } from './landingTokens'
+import { accent, DISPLAY, fg, MONO, primaryButtonSx, SANS } from './landingTokens'
 import AuroraBackground from './AuroraBackground'
 import PodPreview from './PodPreview'
-
-interface HeroProps {
-  onSignup: () => void
-}
 
 const facts = ['Hosted in the EU', 'Open-source apps', 'No ads or tracking']
 
@@ -18,7 +14,7 @@ const reveal = (i: number) => ({
   animationDelay: `${0.1 + i * 0.12}s`,
 })
 
-export function Hero({ onSignup }: HeroProps) {
+export function Hero() {
   return (
     <Box component="section" sx={{ position: 'relative', overflow: 'hidden' }}>
       <AuroraBackground />
@@ -49,7 +45,7 @@ export function Hero({ onSignup }: HeroProps) {
               mb: 3,
             }}
           >
-            Your own cloud, made simple
+            Your own private cloud
           </Typography>
 
           <Typography
@@ -101,10 +97,7 @@ export function Hero({ onSignup }: HeroProps) {
           </Typography>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ ...reveal(3), mt: 5 }}>
-            <Button onClick={onSignup} endIcon={<ArrowForwardRoundedIcon />} sx={primaryButtonSx}>
-              Create your account
-            </Button>
-            <Button component={RouterLink} to="/apps" sx={secondaryButtonSx}>
+            <Button component={RouterLink} to="/apps" endIcon={<ArrowForwardRoundedIcon />} sx={primaryButtonSx}>
               Browse the apps
             </Button>
           </Stack>

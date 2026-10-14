@@ -3,7 +3,7 @@
   Source template for the Freepod social preview card (Open Graph / Twitter).
 
   This HTML is the editable source of truth. The shipped asset is a rasterized
-  PNG at ui/public/og-image.png (referenced by ui/index.html's og:image tags).
+  PNG at ui/public/og-image-v2.png (referenced from ui/src/content/pageMeta.ts).
   Regenerate the PNG after editing:
 
       ui/og/generate.sh
@@ -161,12 +161,17 @@
 
       .tagline {
         font-family: 'Fraunces', Georgia, serif;
-        font-style: italic;
         font-weight: 400;
         font-size: 38px;
         line-height: 1.1;
         letter-spacing: -0.5px;
         margin-top: 18px;
+        color: #f4f6fb;
+      }
+
+      .tagline em {
+        font-style: italic;
+        padding-right: 0.04em;
         color: transparent;
         background: linear-gradient(100deg, #89a9ff 0%, #c9b3ff 50%, #f9a8d4 100%);
         -webkit-background-clip: text;
@@ -298,18 +303,17 @@
         </svg>
 
         <div class="text">
-          <div class="eyebrow">The European cloud · Open source · No lock-in</div>
+          <div class="eyebrow">Your own cloud, made simple</div>
           <div class="wordmark">Freepod</div>
-          <div class="tagline">Your digital life, truly yours.</div>
+          <div class="tagline">Your digital life, in a cloud <em>you</em> control.</div>
           <div class="desc">
-            Private, dedicated pods for your photos, files, chat and passwords —
-            hosted in Europe, owned by you.
+            Private alternatives to the cloud services you use every day, for your
+            photos, files, passwords and chats.
           </div>
           <div class="badges">
-            <span class="badge">EU-hosted</span>
-            <span class="badge">No ads, ever</span>
+            <span class="badge">Hosted in the EU</span>
             <span class="badge">Open source</span>
-            <span class="badge">Export anytime</span>
+            <span class="badge">No ads or tracking</span>
           </div>
         </div>
       </div>

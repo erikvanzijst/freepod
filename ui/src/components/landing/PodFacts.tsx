@@ -59,28 +59,33 @@ const facts: Fact[] = [
   },
 ]
 
-/** What running an app on Freepod means, in plain facts. */
+/** Why Freepod exists and who it is for, beside what running an app on it means, in plain facts. */
 export function PodFacts() {
   return (
     <Box component="section" id="why" sx={{ py: { xs: 9, md: 13 }, scrollMarginTop: 80 }}>
       <Container
         maxWidth="lg"
-        sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '5fr 7fr' }, gap: { xs: 5, md: 10 }, alignItems: 'start' }}
+        sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: { xs: 5, md: 10 }, alignItems: 'start' }}
       >
         <Reveal sx={{ position: { md: 'sticky' }, top: { md: 120 } }}>
           <Typography
-            sx={{ fontFamily: MONO, fontSize: 12.5, letterSpacing: '0.22em', textTransform: 'uppercase', color: accent.cyan, mb: 2 }}
-          >
-            Why Freepod
-          </Typography>
-          <Typography
             component="h2"
-            sx={{ fontFamily: DISPLAY, fontWeight: 500, fontSize: { xs: 34, md: 46 }, lineHeight: 1.08, letterSpacing: '-0.02em' }}
+            sx={{ fontFamily: MONO, fontSize: 12.5, letterSpacing: '0.22em', textTransform: 'uppercase', color: accent.cyan, mb: 2.5 }}
           >
-            A cloud that works for you.
+            Why we built Freepod
           </Typography>
-          <Typography sx={{ fontFamily: SANS, fontSize: { xs: 16.5, md: 18 }, lineHeight: 1.6, color: fg.muted, mt: 2.5, maxWidth: 440 }}>
-            Freepod is a simple arrangement: you pay for the apps you run, and everything in them stays yours.
+          <Typography sx={{ fontFamily: DISPLAY, fontWeight: 400, fontSize: { xs: 21, md: 23 }, lineHeight: 1.5, color: fg.primary }}>
+            Most of us just want our technology to work and stay out of sight. But where our photos,
+            documents and messages end up, and what they're used for, still matters. We built Freepod to
+            offer the technology you depend on every day, while respecting your control and privacy, using
+            apps and services designed around these principles.{' '}
+            <Box component="span" sx={{ color: accent.blue }}>
+              And with all our code open source, we have the receipts to prove it.
+            </Box>
+          </Typography>
+          <Typography sx={{ fontFamily: SANS, fontSize: { xs: 16.5, md: 17 }, lineHeight: 1.65, color: fg.muted, mt: 2.5 }}>
+            For households, independent shops and growing businesses alike: all the control of having your own
+            cloud, with none of the work of running one.
           </Typography>
         </Reveal>
 

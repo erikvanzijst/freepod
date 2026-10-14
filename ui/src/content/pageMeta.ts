@@ -36,7 +36,7 @@ export const PAGE_META: Record<'home' | 'dev', PageMeta> = {
       'Private alternatives to the cloud services you use every day, for your photos, files, passwords and chats. Each app runs in a pod of its own, hosted in the EU, with no ads or tracking.',
     summary:
       'Private alternatives for your photos, files, passwords and chats, each in a pod of your own. Hosted in the EU.',
-    image: 'og-image.png',
+    image: 'og-image-v2.png',
   },
   dev: {
     path: '/dev',

@@ -2,7 +2,6 @@ import { Box } from '@mui/material'
 import { fg, ink, SANS } from '../components/landing/landingTokens'
 import LandingNav from '../components/landing/LandingNav'
 import Hero from '../components/landing/Hero'
-import AboutFreepod from '../components/landing/AboutFreepod'
 import AppShowcase from '../components/landing/AppShowcase'
 import PodFacts from '../components/landing/PodFacts'
 import HowItWorks from '../components/landing/HowItWorks'
@@ -33,14 +32,13 @@ export function Landing() {
     >
       <LandingNav onSignup={start} />
       <Box component="main">
-        <Hero onSignup={start} />
-        <AboutFreepod />
+        <Hero />
         <AppShowcase />
         <PodFacts />
         <HowItWorks />
         <PricingSection onSignup={start} />
         <DevelopersBand />
-        <CtaBand onSignup={start} />
+        <CtaBand />
       </Box>
       <LandingFooter />
 

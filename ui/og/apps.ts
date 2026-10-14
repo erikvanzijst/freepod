@@ -105,7 +105,7 @@ const h = (type: string, style: Record<string, unknown>, children?: unknown, pro
   props: { ...props, style: { display: 'flex', ...style }, children },
 })
 
-/** The card's layout, in the visual language of og/og-image.html. */
+/** The card's layout, in the visual language of og/og-image-v2.html. */
 function card(app: CatalogApp): Node {
   const instead = app.replaces?.split(' · ').join(' or ')
   return h(
