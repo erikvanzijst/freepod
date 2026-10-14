@@ -155,8 +155,10 @@ been deployed on dev and used.
 
 ## 9. Hand off the pull request
 
-The PR adds the chart, its README, the product's catalog folder, and the test
-registrations from §1. The folder holds the catalog file, its icon, and the
+The PR adds the chart, its README, the product's catalog folder, the app's
+user docs page `ui/docs/apps/products/<slug>.mdx` (see `AGENTS.md` § User
+Documentation; the docs build fails without one), and the test registrations
+from §1. The folder holds the catalog file, its icon, and the
 app page's listing content: a one-sentence `tagline`, a Markdown
 `description`, `license`, `features`, `links`, and `screenshots` committed under
 `screenshots/`, each with a `credit` naming its source and license unless the
@@ -185,7 +187,8 @@ miss and leaves a duplicate product on dev.
 
 Before asking for review, check that:
 
-- `caelus catalog lint` passes, as does the test suite for everything touched;
+- `caelus catalog lint` passes, as do `npm run build` in `ui/docs` and the test
+  suite for everything touched;
 - the chart renders cleanly with the values the reconciler injects;
 - the product was deployed on dev and its core features were used in a browser;
 - every deviation, unmet requirement, and unconstrained setting is in the
