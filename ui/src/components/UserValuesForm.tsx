@@ -217,6 +217,8 @@ interface UserValuesFormProps {
   onRequiredFilledChange?: (filled: boolean) => void
   errors?: string[]
   initialHostname?: string
+  /** The hostname label an install dialog starts with, e.g. the app's slug. */
+  hostnamePrefill?: string
   readOnly?: boolean
 }
 
@@ -230,6 +232,7 @@ export function UserValuesForm({
   onRequiredFilledChange,
   errors = [],
   initialHostname,
+  hostnamePrefill,
   readOnly,
 }: UserValuesFormProps) {
   const fields = useMemo(() => flattenSchema(valuesSchemaJson), [valuesSchemaJson])
@@ -456,6 +459,7 @@ export function UserValuesForm({
               error={fieldErrors[field.path]}
               description={field.description}
               initialHostname={initialHostname}
+              defaultPrefix={hostnamePrefill}
               readOnly={readOnly}
             />
           )

@@ -351,6 +351,110 @@ describe('HostnameField', () => {
     })
   })
 
+  describe('default prefix prefill', () => {
+    it('prefills the name under the account domain', async () => {
+      const onChange = vi.fn()
+      checkHostnameMock.mockResolvedValue({ fqdn: 'hello-world.app.example.com', usable: true, reason: null })
+
+      render(
+        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" defaultPrefix="hello-world" />,
+      )
+
+      expect(screen.getByLabelText('Hostname')).toHaveValue('hello-world')
+      await waitFor(() => {
+        expect(onChange).toHaveBeenCalledWith('hello-world.app.example.com')
+      })
+    })
+
+    it('prefills once the account domain arrives after mount', async () => {
+      const onChange = vi.fn()
+      checkHostnameMock.mockResolvedValue({ fqdn: 'hello-world.app.example.com', usable: true, reason: null })
+
+      const { rerender } = render(
+        <HostnameField value="" onChange={onChange} accountFqdn={null} defaultPrefix="hello-world" />,
+      )
+      expect(screen.getByLabelText('Hostname')).toHaveValue('')
+
+      rerender(
+        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" defaultPrefix="hello-world" />,
+      )
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Hostname')).toHaveValue('hello-world')
+        expect(onChange).toHaveBeenCalledWith('hello-world.app.example.com')
+      })
+    })
+
+    it('prefers an initial value over the default prefix', () => {
+      const onChange = vi.fn()
+      render(
+        <HostnameField
+          value="myapp.app.example.com"
+          onChange={onChange}
+          accountFqdn="app.example.com"
+          defaultPrefix="hello-world"
+        />,
+      )
+
+      expect(screen.getByLabelText('Hostname')).toHaveValue('myapp')
+    })
+  })
+
+  describe('unavailable prefill retry', () => {
+    it('appends a number until the name is available', async () => {
+      const onChange = vi.fn()
+      checkHostnameMock.mockImplementation(async (fqdn: string) =>
+        fqdn === 'hello-world-2.app.example.com'
+          ? { fqdn, usable: true, reason: null }
+          : { fqdn, usable: false, reason: 'in_use' },
+      )
+
+      render(
+        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" defaultPrefix="hello-world" />,
+      )
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Hostname')).toHaveValue('hello-world-2')
+        expect(screen.getByTestId('CheckCircleIcon')).toBeInTheDocument()
+      })
+      expect(onChange).toHaveBeenCalledWith('hello-world-2.app.example.com')
+    })
+
+    it('gives up after three tries', async () => {
+      checkHostnameMock.mockClear()
+      checkHostnameMock.mockResolvedValue({ fqdn: '', usable: false, reason: 'in_use' })
+
+      render(
+        <HostnameField value="" onChange={vi.fn()} accountFqdn="app.example.com" defaultPrefix="hello-world" />,
+      )
+
+      // Three debounced checks outlast waitFor's default window.
+      await waitFor(() => {
+        expect(screen.getByText('Already in use')).toBeInTheDocument()
+      }, { timeout: 2000 })
+      expect(screen.getByLabelText('Hostname')).toHaveValue('hello-world-3')
+      expect(checkHostnameMock).toHaveBeenCalledTimes(3)
+    })
+
+    it('stops retrying once the user edits the prefilled name', async () => {
+      const onChange = vi.fn()
+      checkHostnameMock.mockResolvedValue({ fqdn: '', usable: false, reason: 'in_use' })
+
+      render(
+        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" defaultPrefix="hello-world" />,
+      )
+
+      fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'myname' } })
+
+      await waitFor(() => {
+        expect(screen.getByText('Already in use')).toBeInTheDocument()
+      })
+      expect(screen.getByLabelText('Hostname')).toHaveValue('myname')
+      expect(checkHostnameMock).not.toHaveBeenCalledWith('myname-2.app.example.com')
+    })
+
+  })
+
   describe('initialHostname bypass', () => {
     it('skips API validation when hostname matches initialHostname', async () => {
       const onChange = vi.fn()

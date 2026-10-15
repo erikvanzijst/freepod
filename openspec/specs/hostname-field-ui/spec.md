@@ -84,6 +84,30 @@ The component MUST NOT call `GET /api/hostnames/{fqdn}` while the composed FQDN 
 - **WHEN** the user changes the hostname away from `initialHostname` and then changes it back
 - **THEN** the component sets validation status to `valid` without calling the API
 
+### Requirement: Install dialog prefills the hostname with the app's name
+
+On a new install, the deploy dialog MUST prefill the Freepod address label with
+the product's slug, or its name reduced to a label where it has none. While the
+user has not touched the field, a refused prefill MUST be retried as `<name>-2`,
+then `<name>-3`; after that the refusal is shown. A name the user entered is
+never replaced.
+
+#### Scenario: Install dialog prefills the app's name
+- **WHEN** the user opens the install dialog for the product `hello-world`
+- **THEN** the label starts as `hello-world` under the account's address
+
+#### Scenario: A refused prefill retries with a suffix
+- **WHEN** `hello-world` is refused and `hello-world-2` is usable
+- **THEN** the label becomes `hello-world-2`
+
+#### Scenario: Retrying stops after three tries
+- **WHEN** `hello-world`, `hello-world-2` and `hello-world-3` are all refused
+- **THEN** the label stays `hello-world-3` and the refusal is shown
+
+#### Scenario: A user-entered name is never replaced
+- **WHEN** the user edits the field and the name is refused
+- **THEN** the name is left unchanged and the refusal is shown
+
 ### Requirement: HostnameField offers the account's own address or a custom domain
 
 `HostnameField` MUST offer two modes: a **Freepod address** mode and a **custom domain**

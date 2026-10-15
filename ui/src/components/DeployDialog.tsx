@@ -14,6 +14,12 @@ import { LEGAL_DOCS } from '../content/legal'
 // it stays in lockstep with the text shown in the agreement modal.
 const TOS_VERSION = LEGAL_DOCS.terms.version
 
+// An install's hostname label starts as the product's slug, or its name
+// reduced to a label where it has none.
+function hostnamePrefill(product: ProductSummary): string {
+  return product.slug ?? product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
 interface DeployDialogProps {
   product: ProductSummary
   userId: number
@@ -272,6 +278,7 @@ export function DeployDialog({ product, userId, onClose, deployment, initialPlan
           noTemplateWarning={!isEditMode && !templatesQuery.isLoading && !canonicalTemplate}
           loading={!isEditMode && (templatesQuery.isLoading || plansQuery.isLoading)}
           initialHostname={deployment?.hostname ?? undefined}
+          hostnamePrefill={isEditMode ? undefined : hostnamePrefill(product)}
           submitLabel={isEditMode ? 'Update' : 'Launch'}
           plans={plans}
           selectedPlanTemplateId={isEditMode ? (deployment?.subscription?.plan_template?.id ?? null) : effectivePlanTemplateId}

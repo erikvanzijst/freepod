@@ -10,6 +10,8 @@ const createDeploymentMock = vi.fn()
 const updateDeploymentMock = vi.fn()
 const checkHostnameMock = vi.fn()
 const getMySubdomainMock = vi.fn()
+// The account's domain; unset keeps the hostname field in custom mode.
+const subdomainMock = vi.hoisted(() => ({ fqdn: undefined as string | undefined }))
 // Default: user has NOT accepted the Terms -> checkbox is shown. Individual
 // tests override to simulate an already-accepted user.
 const getTosAcceptanceMock = vi.fn().mockResolvedValue({ version: null, accepted_at: null })
@@ -88,10 +90,20 @@ const helloTemplate = {
   created_at: '2026-01-01T00:00:00Z',
 }
 
+vi.mock('./subdomain/useMySubdomain', () => ({
+  useMySubdomain: () => ({
+    data: subdomainMock.fqdn ? { subdomain: 'erik', fqdn: subdomainMock.fqdn, domain: 'freepod.eu' } : undefined,
+    isSuccess: true,
+  }),
+}))
+
 // The hostname check is debounced; on fake timers waitFor runs that clock
 // itself, so no test depends on how fast the machine is.
 beforeEach(() => vi.useFakeTimers())
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  subdomainMock.fqdn = undefined
+})
 
 describe('DeployDialog', () => {
   it('introduces the product with its tagline, never the long description', async () => {
@@ -147,6 +159,19 @@ describe('DeployDialog', () => {
 
     await waitFor(() => {
       expect(createDeploymentMock).toHaveBeenCalledWith(42, expect.objectContaining({ plan_template_id: 200 }))
+    })
+  })
+
+  it('prefills the hostname with the app name', async () => {
+    subdomainMock.fqdn = 'erik.freepod.eu'
+    listTemplatesMock.mockResolvedValue([helloTemplate])
+    listPlansMock.mockResolvedValue([freePlan])
+    checkHostnameMock.mockResolvedValue({ fqdn: 'hello-world.erik.freepod.eu', usable: true, reason: null })
+
+    renderWithQuery(<DeployDialog product={helloWorld} userId={1} onClose={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: /hostname/i })).toHaveValue('hello-world')
     })
   })
 

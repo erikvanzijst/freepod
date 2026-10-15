@@ -17,6 +17,9 @@ import { checkHostname } from '../api/endpoints'
 
 const DEBOUNCE_MS = 400
 
+// The prefilled name, then `-2` and `-3`, before it is left for the user.
+const MAX_AUTO_TRIES = 3
+
 const REASON_LABELS: Record<string, string> = {
   invalid: 'Invalid hostname format',
   reserved: 'Hostname is reserved',
@@ -49,11 +52,13 @@ interface HostnameFieldProps {
   description?: string
   initialHostname?: string
   readOnly?: boolean
+  /** Prefills an empty field's label; while untouched, a refused one is retried with a numeric suffix. */
+  defaultPrefix?: string
 }
 
 type Mode = 'freepod' | 'custom'
 
-export function HostnameField({ value, onChange, onValidationChange, accountFqdn, cnameTarget, required, error, description, initialHostname, readOnly }: HostnameFieldProps) {
+export function HostnameField({ value, onChange, onValidationChange, accountFqdn, cnameTarget, required, error, description, initialHostname, readOnly, defaultPrefix }: HostnameFieldProps) {
   if (readOnly) {
     return (
       <TextField
@@ -73,6 +78,9 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
   const [validation, setValidation] = useState<ValidationState>({ status: 'idle' })
   const abortRef = useRef<AbortController | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The prefilled name and how many candidates have been tried, until the
+  // user edits the field: a name someone chose is never silently replaced.
+  const autoNameRef = useRef<{ base: string; tries: number } | null>(null)
 
   // The account's domain name arrives asynchronously; a value parked in the
   // custom field before it did may turn out to sit beneath it after all.
@@ -88,10 +96,19 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
     setMode('freepod')
   }, [accountFqdn, customFqdn])
 
-  // Sync initial value into local state on mount
+  // Sync initial value into local state on mount, or with none, prefill the
+  // default name once the account's domain is known.
   const initializedRef = useRef(false)
   useEffect(() => {
-    if (initializedRef.current || !value) return
+    if (initializedRef.current) return
+    if (!value) {
+      if (!defaultPrefix || !accountFqdn) return
+      initializedRef.current = true
+      autoNameRef.current = { base: defaultPrefix, tries: 1 }
+      setPrefix(defaultPrefix)
+      setMode('freepod')
+      return
+    }
     initializedRef.current = true
 
     if (accountFqdn && value.endsWith(`.${accountFqdn}`)) {
@@ -101,7 +118,7 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
     }
     setCustomFqdn(value)
     setMode('custom')
-  }, [value, accountFqdn])
+  }, [value, accountFqdn, defaultPrefix])
 
   const currentFqdn =
     mode === 'freepod' ? (prefix ? `${prefix}.${accountFqdn}` : '') : customFqdn
@@ -131,9 +148,14 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
         if (controller.signal.aborted) return
         if (result.usable) {
           setValidation({ status: 'valid' })
-        } else {
-          setValidation({ status: 'error', reason: result.reason ?? 'invalid' })
+          return
         }
+        const auto = autoNameRef.current
+        if (auto && auto.tries < MAX_AUTO_TRIES) {
+          setPrefix(`${auto.base}-${++auto.tries}`)
+          return
+        }
+        setValidation({ status: 'error', reason: result.reason ?? 'invalid' })
       } catch {
         if (controller.signal.aborted) return
         setValidation({ status: 'error', reason: 'invalid' })
@@ -165,6 +187,7 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
 
   const handleModeChange = (_: unknown, newMode: Mode | null) => {
     if (!newMode) return
+    autoNameRef.current = null
     setMode(newMode)
     setValidation({ status: 'idle' })
     if (newMode === 'freepod') {
@@ -229,7 +252,10 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
           <TextField
             label="Hostname"
             value={prefix}
-            onChange={(e) => setPrefix(e.target.value.replace(/\./g, ''))}
+            onChange={(e) => {
+              autoNameRef.current = null
+              setPrefix(e.target.value.replace(/\./g, ''))
+            }}
             required={required}
             error={!!error || validation.status === 'error'}
             slotProps={{

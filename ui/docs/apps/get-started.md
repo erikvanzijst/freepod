@@ -27,7 +27,7 @@ The subdomain cannot be changed or released later. **Not now** postpones the cho
 
 1. Under **Available apps** on the dashboard, select an app.
 2. Select a plan.
-3. Fill in the settings. **Hostname** is the app's address: enter a name, such as `photos`, to use `photos.alice.freepod.eu`, or select **Custom domain** to use a domain you own. See [Hostname](managing/hostname.md) and [Custom domain](managing/custom-domain.mdx).
+3. Fill in the settings. **Hostname** is the app's address, prefilled with the app's name (with a number appended if that is taken). Enter another name, such as `photos`, to use `photos.alice.freepod.eu`, or select **Custom domain** to use a domain you own. See [Hostname](managing/hostname.md) and [Custom domain](managing/custom-domain.mdx).
 4. The first time, accept the Terms of Service.
 5. Select **Launch**. For a paid plan, you are sent to a payment page first.
 

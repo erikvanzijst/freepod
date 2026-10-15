@@ -43,6 +43,8 @@ interface DeployDialogContentProps {
   noTemplateWarning?: boolean
   loading?: boolean
   initialHostname?: string
+  /** The hostname label an install dialog starts with, e.g. the app's slug. */
+  hostnamePrefill?: string
   submitLabel?: string
   readOnly?: boolean
   plans?: Plan[]
@@ -75,6 +77,7 @@ export function DeployDialogContent({
   noTemplateWarning,
   loading,
   initialHostname,
+  hostnamePrefill,
   submitLabel = 'Launch',
   readOnly,
   plans,
@@ -196,6 +199,7 @@ export function DeployDialogContent({
             onRequiredFilledChange={onRequiredFilledChange}
             errors={userValuesErrors}
             initialHostname={initialHostname}
+            hostnamePrefill={hostnamePrefill}
             readOnly={readOnly}
           />
         )}
