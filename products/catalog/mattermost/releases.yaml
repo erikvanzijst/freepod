@@ -1,3 +1,8 @@
+- version: "12.0.0"
+  notes: |-
+    Mattermost 12.0, the latest major release.
+
+    - A new major version bringing maintenance and security fixes
 - version: "11.11.1"
   notes: |-
     A maintenance release with security fixes.
