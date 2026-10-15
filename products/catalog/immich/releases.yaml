@@ -1,3 +1,9 @@
+- version: "3.3.3"
+  notes: |-
+    A small fix-up release that makes finding people faster.
+
+    - The explore page loads people noticeably faster
+    - The memories date is now shown correctly in every app language
 - version: "3.3.1"
   notes: |-
     People sharing got clearer and more reliable, and memories behave better on phones.
