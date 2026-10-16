@@ -88,24 +88,27 @@ func rolePool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// fixture creates one owner, one product with a slug unique to the test, and
-// deployments under it, and removes all of it afterwards.
+// fixture creates one owner, two products and deployments under them, and
+// removes all of it afterwards. Hostnames carry a suffix unique to the test,
+// which is what keeps tests apart in a database the API suite shares.
 type fixture struct {
-	t         *testing.T
-	admin     *pgxpool.Pool
-	unique    string
-	slug      string
-	userID    int
-	productID int
+	t              *testing.T
+	admin          *pgxpool.Pool
+	unique         string
+	userID         int
+	productID      int
+	otherProductID int
 }
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	f := &fixture{t: t, admin: adminPool(t), unique: fmt.Sprintf("%d", time.Now().UnixNano())}
-	f.slug = "custom-test-" + f.unique
 	f.userID = f.queryInt(`INSERT INTO "user" (email, is_admin, created_at) VALUES ($1, false, now()) RETURNING id`,
 		"owner-"+f.unique+"@app-auth.test")
-	f.productID = f.queryInt(`INSERT INTO product (name, slug, description, created_at) VALUES ($1, $1, 'app-auth test', now()) RETURNING id`, f.slug)
+	f.productID = f.queryInt(`INSERT INTO product (name, slug, description, created_at) VALUES ($1, $1, 'app-auth test', now()) RETURNING id`,
+		"app-auth-test-"+f.unique)
+	f.otherProductID = f.queryInt(`INSERT INTO product (name, description, created_at) VALUES ($1, 'app-auth test', now()) RETURNING id`,
+		"app-auth-other-"+f.unique)
 	t.Cleanup(f.cleanup)
 	return f
 }
@@ -127,17 +130,28 @@ func (f *fixture) exec(sql string, args ...any) {
 }
 
 func (f *fixture) store(pool *pgxpool.Pool) *pgStore {
-	return &pgStore{pool: pool, productSlug: f.slug}
+	return &pgStore{pool: pool}
 }
 
 // deployment inserts a deployment whose applied release carries `values`, the
 // way the reconciler leaves one it has rolled out.
 func (f *fixture) deployment(hostname, status, values string) string {
 	f.t.Helper()
-	templateID := f.queryInt(`INSERT INTO product_template_version (product_id, chart_ref, chart_version, created_at)
-		VALUES ($1, 'oci://test/', '1.0.0', now()) RETURNING id`, f.productID)
+	return f.deploymentOf(f.productID, hostname, status, values, "")
+}
+
+// deploymentOf is deployment for a given product, with `system` as its
+// template's system values (empty for none).
+func (f *fixture) deploymentOf(productID int, hostname, status, values, system string) string {
+	f.t.Helper()
+	var systemValues any
+	if system != "" {
+		systemValues = system
+	}
+	templateID := f.queryInt(`INSERT INTO product_template_version (product_id, chart_ref, chart_version, system_values_json, created_at)
+		VALUES ($1, 'oci://test/', '1.0.0', $2::json, now()) RETURNING id`, productID, systemValues)
 	planID := f.queryInt(`INSERT INTO plan (name, product_id, created_at) VALUES ($1, $2, now()) RETURNING id`,
-		fmt.Sprintf("free-%s-%d", f.unique, templateID), f.productID)
+		fmt.Sprintf("free-%s-%d", f.unique, templateID), productID)
 	ptID := f.queryInt(`INSERT INTO plan_template_version (plan_id, price_cents, billing_interval, created_at)
 		VALUES ($1, 0, 'monthly', now()) RETURNING id`, planID)
 	subID := f.queryInt(`INSERT INTO subscription (plan_template_id, user_id, status, payment_status, created_at)
@@ -201,10 +215,12 @@ func (f *fixture) cleanup() {
 			f.t.Logf("cleanup: %v", err)
 		}
 	}
-	f.admin.Exec(ctx, `DELETE FROM plan_template_version WHERE plan_id IN (SELECT id FROM plan WHERE product_id = $1)`, f.productID)
-	f.admin.Exec(ctx, `DELETE FROM plan WHERE product_id = $1`, f.productID)
-	f.admin.Exec(ctx, `DELETE FROM product_template_version WHERE product_id = $1`, f.productID)
-	f.admin.Exec(ctx, `DELETE FROM product WHERE id = $1`, f.productID)
+	for _, product := range []int{f.productID, f.otherProductID} {
+		f.admin.Exec(ctx, `DELETE FROM plan_template_version WHERE plan_id IN (SELECT id FROM plan WHERE product_id = $1)`, product)
+		f.admin.Exec(ctx, `DELETE FROM plan WHERE product_id = $1`, product)
+		f.admin.Exec(ctx, `DELETE FROM product_template_version WHERE product_id = $1`, product)
+		f.admin.Exec(ctx, `DELETE FROM product WHERE id = $1`, product)
+	}
 }
 
 const authOn = `{"hostname":"x","auth":{"enabled":true}}`
@@ -224,6 +240,16 @@ func TestEligibility(t *testing.T) {
 	f.desire(rolling, authOn)
 	disabling := f.deployment("disabling-"+u+".erik.freepod.eu", "provisioned", authOn)
 	f.desire(disabling, `{"hostname":"x"}`)
+	// Any product qualifies, and a template may turn authentication on itself;
+	// its system value wins over the user's, as the reconciler merges them.
+	other := f.deploymentOf(f.otherProductID, "other-"+u+".erik.freepod.eu", "provisioned", authOn, "")
+	templated := f.deploymentOf(f.otherProductID, "templated-"+u+".erik.freepod.eu", "provisioned", `{"hostname":"x"}`, `{"auth":{"enabled":true}}`)
+	overridden := f.deploymentOf(f.otherProductID, "overridden-"+u+".erik.freepod.eu", "provisioned",
+		`{"hostname":"x","auth":{"enabled":false}}`, `{"auth":{"enabled":true}}`)
+	f.deploymentOf(f.otherProductID, "templateoff-"+u+".erik.freepod.eu", "provisioned", authOn, `{"auth":{"enabled":false}}`)
+	f.deploymentOf(f.otherProductID, "nosetting-"+u+".erik.freepod.eu", "provisioned", `{"hostname":"x"}`, `{"nodePool":"tenant"}`)
+	// The store matches hostnames exactly; preview hostnames are the broker's.
+	f.deployment("preview-milk-"+u+".erik.freepod.eu", "provisioned", `{"hostname":"x"}`)
 
 	cases := []struct {
 		host string
@@ -240,6 +266,12 @@ func TestEligibility(t *testing.T) {
 		// agrees with it until the new release is live.
 		{"rolling-" + u + ".erik.freepod.eu", ""},
 		{"disabling-" + u + ".erik.freepod.eu", disabling},
+		{"other-" + u + ".erik.freepod.eu", other},
+		{"templated-" + u + ".erik.freepod.eu", templated},
+		{"overridden-" + u + ".erik.freepod.eu", overridden},
+		{"templateoff-" + u + ".erik.freepod.eu", ""},
+		{"nosetting-" + u + ".erik.freepod.eu", ""},
+		{"preview-milk-" + u + ".erik.freepod.eu", ""},
 	}
 	for _, c := range cases {
 		id, ok, err := st.eligible(ctx, c.host)
@@ -249,9 +281,6 @@ func TestEligibility(t *testing.T) {
 		if ok != (c.want != "") || id != c.want {
 			t.Errorf("eligible(%q) = %q, %v; want %q", c.host, id, ok, c.want)
 		}
-	}
-	if _, ok, _ := (&pgStore{pool: st.pool, productSlug: "someone-else"}).eligible(ctx, "milk-"+u+".erik.freepod.eu"); ok {
-		t.Error("a deployment of another product was eligible")
 	}
 }
 

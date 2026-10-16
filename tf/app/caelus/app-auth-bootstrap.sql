@@ -46,15 +46,15 @@ REVOKE ALL PRIVILEGES ON SCHEMA public FROM caelus_app_auth;
 
 GRANT USAGE ON SCHEMA public TO caelus_app_auth;
 
--- Eligibility: is this host a live `custom` deployment whose *applied* release
--- enabled authentication? Column grants, not table grants: `deployment` also
--- carries the owner, and `deployment_release` build and error detail, none of
--- which the broker has any use for. Vars and database passwords live in tables
--- this role is never granted.
+-- Eligibility: is this host a live deployment whose *applied* release enabled
+-- authentication, in its user values or its template's system values? Column
+-- grants, not table grants: `deployment` also carries the owner, and
+-- `deployment_release` build and error detail, none of which the broker has any
+-- use for. Vars and database passwords live in tables this role is never
+-- granted.
 GRANT SELECT (id, hostname, status, applied_release_id) ON TABLE deployment TO caelus_app_auth;
 GRANT SELECT (id, template_id, values_json) ON TABLE deployment_release TO caelus_app_auth;
-GRANT SELECT (id, product_id) ON TABLE product_template_version TO caelus_app_auth;
-GRANT SELECT (id, slug) ON TABLE product TO caelus_app_auth;
+GRANT SELECT (id, system_values_json) ON TABLE product_template_version TO caelus_app_auth;
 
 -- Its own records. No UPDATE: consent is inserted once, codes are inserted and
 -- then deleted on redemption or expiry.

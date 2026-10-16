@@ -1,13 +1,17 @@
 # app-auth — "Sign in with Freepod" for tenant apps
 
-A `custom` deployment that sets `auth.enabled` gets verified identity headers
-(`X-Freepod-User`, `X-Freepod-Email`, `X-Freepod-Name`) on every request, with
-Freepod's Keycloak as the identity provider. This service is both halves:
+A deployment whose chart renders the app-auth middlewares and that has
+`auth.enabled` (a user value, or a system value of its template) gets verified
+identity headers (`X-Freepod-User`, `X-Freepod-Email`, `X-Freepod-Name`) on
+every request, with Freepod's Keycloak as the identity provider. This service is
+both halves:
 
 - **The verifier** (`:8080/verify`) is Traefik's forward-auth endpoint for
   every auth-enabled app. It checks a host-bound session cookie, strips it and
   every platform cookie from the request, and sets the identity headers, or
   answers with a redirect to sign in (navigations) or `401` (everything else).
+  Its address carries the deployment's public paths (`p`) and, optionally, the
+  accounts allowed in (`a`) and the app's name for the no-access page (`n`).
   It also serves `/.freepod/auth/{login,callback,logout}` on each app host,
   from inside forward-auth. The per-request path touches no database.
 - **The broker** (`:8081`, public at `login.<domain>`) is the only party that
@@ -15,7 +19,8 @@ Freepod's Keycloak as the identity provider. This service is both halves:
   (`freepod-apps-{prod,dev}`) with one redirect URI. It checks that the host is
   an auth-enabled deployment, asks for consent once per user and deployment,
   and hands the app host a single-use code bound to that host and to the
-  browser that started signing in.
+  browser that started signing in. `preview-<label>.<rest>` signs in as the
+  deployment at `<label>.<rest>`.
 
 **Logout** (`/.freepod/auth/logout?rd=…`) clears the app host's session, then
 goes through the broker's `/logout` to Keycloak's end-session endpoint, so the
@@ -34,11 +39,12 @@ Rationale: [app-authentication](../../openspec/changes/archive/2026-09-28-app-au
 This service is coupled to three things outside its directory, deliberately and
 each with a test that fails when one side moves:
 
-1. **The `custom` chart's middlewares** (`products/custom/chart/templates/app-auth.yaml`).
-   The chart must list `Cookie` plus exactly `identityHeaders` (`request.go`) in
-   `authResponseHeaders`, strip the same set on every deployment, and leave
-   `trustForwardHeader` unset. `api/tests/test_custom_chart.py` reads
-   `identityHeaders` out of `request.go` and compares.
+1. **The charts' middlewares** (`templates/app-auth.yaml` in the `custom` and
+   `appstudio` charts). Each must list `Cookie` plus exactly `identityHeaders`
+   (`request.go`) in `authResponseHeaders`, strip the same set on every route,
+   and leave `trustForwardHeader` unset. `api/tests/test_custom_chart.py` and
+   `api/tests/test_appstudio_chart.py` read `identityHeaders` out of
+   `request.go` and compare.
 2. **Traefik's forward-auth behavior**: listed headers are deleted before being
    copied, non-2xx responses reach the browser with `Location` and
    `Set-Cookie`, and relative `Location`s are resolved against the *verifier's*

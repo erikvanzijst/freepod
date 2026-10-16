@@ -36,6 +36,7 @@ type verifier struct {
 	now      func() time.Time
 	log      *slog.Logger
 	patterns *patternCache
+	allowed  *allowCache
 }
 
 // ServeHTTP answers Traefik's forward-auth request. Traefik describes the
@@ -66,7 +67,14 @@ func (v *verifier) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess, ok := v.session(r.Header, host)
-	if ok || v.patterns.match(r.URL.Query().Get("p"), target.Path) {
+	// `a` restricts the app to the accounts it lists. It is checked before the
+	// public paths, so a signed-in account that is not listed sees nothing.
+	edge := r.URL.Query()
+	if ok && edge.Has("a") && !v.allowed.admits(edge.Get("a"), sess.Email) {
+		v.refuse(w, method, r.Header, host, edge.Get("n"), sess.Email)
+		return
+	}
+	if ok || v.patterns.match(edge.Get("p"), target.Path) {
 		if cookies := filterCookies(r.Header); cookies != "" {
 			w.Header().Set("Cookie", cookies)
 		}
@@ -189,6 +197,29 @@ func (v *verifier) nonceMatches(h http.Header, want []byte) bool {
 	return false
 }
 
+// refuse answers a signed-in account the deployment does not admit: a page
+// naming the app (`n`, else its host) for a navigation, a bare 403 otherwise.
+func (v *verifier) refuse(w http.ResponseWriter, method string, h http.Header, host, name, email string) {
+	if !isNavigation(method, h) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("This account has no access to this app.\n"))
+		return
+	}
+	named := name != ""
+	if !named {
+		name = host
+	}
+	renderNoAccess(w, noAccessView{
+		App:     name,
+		Named:   named,
+		URL:     "https://" + host,
+		Email:   email,
+		SignOut: "https://" + host + reservedPrefix + "logout?rd=/",
+	})
+}
+
 func (v *verifier) failurePage(w http.ResponseWriter, host string) {
 	renderPage(w, http.StatusBadRequest, page{
 		chrome:   newChrome(v.loginURL),
@@ -265,4 +296,46 @@ func (c *patternCache) compiled(key string) []*regexp.Regexp {
 	}
 	c.byKey[key] = res
 	return res
+}
+
+// allowCache decodes each deployment's allowed accounts once, keyed by the
+// middleware's `a` parameter verbatim like patternCache. A list it cannot
+// decode admits nobody (fail closed).
+type allowCache struct {
+	mu    sync.Mutex
+	byKey map[string]map[string]bool
+	log   *slog.Logger
+}
+
+func newAllowCache(log *slog.Logger) *allowCache {
+	return &allowCache{byKey: map[string]map[string]bool{}, log: log}
+}
+
+func (c *allowCache) admits(key, email string) bool {
+	return email != "" && c.emails(key)[strings.ToLower(email)]
+}
+
+func (c *allowCache) emails(key string) map[string]bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if set, ok := c.byKey[key]; ok {
+		return set
+	}
+	set := map[string]bool{}
+	var emails []string
+	raw, err := base64.RawURLEncoding.DecodeString(key)
+	if err == nil {
+		err = json.Unmarshal(raw, &emails)
+	}
+	if err != nil {
+		c.log.Warn("undecodable allowed accounts; none admitted", "err", err)
+	}
+	for _, e := range emails {
+		set[strings.ToLower(strings.TrimSpace(e))] = true
+	}
+	if len(c.byKey) >= patternCacheLimit {
+		c.byKey = map[string]map[string]bool{}
+	}
+	c.byKey[key] = set
+	return set
 }
