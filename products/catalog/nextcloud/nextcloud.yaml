@@ -94,7 +94,7 @@ template:
   chart_version: 0.2.8
   system_values:
     image:
-      tag: 35.0.1-apache
+      tag: 35.0.2-apache
     smtp:
       host: smtp.mailer.svc.cluster.local
       port: 25

@@ -1,3 +1,13 @@
+- version: "35.0.2"
+  notes: |-
+    A bug-fix release for Nextcloud 35.
+
+    - Link shares now honor the default expiry set by the admin
+    - Share presets can no longer grant more permissions than the resharing user has
+    - File names can no longer contain line breaks
+    - "Remember me" keeps you signed in correctly
+    - Links in text documents open when clicked
+    - Fixes for encryption, file search and password resets
 - version: "35.0.1"
   notes: |-
     A bug-fix release for Nextcloud 35.
