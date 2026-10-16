@@ -78,6 +78,10 @@
     "resources": {
       "type": "object"
     },
+    "staticSiteResources": {
+      "type": "object",
+      "description": "System-owned requests for an image the platform built as a static site, used in place of `resources` only when `image` equals caelus.build.image and caelus.build.staticSite is true. Never tenant-settable."
+    },
     "objectStorage": {
       "type": "object",
       "description": "Whether this chart wires up object storage (an S3 bucket, not a volume). A system value set by the product's catalog entry, never tenant-settable \u2014 it is deliberately absent from the tenant-facing values schema. Distinct from caelus.objectStorage, which carries the per-deployment references the reconciler injects.",
@@ -254,6 +258,21 @@
           "properties": {
             "verifyUrl": {
               "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "build": {
+          "type": "object",
+          "description": "The build the release ships, injected by the Caelus reconciler on every apply. Empty image and false when the release names no succeeded build.",
+          "properties": {
+            "image": {
+              "type": "string",
+              "description": "The build's image as \"{user_id}@{digest}\", or empty."
+            },
+            "staticSite": {
+              "type": "boolean",
+              "description": "Whether the build serves a static site with Railpack's Caddy."
             }
           },
           "additionalProperties": true

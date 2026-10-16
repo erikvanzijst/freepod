@@ -47,6 +47,16 @@ PLAN_FILENAME = "railpack-plan.json"
 
 DOCKERFILE_NAME = "Dockerfile"
 
+# The deploy start commands Railpack v0.36.4 hardcodes for a static site: the
+# staticfile provider, then the Node SPA path. Matched exactly, so a start
+# command the project wrote itself never qualifies (static-site-requests D1).
+CADDY_START_COMMANDS = frozenset(
+    {
+        "caddy run --config Caddyfile --adapter caddyfile 2>&1",
+        "caddy run --config /Caddyfile --adapter caddyfile 2>&1",
+    }
+)
+
 # The Dockerfile frontend, pinned and mirrored the same way the Railpack one
 # is, and passed to every Dockerfile build as BUILDKIT_SYNTAX. That build-arg
 # overrides a `# syntax=` directive, which is the point: whatever interprets a
@@ -285,6 +295,21 @@ def prepare_plan(source: Path, plan_dir: Path) -> None:
     )
     if not (plan_dir / PLAN_FILENAME).is_file():
         raise BuildFailure("stack detection produced no build plan")
+
+
+def serves_static_site(plan_path: Path) -> bool:
+    """Whether the plan deploys Railpack's own Caddy static file server.
+
+    Never raises: a plan this cannot make sense of is simply not a static site,
+    which costs the image a larger request and nothing else.
+    """
+    try:
+        plan = json.loads(plan_path.read_text())
+    except (OSError, ValueError):
+        return False
+    deploy = plan.get("deploy") if isinstance(plan, dict) else None
+    command = deploy.get("startCommand") if isinstance(deploy, dict) else None
+    return isinstance(command, str) and command in CADDY_START_COMMANDS
 
 
 def buildkitd_config(registry: str) -> str:
@@ -757,6 +782,7 @@ def main() -> int:
             )
 
         builder = select_builder(source)
+        static_site = False
         if builder == "dockerfile":
             log("Building from the project's own Dockerfile")
             build_and_push_dockerfile(
@@ -770,6 +796,7 @@ def main() -> int:
         else:
             log("No Dockerfile in the project root; detecting the project's stack")
             prepare_plan(source, plan_dir)
+            static_site = serves_static_site(plan_dir / PLAN_FILENAME)
             build_and_push(
                 source=source,
                 plan_dir=plan_dir,
@@ -791,7 +818,7 @@ def main() -> int:
         # a deployment at an arbitrary registry.
         image = f"{user_id}@{digest}"
         log(f"Built {image}")
-        report(termination_log, {"image": image}, meter)
+        report(termination_log, {"image": image, "static_site": static_site}, meter)
         return 0
 
     except BuildFailure as exc:

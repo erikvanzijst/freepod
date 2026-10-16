@@ -8,7 +8,12 @@ from uuid import UUID
 from sqlmodel import Session
 
 from app.config import get_settings
-from app.models import DeploymentORM, DeploymentReleaseORM, ProductTemplateVersionORM
+from app.models import (
+    BuildORM,
+    DeploymentORM,
+    DeploymentReleaseORM,
+    ProductTemplateVersionORM,
+)
 from app.provisioner import Provisioner, provisioner as default_provisioner
 from app.services import (
     deployment_logs,
@@ -25,6 +30,7 @@ from app.services.loki import DIRECTION_BACKWARD, LokiQueryClient
 from app.services.template_values import bytes_to_k8s_size
 from app.services.deployments import _get_deployment_orm
 from app.services.errors import IntegrityException
+from app.services.build_constants import BUILD_STATUS_SUCCEEDED
 from app.services.reconcile_constants import (
     DEPLOYMENT_STATUS_PROVISIONING,
     DEPLOYMENT_STATUS_DELETED,
@@ -683,6 +689,7 @@ class DeploymentReconciler:
         system_overrides = self._build_system_overrides(
             deployment,
             release=release,
+            build=self._session.get(BuildORM, release.build_id) if release.build_id else None,
             storage=storage,
             database=database,
             vars_secret=vars_secret,
@@ -700,6 +707,7 @@ class DeploymentReconciler:
         deployment: DeploymentORM,
         *,
         release: DeploymentReleaseORM,
+        build: BuildORM | None = None,
         storage: object_storage.ObjectStorageCredentials | None = None,
         database: relational_storage.DatabaseCredentials | None = None,
         vars_secret: str | None = None,
@@ -720,6 +728,7 @@ class DeploymentReconciler:
             cls._build_database_overrides(deployment, database),
             cls._build_vars_overrides(vars_secret),
             cls._build_release_overrides(release),
+            cls._build_build_overrides(build),
             cls._build_ssh_overrides(),
             cls._build_app_auth_overrides(),
             cls._build_registry_overrides(pull_secret),
@@ -776,6 +785,18 @@ class DeploymentReconciler:
                 "releaseNumber": str(release.number),
             }
         }
+
+    @staticmethod
+    def _build_build_overrides(build: BuildORM | None) -> dict:
+        """Facts about the build the release ships, for a chart to size by.
+
+        Emitted on every apply, empty and false included, so the platform always
+        holds both keys. The image lets the chart confirm that the image it runs
+        is this build's own (static-site-sizing D4).
+        """
+        if build is None or build.status != BUILD_STATUS_SUCCEEDED or not build.image:
+            return {"caelus": {"build": {"image": "", "staticSite": False}}}
+        return {"caelus": {"build": {"image": build.image, "staticSite": build.static_site}}}
 
     @staticmethod
     def _build_object_storage_overrides(

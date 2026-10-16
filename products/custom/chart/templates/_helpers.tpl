@@ -137,3 +137,19 @@ The Traefik middlewares every route to the app carries, strip first.
 {{- end -}}
 {{- join "," $mw -}}
 {{- end }}
+
+{{/*
+The app container's resources. `staticSiteResources` only when the image this
+release runs is the very image of a build the platform classified as a static
+site; comparing the two here is what stops a tenant pairing a static build with
+a different image (static-site-sizing D4).
+*/}}
+{{- define "custom.resources" -}}
+{{- $build := .Values.caelus.build | default dict -}}
+{{- $image := trim (default "" .Values.image) -}}
+{{- $resources := .Values.resources -}}
+{{- if and $image $build.staticSite (eq $image (toString $build.image)) -}}
+{{- $resources = .Values.staticSiteResources -}}
+{{- end -}}
+{{- with $resources }}{{ toYaml . }}{{ end -}}
+{{- end -}}

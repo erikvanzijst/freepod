@@ -146,6 +146,8 @@ def test_reconcile_apply_happy_path_returns_ready_and_applied_template(db_sessio
             # `freepod releases` shows and what the SSH banner reports.
             "releaseId": str(deployment.desired_release_id),
             "releaseNumber": "1",
+            # Emitted false even with no build, so the platform always holds it.
+            "build": {"image": "", "staticSite": False},
         },
     }
 

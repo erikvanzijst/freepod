@@ -31,7 +31,7 @@ presigned artifact URL
   read the pushed config back, warn if it cannot serve
         │
         ▼
-  /dev/termination-log:  {"image": "{user_id}@{digest}", "usage": {…}}
+  /dev/termination-log:  {"image": "{user_id}@{digest}", "static_site": …, "usage": {…}}
 ```
 
 ## Which builder runs
@@ -213,12 +213,14 @@ choice; a client that wants a tidy transcript can collapse CR runs itself.
 
 ## The termination message
 
-The result goes to `/dev/termination-log` as one JSON object: `{"image": …}` on
-success, `{"error": …}` on failure, and on either, when it could be measured, the
-run's resource usage:
+The result goes to `/dev/termination-log` as one JSON object: `{"image": …,
+"static_site": …}` on success, `{"error": …}` on failure, and on either, when it
+could be measured, the run's resource usage. `static_site` is true only when the
+Railpack plan deploys Railpack's own Caddy static file server
+([static-site-sizing](../../../openspec/specs/static-site-sizing/spec.md)):
 
 ```json
-{"image": "5@sha256:…",
+{"image": "5@sha256:…", "static_site": false,
  "usage": {"cpu_seconds": 41.2, "memory_byte_seconds": 71000000000,
            "memory_peak_bytes": 812000000,
            "started_at": "2026-09-25T22:45:41.000Z",

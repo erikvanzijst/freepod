@@ -638,3 +638,56 @@ def test_the_tenant_schema_rejects_malformed_auth(auth):
 
     with pytest.raises(CaelusException):
         validate_user_values({"hostname": "a.example", "auth": auth}, _tenant_schema())
+
+
+# ---------------------------------------------------------------------------
+# Static-site sizing
+# ---------------------------------------------------------------------------
+
+STATIC_IMAGE = f"1@{DIGEST}"
+OTHER_IMAGE = "1@sha256:" + "f" * 64
+
+
+def _build(image: str, static_site: str) -> dict:
+    return {"caelus__build__image": image, "caelus__build__staticSite": static_site}
+
+
+def _requests(**values: str) -> dict:
+    resources = _app_container(_render(**BASE, **values))["resources"]
+    assert "limits" not in resources
+    return resources["requests"]
+
+
+def test_a_static_site_build_running_its_own_image_gets_the_small_request():
+    assert _requests(image=STATIC_IMAGE, **_build(STATIC_IMAGE, "true")) == {
+        "cpu": "10m",
+        "memory": "16Mi",
+    }
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        # A static build paired with some other image.
+        {"image": OTHER_IMAGE, **_build(STATIC_IMAGE, "true")},
+        {"image": STATIC_IMAGE, **_build(STATIC_IMAGE, "false")},
+        {"image": STATIC_IMAGE, **_build("", "false")},
+        # A chart rendered without the reconciler, or by one that predates it.
+        {"image": STATIC_IMAGE},
+        # The placeholder.
+        _build("", "true"),
+    ],
+    ids=["other-image", "not-static", "no-build", "no-block", "placeholder"],
+)
+def test_everything_else_keeps_the_default_request(values):
+    assert _requests(**values) == {"cpu": "10m", "memory": "128Mi"}
+
+
+def test_the_sidecar_is_sized_independently_of_the_app():
+    """Only the app container is Caddy; the sidecar keeps whatever it requests."""
+    plain = _pod_spec(_render(**BASE, image=STATIC_IMAGE))["containers"][1]
+    static = _pod_spec(
+        _render(**BASE, image=STATIC_IMAGE, **_build(STATIC_IMAGE, "true"))
+    )["containers"][1]
+
+    assert static.get("resources") == plain.get("resources")

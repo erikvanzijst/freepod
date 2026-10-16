@@ -73,6 +73,16 @@ resources:
     cpu: 10m
     memory: 128Mi
 
+# Requests for an image the platform built as a static site served by
+# Railpack's Caddy, used in place of `resources` only when `image` is that
+# build's own (templates/_helpers.tpl "custom.resources"). Sized to Caddy's
+# idle working set; usage above a request is billed as usage. A system value,
+# absent from the tenant-facing schema like `resources` above.
+staticSiteResources:
+  requests:
+    cpu: 10m
+    memory: 16Mi
+
 # Whether this chart wires up object storage — an S3 bucket, NOT a volume. Named
 # `objectStorage` rather than `storage` to stay distinct from
 # `caelus.plan.storageBytes`, which is block storage (a PVC size).
@@ -152,6 +162,9 @@ caelus:
   # Empty by default, and absent entirely when the release carries no vars, in
   # which case no `envFrom` source is rendered at all rather than an empty one.
   vars: {}
+  # The build the release ships: its image and whether it serves a static
+  # site, injected on every apply.
+  build: {}
   # The app authentication verifier's forward-auth address. Injected for every
   # deployment; read only when `auth.enabled`, which refuses to render without it.
   appAuth: {}
