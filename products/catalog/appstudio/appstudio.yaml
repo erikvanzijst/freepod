@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: appstudio
+  name: App Studio
+  tagline: Tell an agent to build and deploy what you need.
+  description: |-
+    App Studio is a coding agent in your browser that will help you build applications from scratch. Lean on it as much or as little as you want. If you have no coding experience, just describe the app you envision and leave all coding to the agent. However, you also get a terminal, git, vim, root access and postgres for those that want or need to take over.
+    
+    During development you see the app take shape in realtime in the interactive preview browser. Every change you ask for automatically updates the preview, and when it's ready, ask the agent to publish it.
+    
+    App Studio is built on OpenCode, the open-source coding agent. Use its free models, use your existing AI plan's API key, or connect local models you self-host.
+  category: Developer tools
+  replaces: Lovable · Replit
+  icon: icon.png
+  license: MIT
+  features:
+  - icon: chat
+    title: Describe it
+    body: Say what you want; the agent plans the work, writes the code and tests it.
+  - icon: apps
+    title: Live preview
+    body: Click through your app while it is being built, in a window of its own.
+  - icon: send
+    title: Publish in one step
+    body: The agent publishes your app on Freepod, with a database and object storage when it needs them.
+  - icon: git
+    title: Edit or download the code
+    body: The code is yours. Edit or tweak it alongside the agent, or even take the git repo elsewhere.
+  - icon: sparkle
+    title: Bring your own key
+    body: Start with the free models, or use your existing AI plan's API key.
+  - icon: address
+    title: Custom domain
+    body: Use a CNAME to deploy your app under your own domain name.
+  links:
+  - label: App Studio documentation
+    href: https://freepod.eu/docs/apps/products/appstudio
+    kind: docs
+  - label: freepod for developers
+    href: https://freepod.eu/docs/developers
+    kind: docs
+  - label: opencode documentation
+    href: https://opencode.ai/docs
+    kind: docs
+  - label: opencode source code
+    href: https://github.com/anomalyco/opencode
+    kind: source
+  screenshots:
+  - file: screenshots/chat.webp
+    caption: Describe the app, and the agent plans and builds it
+    form: desktop
+  - file: screenshots/preview-pane.webp
+    caption: Live interactive app preview
+    form: desktop
+  - file: screenshots/chat2.webp
+    caption: Published on its own address and tested end to end
+    form: desktop
+  - file: screenshots/panes.webp
+    caption: The conversation, your files, a terminal and the Preview button
+    form: desktop
+  - file: screenshots/inference.webp
+    caption: Use your preferred inference providers and models
+    form: desktop
+
+upstream:
+  # App Studio's image is Freepod's own and is rebuilt by hand when opencode
+  # moves, so there is no upstream release to track.
+  source:
+    type: github-release
+    repo: OWNER/REPO
+  match: ^v(?P<version>.+)$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/appstudio
+  chart_version: 0.2.7
+  system_values:
+    nodePool: tenant
+    auth:
+      enabled: true
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      hostname:
+        type: string
+        title: Hostname
+        minLength: 1
+        maxLength: 253
+        description: The address of your studio (e.g. studio.you.freepod.eu).
+    required:
+    - hostname
