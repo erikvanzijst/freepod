@@ -31,8 +31,10 @@ URI), which forwards to the app host. Other hosts' sessions are untouched.
 Spec: [app-auth-verifier](../../openspec/specs/app-auth-verifier/spec.md),
 [app-auth-broker](../../openspec/specs/app-auth-broker/spec.md),
 [app-auth-chart-contract](../../openspec/specs/app-auth-chart-contract/spec.md),
-[app-auth-data-model](../../openspec/specs/app-auth-data-model/spec.md) ·
-Rationale: [app-authentication](../../openspec/changes/archive/2026-09-28-app-authentication/design.md)
+[app-auth-data-model](../../openspec/specs/app-auth-data-model/spec.md),
+[app-studio-access](../../openspec/specs/app-studio-access/spec.md) ·
+Rationale: [app-authentication](../../openspec/changes/archive/2026-09-28-app-authentication/design.md),
+[app-auth-owner-and-preview](../../openspec/changes/archive/2026-10-16-app-auth-owner-and-preview/design.md)
 
 ## Coupling
 

@@ -231,6 +231,7 @@ This repository is a monorepo with:
   [app-auth-data-model](openspec/specs/app-auth-data-model/spec.md),
   [app-studio-access](openspec/specs/app-studio-access/spec.md) ·
   Rationale: [app-authentication](openspec/changes/archive/2026-09-28-app-authentication/design.md),
+  [app-auth-owner-and-preview](openspec/changes/archive/2026-10-16-app-auth-owner-and-preview/design.md),
   [daemons/app-auth/README.md](daemons/app-auth/README.md)
 - **The platform's Go daemons ship in one image and are pinned per consumer.**
   Each is its own module under `daemons/` and becomes `/<directory>` in
