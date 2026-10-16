@@ -1,0 +1,58 @@
+---
+title: App Studio
+---
+
+import ProductHeader from '@site/src/components/ProductHeader'
+
+<ProductHeader slug="appstudio" />
+
+App Studio is a coding agent in your browser, built on [OpenCode](https://opencode.ai). You describe an app, the agent writes and runs it, and you try it out in a live preview. When it works, the agent publishes it on Freepod as an app of its own.
+
+## Settings
+
+| Setting | Meaning |
+| --- | --- |
+| Hostname | The studio's address |
+
+## Signing in
+
+Only your own Freepod account can open the studio and its preview. Anyone else who signs in sees a page saying they have no access.
+
+The first time a browser opens the studio, it starts a new session with an example prompt typed in. Press Enter to watch the agent build and publish a small app, or replace the prompt with your own.
+
+## The preview
+
+The **Preview** button at the top right of the studio lights up while the app the agent is building is running, and opens it in a window of its own. The preview updates as the agent changes the code. While nothing is running, the preview window shows a page that waits for the app.
+
+The preview has its own local database and file storage, which start empty again whenever the studio restarts. A published app has its own, separate ones.
+
+## Publishing
+
+Ask the agent to publish the app. The first time, it signs in to Freepod with your account: it shows a link and a code, and you approve the sign-in in your browser.
+
+Each published app is a separate app on your account, with its own address, and appears in your dashboard next to your other apps. Published apps are billed by usage; see [Plans and billing](../plans-and-billing.md). The studio itself does not change when you publish.
+
+### Secrets
+
+Passwords and API keys your app needs do not belong in the conversation. Type `/terminal` in the message box to open a terminal, and set them on the published app there:
+
+```bash
+freepod var set API_KEY --secret
+```
+
+## Models
+
+The studio starts with OpenCode's free models. To use another model, connect a provider in OpenCode's settings with an API key from that provider.
+
+## Your code
+
+Each app is a git repository in the studio. The terminal has git, vim, Node.js, Python and the PostgreSQL client, and runs as root.
+
+[SFTP](../file-access.md) shows the project directory, read-only, to copy files out of the studio.
+
+Sharing a session as a public link is not available.
+
+## Documentation
+
+- [Freepod for developers](/developers): how published apps are built and run
+- [OpenCode documentation](https://opencode.ai/docs)
