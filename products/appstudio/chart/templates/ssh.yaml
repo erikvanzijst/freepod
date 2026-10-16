@@ -1,21 +1,6 @@
 {{- /*
-The deployment's own SSH key: generated on first install and carried over on
-every upgrade. ECDSA rather than Ed25519 because Helm writes Ed25519 as PKCS#8,
-which the image's OpenSSH (9.2) cannot read. lookup is empty under `helm
-template`, so a dry run renders a throwaway key.
+SFTP to the project directory, read-only, for getting files out (contract:
+ssh-chart-contract; access: app-studio-access). The sidecar is spliced into the
+StatefulSet's pod; this is its Service.
 */}}
-{{- $name := printf "%s-ssh" .Release.Name }}
-{{- $existing := lookup "v1" "Secret" .Release.Namespace $name }}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ $name }}
-  labels:
-    {{- include "appstudio.labels" . | nindent 4 }}
-type: Opaque
-data:
-  {{- if and $existing (hasKey $existing.data "id_ecdsa") }}
-  id_ecdsa: {{ index $existing.data "id_ecdsa" }}
-  {{- else }}
-  id_ecdsa: {{ genPrivateKey "ecdsa" | b64enc }}
-  {{- end }}
+{{ include "ssh-sidecar.resources" (dict "root" . "selector" (include "appstudio.selectorLabels" . | fromYaml)) }}

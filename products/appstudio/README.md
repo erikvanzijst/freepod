@@ -9,6 +9,7 @@ its `deploy-to-freepod` skill. Experimental; not in the catalog.
 | opencode  | StatefulSet `<release>-app` (one replica), Service `<release>-app` `:80` → `$STUDIO_PORT` (4096) |
 | Storage   | PVC `workspace` → `/workspace`, PVC `opencode` → `/root/.local/share/opencode` (sessions, provider credentials) |
 | SSH key   | Secret `<release>-ssh`: an ECDSA key generated on first install and kept across upgrades, installed as `~/.ssh/id_ecdsa` |
+| SFTP      | The platform's SSH sidecar with a read-only volume root of the project directory (`projectDir`) only, and its Service `<release>-ssh`; the rest of the workspace (credentials, opencode's config) is not mounted |
 | Preview   | Ingress `<release>-preview` at `preview-<first label>.<rest of the host>` → port 8080, for whatever the agent runs there; while nothing listens, the `start` sidecar's page waits for it. Wildcard-certificate hosts only |
 | Sign-in   | Middlewares `<release>-strip-identity` and `<release>-app-auth` ahead of everything on both Ingresses: Sign in with Freepod, the owner's account only. The template must set `auth.enabled: true` as a system value; the chart refuses to render otherwise |
 | Ingress   | `<release>-ingress`, only once the reconciler injects a hostname. A fresh load of `/` redirects to `/.appstudio/start.html` (sidecar `start`), which adds the project to opencode's project list in the browser and opens a session in it |

@@ -117,9 +117,9 @@ This repository is a monorepo with:
   (`products/_lib/ssh-sidecar-image`) for every deployment that has SSH access
   at all. `volume:/<path>` roots a session at a read-only mount of the data the
   product exposes; `app-container` roots it at the filesystem the tenant's code
-  runs in. **The six data-bearing products declare a volume root; `custom`
-  declares `app-container`**, and a product that declares nothing renders no
-  sidecar and is not routable. Spec:
+  runs in. **Data-bearing products declare a volume root (App Studio: its
+  project directory); `custom` declares `app-container`**, and a product that
+  declares nothing renders no sidecar and is not routable. Spec:
   [ssh-chart-contract](openspec/specs/ssh-chart-contract/spec.md),
   [ssh-sidecar-image](openspec/specs/ssh-sidecar-image/spec.md),
   [ssh-session-dispatcher](openspec/specs/ssh-session-dispatcher/spec.md) ·

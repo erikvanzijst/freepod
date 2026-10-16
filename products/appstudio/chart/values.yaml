@@ -44,6 +44,10 @@ freepodEnv: ""
 auth:
   enabled: false
 
+# The SSH sidecar (products/_lib/ssh-sidecar-image), which serves the project
+# directory over SFTP, read-only. A system value, pinned exactly.
+sshSidecarImage: ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2
+
 persistence:
   workspace:
     size: 10Gi

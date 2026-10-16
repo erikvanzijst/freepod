@@ -99,6 +99,11 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+        {{- /* Only the project: the rest of the workspace holds the owner's
+               Freepod credentials and opencode's config. */}}
+        {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage
+             "sessionRoot" "volume:/app"
+             "mounts" (list (dict "volume" "workspace" "path" "/app" "subPath" (include "appstudio.projectSubPath" .)))) | nindent 8 }}
       volumes:
         - name: workspace
           persistentVolumeClaim:

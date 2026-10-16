@@ -39,6 +39,15 @@ Mirrors identityHeaders in daemons/app-auth/request.go.
 {{- join "," $mw -}}
 {{- end -}}
 
+{{/* projectDir as a path inside the workspace volume. */}}
+{{- define "appstudio.projectSubPath" -}}
+{{- $sub := trimPrefix "/workspace/" .Values.projectDir -}}
+{{- if or (eq $sub .Values.projectDir) (eq $sub "") (contains ".." $sub) -}}
+{{- fail (printf "appstudio: projectDir %q must be a directory inside /workspace" .Values.projectDir) -}}
+{{- end -}}
+{{- trimSuffix "/" $sub -}}
+{{- end -}}
+
 {{/* Pod template only; see "custom.podLabels" in the custom chart. */}}
 {{- define "appstudio.podLabels" -}}
 {{- with .Values.caelus.releaseId -}}

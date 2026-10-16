@@ -24,6 +24,13 @@ OWNER = "Alice@Example.test"
 
 pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
 
+
+@pytest.fixture(scope="module", autouse=True)
+def _resolved_dependencies():
+    """`charts/` is a build artifact; `build` vendors what `Chart.lock` names."""
+    result = subprocess.run(["helm", "dependency", "build", str(CHART)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
 # What the template's system values and the reconciler give every deployment.
 BASE = {
     "auth.enabled": "true",
@@ -34,6 +41,7 @@ BASE = {
     "caelus.ingress.enabled": "true",
     "caelus.ingress.host": "studio.alice.freepod.test",
     "caelus.ingress.tls.wildcard": "true",
+    "caelus.ssh.platformPublicKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIV5/SURDe/M7JtAheJuxURSGgpFB8Yfrd/LY6c9+DzR platform",
 }
 
 
@@ -106,6 +114,21 @@ def test_no_password_remains():
     rendered = yaml.safe_dump_all(_render())
     assert "OPENCODE_SERVER_PASSWORD" not in rendered
     assert "basicAuth" not in rendered
+
+
+def test_sftp_reaches_only_the_project_read_only():
+    pod = next(d for d in _render() if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
+    sidecar = next(c for c in pod["containers"] if c["name"] == "ssh")
+    assert sidecar["volumeMounts"] == [
+        {"name": "workspace", "mountPath": "/srv/session/app", "subPath": "app", "readOnly": True}
+    ]
+
+
+@pytest.mark.parametrize("project_dir", ["/workspace", "/opt/app", "/workspace/../etc"])
+def test_refuses_a_project_outside_the_workspace(project_dir):
+    result = _helm({**BASE, "projectDir": project_dir})
+    assert result.returncode != 0
+    assert "must be a directory inside /workspace" in result.stderr
 
 
 @pytest.mark.parametrize(

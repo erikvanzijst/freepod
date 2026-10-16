@@ -69,7 +69,7 @@ EXTRA_VALUES: dict[str, dict[str, str]] = {
 # volume: owning one is not a declaration, and the presence of a volume must
 # never be what opts a product into a session.
 SESSION_ROOTS: dict[str, str | None] = {
-    "appstudio": None,
+    "appstudio": "volume:/app",
     "bookstack": "volume:/uploads",
     "custom": "app-container",
     "docmost": "volume:/storage",
