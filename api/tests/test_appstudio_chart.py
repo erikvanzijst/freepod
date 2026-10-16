@@ -116,6 +116,38 @@ def test_no_password_remains():
     assert "basicAuth" not in rendered
 
 
+def test_root_opens_the_chrome_with_its_settings():
+    from urllib.parse import parse_qs, urlsplit
+
+    redirect = _middleware(_render(platformUrl="https://dev.freepod.test"), "open-project")["spec"]["redirectRegex"]
+    target = urlsplit(redirect["replacement"].replace("${1}", "https://studio.alice.freepod.test"))
+    assert target.path == "/.appstudio/"
+    assert {k: v[0] for k, v in parse_qs(target.query).items()} == {
+        "project": "/workspace/app",
+        "platform": "https://dev.freepod.test",
+        "preview": "https://preview-studio.alice.freepod.test",
+    }
+
+
+def test_chrome_serves_on_its_port_and_probes_the_preview_port():
+    docs = _render(chromePort="4199", **{"preview.port": "8181"})
+    conf = next(d for d in docs if d["kind"] == "ConfigMap" and d["metadata"]["name"] == "t-chrome")["data"]["nginx.conf"]
+    assert "listen 4199;" in conf
+    assert "proxy_pass http://127.0.0.1:8181/;" in conf
+    pod = next(d for d in docs if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
+    chrome = next(c for c in pod["containers"] if c["name"] == "chrome")
+    assert chrome["ports"] == [{"name": "chrome", "containerPort": 4199}]
+
+
+def test_page_edits_do_not_restart_the_studio():
+    """Pages reach the pod through the ConfigMap; only the server's config is in
+    the pod template, so editing a page leaves the running agent alone."""
+    pod = next(d for d in _render() if d["kind"] == "StatefulSet")["spec"]["template"]
+    assert list(pod["metadata"]["annotations"]) == ["checksum/chrome-nginx"]
+    mounts = {m["name"]: m for m in next(c for c in pod["spec"]["containers"] if c["name"] == "chrome")["volumeMounts"]}
+    assert "subPath" not in mounts["chrome-pages"]
+
+
 def test_sftp_reaches_only_the_project_read_only():
     pod = next(d for d in _render() if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
     sidecar = next(c for c in pod["containers"] if c["name"] == "ssh")

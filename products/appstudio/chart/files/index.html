@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App Studio</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fafafa;
+    --fg: #171717;
+    --muted: color-mix(in srgb, var(--fg) 55%, transparent);
+    --rule: color-mix(in srgb, var(--fg) 9%, transparent);
+    --hover: color-mix(in srgb, var(--fg) 6%, transparent);
+    --live: #16a34a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #0a0a0a; --fg: #ededed; --live: #22c55e; }
+  }
+  :root[data-theme="dark"] { --bg: #0a0a0a; --fg: #ededed; --live: #22c55e; }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column;
+    background: var(--bg); color: var(--fg);
+    font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    flex: none; height: 40px; padding: 0 8px 0 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .home {
+    display: flex; align-items: center; gap: 8px; min-width: 0;
+    color: inherit; text-decoration: none; border-radius: 6px; padding: 4px 6px; margin-left: -6px;
+  }
+  .home:hover { background: var(--hover); }
+  .home svg { flex: none; width: 18px; height: 18px; }
+  .home .platform { color: var(--muted); }
+  .home .sep { color: var(--rule); }
+  .home .product { font-weight: 600; white-space: nowrap; }
+
+  .preview { position: relative; }
+  .preview button {
+    display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px;
+    font: inherit; color: inherit; background: transparent; cursor: pointer;
+    border: 1px solid var(--rule); border-radius: 7px;
+  }
+  .preview button:hover:not(:disabled) { background: var(--hover); }
+  .preview button:disabled { color: var(--muted); cursor: default; }
+  .preview .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: .6; }
+  .preview.live .dot { background: var(--live); opacity: 1; }
+  .preview svg { width: 13px; height: 13px; }
+  .preview:not(.live) svg { display: none; }
+
+  .nudge {
+    position: absolute; top: calc(100% + 8px); right: 0; z-index: 1; width: max-content; max-width: 260px;
+    padding: 10px 12px; border: 1px solid var(--rule); border-radius: 10px;
+    background: var(--bg); box-shadow: 0 6px 24px rgb(0 0 0 / .12);
+    display: none;
+  }
+  .nudge.show { display: block; }
+  .nudge { cursor: pointer; }
+  .nudge strong { display: block; margin-bottom: 2px; }
+  .nudge span { color: var(--muted); }
+  .nudge::before {
+    content: ""; position: absolute; top: -5px; right: 18px; width: 8px; height: 8px;
+    background: var(--bg); border-left: 1px solid var(--rule); border-top: 1px solid var(--rule);
+    transform: rotate(45deg);
+  }
+  iframe { flex: 1; width: 100%; border: 0; display: block; background: var(--bg); }
+</style>
+</head>
+<body>
+<header>
+  <a class="home" id="home" href="/" title="Back to Freepod">
+    <svg viewBox="96 78 320 364" aria-hidden="true">
+      <path fill="currentColor" fill-rule="evenodd" d="M256 82C168 82 100 150 100 232C100 335 256 438 256 438S412 335 412 232C412 150 344 82 256 82ZM256 159L265 206L312 215L265 224L256 271L247 224L200 215L247 206Z"/>
+    </svg>
+    <span class="platform">Freepod</span><span class="sep">/</span><span class="product">App Studio</span>
+  </a>
+  <div class="preview" id="preview" hidden>
+    <button type="button" id="open" disabled title="Your app's live preview appears here once the agent runs it">
+      <span class="dot"></span><span id="label">Preview</span>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h4v4M13 3 7.5 8.5M12 9.5V13H3V4h3.5"/></svg>
+    </button>
+    <div class="nudge" id="nudge" role="status">
+      <strong>Your app is running</strong>
+      <span>Open the preview to see it as you build.</span>
+    </div>
+  </div>
+</header>
+<iframe id="studio" title="opencode" allow="clipboard-read; clipboard-write; fullscreen"></iframe>
+<script>
+  // The page around opencode: a way back to Freepod, and a Preview button that
+  // comes alive once the agent's app answers on the preview port (`probe`, a
+  // proxy to it in this pod that says 204 while nothing listens). The ingress puts
+  // the project, the Freepod URL and the preview URL in this page's query.
+  // opencode runs in the iframe on this same origin; its location is mirrored
+  // into this page's fragment, so a reload returns to the same place.
+  //
+  // First visit in a browser: opencode keeps its project list here, so the
+  // studio's project is added the way "Add project" does, and a new session
+  // opens with an example prompt typed in. It is a draft tab added here,
+  // because opening `/<project>/session?prompt=` in 1.19 creates two drafts and
+  // lands on the empty one. The storage keys and shapes are opencode 1.19's.
+  const EXAMPLE_PROMPT = "Build and deploy a link shortener";
+  const params = new URLSearchParams(location.search);
+  const dir = params.get("project") || "/workspace/app";
+
+  function firstDestination() {
+    let known = false;
+    try {
+      const key = "opencode.global.dat:server";
+      let store = {};
+      try { store = JSON.parse(localStorage.getItem(key)) || {}; } catch {}
+      store.list ??= [];
+      store.projects ??= {};
+      store.lastProject ??= {};
+      store.recentlyClosed ??= {};
+      const local = (store.projects.local ??= []);
+      known = local.some((p) => p.worktree === dir);
+      if (!known) local.unshift({ worktree: dir, expanded: true });
+      store.lastProject.local ??= dir;
+      localStorage.setItem(key, JSON.stringify(store));
+    } catch {}
+    if (known) return "/?home";
+    try {
+      const key = "opencode.window.browser.dat:tabs";
+      let tabs = [];
+      try { tabs = JSON.parse(localStorage.getItem(key)) || []; } catch {}
+      const draftID = Array.from(crypto.getRandomValues(new Uint8Array(7)),
+        (b) => b.toString(16).padStart(2, "0")).join("");
+      tabs.push({ type: "draft", draftID, server: location.origin, directory: dir });
+      localStorage.setItem(key, JSON.stringify(tabs));
+      return `/new-session?${new URLSearchParams({ draftId: draftID, prompt: EXAMPLE_PROMPT })}`;
+    } catch {}
+    const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(dir)))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return `/${encoded}/session`;
+  }
+
+  function start() {
+    const frame = document.getElementById("studio");
+    const restored = location.hash.startsWith("#/") ? location.hash.slice(1) : "";
+    frame.src = restored || firstDestination();
+
+    // Mirror opencode's location and title, and its colors, which follow its theme.
+    let last = "";
+    const mirror = () => {
+      let doc;
+      try { doc = frame.contentDocument; } catch { return; }
+      if (!doc || !doc.body) return;
+      const loc = frame.contentWindow.location;
+      const here = loc.pathname + loc.search + loc.hash;
+      if (here !== last && loc.origin === location.origin) {
+        last = here;
+        history.replaceState(null, "", `${location.pathname}${location.search}#${here}`);
+      }
+      if (doc.title) document.title = `${doc.title} · App Studio`;
+      const html = getComputedStyle(doc.documentElement);
+      const body = getComputedStyle(doc.body);
+      const bg = [html.backgroundColor, body.backgroundColor].find((c) => c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c));
+      if (bg) document.documentElement.style.setProperty("--bg", bg);
+      if (body.color) document.documentElement.style.setProperty("--fg", body.color);
+    };
+    frame.addEventListener("load", mirror);
+    setInterval(mirror, 500);
+
+    poll();
+  }
+
+  // --- Freepod home and the preview ------------------------------------------
+
+  const preview = document.getElementById("preview");
+  const open = document.getElementById("open");
+  const nudge = document.getElementById("nudge");
+  const previewUrl = params.get("preview") || null;
+  let live = null, signedIn = false, win = null;
+
+  if (params.get("platform")) document.getElementById("home").href = params.get("platform");
+  preview.hidden = !previewUrl;
+
+  const seenKey = "appstudio.previewOpened";
+  const seen = () => { try { return localStorage.getItem(seenKey) === "1"; } catch { return false; } };
+
+  async function poll() {
+    if (!previewUrl) return;
+    try {
+      const res = await fetch("/.appstudio/probe", { method: "HEAD", cache: "no-store", redirect: "manual" });
+      if (res.status === 401 || res.type === "opaqueredirect") {
+        // The studio's session ended: sign in again as a navigation of this
+        // page, since the sign-in pages cannot run inside the iframe.
+        if (signedIn) { location.reload(); return; }
+      } else {
+        signedIn = true;
+        update(res.status !== 204);
+      }
+    } catch {}
+    setTimeout(poll, 3000);
+  }
+
+  function update(now) {
+    if (now === live) return;
+    const becameLive = live === false && now;
+    live = now;
+    preview.classList.toggle("live", live);
+    open.disabled = !live;
+    open.title = live ? "Open your app's live preview" : "Your app's live preview appears here once the agent runs it";
+    nudge.classList.toggle("show", live && (becameLive || !seen()));
+    if (!live) nudge.classList.remove("show");
+  }
+
+  open.addEventListener("click", () => {
+    if (!previewUrl) return;
+    nudge.classList.remove("show");
+    try { localStorage.setItem(seenKey, "1"); } catch {}
+    if (win && !win.closed) { win.focus(); return; }
+    const width = Math.round(Math.min(1280, screen.availWidth * 0.5));
+    const height = Math.round(screen.availHeight * 0.85);
+    const left = Math.round(screen.availWidth - width - 24);
+    win = window.open(previewUrl, "appstudio-preview", `popup,width=${width},height=${height},left=${left},top=48`);
+    if (!win) window.open(previewUrl, "_blank");
+  });
+  nudge.addEventListener("click", () => open.click());
+
+  if (window.top !== window) {
+    // Something inside opencode loaded `/` in the iframe: be opencode there.
+    location.replace("/?home");
+  } else {
+    start();
+  }
+</script>
+</body>
+</html>

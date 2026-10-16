@@ -12,7 +12,7 @@ spec:
     status: ["502-504"]
     service:
       name: {{ .Release.Name }}-app
-      port: {{ .Values.startPort }}
+      port: {{ .Values.chromePort }}
     query: /.appstudio/preview-down.html
 ---
 apiVersion: networking.k8s.io/v1

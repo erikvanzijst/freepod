@@ -20,7 +20,7 @@ RUN install -d /usr/share/postgresql-common/pgdg \
  && apt-get install -y --no-install-recommends \
       python3 python3-venv python3-pip python-is-python3 \
       postgresql-18 postgresql-client-18 openssh-client \
-      ripgrep fd-find jq less tini \
+      ripgrep fd-find jq less tini vim \
  && rm -rf /var/lib/apt/lists/*
 ENV PATH=/usr/lib/postgresql/18/bin:$PATH
 
@@ -64,8 +64,6 @@ RUN uv tool install /tmp/freepod-cli \
 ENV XDG_CONFIG_HOME=/workspace/.config
 COPY opencode.json /etc/opencode/opencode.json
 COPY bin/appstudio-start /usr/local/bin/
-# Served by the chart's `start` sidecar under /.appstudio/.
-COPY www /opt/appstudio/www
 # The starter every app is copied from, and a reference app built on it; the
 # agent's instructions point at both. Neither is copied into the project, so
 # nothing appears in the preview before the user asks for an app.

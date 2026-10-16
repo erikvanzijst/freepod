@@ -48,6 +48,11 @@ Mirrors identityHeaders in daemons/app-auth/request.go.
 {{- trimSuffix "/" $sub -}}
 {{- end -}}
 
+{{/* https://<preview host>, or empty when there is no preview. */}}
+{{- define "appstudio.previewUrl" -}}
+{{- with include "appstudio.previewHost" . }}{{ printf "https://%s" . }}{{ end -}}
+{{- end -}}
+
 {{/* Pod template only; see "custom.podLabels" in the custom chart. */}}
 {{- define "appstudio.podLabels" -}}
 {{- with .Values.caelus.releaseId -}}
