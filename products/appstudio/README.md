@@ -9,7 +9,8 @@ its `deploy-to-freepod` skill. Experimental; not in the catalog.
 | opencode  | StatefulSet `<release>-app` (one replica), Service `<release>-app` `:80` → `$STUDIO_PORT` (4096) |
 | Storage   | PVC `workspace` → `/workspace`, PVC `opencode` → `/root/.local/share/opencode` (sessions, provider credentials) |
 | SSH key   | Secret `<release>-ssh`: an ECDSA key generated on first install and kept across upgrades, installed as `~/.ssh/id_ecdsa` |
-| Preview   | Ingress `<release>-preview` at `preview-<first label>.<rest of the host>` → port 8080, for whatever the agent runs there; while nothing listens, the `start` sidecar's page waits for it. Wildcard-certificate hosts only; `preview.basicAuthSecret` puts it behind basic auth |
+| Preview   | Ingress `<release>-preview` at `preview-<first label>.<rest of the host>` → port 8080, for whatever the agent runs there; while nothing listens, the `start` sidecar's page waits for it. Wildcard-certificate hosts only |
+| Sign-in   | Middlewares `<release>-strip-identity` and `<release>-app-auth` ahead of everything on both Ingresses: Sign in with Freepod, the owner's account only. The template must set `auth.enabled: true` as a system value; the chart refuses to render otherwise |
 | Ingress   | `<release>-ingress`, only once the reconciler injects a hostname. A fresh load of `/` redirects to `/.appstudio/start.html` (sidecar `start`), which adds the project to opencode's project list in the browser and opens a session in it |
 
 `appstudio-start` (`image/bin/`) prepares the workspace on every start and runs
@@ -30,8 +31,8 @@ S3), neither started. `eval "$(dev-postgres)"` and `eval "$(dev-s3)"` start one
 if needed and export the variables Freepod injects into a deployed app. `dev-app` runs
 the project's dev server in the background on the preview port with both.
 
-`passwordSecret` names a Secret whose `password` key turns on opencode's HTTP
-basic auth (user `opencode`).
+Access: [app-studio-access](../../openspec/specs/app-studio-access/spec.md),
+[app-auth-chart-contract](../../openspec/specs/app-auth-chart-contract/spec.md).
 
 ## Image
 

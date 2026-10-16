@@ -213,20 +213,23 @@ This repository is a monorepo with:
   Rationale:
   [product-upgrade-service](openspec/changes/archive/2026-09-17-product-upgrade-service/design.md),
   [ops/upgrader/README.md](ops/upgrader/README.md)
-- **"Sign in with Freepod" is an edge feature of `custom` deployments, served
-  by `daemons/app-auth/`** (Go): a Traefik forward-auth verifier and a broker on
+- **"Sign in with Freepod" is an edge feature any chart can render, served by
+  `daemons/app-auth/`** (Go): a Traefik forward-auth verifier and a broker on
   `login.<domain>`, the only party that talks to Keycloak for tenant apps (one
   client per environment, never one per app). A deployment opts in with
-  `auth.enabled` in its values; the `custom` chart then routes every request
-  through the verifier, whose address the reconciler injects
-  (`caelus.appAuth.verifyUrl`), and strips client-supplied identity headers on
-  every deployment regardless. Sessions are host-bound cookies the app never
-  sees; the per-request path touches no database. Authentication only: any
-  Freepod account may sign in, and authorization is the app's. Spec:
+  `auth.enabled`, a user value (`custom`) or a template system value
+  (`appstudio`); its chart then routes every request through the verifier,
+  whose address the reconciler injects (`caelus.appAuth.verifyUrl`), and strips
+  client-supplied identity headers. Sessions are host-bound cookies the app
+  never sees; the per-request path touches no database. Any Freepod account may
+  sign in unless the chart lists allowed accounts in the verifier's address
+  (App Studio: the owner only); `preview-<label>.<rest>` signs in as the
+  deployment at `<label>.<rest>`. Spec:
   [app-auth-verifier](openspec/specs/app-auth-verifier/spec.md),
   [app-auth-broker](openspec/specs/app-auth-broker/spec.md),
   [app-auth-chart-contract](openspec/specs/app-auth-chart-contract/spec.md),
-  [app-auth-data-model](openspec/specs/app-auth-data-model/spec.md) ·
+  [app-auth-data-model](openspec/specs/app-auth-data-model/spec.md),
+  [app-studio-access](openspec/specs/app-studio-access/spec.md) ·
   Rationale: [app-authentication](openspec/changes/archive/2026-09-28-app-authentication/design.md),
   [daemons/app-auth/README.md](daemons/app-auth/README.md)
 - **The platform's Go daemons ship in one image and are pinned per consumer.**

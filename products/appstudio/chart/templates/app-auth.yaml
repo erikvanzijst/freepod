@@ -1,0 +1,46 @@
+{{- /*
+"Sign in with Freepod", owner only (contract: app-auth-chart-contract; access:
+app-studio-access). Both Ingresses, studio and preview, carry these two
+middlewares ahead of their own; the custom chart's templates/app-auth.yaml
+explains the Traefik behaviors they rely on.
+
+`auth.enabled` must be a system value of the template, because the broker reads
+it there to decide whether this host may sign in at all. The allowed list is
+the owner's email, which the reconciler injects; `n` names the app on the page
+another account is refused with.
+*/}}
+{{- if not (and (kindIs "bool" .Values.auth.enabled) .Values.auth.enabled) }}
+{{- fail "appstudio: auth.enabled must be true, as a system value of the template; the studio is never served without owner-only sign-in" }}
+{{- end }}
+{{- if .Values.caelus.ingress.enabled }}
+{{- $verifyUrl := required "appstudio: caelus.appAuth.verifyUrl is missing; the reconciler injects it, and the studio is never served without it" .Values.caelus.appAuth.verifyUrl }}
+{{- $owner := required "appstudio: caelus.owner.email is missing; the reconciler injects it, and only the owner may use the studio" .Values.caelus.owner.email }}
+{{- $allowed := list $owner | toJson | b64enc | replace "+" "-" | replace "/" "_" | trimAll "=" }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ .Release.Name }}-strip-identity
+  labels:
+    {{- include "appstudio.labels" . | nindent 4 }}
+spec:
+  headers:
+    customRequestHeaders:
+      {{- range (include "appstudio.identityHeaders" . | fromJsonArray) }}
+      {{ . }}: ""
+      {{- end }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ .Release.Name }}-app-auth
+  labels:
+    {{- include "appstudio.labels" . | nindent 4 }}
+spec:
+  forwardAuth:
+    address: {{ printf "%s?a=%s&n=%s" $verifyUrl $allowed (urlquery "App Studio") | quote }}
+    authResponseHeaders:
+      - Cookie
+      {{- range (include "appstudio.identityHeaders" . | fromJsonArray) }}
+      - {{ . }}
+      {{- end }}
+{{- end }}

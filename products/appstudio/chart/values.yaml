@@ -33,17 +33,16 @@ startPort: 4097
 preview:
   enabled: true
   port: 8080
-  # Name of a Secret whose `users` key holds htpasswd lines; puts the preview
-  # behind HTTP basic auth. Empty serves it unauthenticated.
-  basicAuthSecret: ""
 
 # Default environment of the freepod CLI in the container (FREEPOD_ENV); empty
 # leaves the CLI's own default, prod.
 freepodEnv: ""
 
-# Name of a Secret whose `password` key becomes OPENCODE_SERVER_PASSWORD
-# (HTTP basic auth, user `opencode`). Empty serves opencode unauthenticated.
-passwordSecret: ""
+# Owner-only "Sign in with Freepod" on the studio and the preview. Must be set
+# to true as a system value of the template, where the broker reads it; the
+# chart refuses to render otherwise. See templates/app-auth.yaml.
+auth:
+  enabled: false
 
 persistence:
   workspace:
@@ -66,6 +65,7 @@ caelus:
   releaseId: ""
   plan: {}
   owner: {}
+  appAuth: {}
   ingress:
     enabled: false
     tls: {}

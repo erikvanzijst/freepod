@@ -20,6 +20,25 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
+{{/*
+Every header the platform's app authentication owns on the way to the app.
+Mirrors identityHeaders in daemons/app-auth/request.go.
+*/}}
+{{- define "appstudio.identityHeaders" -}}
+["X-Freepod-User","X-Freepod-Email","X-Freepod-Name","X-Freepod-Jwt","Remote-User","X-Forwarded-User","X-Forwarded-Email"]
+{{- end -}}
+
+{{/* The sign-in middlewares every route carries, strip first, then `extra`. */}}
+{{- define "appstudio.routerMiddlewares" -}}
+{{- $ns := .root.Release.Namespace -}}
+{{- $name := .root.Release.Name -}}
+{{- $mw := list (printf "%s-%s-strip-identity@kubernetescrd" $ns $name) (printf "%s-%s-app-auth@kubernetescrd" $ns $name) -}}
+{{- range .extra -}}
+{{- $mw = append $mw (printf "%s-%s-%s@kubernetescrd" $ns $name .) -}}
+{{- end -}}
+{{- join "," $mw -}}
+{{- end -}}
+
 {{/* Pod template only; see "custom.podLabels" in the custom chart. */}}
 {{- define "appstudio.podLabels" -}}
 {{- with .Values.caelus.releaseId -}}

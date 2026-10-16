@@ -80,13 +80,6 @@ spec:
             - name: FREEPOD_ENV
               value: {{ . | quote }}
             {{- end }}
-            {{- with .Values.passwordSecret }}
-            - name: OPENCODE_SERVER_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ . | quote }}
-                  key: password
-            {{- end }}
           readinessProbe:
             tcpSocket:
               port: http

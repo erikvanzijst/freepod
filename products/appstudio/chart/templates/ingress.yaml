@@ -19,7 +19,7 @@ metadata:
   labels:
     {{- include "appstudio.labels" . | nindent 4 }}
   annotations:
-    traefik.ingress.kubernetes.io/router.middlewares: {{ printf "%s-%s-open-project@kubernetescrd" .Release.Namespace .Release.Name | quote }}
+    traefik.ingress.kubernetes.io/router.middlewares: {{ include "appstudio.routerMiddlewares" (dict "root" . "extra" (list "open-project")) | quote }}
     {{- if $tlsCustom }}
     cert-manager.io/cluster-issuer: {{ .Values.caelus.ingress.tls.issuer | quote }}
     {{- end }}

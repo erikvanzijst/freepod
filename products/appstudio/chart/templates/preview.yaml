@@ -1,21 +1,5 @@
 {{- $host := include "appstudio.previewHost" . }}
 {{- if $host }}
-{{- $ns := .Release.Namespace }}
-{{- $middlewares := list (printf "%s-%s-preview-down@kubernetescrd" $ns .Release.Name) }}
-{{- if .Values.preview.basicAuthSecret }}
-{{- $middlewares = prepend $middlewares (printf "%s-%s-preview-auth@kubernetescrd" $ns .Release.Name) }}
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: {{ .Release.Name }}-preview-auth
-  labels:
-    {{- include "appstudio.labels" . | nindent 4 }}
-spec:
-  basicAuth:
-    secret: {{ .Values.preview.basicAuthSecret | quote }}
-    removeHeader: true
----
-{{- end }}
 {{- /* While nothing listens on the preview port, Traefik answers 502. */}}
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -38,7 +22,7 @@ metadata:
   labels:
     {{- include "appstudio.labels" . | nindent 4 }}
   annotations:
-    traefik.ingress.kubernetes.io/router.middlewares: {{ join "," $middlewares | quote }}
+    traefik.ingress.kubernetes.io/router.middlewares: {{ include "appstudio.routerMiddlewares" (dict "root" . "extra" (list "preview-down")) | quote }}
 spec:
   ingressClassName: traefik
   rules:
