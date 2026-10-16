@@ -1,0 +1,14 @@
+apiVersion: v2
+name: appstudio
+description: >-
+  Freepod App Studio: opencode's web UI over a persistent workspace, with the
+  toolchains and the freepod CLI to build and deploy apps.
+type: application
+version: 0.1.19
+appVersion: "1.19.0"
+keywords:
+  - opencode
+  - agent
+  - ide
+maintainers:
+  - name: Caelus Team

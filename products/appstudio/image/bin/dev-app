@@ -1,0 +1,62 @@
+#!/bin/bash
+# Run the project's dev server in the background on port 8080, where the
+# preview shows it, with the local database and S3 in its environment.
+#
+#   dev-app          (re)start it and wait until it answers
+#   dev-app stop     stop it
+#   dev-app logs     the last lines it printed
+set -euo pipefail
+
+PROJECT_DIR=${APPSTUDIO_PROJECT_DIR:-/workspace/app}
+PORT=8080
+LOG=/tmp/dev-app.log
+PIDFILE=/tmp/dev-app.pid
+
+stop() {
+  if [ -f "$PIDFILE" ]; then
+    kill -- "-$(cat "$PIDFILE")" 2>/dev/null || true
+    rm -f "$PIDFILE"
+  fi
+  for _ in $(seq 20); do
+    curl -s -o /dev/null "http://127.0.0.1:$PORT/" || return 0
+    sleep 0.5
+  done
+  echo "dev-app: something else is still listening on port $PORT" >&2
+  return 1
+}
+
+case "${1:-start}" in
+  stop) stop; exit ;;
+  logs) tail -n "${2:-50}" "$LOG"; exit ;;
+  start) ;;
+  *) echo "usage: dev-app [start|stop|logs]" >&2; exit 2 ;;
+esac
+
+cd "$PROJECT_DIR"
+[ -f package.json ] || { echo "dev-app: no package.json in $PROJECT_DIR; copy the starter in first" >&2; exit 1; }
+stop
+[ -d node_modules ] || npm install --no-fund --no-audit >&2
+
+eval "$(dev-postgres)"
+eval "$(dev-s3)"
+PORT=$PORT setsid npm run dev >"$LOG" 2>&1 < /dev/null &
+echo $! >"$PIDFILE"
+
+for _ in $(seq 120); do
+  if curl -s -o /dev/null "http://127.0.0.1:$PORT/"; then
+    echo "Running. Preview: ${APPSTUDIO_PREVIEW_URL:-http://localhost:$PORT} (log: dev-app logs)"
+    exit 0
+  fi
+  # A crashed server leaves `tsx watch` running (it waits for a file change),
+  # so a stack trace in the log is the sign to stop waiting.
+  if ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null || grep -qE '^\s+at ' "$LOG"; then
+    sleep 0.5
+    echo "dev-app: the dev server failed to start; its output:" >&2
+    tail -n 30 "$LOG" >&2
+    exit 1
+  fi
+  sleep 0.5
+done
+echo "dev-app: no answer on port $PORT after 60 s; its output:" >&2
+tail -n 30 "$LOG" >&2
+exit 1

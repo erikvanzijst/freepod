@@ -1,0 +1,51 @@
+#!/bin/sh
+# Prepare /workspace and serve opencode's web UI from the studio's project.
+set -eu
+
+PROJECT_DIR=${APPSTUDIO_PROJECT_DIR:-/workspace/app}
+TREES_DIR=/workspace/trees
+DATA_DIR=/root/.local/share/opencode
+
+mkdir -p "$PROJECT_DIR" "$TREES_DIR" "$XDG_CONFIG_HOME" "$DATA_DIR" /root/.ssh
+chmod 700 /root/.ssh
+
+# A git identity for the agent's commits, in git's config on the volume, unless
+# one is already set there.
+if [ -z "$(git config --global user.email || true)" ]; then
+  email=${APPSTUDIO_OWNER_EMAIL:-appstudio@localhost}
+  mkdir -p "$XDG_CONFIG_HOME/git"
+  touch "$XDG_CONFIG_HOME/git/config"
+  git config --file "$XDG_CONFIG_HOME/git/config" user.email "$email"
+  git config --file "$XDG_CONFIG_HOME/git/config" user.name "${email%%@*}"
+fi
+
+# opencode identifies a project by its git root and first commit, and creates
+# worktrees from HEAD, so the project starts with an empty commit.
+if [ ! -e "$PROJECT_DIR/.git" ]; then
+  git -C "$PROJECT_DIR" init -q -b main
+  git -C "$PROJECT_DIR" commit -q --allow-empty -m "Initial commit"
+fi
+# opencode creates worktrees under its data directory, with no setting to move
+# them; the link puts them in /workspace/trees.
+if [ ! -L "$DATA_DIR/worktree" ]; then
+  rmdir "$DATA_DIR/worktree" 2>/dev/null || true
+  if [ -e "$DATA_DIR/worktree" ]; then
+    echo "appstudio: $DATA_DIR/worktree is not empty, so worktrees stay there" >&2
+  else
+    ln -s "$TREES_DIR" "$DATA_DIR/worktree"
+  fi
+fi
+
+# The deployment's SSH key from the chart's Secret, copied so that it is this
+# user's own file with the 0600 mode ssh insists on.
+if [ -f /etc/appstudio/ssh/id_ecdsa ]; then
+  install -m 600 /etc/appstudio/ssh/id_ecdsa /root/.ssh/id_ecdsa
+  printf '%s appstudio\n' "$(ssh-keygen -y -f /root/.ssh/id_ecdsa)" > /root/.ssh/id_ecdsa.pub
+fi
+
+# The skill lives in opencode's config directory, which is on the volume.
+freepod skill install --agent opencode >/dev/null 2>&1 \
+  || echo "appstudio: could not install the freepod skill" >&2
+
+cd "$PROJECT_DIR"
+exec opencode web --hostname 0.0.0.0 --port "${STUDIO_PORT:-4096}"

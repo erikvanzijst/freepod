@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>App Studio</title>
+<script>
+  // opencode's web UI keeps its project list in this browser, so a new browser
+  // starts on an empty dashboard. The first visit adds the studio's project
+  // (the URL fragment) the way "Add project" does and opens a new session in
+  // it; later visits go to opencode's home page, through `/?home` because the
+  // ingress redirects a bare `/` here. The storage key and shape are opencode
+  // 1.19's.
+  (() => {
+    const dir = decodeURIComponent(location.hash.slice(1)) || "/workspace/app";
+    let known = false;
+    try {
+      const key = "opencode.global.dat:server";
+      let store = {};
+      try { store = JSON.parse(localStorage.getItem(key)) || {}; } catch {}
+      store.list ??= [];
+      store.projects ??= {};
+      store.lastProject ??= {};
+      store.recentlyClosed ??= {};
+      const local = (store.projects.local ??= []);
+      known = local.some((p) => p.worktree === dir);
+      if (!known) local.unshift({ worktree: dir, expanded: true });
+      store.lastProject.local ??= dir;
+      localStorage.setItem(key, JSON.stringify(store));
+    } catch {}
+    if (known) {
+      location.replace("/?home");
+      return;
+    }
+    const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(dir)))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    location.replace(`/${encoded}/session`);
+  })();
+</script>

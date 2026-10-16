@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-app
+  labels:
+    {{- include "appstudio.labels" . | nindent 4 }}
+spec:
+  {{- /* One writer: opencode's SQLite and the workspace are single-owner. */}}
+  replicas: 1
+  serviceName: {{ .Release.Name }}-app
+  selector:
+    matchLabels:
+      {{- include "appstudio.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "appstudio.selectorLabels" . | nindent 8 }}
+        {{- include "appstudio.podLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      hostUsers: false
+      {{- with .Values.nodePool }}
+      tolerations:
+        - key: caelus.dev/node-pool
+          operator: Equal
+          value: {{ . | quote }}
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: caelus.dev/node-pool
+                    operator: In
+                    values:
+                      - {{ . | quote }}
+      {{- end }}
+      containers:
+        {{- /* Serves /.appstudio/start.html, which `/` redirects to (ingress.yaml). */}}
+        - name: start
+          image: {{ .Values.image | quote }}
+          imagePullPolicy: {{ .Values.pullPolicy }}
+          command: ["python3", "-m", "http.server", {{ .Values.startPort | quote }}, "--directory", "/opt/appstudio/www"]
+          ports:
+            - name: start
+              containerPort: {{ .Values.startPort }}
+          resources:
+            requests:
+              cpu: 1m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+        - name: opencode
+          image: {{ .Values.image | quote }}
+          imagePullPolicy: {{ .Values.pullPolicy }}
+          workingDir: /workspace
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+            {{- /* Whatever the agent runs there; nothing listens by default. */}}
+            - name: preview
+              containerPort: {{ .Values.preview.port }}
+          env:
+            - name: STUDIO_PORT
+              value: {{ .Values.containerPort | quote }}
+            {{- with include "appstudio.previewHost" . }}
+            - name: APPSTUDIO_PREVIEW_URL
+              value: {{ printf "https://%s" . | quote }}
+            - name: APPSTUDIO_PREVIEW_PORT
+              value: {{ $.Values.preview.port | quote }}
+            {{- end }}
+            - name: APPSTUDIO_PROJECT_DIR
+              value: {{ .Values.projectDir | quote }}
+            {{- with .Values.caelus.owner.email }}
+            - name: APPSTUDIO_OWNER_EMAIL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.freepodEnv }}
+            - name: FREEPOD_ENV
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.passwordSecret }}
+            - name: OPENCODE_SERVER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . | quote }}
+                  key: password
+            {{- end }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: opencode
+              mountPath: /root/.local/share/opencode
+            - name: ssh
+              mountPath: /etc/appstudio/ssh
+              readOnly: true
+            - name: shm
+              mountPath: /dev/shm
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: workspace
+        - name: opencode
+          persistentVolumeClaim:
+            claimName: opencode
+        {{- /* Readable as mounted; appstudio-start copies it to ~/.ssh as 0600. */}}
+        - name: ssh
+          secret:
+            secretName: {{ .Release.Name }}-ssh
+            defaultMode: 0444
+        {{- /* Chromium (the agent's Playwright browser) needs more than the
+               default 64 MB; it counts against the container's memory. */}}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 512Mi
