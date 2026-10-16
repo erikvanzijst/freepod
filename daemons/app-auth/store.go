@@ -28,8 +28,8 @@ type codeRecord struct {
 }
 
 type store interface {
-	// eligible returns the deployment serving host with authentication enabled
-	// in its applied release, or ok=false.
+	// eligible returns the deployment whose hostname is exactly host and whose
+	// applied release has authentication enabled, or ok=false.
 	eligible(ctx context.Context, host string) (deploymentID string, ok bool, err error)
 	hasConsent(ctx context.Context, subject, deploymentID string, claims []string) (bool, error)
 	recordConsent(ctx context.Context, subject, deploymentID string, claims []string) error
@@ -45,9 +45,6 @@ type store interface {
 // named here and nothing else.
 type pgStore struct {
 	pool *pgxpool.Pool
-	// productSlug is `custom` everywhere but in tests, which cannot own that
-	// slug in a database the API suite shares.
-	productSlug string
 }
 
 func openPool(ctx context.Context, dsn string, maxConns int32) (*pgxpool.Pool, error) {
@@ -65,6 +62,10 @@ func openPool(ctx context.Context, dsn string, maxConns int32) (*pgxpool.Pool, e
 // so every time is computed in SQL rather than sent from here.
 const nowUTC = `(now() AT TIME ZONE 'utc')`
 
+// Whether authentication is enabled is read as the reconciler merges it: the
+// template's system value when the template sets one, otherwise the release's
+// user value. That is what the applied release rendered, so it is what the edge
+// enforces, for any product.
 func (s *pgStore) eligible(ctx context.Context, host string) (string, bool, error) {
 	var id string
 	err := s.pool.QueryRow(ctx, `
@@ -72,12 +73,12 @@ func (s *pgStore) eligible(ctx context.Context, host string) (string, bool, erro
 		  FROM deployment d
 		  JOIN deployment_release r        ON r.id = d.applied_release_id
 		  JOIN product_template_version t  ON t.id = r.template_id
-		  JOIN product p                   ON p.id = t.product_id
 		 WHERE lower(d.hostname) = lower($1)
 		   AND d.status <> 'deleted'
-		   AND p.slug = $2
-		   AND coalesce((r.values_json::jsonb -> 'auth' ->> 'enabled')::boolean, false)
-		 LIMIT 1`, host, s.productSlug).Scan(&id)
+		   AND coalesce((t.system_values_json::jsonb #>> '{auth,enabled}')::boolean,
+		                (r.values_json::jsonb #>> '{auth,enabled}')::boolean,
+		                false)
+		 LIMIT 1`, host).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", false, nil
 	}

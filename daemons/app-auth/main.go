@@ -26,7 +26,6 @@ type config struct {
 	issuer       string
 	clientID     string
 	clientSecret string
-	productSlug  string
 }
 
 func env(key, fallback string) string {
@@ -46,7 +45,6 @@ func loadConfig() (config, error) {
 		issuer:       os.Getenv("APP_AUTH_OIDC_ISSUER"),
 		clientID:     os.Getenv("APP_AUTH_OIDC_CLIENT_ID"),
 		clientSecret: os.Getenv("APP_AUTH_OIDC_CLIENT_SECRET"),
-		productSlug:  env("APP_AUTH_PRODUCT_SLUG", "custom"),
 	}
 	var missing []string
 	for k, v := range map[string]string{
@@ -96,11 +94,11 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
-	st := &pgStore{pool: pool, productSlug: cfg.productSlug}
+	st := &pgStore{pool: pool}
 
 	v := &verifier{
 		keys: keys, store: st, loginURL: cfg.loginURL, now: time.Now, log: log,
-		patterns: newPatternCache(log),
+		patterns: newPatternCache(log), allowed: newAllowCache(log),
 	}
 	b := &broker{
 		chrome:   newChrome(cfg.loginURL),

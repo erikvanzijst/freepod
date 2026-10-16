@@ -1,0 +1,47 @@
+#!/bin/sh
+# Start the local PostgreSQL 18 server if it is not running, make sure the
+# `app` role and database exist, and print the environment Freepod gives a
+# deployed app with relational storage:
+#
+#   eval "$(dev-postgres)"
+#
+# Only the exports go to stdout, so this is safe to run any number of times.
+set -eu
+
+HOST=127.0.0.1
+PORT=5432
+NAME=app
+PASSWORD=app
+
+if ! pg_isready -q -h "$HOST" -p "$PORT"; then
+  pg_ctlcluster 18 main start >&2
+  tries=0
+  until pg_isready -q -h "$HOST" -p "$PORT"; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 60 ]; then
+      echo "dev-postgres: PostgreSQL did not come up; last lines of its log:" >&2
+      tail -n 20 /var/log/postgresql/postgresql-18-main.log >&2
+      exit 1
+    fi
+    sleep 0.5
+  done
+  echo "dev-postgres: PostgreSQL is running at $HOST:$PORT with database '$NAME'" >&2
+fi
+
+# The server refuses to run as root, so administration goes through `postgres`.
+as_postgres() { su postgres -c "$1"; }
+if [ -z "$(as_postgres "psql -qAtc \"select 1 from pg_roles where rolname = '$NAME'\"")" ]; then
+  as_postgres "psql -qc \"create role $NAME login createdb password '$PASSWORD'\""
+fi
+if [ -z "$(as_postgres "psql -qAtc \"select 1 from pg_database where datname = '$NAME'\"")" ]; then
+  as_postgres "createdb -O $NAME $NAME"
+fi
+
+cat <<EOF
+export DATABASE_URL=postgresql://$NAME:$PASSWORD@$HOST:$PORT/$NAME
+export PGHOST=$HOST
+export PGPORT=$PORT
+export PGUSER=$NAME
+export PGPASSWORD=$PASSWORD
+export PGDATABASE=$NAME
+EOF

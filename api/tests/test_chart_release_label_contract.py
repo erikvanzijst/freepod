@@ -53,6 +53,7 @@ MINIMUM_VALUES = {
         "caelus.registry.prefix": "cr.test.example/u",
         "caelus.registry.pullSecret": "t-registry-pull",
     },
+    "appstudio": {"auth.enabled": "true"},
     "mattermost": {"caelus.plan.storageSize": "1Gi"},
     "vaultwarden": {"host": "v.example.test", "caelus.owner.email": "owner@example.test"},
 }

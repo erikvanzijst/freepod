@@ -229,3 +229,60 @@ func decodeNonceHash(s string) ([]byte, error) {
 	}
 	return b, nil
 }
+
+// The no-access page renders on the app's own host, in the app's place, so it
+// takes the look of the platform's placeholder for a deployment without an app
+// (products/custom/placeholder/index.html) rather than the broker's card, and
+// loads nothing: its only style is inline, admitted by hash.
+const noAccessStyle = `
+:root{color-scheme:light dark;--bg:#fcfcfb;--fg:#1a1a18;--muted:#71716a;--rule:#e4e4de;--dot:#b8b8ae}
+@media (prefers-color-scheme:dark){:root{--bg:#161614;--fg:#edece7;--muted:#99988e;--rule:#2e2e2a;--dot:#5d5d55}}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;display:flex;align-items:center;justify-content:center;padding:2rem 1.5rem;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+main{max-width:30rem;text-align:center}
+.dot{width:.5rem;height:.5rem;margin:0 auto 2rem;border-radius:50%;background:var(--dot)}
+h1{margin:0 0 .75rem;font-size:1.375rem;font-weight:600;letter-spacing:-.012em}
+p{margin:0 0 .75rem;color:var(--muted);font-size:.9375rem;text-wrap:pretty}
+a{color:var(--fg)}
+.switch{margin-top:1.5rem}
+footer{margin-top:2.5rem;padding-top:1.5rem;border-top:1px solid var(--rule);color:var(--muted);font-size:.8125rem;letter-spacing:.02em}
+`
+
+var noAccessPage = template.Must(template.New("no-access").Parse(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>No access to {{.App}}</title>
+<style>` + noAccessStyle + `</style>
+</head><body><main>
+<div class="dot" aria-hidden="true"></div>
+<h1>You don't have access to {{.App}}</h1>
+<p>{{if .Named}}{{.App}} at {{end}}<a href="{{.URL}}">{{.URL}}</a> is not open to the account you are signed in with, {{.Email}}.</p>
+<p class="switch"><a href="{{.SignOut}}">Sign out to use another account</a></p>
+<footer>Freepod</footer>
+</main></body></html>`))
+
+var noAccessCSP = func() string {
+	sum := sha256.Sum256([]byte(noAccessStyle))
+	return "default-src 'none'; style-src 'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) +
+		"'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+}()
+
+type noAccessView struct {
+	App, URL, Email, SignOut string
+	// Named is false when App is only the host, which the address already shows.
+	Named bool
+}
+
+func renderNoAccess(w http.ResponseWriter, v noAccessView) {
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("Cache-Control", "no-store")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Content-Security-Policy", noAccessCSP)
+	h.Set("Referrer-Policy", "no-referrer")
+	w.WriteHeader(http.StatusForbidden)
+	noAccessPage.Execute(w, v)
+}

@@ -286,10 +286,18 @@ func (b *broker) signedOut(w http.ResponseWriter, r *http.Request) {
 }
 
 // eligible checks the host against the platform's records and, when it is not
-// an auth-enabled custom deployment, answers the browser itself -- never with a
+// an auth-enabled deployment, answers the browser itself -- never with a
 // redirect, so the broker cannot be used to bounce anyone anywhere.
+//
+// A preview hostname with no deployment of its own signs in as the deployment
+// it previews (see previewBase), so the two share that deployment's consent.
 func (b *broker) eligible(ctx context.Context, w http.ResponseWriter, host string) (string, bool) {
 	id, ok, err := b.store.eligible(ctx, host)
+	if err == nil && !ok {
+		if base, isPreview := previewBase(host); isPreview {
+			id, ok, err = b.store.eligible(ctx, base)
+		}
+	}
 	if err != nil {
 		b.internal(w, "checking eligibility", err)
 		return "", false
@@ -438,4 +446,18 @@ func (a *oidcAuth) exchange(ctx context.Context, code, verifier, nonce string) (
 		name = claims.PreferredUsername
 	}
 	return identity{Sub: idt.Subject, Email: claims.Email, Name: name}, nil
+}
+
+// previewPrefix marks the live preview of an app: `preview-<label>.<rest>` is
+// the preview of the app at `<label>.<rest>`. Hostname validation reserves the
+// prefix, so no deployment can own such a name itself.
+const previewPrefix = "preview-"
+
+// previewBase returns the hostname that a preview hostname previews.
+func previewBase(host string) (string, bool) {
+	label, rest, found := strings.Cut(strings.ToLower(host), ".")
+	if !found || rest == "" || !strings.HasPrefix(label, previewPrefix) || label == previewPrefix {
+		return "", false
+	}
+	return strings.TrimPrefix(label, previewPrefix) + "." + rest, true
 }

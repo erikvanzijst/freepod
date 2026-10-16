@@ -226,6 +226,25 @@ func TestBrokerEligibility(t *testing.T) {
 		g.redeemable(g.returnFromIdP(g.start("shop.example.com")), "shop.example.com")
 	})
 
+	t.Run("preview of an auth-enabled deployment", func(t *testing.T) {
+		g := newBrokerRig(t)
+		g.st.recordConsent(context.Background(), "3f2a", "dep-milk", disclosedClaims)
+		g.redeemable(g.returnFromIdP(g.start("preview-"+milk)), "preview-"+milk)
+	})
+
+	for name, host := range map[string]string{
+		"preview of a host without authentication": "preview-plain.erik.freepod.eu",
+		"preview of an unknown host":               "preview-nothing.erik.freepod.eu",
+		"bare preview prefix":                      "preview-.erik.freepod.eu",
+	} {
+		t.Run(name, func(t *testing.T) {
+			g := newBrokerRig(t)
+			if w := g.start(host); w.Code != http.StatusNotFound || w.Header().Get("Location") != "" {
+				t.Fatalf("%d Location=%q", w.Code, w.Header().Get("Location"))
+			}
+		})
+	}
+
 	t.Run("authentication disabled mid-flow", func(t *testing.T) {
 		g := newBrokerRig(t)
 		g.st.recordConsent(context.Background(), "3f2a", "dep-milk", disclosedClaims)
@@ -406,5 +425,36 @@ func TestBrokerSignedOutRefusesUntrustedState(t *testing.T) {
 				t.Fatalf("%d Location=%q", w.Code, w.Header().Get("Location"))
 			}
 		})
+	}
+}
+
+// One consent covers a deployment and its preview, whichever is visited first.
+func TestBrokerPreviewSharesConsent(t *testing.T) {
+	g := newBrokerRig(t)
+	page := g.returnFromIdP(g.start("preview-" + milk))
+	if page.Code != 200 || !strings.Contains(page.Body.String(), "preview-"+milk) {
+		t.Fatalf("callback: %d", page.Code)
+	}
+	w := g.do("POST", "/consent", url.Values{"csrf": {formValue(t, page.Body.String(), "csrf")}, "decision": {"allow"}})
+	g.redeemable(w, "preview-"+milk)
+	if ok, _ := g.st.hasConsent(context.Background(), "3f2a", "dep-milk", disclosedClaims); !ok {
+		t.Fatal("consent on the preview was not recorded for its deployment")
+	}
+	g.redeemable(g.returnFromIdP(g.start(milk)), milk)
+}
+
+func TestPreviewBase(t *testing.T) {
+	for host, want := range map[string]string{
+		"preview-studio.alice.freepod.eu":   "studio.alice.freepod.eu",
+		"Preview-Studio.alice.freepod.eu":   "studio.alice.freepod.eu",
+		"studio.alice.freepod.eu":           "",
+		"mypreview-studio.alice.freepod.eu": "",
+		"preview-.alice.freepod.eu":         "",
+		"preview-studio":                    "",
+	} {
+		got, ok := previewBase(host)
+		if got != want || ok != (want != "") {
+			t.Errorf("previewBase(%q) = %q, %v; want %q", host, got, ok, want)
+		}
 	}
 }

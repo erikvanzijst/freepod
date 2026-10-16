@@ -31,7 +31,7 @@ func newTestVerifier(t *testing.T) (*verifier, *memStore, *clock) {
 	st := newMemStore(c.now)
 	return &verifier{
 		keys: mustKeyring(t, "k1:"+testKey('a')), store: st, loginURL: login,
-		now: c.now, log: quiet, patterns: newPatternCache(quiet),
+		now: c.now, log: quiet, patterns: newPatternCache(quiet), allowed: newAllowCache(quiet),
 	}, st, c
 }
 
@@ -52,16 +52,25 @@ func publicParam(patterns ...string) string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-// fwd is one forward-auth request as Traefik sends it.
+// fwd is one forward-auth request as Traefik sends it. `edge` is the rest of
+// the middleware's own query string (allowed accounts, application name).
 type fwd struct {
 	host, method, uri, public string
+	edge                      url.Values
 	header                    http.Header
 }
 
 func (v *verifier) do(f fwd) *httptest.ResponseRecorder {
-	target := "/verify"
+	q := url.Values{}
+	for k, vs := range f.edge {
+		q[k] = vs
+	}
 	if f.public != "" {
-		target += "?p=" + f.public
+		q.Set("p", f.public)
+	}
+	target := "/verify"
+	if len(q) > 0 {
+		target += "?" + q.Encode()
 	}
 	r := httptest.NewRequest("GET", target, nil)
 	if f.method == "" {
@@ -407,4 +416,98 @@ func TestSessionLastsSevenDays(t *testing.T) {
 	if w := v.do(fwd{host: milk, uri: "/api/items", header: cookieHeader(cookie)}); w.Code != 200 {
 		t.Fatalf("status %d a minute before the week is up", w.Code)
 	}
+}
+
+func allowedParam(emails ...string) string {
+	b, _ := json.Marshal(emails)
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func TestAllowedAccounts(t *testing.T) {
+	v, _, _ := newTestVerifier(t)
+	aliceSession := sessionCookie + "=" + v.sessionFor(t, session{Sub: "3f2a", Email: "Alice@Example.com", Name: "Alice"}, milk)
+	bobSession := sessionCookie + "=" + v.sessionFor(t, session{Sub: "9c1d", Email: "bob@example.com", Name: "Bob"}, milk)
+	onlyAlice := url.Values{"a": {allowedParam("alice@example.com")}}
+
+	t.Run("allowed account, matched case-insensitively", func(t *testing.T) {
+		w := v.do(fwd{host: milk, uri: "/lists", edge: onlyAlice, header: cookieHeader(aliceSession)})
+		if w.Code != 200 || w.Header().Get("X-Freepod-User") != "3f2a" {
+			t.Fatalf("status %d user %q", w.Code, w.Header().Get("X-Freepod-User"))
+		}
+	})
+
+	t.Run("other account, not a navigation", func(t *testing.T) {
+		w := v.do(fwd{host: milk, uri: "/api/lists", edge: onlyAlice, header: cookieHeader(bobSession)})
+		if w.Code != http.StatusForbidden || w.Header().Get("X-Freepod-User") != "" || strings.Contains(w.Body.String(), "<html") {
+			t.Fatalf("status %d user %q body %q", w.Code, w.Header().Get("X-Freepod-User"), w.Body)
+		}
+	})
+
+	t.Run("other account, navigation gets the named page", func(t *testing.T) {
+		edge := url.Values{"a": onlyAlice["a"], "n": {"App Studio"}}
+		w := v.do(fwd{host: milk, uri: "/lists", edge: edge, header: navigate(cookieHeader(bobSession))})
+		body := w.Body.String()
+		if w.Code != http.StatusForbidden || w.Header().Get("X-Freepod-User") != "" {
+			t.Fatalf("status %d", w.Code)
+		}
+		for _, want := range []string{"You don't have access to App Studio", "App Studio at", "https://" + milk, "bob@example.com",
+			"https://" + milk + reservedPrefix + "logout?rd=/"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("page lacks %q", want)
+			}
+		}
+		if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "style-src 'sha256-") {
+			t.Errorf("CSP %q", csp)
+		}
+	})
+
+	t.Run("unnamed application shows its address once", func(t *testing.T) {
+		w := v.do(fwd{host: milk, uri: "/", edge: onlyAlice, header: navigate(cookieHeader(bobSession))})
+		body := w.Body.String()
+		if w.Code != http.StatusForbidden || !strings.Contains(body, "have access to "+milk) || strings.Contains(body, milk+" at ") {
+			t.Fatalf("status %d body %s", w.Code, body)
+		}
+	})
+
+	t.Run("public path does not admit another account", func(t *testing.T) {
+		w := v.do(fwd{host: milk, uri: "/", public: publicParam("^/$"), edge: onlyAlice, header: cookieHeader(bobSession)})
+		if w.Code != http.StatusForbidden || w.Header().Get("X-Freepod-User") != "" {
+			t.Fatalf("status %d user %q", w.Code, w.Header().Get("X-Freepod-User"))
+		}
+	})
+
+	t.Run("anonymous public path still reaches the app", func(t *testing.T) {
+		w := v.do(fwd{host: milk, uri: "/", public: publicParam("^/$"), edge: onlyAlice})
+		if w.Code != 200 || w.Header().Get("X-Freepod-User") != "" {
+			t.Fatalf("status %d user %q", w.Code, w.Header().Get("X-Freepod-User"))
+		}
+	})
+
+	t.Run("anonymous protected path signs in as usual", func(t *testing.T) {
+		w := v.do(fwd{host: milk, uri: "/lists", edge: onlyAlice, header: navigate(nil)})
+		if w.Code != http.StatusFound || !strings.HasPrefix(w.Header().Get("Location"), login+"/start?") {
+			t.Fatalf("status %d Location %q", w.Code, w.Header().Get("Location"))
+		}
+	})
+
+	for name, key := range map[string]string{
+		"corrupt list":   "not-base64!",
+		"not a list":     base64.RawURLEncoding.EncodeToString([]byte(`{"alice@example.com":true}`)),
+		"empty value":    "",
+		"list of nobody": allowedParam(),
+	} {
+		t.Run(name+" admits nobody", func(t *testing.T) {
+			w := v.do(fwd{host: milk, uri: "/lists", edge: url.Values{"a": {key}}, header: cookieHeader(aliceSession)})
+			if w.Code != http.StatusForbidden {
+				t.Fatalf("status %d", w.Code)
+			}
+		})
+	}
+
+	t.Run("no list admits every account", func(t *testing.T) {
+		w := v.do(fwd{host: milk, uri: "/lists", header: cookieHeader(bobSession)})
+		if w.Code != 200 || w.Header().Get("X-Freepod-User") != "9c1d" {
+			t.Fatalf("status %d", w.Code)
+		}
+	})
 }

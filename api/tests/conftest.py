@@ -270,6 +270,7 @@ def test_database() -> TestDatabase:
 _XDIST_GROUPS = {
     "tenant_cluster": {"test_db_worker", "test_postgres_admin", "test_relational_storage"},
     "helm_charts": {
+        "test_appstudio_chart",
         "test_bookstack_chart",
         "test_chart_release_label_contract",
         "test_chart_rollout_strategy",

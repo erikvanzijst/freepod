@@ -1,0 +1,14 @@
+# Local S3 for development, started by `dev-s3`. Everything binds to localhost
+# and the state is not on a volume.
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+replication_factor = 1
+
+rpc_bind_addr = "127.0.0.1:3901"
+rpc_public_addr = "127.0.0.1:3901"
+rpc_secret = "16c4d5e4943d16797455391fba8da311d02db200b8c7edea345d824476349fd9"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "127.0.0.1:3900"

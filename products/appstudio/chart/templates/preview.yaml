@@ -1,0 +1,39 @@
+{{- $host := include "appstudio.previewHost" . }}
+{{- if $host }}
+{{- /* While nothing listens on the preview port, Traefik answers 502. */}}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ .Release.Name }}-preview-down
+  labels:
+    {{- include "appstudio.labels" . | nindent 4 }}
+spec:
+  errors:
+    status: ["502-504"]
+    service:
+      name: {{ .Release.Name }}-app
+      port: {{ .Values.startPort }}
+    query: /.appstudio/preview-down.html
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-preview
+  labels:
+    {{- include "appstudio.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ include "appstudio.routerMiddlewares" (dict "root" . "extra" (list "preview-down")) | quote }}
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-app
+                port:
+                  name: preview
+{{- end }}

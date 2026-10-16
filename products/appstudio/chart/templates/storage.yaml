@@ -1,0 +1,22 @@
+{{- /*
+Fixed names, as in the other product charts, so an upgrade re-adopts the
+existing volumes.
+*/}}
+{{- range $name, $spec := dict "workspace" (dict "size" (.Values.caelus.plan.storageSize | default .Values.persistence.workspace.size)) "opencode" (dict "size" .Values.persistence.opencode.size) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "appstudio.labels" $ | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ $spec.size }}
+  {{- with $.Values.persistence.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+{{- end }}

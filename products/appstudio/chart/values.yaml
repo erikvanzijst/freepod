@@ -1,0 +1,75 @@
+# --- User-supplied values -----------------------------------------------------
+
+# Claimed by the API and injected back as caelus.ingress.host, which is what the
+# Ingress routes.
+hostname: ""
+
+# --- System values ------------------------------------------------------------
+
+# Built from products/appstudio/image.
+image: ghcr.io/erikvanzijst/freepod/appstudio:0.1.20
+pullPolicy: IfNotPresent
+
+# Injected as STUDIO_PORT; the image runs `opencode web --port $STUDIO_PORT`.
+# Deliberately not 8080, which apps the agent builds use (see image/Dockerfile).
+containerPort: 4096
+
+service:
+  port: 80
+
+# The git repository opencode opens on. opencode's UI keeps its project list in
+# the browser, so a fresh page load of `/` goes through a page that adds this
+# project there first (templates/ingress.yaml).
+projectDir: /workspace/app
+
+# Port of the sidecar serving that page. It shares the pod's network with the
+# apps the agent runs, so it stays clear of 8080.
+startPort: 4097
+
+# The app the agent is building, live at preview-<first label>.<rest of the
+# hostname>: a sibling name, so the account's wildcard certificate covers it.
+# Rendered only for wildcard-certificate hosts. While nothing listens on `port`,
+# it serves a page that waits for the app.
+preview:
+  enabled: true
+  port: 8080
+
+# Default environment of the freepod CLI in the container (FREEPOD_ENV); empty
+# leaves the CLI's own default, prod.
+freepodEnv: ""
+
+# Owner-only "Sign in with Freepod" on the studio and the preview. Must be set
+# to true as a system value of the template, where the broker reads it; the
+# chart refuses to render otherwise. See templates/app-auth.yaml.
+auth:
+  enabled: false
+
+# The SSH sidecar (products/_lib/ssh-sidecar-image), which serves the project
+# directory over SFTP, read-only. A system value, pinned exactly.
+sshSidecarImage: ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2
+
+persistence:
+  workspace:
+    size: 10Gi
+  opencode:
+    size: 1Gi
+  storageClassName: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 384Mi
+  limits:
+    memory: 4Gi
+
+nodePool: ""
+
+# Injected per deployment by the Caelus reconciler.
+caelus:
+  releaseId: ""
+  plan: {}
+  owner: {}
+  appAuth: {}
+  ingress:
+    enabled: false
+    tls: {}

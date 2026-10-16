@@ -1,0 +1,18 @@
+apiVersion: v2
+name: appstudio
+description: >-
+  Freepod App Studio: opencode's web UI over a persistent workspace, with the
+  toolchains and the freepod CLI to build and deploy apps.
+type: application
+version: 0.2.2
+appVersion: "1.19.0"
+keywords:
+  - opencode
+  - agent
+  - ide
+maintainers:
+  - name: Caelus Team
+dependencies:
+  - name: ssh-sidecar
+    version: "0.5.1"
+    repository: "file://../../_lib/ssh-sidecar-chart"

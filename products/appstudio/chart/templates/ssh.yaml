@@ -1,0 +1,6 @@
+{{- /*
+SFTP to the project directory, read-only, for getting files out (contract:
+ssh-chart-contract; access: app-studio-access). The sidecar is spliced into the
+StatefulSet's pod; this is its Service.
+*/}}
+{{ include "ssh-sidecar.resources" (dict "root" . "selector" (include "appstudio.selectorLabels" . | fromYaml)) }}

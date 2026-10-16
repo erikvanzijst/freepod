@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-app
+  labels:
+    {{- include "appstudio.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "appstudio.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+    - name: start
+      port: {{ .Values.startPort }}
+      targetPort: start
+    - name: preview
+      port: {{ .Values.preview.port }}
+      targetPort: preview
