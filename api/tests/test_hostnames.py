@@ -164,6 +164,27 @@ class TestCheckReserved:
     def test_empty_reserved_list_passes(self):
         _check_reserved("anything.example.com", _settings(reserved_hostnames=[]))
 
+    def test_preview_application_label_raises(self):
+        with pytest.raises(HostnameException, match="reserved"):
+            _check_reserved("preview-studio.alice.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
+
+    def test_preview_prefix_matched_case_insensitively(self):
+        with pytest.raises(HostnameException, match="reserved"):
+            require_valid_hostname_for_deployment(
+                Mock(), "Preview-Studio.alice.dev.deprutser.be", settings=_settings(wildcard_domains=["dev.deprutser.be"])
+            )
+
+    def test_preview_in_the_middle_of_a_label_passes(self):
+        _check_reserved("mypreview-app.alice.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
+
+    def test_preview_account_subdomain_is_not_this_rule(self):
+        # One label under the wildcard domain is an account subdomain, not an
+        # application, so the preview rule does not apply to it.
+        _check_reserved("preview-alice.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
+
+    def test_preview_label_on_a_custom_domain_passes(self):
+        _check_reserved("preview-app.example.com", _settings(wildcard_domains=["dev.deprutser.be"]))
+
 
 # ── Availability check ────────────────────────────────────────────────
 

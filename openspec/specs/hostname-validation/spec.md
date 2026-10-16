@@ -43,6 +43,21 @@ The system MUST provide a hostname validation function `require_valid_hostname_f
 - **WHEN** `require_valid_hostname_for_deployment` is called with an FQDN that has no DNS records at all
 - **THEN** the function raises `HostnameException` with `reason="not_resolving"`
 
+### Requirement: Preview application labels are reserved
+An application label beginning with `preview-` under a configured wildcard domain MUST be refused with `reason="reserved"`: `preview-<label>.<subdomain>.<domain>` names the live preview of the application at `<label>.<subdomain>.<domain>`, which a deployment's chart may route itself, so no deployment may claim it. The rule MUST apply only to the application label (the first of the two labels under the wildcard domain), case-insensitively, and MUST NOT apply to account subdomains or to hostnames outside every wildcard domain.
+
+#### Scenario: Preview label under an account subdomain is refused
+- **WHEN** `require_valid_hostname_for_deployment` is called with `"Preview-Studio.alice.dev.deprutser.be"` and `dev.deprutser.be` is a wildcard domain
+- **THEN** the function raises `HostnameException` with `reason="reserved"`
+
+#### Scenario: The prefix must start the label
+- **WHEN** the application label is `"mypreview-app"`
+- **THEN** the preview rule does not refuse it
+
+#### Scenario: Account subdomains and custom domains are not affected
+- **WHEN** the hostname is the account subdomain `"preview-alice.dev.deprutser.be"`, or the custom domain `"preview-app.example.com"`
+- **THEN** the preview rule does not refuse it
+
 ### Requirement: HostnameException carries a reason attribute
 The `HostnameException` class in `api/app/services/errors.py` MUST have a `reason` attribute of type `str`. Valid reason values MUST be: `"invalid"`, `"reserved"`, `"in_use"`, `"claimed"`, `"not_resolving"`. `"nested_subdomain"` is retired along with the rule that produced it.
 

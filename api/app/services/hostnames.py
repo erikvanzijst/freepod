@@ -63,8 +63,16 @@ def _check_wildcard_depth(fqdn: str, settings: CaelusSettings) -> None:
         raise HostnameException("invalid")
 
 
+# `preview-<label>` under an account subdomain names the live preview of the
+# application at `<label>`, so no deployment may claim one.
+PREVIEW_LABEL_PREFIX = "preview-"
+
+
 def _check_reserved(fqdn: str, settings: CaelusSettings) -> None:
     if fqdn in settings.reserved_hostnames:
+        raise HostnameException("reserved")
+    labels = wildcard_prefix(fqdn, settings)
+    if labels is not None and len(labels) == 2 and labels[0].startswith(PREVIEW_LABEL_PREFIX):
         raise HostnameException("reserved")
 
 
