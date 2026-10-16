@@ -7,7 +7,7 @@ hostname: ""
 # --- System values ------------------------------------------------------------
 
 # Built from products/appstudio/image.
-image: ghcr.io/erikvanzijst/freepod/appstudio:0.1.22
+image: ghcr.io/erikvanzijst/freepod/appstudio:0.1.23
 pullPolicy: IfNotPresent
 
 # Injected as STUDIO_PORT; the image runs `opencode web --port $STUDIO_PORT`.
