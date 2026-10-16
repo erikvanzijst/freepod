@@ -12,7 +12,7 @@ detects the stack — but a project that has one is built from it instead, so re
 whole workflow is:
 
 ```bash
-freepod login      # once, interactive — a human has to do this
+freepod login      # once; the user approves it in their browser
 freepod init       # choose a hostname, writes .freepod.json
 freepod deploy     # pack, upload, build, release
 ```
@@ -498,11 +498,31 @@ than committing the token.
 freepod whoami
 ```
 
-Exit code 3 means not authenticated. **Do not try to log in on the user's
-behalf.** `freepod login` needs a human at a browser: in a container or over
-SSH it falls back to the device flow, which prints a URL and a code that
-someone has to approve on another device, and it blocks for up to 300 seconds
-waiting. Stop and ask the user to run `freepod login` themselves.
+Exit code 0 means signed in. Exit code 3 means not: sign in yourself. The user
+only has to approve it in their browser. `freepod login` blocks until they
+do, which is longer than most command timeouts, so run it in the background
+and read what it prints:
+
+```bash
+freepod login > /tmp/freepod-login.log 2>&1 & echo $! > /tmp/freepod-login.pid
+sleep 3; cat /tmp/freepod-login.log
+```
+
+- If it opened a browser, tell the user to finish signing in there.
+- Otherwise (in a container, over SSH) it prints a URL. Give the user that
+  exact URL and ask them to open it and approve; the link carries the code.
+
+`freepod login` waits for the approval itself and exits once it has it, so wait
+for that process to exit, then read its last lines; `Signed in as …` means
+done. Wait in steps short enough for your command timeout, and repeat while
+the log does not yet say `Signed in as`:
+
+```bash
+timeout 100 sh -c 'while kill -0 $(cat /tmp/freepod-login.pid) 2>/dev/null; do sleep 3; done'; tail -3 /tmp/freepod-login.log
+```
+
+Do not stop to wait for the user to say they approved: keep waiting. If the
+log says the code expired, start again from `freepod login`.
 
 ### 2. Initialize the project
 
@@ -600,7 +620,7 @@ things those rules miss. Two wrinkles:
 
 | Symptom                               | What it means                                   | What to do                                                                                                                                                                |
 |---------------------------------------|-------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Exit 3                                | Not authenticated                               | Ask the user to run `freepod login`                                                                                                                                       |
+| Exit 3                                | Not authenticated                               | Sign in: *1. Confirm authentication*                                                                                                                                      |
 | Exit 4, build log ends in an error    | Build failed                                    | The streamed log is the whole story; `freepod builds` lists status and duration                                                                                           |
 | Exit 5                                | Image built, rollout failed or timed out        | Usually the container exits at startup — check the start command and that it binds `0.0.0.0:$PORT`. `freepod releases` shows which release failed and which is still live |
 | Deploy succeeds, requests hang or 502 | App is not listening where the platform expects | `freepod log` — then bind `0.0.0.0:$PORT`, not a hardcoded port and not `127.0.0.1`                                                                                       |
@@ -717,7 +737,7 @@ redeploy.
 
 | Command            | Purpose                                                                                                                                                              |
 |--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `freepod login`    | Sign in. Interactive — a human must do it.                                                                                                                           |
+| `freepod login`    | Sign in; the user approves it in a browser (*1. Confirm authentication*).                                                                                            |
 | `freepod whoami`   | Report the authenticated account. Never starts a login.                                                                                                              |
 | `freepod init`     | Set up the directory; prompts for a hostname.                                                                                                                        |
 | `freepod deploy`   | Pack, build, release. Prints the URL on stdout.                                                                                                                      |
