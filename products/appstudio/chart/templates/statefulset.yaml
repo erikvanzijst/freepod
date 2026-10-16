@@ -14,8 +14,8 @@ spec:
   template:
     metadata:
       annotations:
-        {{- /* Only the server's config: page edits reach the running pod
-               through the ConfigMap, without restarting the studio. */}}
+        {{- /* nginx reads its config once, through a subPath mount that is
+               never refreshed, so a changed config rolls the pod. */}}
         checksum/chrome-nginx: {{ tpl (.Files.Get "files/nginx.conf") . | sha256sum }}
       labels:
         {{- include "appstudio.selectorLabels" . | nindent 8 }}

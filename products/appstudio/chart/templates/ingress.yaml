@@ -10,7 +10,7 @@ spec:
   {{- /* The page adds the project to the browser's list, then opens a session in it. */}}
   redirectRegex:
     regex: "^(https?://[^/]+)/$"
-    replacement: {{ printf "${1}/.appstudio/?project=%s&platform=%s&preview=%s" (urlquery .Values.projectDir) (urlquery .Values.platformUrl) (urlquery (include "appstudio.previewUrl" .)) | quote }}
+    replacement: "${1}/.appstudio/"
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress

@@ -10,5 +10,5 @@ metadata:
     {{- include "appstudio.labels" . | nindent 4 }}
 data:
   nginx.conf: {{ tpl (.Files.Get "files/nginx.conf") . | quote }}
-  index.html: {{ .Files.Get "files/index.html" | quote }}
+  index.html: {{ tpl (.Files.Get "files/index.html") . | quote }}
   preview-down.html: {{ .Files.Get "files/preview-down.html" | quote }}

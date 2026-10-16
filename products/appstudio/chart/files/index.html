@@ -93,13 +93,15 @@
   </div>
 </header>
 <iframe id="studio" title="opencode" allow="clipboard-read; clipboard-write; fullscreen"></iframe>
+<script id="config" type="application/json">{{ include "appstudio.chromeConfig" . }}</script>
 <script>
   // The page around opencode: a way back to Freepod, and a Preview button that
   // comes alive once the agent's app answers on the preview port (`probe`, a
-  // proxy to it in this pod that says 204 while nothing listens). The ingress puts
-  // the project, the Freepod URL and the preview URL in this page's query.
-  // opencode runs in the iframe on this same origin; its location is mirrored
-  // into this page's fragment, so a reload returns to the same place.
+  // proxy to it in this pod that says 204 while nothing listens). Its settings
+  // are rendered in by the chart (#config), never read from the URL, which
+  // anyone can craft. opencode runs in the iframe on this same origin; its
+  // location is mirrored into this page's fragment, so a reload returns to the
+  // same place, and only a path on this origin is ever restored from it.
   //
   // First visit in a browser: opencode keeps its project list here, so the
   // studio's project is added the way "Add project" does, and a new session
@@ -107,8 +109,22 @@
   // because opening `/<project>/session?prompt=` in 1.19 creates two drafts and
   // lands on the empty one. The storage keys and shapes are opencode 1.19's.
   const EXAMPLE_PROMPT = "Build and deploy a link shortener";
-  const params = new URLSearchParams(location.search);
-  const dir = params.get("project") || "/workspace/app";
+  const config = JSON.parse(document.getElementById("config").textContent);
+  const dir = config.project;
+  const httpsUrl = (value) => {
+    try { const url = new URL(value); return url.protocol === "https:" ? url.href : null; } catch { return null; }
+  };
+
+  // The opencode location a reload restores: a path on this origin outside the
+  // chrome's own, or nothing.
+  function restoredPath() {
+    if (!location.hash.startsWith("#/")) return "";
+    try {
+      const url = new URL(location.hash.slice(1), location.origin);
+      if (url.origin !== location.origin || url.pathname.startsWith("/.appstudio")) return "";
+      return url.pathname + url.search + url.hash;
+    } catch { return ""; }
+  }
 
   function firstDestination() {
     let known = false;
@@ -144,8 +160,7 @@
 
   function start() {
     const frame = document.getElementById("studio");
-    const restored = location.hash.startsWith("#/") ? location.hash.slice(1) : "";
-    frame.src = restored || firstDestination();
+    frame.src = restoredPath() || firstDestination();
 
     // Mirror opencode's location and title, and its colors, which follow its theme.
     let last = "";
@@ -177,10 +192,11 @@
   const preview = document.getElementById("preview");
   const open = document.getElementById("open");
   const nudge = document.getElementById("nudge");
-  const previewUrl = params.get("preview") || null;
+  const previewUrl = httpsUrl(config.preview);
   let live = null, signedIn = false, win = null;
 
-  if (params.get("platform")) document.getElementById("home").href = params.get("platform");
+  const platformUrl = httpsUrl(config.platform);
+  if (platformUrl) document.getElementById("home").href = platformUrl;
   preview.hidden = !previewUrl;
 
   const seenKey = "appstudio.previewOpened";
