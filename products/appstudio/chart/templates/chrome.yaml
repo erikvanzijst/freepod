@@ -1,0 +1,14 @@
+{{- /*
+The chrome around opencode (files/index.html), the page the preview shows
+while nothing runs (files/preview-down.html), and the nginx that serves them.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-chrome
+  labels:
+    {{- include "appstudio.labels" . | nindent 4 }}
+data:
+  nginx.conf: {{ tpl (.Files.Get "files/nginx.conf") . | quote }}
+  index.html: {{ tpl (.Files.Get "files/index.html") . | quote }}
+  preview-down.html: {{ .Files.Get "files/preview-down.html" | quote }}

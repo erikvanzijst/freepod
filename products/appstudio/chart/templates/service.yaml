@@ -12,9 +12,9 @@ spec:
     - name: http
       port: {{ .Values.service.port }}
       targetPort: http
-    - name: start
-      port: {{ .Values.startPort }}
-      targetPort: start
+    - name: chrome
+      port: {{ .Values.chromePort }}
+      targetPort: chrome
     - name: preview
       port: {{ .Values.preview.port }}
       targetPort: preview

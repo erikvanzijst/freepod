@@ -116,6 +116,55 @@ def test_no_password_remains():
     assert "basicAuth" not in rendered
 
 
+def _chrome_page(docs: list[dict]) -> str:
+    return next(d for d in docs if d["kind"] == "ConfigMap" and d["metadata"]["name"] == "t-chrome")["data"]["index.html"]
+
+
+def _chrome_config(page: str) -> dict:
+    found = re.search(r'<script id="config" type="application/json">(.*?)</script>', page, re.S)
+    assert found, "the chrome page carries no #config"
+    return json.loads(found.group(1))
+
+
+def test_root_opens_the_chrome_with_settings_from_the_chart():
+    """The page takes nothing from its URL, which anyone can craft for the owner
+    to open: the chart renders the settings into it."""
+    docs = _render(platformUrl="https://dev.freepod.test")
+    assert _middleware(docs, "open-project")["spec"]["redirectRegex"]["replacement"] == "${1}/.appstudio/"
+    assert _chrome_config(_chrome_page(docs)) == {
+        "project": "/workspace/app",
+        "platform": "https://dev.freepod.test",
+        "preview": "https://preview-studio.alice.freepod.test",
+    }
+
+
+def test_a_setting_cannot_close_the_config_element():
+    hostile = "https://x.test/</script><script>alert(1)</script>"
+    page = _chrome_page(_render(platformUrl=hostile))
+    assert page.count("</script>") == 2  # the config element's and the script's own
+    assert _chrome_config(page)["platform"] == hostile
+
+
+def test_chrome_serves_on_its_port_and_probes_the_preview_port():
+    docs = _render(chromePort="4199", **{"preview.port": "8181"})
+    conf = next(d for d in docs if d["kind"] == "ConfigMap" and d["metadata"]["name"] == "t-chrome")["data"]["nginx.conf"]
+    assert "listen 4199;" in conf
+    assert "proxy_pass http://127.0.0.1:8181/;" in conf
+    pod = next(d for d in docs if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
+    chrome = next(c for c in pod["containers"] if c["name"] == "chrome")
+    assert chrome["ports"] == [{"name": "chrome", "containerPort": 4199}]
+
+
+def test_a_changed_nginx_config_rolls_the_pod():
+    """nginx reads its config once, through a subPath mount that is never
+    refreshed, so the pod template carries a checksum of it."""
+    def checksum(**overrides: str) -> str:
+        pod = next(d for d in _render(**overrides) if d["kind"] == "StatefulSet")["spec"]["template"]
+        return pod["metadata"]["annotations"]["checksum/chrome-nginx"]
+
+    assert checksum() != checksum(chromePort="4199")
+
+
 def test_sftp_reaches_only_the_project_read_only():
     pod = next(d for d in _render() if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
     sidecar = next(c for c in pod["containers"] if c["name"] == "ssh")

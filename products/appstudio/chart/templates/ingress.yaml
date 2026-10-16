@@ -10,7 +10,7 @@ spec:
   {{- /* The page adds the project to the browser's list, then opens a session in it. */}}
   redirectRegex:
     regex: "^(https?://[^/]+)/$"
-    replacement: "${1}/.appstudio/start.html#{{ .Values.projectDir }}"
+    replacement: "${1}/.appstudio/"
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -41,7 +41,7 @@ spec:
               service:
                 name: {{ .Release.Name }}-app
                 port:
-                  name: start
+                  name: chrome
           - path: /
             pathType: Prefix
             backend:

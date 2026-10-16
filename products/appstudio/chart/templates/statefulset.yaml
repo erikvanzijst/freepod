@@ -13,6 +13,10 @@ spec:
       {{- include "appstudio.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        {{- /* nginx reads its config once, through a subPath mount that is
+               never refreshed, so a changed config rolls the pod. */}}
+        checksum/chrome-nginx: {{ tpl (.Files.Get "files/nginx.conf") . | sha256sum }}
       labels:
         {{- include "appstudio.selectorLabels" . | nindent 8 }}
         {{- include "appstudio.podLabels" . | nindent 8 }}
@@ -37,20 +41,27 @@ spec:
                       - {{ . | quote }}
       {{- end }}
       containers:
-        {{- /* Serves /.appstudio/start.html, which `/` redirects to (ingress.yaml). */}}
-        - name: start
-          image: {{ .Values.image | quote }}
-          imagePullPolicy: {{ .Values.pullPolicy }}
-          command: ["python3", "-m", "http.server", {{ .Values.startPort | quote }}, "--directory", "/opt/appstudio/www"]
+        {{- /* Serves /.appstudio/, which `/` redirects to (ingress.yaml). */}}
+        - name: chrome
+          image: {{ .Values.chromeImage | quote }}
+          command: ["nginx", "-c", "/etc/appstudio/nginx.conf", "-g", "daemon off;"]
           ports:
-            - name: start
-              containerPort: {{ .Values.startPort }}
+            - name: chrome
+              containerPort: {{ .Values.chromePort }}
+          volumeMounts:
+            - name: chrome
+              mountPath: /etc/appstudio/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: chrome-pages
+              mountPath: /etc/appstudio/chrome
+              readOnly: true
           resources:
             requests:
               cpu: 1m
-              memory: 16Mi
+              memory: 8Mi
             limits:
-              memory: 64Mi
+              memory: 32Mi
         - name: opencode
           image: {{ .Values.image | quote }}
           imagePullPolicy: {{ .Values.pullPolicy }}
@@ -105,6 +116,17 @@ spec:
              "sessionRoot" "volume:/app"
              "mounts" (list (dict "volume" "workspace" "path" "/app" "subPath" (include "appstudio.projectSubPath" .)))) | nindent 8 }}
       volumes:
+        - name: chrome
+          configMap:
+            name: {{ .Release.Name }}-chrome
+        - name: chrome-pages
+          configMap:
+            name: {{ .Release.Name }}-chrome
+            items:
+              - key: index.html
+                path: index.html
+              - key: preview-down.html
+                path: preview-down.html
         - name: workspace
           persistentVolumeClaim:
             claimName: workspace

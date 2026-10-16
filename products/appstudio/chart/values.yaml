@@ -7,7 +7,7 @@ hostname: ""
 # --- System values ------------------------------------------------------------
 
 # Built from products/appstudio/image.
-image: ghcr.io/erikvanzijst/freepod/appstudio:0.1.20
+image: ghcr.io/erikvanzijst/freepod/appstudio:0.1.23
 pullPolicy: IfNotPresent
 
 # Injected as STUDIO_PORT; the image runs `opencode web --port $STUDIO_PORT`.
@@ -17,14 +17,18 @@ containerPort: 4096
 service:
   port: 80
 
-# The git repository opencode opens on. opencode's UI keeps its project list in
-# the browser, so a fresh page load of `/` goes through a page that adds this
-# project there first (templates/ingress.yaml).
+# The git repository opencode opens on. A fresh load of `/` goes to the chrome
+# around opencode (files/index.html), which adds this project to opencode's
+# project list in the browser first (templates/ingress.yaml).
 projectDir: /workspace/app
 
-# Port of the sidecar serving that page. It shares the pod's network with the
-# apps the agent runs, so it stays clear of 8080.
-startPort: 4097
+# The chrome's server (templates/chrome.yaml). It shares the pod's network with
+# the apps the agent runs, so its port stays clear of 8080.
+chromeImage: nginx:1.29.2-alpine
+chromePort: 4097
+
+# Where the chrome's Freepod link goes.
+platformUrl: https://freepod.eu
 
 # The app the agent is building, live at preview-<first label>.<rest of the
 # hostname>: a sibling name, so the account's wildcard certificate covers it.

@@ -48,6 +48,19 @@ Mirrors identityHeaders in daemons/app-auth/request.go.
 {{- trimSuffix "/" $sub -}}
 {{- end -}}
 
+{{/* https://<preview host>, or empty when there is no preview. */}}
+{{- define "appstudio.previewUrl" -}}
+{{- with include "appstudio.previewHost" . }}{{ printf "https://%s" . }}{{ end -}}
+{{- end -}}
+
+{{/*
+The chrome's settings (files/index.html), as JSON inside a <script> element:
+`<` is escaped so no value can close the element.
+*/}}
+{{- define "appstudio.chromeConfig" -}}
+{{- dict "project" .Values.projectDir "platform" .Values.platformUrl "preview" (include "appstudio.previewUrl" .) | toJson | replace "<" "\\u003c" -}}
+{{- end -}}
+
 {{/* Pod template only; see "custom.podLabels" in the custom chart. */}}
 {{- define "appstudio.podLabels" -}}
 {{- with .Values.caelus.releaseId -}}

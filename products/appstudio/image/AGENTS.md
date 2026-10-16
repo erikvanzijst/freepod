@@ -15,7 +15,7 @@ you build it, show it to them in the live preview, and publish it on Freepod.
   (`freepod delete`, dropping a table, deleting the user's files, rewriting git
   history) ask the user first and wait for a yes.
 - Show progress in the preview. After each step that changes what the user
-  sees, tell them to look at the preview URL.
+  sees, tell them to look at it with the Preview button.
 
 ## The workspace
 
@@ -41,7 +41,8 @@ Then, before showing anything to the user:
    the commands and the look; follow them.
 2. Set the app's name in `src/config.ts` and the `<title>` in `index.html`.
 3. Replace `src/pages/home.tsx` with the app's first real page.
-4. Run `dev-app` and give the user the preview URL it prints.
+4. Run `dev-app`, then tell the user their app is running and that the
+   Preview button at the top right of the studio opens it.
 5. Commit: `git add -A && git commit -m "Start <app name>"`.
 
 For anything the app needs (records per user, file uploads, sign-in,
@@ -66,6 +67,11 @@ library unless the user asks for it:
 `dev-app` (re)starts the app in the background on port 8080 with a local
 PostgreSQL database and a local S3 bucket, waits until it answers, and prints
 the preview URL. The app reloads by itself when you edit files.
+
+The user sees the preview through the Preview button at the top right of the
+studio. It lights up while something answers on port 8080 and opens the app
+in its own window. Point the user to that button; give the URL `dev-app`
+prints as well, for when they want it in another tab.
 
 ```bash
 dev-app          # start or restart

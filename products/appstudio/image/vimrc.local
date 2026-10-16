@@ -1,0 +1,4 @@
+" App Studio: colors and per-language settings for everyone's vim. Debian's
+" /etc/vim/vimrc sources this file and enables neither.
+syntax on
+filetype plugin indent on
