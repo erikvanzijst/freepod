@@ -132,7 +132,8 @@ def test_root_opens_the_chrome_with_settings_from_the_chart():
     docs = _render(platformUrl="https://dev.freepod.test")
     assert _middleware(docs, "open-project")["spec"]["redirectRegex"]["replacement"] == "${1}/.appstudio/"
     assert _chrome_config(_chrome_page(docs)) == {
-        "project": "/workspace/app",
+        "apps": "/workspace/apps",
+        "firstApp": "/workspace/apps/app",
         "platform": "https://dev.freepod.test",
         "preview": "https://preview-studio.alice.freepod.test",
     }
@@ -172,17 +173,26 @@ def test_the_agent_caps_its_ephemeral_storage_without_reserving_it():
     assert resources["requests"]["ephemeral-storage"] == "0"
 
 
-def test_sftp_reaches_only_the_project_read_only():
+def test_sftp_reaches_only_the_apps_read_only():
     pod = next(d for d in _render() if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
     sidecar = next(c for c in pod["containers"] if c["name"] == "ssh")
     assert sidecar["volumeMounts"] == [
-        {"name": "workspace", "mountPath": "/srv/session/app", "subPath": "app", "readOnly": True}
+        {"name": "workspace", "mountPath": "/srv/session/apps", "subPath": "apps", "readOnly": True}
     ]
 
 
-@pytest.mark.parametrize("project_dir", ["/workspace", "/opt/app", "/workspace/../etc"])
-def test_refuses_a_project_outside_the_workspace(project_dir):
-    result = _helm({**BASE, "projectDir": project_dir})
+def test_the_studio_knows_where_the_apps_are():
+    docs = _render(appsDir="/workspace/projects/")
+    pod = next(d for d in docs if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
+    env = {e["name"]: e.get("value") for e in next(c for c in pod["containers"] if c["name"] == "opencode")["env"]}
+    assert env["APPSTUDIO_APPS_DIR"] == "/workspace/projects"
+    config = _chrome_config(_chrome_page(docs))
+    assert (config["apps"], config["firstApp"]) == ("/workspace/projects", "/workspace/projects/app")
+
+
+@pytest.mark.parametrize("apps_dir", ["/workspace", "/opt/apps", "/workspace/../etc"])
+def test_refuses_apps_outside_the_workspace(apps_dir):
+    result = _helm({**BASE, "appsDir": apps_dir})
     assert result.returncode != 0
     assert "must be a directory inside /workspace" in result.stderr
 

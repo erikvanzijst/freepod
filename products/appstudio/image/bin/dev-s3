@@ -1,6 +1,7 @@
 #!/bin/sh
-# Start the local S3 server (Garage, as on Freepod) if it is not running, and
-# print the environment Freepod gives a deployed app with object storage:
+# Start the local S3 server (Garage, as on Freepod) if it is not running, make
+# sure the current app's bucket exists, and print the environment Freepod gives
+# a deployed app with object storage:
 #
 #   eval "$(dev-s3)"
 #
@@ -11,22 +12,29 @@ ENDPOINT=http://127.0.0.1:3900
 REGION=garage
 KEY=GK426b360143682b3e665f1994a6750ff9
 SECRET=7d774bb20559270090a4760640b5b948cfd60c239b33982727419a6bb53dfa91
-BUCKET=app
 LOG=/var/log/garage.log
+# The server starts with this bucket; it is the first app's.
+DEFAULT_BUCKET=app
+
+# One bucket per app, named after it; the first app's outside any app.
+if BUCKET=$(appstudio-app name 2>/dev/null); then :
+elif [ $? -eq 1 ]; then BUCKET=$DEFAULT_BUCKET
+else appstudio-app name >/dev/null; exit 1
+fi
 
 # Garage requires x-amz-content-sha256, which curl does not add; this is the
 # hash of the empty body.
 bucket_ready() {
   curl -sf -o /dev/null -I \
     -H "x-amz-content-sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" \
-    --aws-sigv4 "aws:amz:${REGION}:s3" --user "${KEY}:${SECRET}" "${ENDPOINT}/${BUCKET}"
+    --aws-sigv4 "aws:amz:${REGION}:s3" --user "${KEY}:${SECRET}" "${ENDPOINT}/$1"
 }
 
-if ! bucket_ready; then
-  GARAGE_DEFAULT_ACCESS_KEY=$KEY GARAGE_DEFAULT_SECRET_KEY=$SECRET GARAGE_DEFAULT_BUCKET=$BUCKET \
+if ! bucket_ready "$DEFAULT_BUCKET"; then
+  GARAGE_DEFAULT_ACCESS_KEY=$KEY GARAGE_DEFAULT_SECRET_KEY=$SECRET GARAGE_DEFAULT_BUCKET=$DEFAULT_BUCKET \
     nohup garage server --single-node --default-bucket >>"$LOG" 2>&1 &
   tries=0
-  until bucket_ready; do
+  until bucket_ready "$DEFAULT_BUCKET"; do
     tries=$((tries + 1))
     if [ "$tries" -ge 60 ]; then
       echo "dev-s3: Garage did not come up; last lines of $LOG:" >&2
@@ -35,7 +43,12 @@ if ! bucket_ready; then
     fi
     sleep 0.5
   done
-  echo "dev-s3: S3 is running at $ENDPOINT with bucket '$BUCKET'" >&2
+  echo "dev-s3: S3 is running at $ENDPOINT" >&2
+fi
+if ! bucket_ready "$BUCKET"; then
+  garage bucket create "$BUCKET" >/dev/null
+  garage bucket allow --read --write --owner "$BUCKET" --key "$KEY" >/dev/null
+  echo "dev-s3: created bucket '$BUCKET'" >&2
 fi
 
 cat <<EOF

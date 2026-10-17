@@ -1,0 +1,29 @@
+#!/bin/sh
+# Create an app: a git repository in the apps directory, which opencode lists as
+# a project of its own.
+#
+#   appstudio-new-app <name>
+#
+# The repository is built under a hidden name and renamed into place last, so an
+# app shows up in a listing only once it is complete.
+set -eu
+
+APPS_DIR=${APPSTUDIO_APPS_DIR:-/workspace/apps}
+name=${1:-}
+
+appstudio-app valid "$name"
+if [ -e "$APPS_DIR/$name" ]; then
+  echo "appstudio-new-app: '$name' already exists" >&2
+  exit 1
+fi
+
+mkdir -p "$APPS_DIR"
+tmp="$APPS_DIR/.new-$name"
+rm -rf "$tmp"
+mkdir "$tmp"
+git -C "$tmp" init -q -b main
+# opencode identifies a project by its root commit; the name keeps two apps
+# created in the same second apart.
+git -C "$tmp" commit -q --allow-empty -m "Start $name"
+mv -T "$tmp" "$APPS_DIR/$name"
+echo "$APPS_DIR/$name"

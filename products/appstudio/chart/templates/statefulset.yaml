@@ -81,8 +81,8 @@ spec:
             - name: APPSTUDIO_PREVIEW_PORT
               value: {{ $.Values.preview.port | quote }}
             {{- end }}
-            - name: APPSTUDIO_PROJECT_DIR
-              value: {{ .Values.projectDir | quote }}
+            - name: APPSTUDIO_APPS_DIR
+              value: {{ printf "/workspace/%s" (include "appstudio.appsSubPath" .) | quote }}
             {{- with .Values.caelus.owner.email }}
             - name: APPSTUDIO_OWNER_EMAIL
               value: {{ . | quote }}
@@ -110,11 +110,11 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-        {{- /* Only the project: the rest of the workspace holds the owner's
+        {{- /* Only the apps: the rest of the workspace holds the owner's
                Freepod credentials and opencode's config. */}}
         {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage
-             "sessionRoot" "volume:/app"
-             "mounts" (list (dict "volume" "workspace" "path" "/app" "subPath" (include "appstudio.projectSubPath" .)))) | nindent 8 }}
+             "sessionRoot" "volume:/apps"
+             "mounts" (list (dict "volume" "workspace" "path" "/apps" "subPath" (include "appstudio.appsSubPath" .)))) | nindent 8 }}
       volumes:
         - name: chrome
           configMap:

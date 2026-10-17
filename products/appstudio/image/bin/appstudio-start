@@ -1,12 +1,14 @@
 #!/bin/sh
-# Prepare /workspace and serve opencode's web UI from the studio's project.
+# Prepare /workspace and serve opencode's web UI from the studio's first app.
 set -eu
 
-PROJECT_DIR=${APPSTUDIO_PROJECT_DIR:-/workspace/app}
+APPS_DIR=${APPSTUDIO_APPS_DIR:-/workspace/apps}
+export APPSTUDIO_APPS_DIR=$APPS_DIR
+FIRST_APP=$APPS_DIR/app
 TREES_DIR=/workspace/trees
 DATA_DIR=/root/.local/share/opencode
 
-mkdir -p "$PROJECT_DIR" "$TREES_DIR" "$XDG_CONFIG_HOME" "$DATA_DIR" /root/.ssh
+mkdir -p "$APPS_DIR" "$TREES_DIR" "$XDG_CONFIG_HOME" "$DATA_DIR" /root/.ssh
 chmod 700 /root/.ssh
 
 # A git identity for the agent's commits, in git's config on the volume, unless
@@ -19,12 +21,14 @@ if [ -z "$(git config --global user.email || true)" ]; then
   git config --file "$XDG_CONFIG_HOME/git/config" user.name "${email%%@*}"
 fi
 
-# opencode identifies a project by its git root and first commit, and creates
-# worktrees from HEAD, so the project starts with an empty commit.
-if [ ! -e "$PROJECT_DIR/.git" ]; then
-  git -C "$PROJECT_DIR" init -q -b main
-  git -C "$PROJECT_DIR" commit -q --allow-empty -m "Initial commit"
+# Studios from before the apps directory kept their one app in /workspace/app.
+if [ -d /workspace/app ] && [ ! -e "$FIRST_APP" ]; then
+  mv -T /workspace/app "$FIRST_APP"
+  git -C "$FIRST_APP" worktree repair >/dev/null 2>&1 || true
+elif [ -d /workspace/app ]; then
+  echo "appstudio: both /workspace/app and $FIRST_APP exist; leaving both" >&2
 fi
+[ -e "$FIRST_APP" ] || appstudio-new-app app >/dev/null
 # opencode creates worktrees under its data directory, with no setting to move
 # them; the link puts them in /workspace/trees.
 if [ ! -L "$DATA_DIR/worktree" ]; then
@@ -47,5 +51,5 @@ fi
 freepod skill install --agent opencode >/dev/null 2>&1 \
   || echo "appstudio: could not install the freepod skill" >&2
 
-cd "$PROJECT_DIR"
+cd "$FIRST_APP"
 exec opencode web --hostname 0.0.0.0 --port "${STUDIO_PORT:-4096}"

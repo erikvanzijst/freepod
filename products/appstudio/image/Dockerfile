@@ -20,7 +20,7 @@ RUN install -d /usr/share/postgresql-common/pgdg \
  && apt-get install -y --no-install-recommends \
       python3 python3-venv python3-pip python-is-python3 \
       postgresql-18 postgresql-client-18 openssh-client \
-      ripgrep fd-find jq less tini vim bash-completion \
+      ripgrep fd-find jq less tini vim bash-completion psmisc \
  && rm -rf /var/lib/apt/lists/* \
  && printf '%s\n' '' \
       '# App Studio: tab completion (git, apt, ...) in the studio terminal.' \
@@ -69,7 +69,7 @@ RUN uv tool install /tmp/freepod-cli \
 # config, which overrides the user's.
 ENV XDG_CONFIG_HOME=/workspace/.config
 COPY opencode.json /etc/opencode/opencode.json
-COPY bin/appstudio-start /usr/local/bin/
+COPY bin/appstudio-start bin/appstudio-new-app bin/appstudio-app /usr/local/bin/
 # The starter every app is copied from, and a reference app built on it; the
 # agent's instructions point at both. Neither is copied into the project, so
 # nothing appears in the preview before the user asks for an app.

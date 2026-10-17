@@ -42,30 +42,50 @@
   .home .sep { color: var(--rule); }
   .home .product { font-weight: 600; white-space: nowrap; }
 
-  .preview { position: relative; }
-  .preview button {
+  .actions { display: flex; align-items: center; gap: 8px; }
+  .preview, .new-project { position: relative; }
+  header button, .docs {
     display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px;
     font: inherit; color: inherit; background: transparent; cursor: pointer;
     border: 1px solid var(--rule); border-radius: 7px;
   }
-  .preview button:hover:not(:disabled) { background: var(--hover); }
-  .preview button:disabled { color: var(--muted); cursor: default; }
+  header button:hover:not(:disabled), .docs:hover { background: var(--hover); }
+  .docs { text-decoration: none; }
+  .actions > *, header button { flex: none; white-space: nowrap; }
+  @media (max-width: 560px) {
+    .docs span, .new-project > button span { display: none; }
+  }
+  .docs svg { width: 13px; height: 13px; }
+  .docs[hidden] { display: none; }
+  header button:disabled { color: var(--muted); cursor: default; }
+  .new-project > button svg { width: 13px; height: 13px; }
   .preview .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: .6; }
   .preview.live .dot { background: var(--live); opacity: 1; }
   .preview svg { width: 13px; height: 13px; }
   .preview:not(.live) svg { display: none; }
 
-  .nudge {
+  .nudge, .create {
     position: absolute; top: calc(100% + 8px); right: 0; z-index: 1; width: max-content; max-width: 260px;
     padding: 10px 12px; border: 1px solid var(--rule); border-radius: 10px;
     background: var(--bg); box-shadow: 0 6px 24px rgb(0 0 0 / .12);
     display: none;
   }
-  .nudge.show { display: block; }
+  .nudge.show, .create.show { display: block; }
   .nudge { cursor: pointer; }
-  .nudge strong { display: block; margin-bottom: 2px; }
-  .nudge span { color: var(--muted); }
-  .nudge::before {
+  .nudge strong, .create label { display: block; margin-bottom: 2px; font-weight: 600; }
+  .nudge span, .create p { color: var(--muted); }
+  .create { width: 260px; z-index: 2; }
+  .create p { margin: 0 0 8px; }
+  .create .row { display: flex; gap: 6px; }
+  .create input {
+    flex: 1; min-width: 0; height: 28px; padding: 0 8px;
+    font: inherit; color: inherit; background: transparent;
+    border: 1px solid var(--rule); border-radius: 7px;
+  }
+  .create input:focus { outline: 2px solid color-mix(in srgb, var(--fg) 25%, transparent); outline-offset: -1px; }
+  .create .error { margin: 8px 0 0; color: #dc2626; }
+  .create .error:empty { display: none; }
+  .nudge::before, .create::before {
     content: ""; position: absolute; top: -5px; right: 18px; width: 8px; height: 8px;
     background: var(--bg); border-left: 1px solid var(--rule); border-top: 1px solid var(--rule);
     transform: rotate(45deg);
@@ -81,6 +101,26 @@
     </svg>
     <span class="platform">Freepod</span><span class="sep">/</span><span class="product">App Studio</span>
   </a>
+  <div class="actions">
+  <a class="docs" id="docs" target="_blank" rel="noopener" title="How App Studio works" aria-label="Docs" hidden>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.5h4a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 0-1.5-1.5h-4zM13.5 3.5h-4A1.5 1.5 0 0 0 8 5v8a1.5 1.5 0 0 1 1.5-1.5h4z"/></svg>
+    <span>Docs</span>
+  </a>
+  <div class="new-project">
+    <button type="button" id="new-project" title="Start another app, in a project of its own" aria-label="New project">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg>
+      <span>New project</span>
+    </button>
+    <form class="create" id="create" autocomplete="off" novalidate>
+      <label for="project-name">New project</label>
+      <p>A folder of its own for another app.</p>
+      <div class="row">
+        <input id="project-name" name="name" maxlength="40" placeholder="recipes" spellcheck="false" autocapitalize="off">
+        <button type="submit" id="create-button">Create</button>
+      </div>
+      <p class="error" id="create-error" role="alert"></p>
+    </form>
+  </div>
   <div class="preview" id="preview" hidden>
     <button type="button" id="open" disabled title="Your app's live preview appears here once the agent runs it">
       <span class="dot"></span><span id="label">Preview</span>
@@ -90,6 +130,7 @@
       <strong>Your app is running</strong>
       <span>Open the preview to see it as you build.</span>
     </div>
+  </div>
   </div>
 </header>
 <iframe id="studio" title="opencode" allow="clipboard-read; clipboard-write; fullscreen"></iframe>
@@ -103,14 +144,23 @@
   // location is mirrored into this page's fragment, so a reload returns to the
   // same place, and only a path on this origin is ever restored from it.
   //
-  // First visit in a browser: opencode keeps its project list here, so the
-  // studio's project is added the way "Add project" does, and a new session
+  // opencode keeps its project list in this browser's storage and reads it only
+  // when it starts; a write while it runs is lost at its next save. So before
+  // opencode loads, and again after New project with the iframe emptied first,
+  // every app in the apps directory is added to that list (from opencode's own
+  // file API), and Home is pointed at a new project.
+  //
+  // First visit in a browser (no projects yet): a new session in the first app
   // opens with an example prompt typed in. It is a draft tab added here,
   // because opening `/<project>/session?prompt=` in 1.19 creates two drafts and
   // lands on the empty one. The storage keys and shapes are opencode 1.19's.
   const EXAMPLE_PROMPT = "Build and deploy a link shortener";
+  // Where the studio's one app lived before the apps directory.
+  const LEGACY_APP = "/workspace/app";
+  const SERVER_KEY = "opencode.global.dat:server";
+  const TABS_KEY = "opencode.window.browser.dat:tabs";
+  const LAYOUT_KEY = "opencode.global.dat:layout";
   const config = JSON.parse(document.getElementById("config").textContent);
-  const dir = config.project;
   const httpsUrl = (value) => {
     try { const url = new URL(value); return url.protocol === "https:" ? url.href : null; } catch { return null; }
   };
@@ -126,41 +176,73 @@
     } catch { return ""; }
   }
 
-  function firstDestination() {
-    let known = false;
+  const frame = document.getElementById("studio");
+
+  const readJson = (key, fallback) => {
+    try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+  };
+
+  // The apps' directories, or null when they cannot be listed.
+  async function listApps() {
     try {
-      const key = "opencode.global.dat:server";
-      let store = {};
-      try { store = JSON.parse(localStorage.getItem(key)) || {}; } catch {}
+      const query = new URLSearchParams({ directory: config.apps, path: "." });
+      const res = await fetch(`/file?${query}`, { cache: "no-store" });
+      if (!res.ok) return null;
+      return (await res.json())
+        .filter((entry) => entry.type === "directory" && !entry.name.startsWith("."))
+        .map((entry) => `${config.apps}/${entry.name}`);
+    } catch { return null; }
+  }
+
+  // Adds the apps opencode's project list lacks; true on a browser's first visit.
+  function registerApps(apps, select) {
+    let first = false;
+    try {
+      const store = readJson(SERVER_KEY, {});
       store.list ??= [];
       store.projects ??= {};
       store.lastProject ??= {};
       store.recentlyClosed ??= {};
       const local = (store.projects.local ??= []);
-      known = local.some((p) => p.worktree === dir);
-      if (!known) local.unshift({ worktree: dir, expanded: true });
-      store.lastProject.local ??= dir;
-      localStorage.setItem(key, JSON.stringify(store));
+      first = local.length === 0;
+      const kept = local.filter((p) => p.worktree !== LEGACY_APP);
+      for (const app of [config.firstApp, ...(apps || [])]) {
+        if (!kept.some((p) => p.worktree === app)) kept.push({ worktree: app, expanded: true });
+      }
+      store.projects.local = kept;
+      if (!store.lastProject.local || store.lastProject.local === LEGACY_APP) store.lastProject.local = config.firstApp;
+      localStorage.setItem(SERVER_KEY, JSON.stringify(store));
+      if (select) {
+        const layout = readJson(LAYOUT_KEY, {});
+        layout.home = { ...layout.home, selection: { ...layout.home?.selection, directory: select } };
+        localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
+      }
     } catch {}
-    if (known) return "/?home";
+    return first;
+  }
+
+  function firstSession() {
     try {
-      const key = "opencode.window.browser.dat:tabs";
-      let tabs = [];
-      try { tabs = JSON.parse(localStorage.getItem(key)) || []; } catch {}
+      const tabs = readJson(TABS_KEY, []);
       const draftID = Array.from(crypto.getRandomValues(new Uint8Array(7)),
         (b) => b.toString(16).padStart(2, "0")).join("");
-      tabs.push({ type: "draft", draftID, server: location.origin, directory: dir });
-      localStorage.setItem(key, JSON.stringify(tabs));
+      tabs.push({ type: "draft", draftID, server: location.origin, directory: config.firstApp });
+      localStorage.setItem(TABS_KEY, JSON.stringify(tabs));
       return `/new-session?${new URLSearchParams({ draftId: draftID, prompt: EXAMPLE_PROMPT })}`;
     } catch {}
-    const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(dir)))
+    const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(config.firstApp)))
       .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     return `/${encoded}/session`;
   }
 
-  function start() {
-    const frame = document.getElementById("studio");
-    frame.src = restoredPath() || firstDestination();
+  const navigate = (path) => new Promise((resolve) => {
+    frame.addEventListener("load", resolve, { once: true });
+    frame.src = path;
+  });
+
+  async function start() {
+    const first = registerApps(await listApps());
+    frame.src = restoredPath() || (first ? firstSession() : "/?home");
 
     // Mirror opencode's location and title, and its colors, which follow its theme.
     let last = "";
@@ -169,6 +251,7 @@
       try { doc = frame.contentDocument; } catch { return; }
       if (!doc || !doc.body) return;
       const loc = frame.contentWindow.location;
+      if (loc.protocol === "about:") return;
       const here = loc.pathname + loc.search + loc.hash;
       if (here !== last && loc.origin === location.origin) {
         last = here;
@@ -196,7 +279,12 @@
   let live = null, signedIn = false, win = null;
 
   const platformUrl = httpsUrl(config.platform);
-  if (platformUrl) document.getElementById("home").href = platformUrl;
+  if (platformUrl) {
+    document.getElementById("home").href = platformUrl;
+    const docs = document.getElementById("docs");
+    docs.href = new URL("/docs/apps/products/appstudio", platformUrl).href;
+    docs.hidden = false;
+  }
   preview.hidden = !previewUrl;
 
   const seenKey = "appstudio.previewOpened";
@@ -225,7 +313,7 @@
     preview.classList.toggle("live", live);
     open.disabled = !live;
     open.title = live ? "Open your app's live preview" : "Your app's live preview appears here once the agent runs it";
-    nudge.classList.toggle("show", live && (becameLive || !seen()));
+    nudge.classList.toggle("show", live && (becameLive || !seen()) && !form.classList.contains("show"));
     if (!live) nudge.classList.remove("show");
   }
 
@@ -241,6 +329,79 @@
     if (!win) window.open(previewUrl, "_blank");
   });
   nudge.addEventListener("click", () => open.click());
+
+  // --- New project ---------------------------------------------------------
+  //
+  // The app's repository is made by `appstudio-new-app` in the opencode
+  // container, run through opencode's terminal API. That call returns before
+  // the command ends and keeps none of its output, so the name is checked here
+  // first and the app counts as created once the listing shows it (the script
+  // renames a finished repository into place). Then opencode reloads on its
+  // Home with the new project selected.
+
+  const NAME = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
+  const newProject = document.getElementById("new-project");
+  const form = document.getElementById("create");
+  const nameInput = document.getElementById("project-name");
+  const createButton = document.getElementById("create-button");
+  const createError = document.getElementById("create-error");
+
+  function showForm(show) {
+    form.classList.toggle("show", show);
+    if (show) { nudge.classList.remove("show"); createError.textContent = ""; nameInput.focus(); nameInput.select(); }
+  }
+  newProject.addEventListener("click", () => showForm(!form.classList.contains("show")));
+  form.addEventListener("keydown", (e) => { if (e.key === "Escape") { showForm(false); newProject.focus(); } });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".new-project") && !createButton.disabled) showForm(false);
+  });
+  nameInput.addEventListener("input", () => { createError.textContent = ""; });
+
+  async function createProject(name) {
+    const before = await listApps();
+    if (!before) throw new Error("Could not reach the studio. Try again.");
+    const dir = `${config.apps}/${name}`;
+    if (before.includes(dir)) throw new Error(`There is already a project called "${name}".`);
+    const query = new URLSearchParams({ directory: config.firstApp });
+    const res = await fetch(`/pty?${query}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ command: "appstudio-new-app", args: [name], cwd: config.apps, title: "New project" }),
+    });
+    if (!res.ok) throw new Error("Could not create the project. Try again.");
+    for (let tries = 0; tries < 34; tries++) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const apps = await listApps();
+      if (apps && apps.includes(dir)) return apps;
+    }
+    throw new Error("The project did not appear. Try again.");
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = nameInput.value.trim().toLowerCase();
+    if (!NAME.test(name)) {
+      createError.textContent = "Use 3 to 40 letters, digits and hyphens, not starting or ending with a hyphen.";
+      return;
+    }
+    createButton.disabled = nameInput.disabled = true;
+    createButton.textContent = "Creating…";
+    try {
+      const apps = await createProject(name);
+      // Empty the iframe first, so opencode cannot overwrite what is written next.
+      await navigate("about:blank");
+      registerApps(apps, `${config.apps}/${name}`);
+      nameInput.value = "";
+      showForm(false);
+      await navigate("/?home");
+    } catch (err) {
+      createError.textContent = err.message;
+    } finally {
+      createButton.disabled = nameInput.disabled = false;
+      createButton.textContent = "Create";
+      if (form.classList.contains("show")) nameInput.focus();
+    }
+  });
 
   if (window.top !== window) {
     // Something inside opencode loaded `/` in the iframe: be opencode there.

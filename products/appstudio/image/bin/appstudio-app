@@ -1,0 +1,46 @@
+#!/bin/sh
+# The app the current directory belongs to, also from one of its worktrees, and
+# the rule for app names.
+#
+#   appstudio-app dir          its directory
+#   appstudio-app name         its name
+#   appstudio-app valid NAME   whether NAME is a valid app name
+#
+# Exits 1 outside any app, 2 for a name that breaks the rule.
+set -eu
+export LC_ALL=C
+
+APPS_DIR=${APPSTUDIO_APPS_DIR:-/workspace/apps}
+
+valid() {
+  case $1 in
+    -* | *- | *[!a-z0-9-]*) return 1 ;;
+  esac
+  [ "${#1}" -ge 3 ] && [ "${#1}" -le 40 ]
+}
+
+invalid() {
+  echo "appstudio-app: '$1' is not a valid app name: 3 to 40 lowercase letters, digits and hyphens, not starting or ending with a hyphen" >&2
+  exit 2
+}
+
+case ${1:-} in
+  valid) valid "${2:-}" || invalid "${2:-}"; exit 0 ;;
+  dir | name) ;;
+  *) echo "usage: appstudio-app dir|name|valid NAME" >&2; exit 2 ;;
+esac
+
+# A worktree's common directory is its app's .git.
+common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+dir=${common%/.git}
+name=${dir#"$APPS_DIR"/}
+if [ "$dir" = "$common" ] || [ "$name" = "$dir" ] || [ -z "$name" ] || [ "${name#*/}" != "$name" ]; then
+  echo "appstudio-app: $(pwd) is not in an app under $APPS_DIR" >&2
+  exit 1
+fi
+valid "$name" || invalid "$name"
+
+case $1 in
+  dir) echo "$dir" ;;
+  name) echo "$name" ;;
+esac

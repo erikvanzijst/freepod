@@ -39,13 +39,18 @@ Mirrors identityHeaders in daemons/app-auth/request.go.
 {{- join "," $mw -}}
 {{- end -}}
 
-{{/* projectDir as a path inside the workspace volume. */}}
-{{- define "appstudio.projectSubPath" -}}
-{{- $sub := trimPrefix "/workspace/" .Values.projectDir -}}
-{{- if or (eq $sub .Values.projectDir) (eq $sub "") (contains ".." $sub) -}}
-{{- fail (printf "appstudio: projectDir %q must be a directory inside /workspace" .Values.projectDir) -}}
+{{/* appsDir as a path inside the workspace volume. */}}
+{{- define "appstudio.appsSubPath" -}}
+{{- $sub := trimPrefix "/workspace/" .Values.appsDir -}}
+{{- if or (eq $sub .Values.appsDir) (eq $sub "") (contains ".." $sub) -}}
+{{- fail (printf "appstudio: appsDir %q must be a directory inside /workspace" .Values.appsDir) -}}
 {{- end -}}
 {{- trimSuffix "/" $sub -}}
+{{- end -}}
+
+{{/* The app every studio has, which opencode runs from. */}}
+{{- define "appstudio.firstApp" -}}
+{{- printf "/workspace/%s/app" (include "appstudio.appsSubPath" .) -}}
 {{- end -}}
 
 {{/* https://<preview host>, or empty when there is no preview. */}}
@@ -58,7 +63,7 @@ The chrome's settings (files/index.html), as JSON inside a <script> element:
 `<` is escaped so no value can close the element.
 */}}
 {{- define "appstudio.chromeConfig" -}}
-{{- dict "project" .Values.projectDir "platform" .Values.platformUrl "preview" (include "appstudio.previewUrl" .) | toJson | replace "<" "\\u003c" -}}
+{{- dict "apps" (printf "/workspace/%s" (include "appstudio.appsSubPath" .)) "firstApp" (include "appstudio.firstApp" .) "platform" .Values.platformUrl "preview" (include "appstudio.previewUrl" .) | toJson | replace "<" "\\u003c" -}}
 {{- end -}}
 
 {{/* Pod template only; see "custom.podLabels" in the custom chart. */}}

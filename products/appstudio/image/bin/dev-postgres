@@ -1,7 +1,7 @@
 #!/bin/sh
 # Start the local PostgreSQL 18 server if it is not running, make sure the
-# `app` role and database exist, and print the environment Freepod gives a
-# deployed app with relational storage:
+# `app` role and the current app's database exist, and print the environment
+# Freepod gives a deployed app with relational storage:
 #
 #   eval "$(dev-postgres)"
 #
@@ -12,6 +12,11 @@ HOST=127.0.0.1
 PORT=5432
 NAME=app
 PASSWORD=app
+# One database per app, named after it; `app` outside any app.
+if DB=$(appstudio-app name 2>/dev/null); then :
+elif [ $? -eq 1 ]; then DB=app
+else appstudio-app name >/dev/null; exit 1
+fi
 
 if ! pg_isready -q -h "$HOST" -p "$PORT"; then
   pg_ctlcluster 18 main start >&2
@@ -25,7 +30,7 @@ if ! pg_isready -q -h "$HOST" -p "$PORT"; then
     fi
     sleep 0.5
   done
-  echo "dev-postgres: PostgreSQL is running at $HOST:$PORT with database '$NAME'" >&2
+  echo "dev-postgres: PostgreSQL is running at $HOST:$PORT" >&2
 fi
 
 # The server refuses to run as root, so administration goes through `postgres`.
@@ -33,15 +38,16 @@ as_postgres() { su postgres -c "$1"; }
 if [ -z "$(as_postgres "psql -qAtc \"select 1 from pg_roles where rolname = '$NAME'\"")" ]; then
   as_postgres "psql -qc \"create role $NAME login createdb password '$PASSWORD'\""
 fi
-if [ -z "$(as_postgres "psql -qAtc \"select 1 from pg_database where datname = '$NAME'\"")" ]; then
-  as_postgres "createdb -O $NAME $NAME"
+if [ -z "$(as_postgres "psql -qAtc \"select 1 from pg_database where datname = '$DB'\"")" ]; then
+  as_postgres "createdb -O $NAME '$DB'"
+  echo "dev-postgres: created database '$DB'" >&2
 fi
 
 cat <<EOF
-export DATABASE_URL=postgresql://$NAME:$PASSWORD@$HOST:$PORT/$NAME
+export DATABASE_URL=postgresql://$NAME:$PASSWORD@$HOST:$PORT/$DB
 export PGHOST=$HOST
 export PGPORT=$PORT
 export PGUSER=$NAME
 export PGPASSWORD=$PASSWORD
-export PGDATABASE=$NAME
+export PGDATABASE=$DB
 EOF

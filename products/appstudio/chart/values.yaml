@@ -7,7 +7,7 @@ hostname: ""
 # --- System values ------------------------------------------------------------
 
 # Built from products/appstudio/image.
-image: ghcr.io/erikvanzijst/freepod/appstudio:0.1.23
+image: ghcr.io/erikvanzijst/freepod/appstudio:0.1.25
 pullPolicy: IfNotPresent
 
 # Injected as STUDIO_PORT; the image runs `opencode web --port $STUDIO_PORT`.
@@ -17,10 +17,11 @@ containerPort: 4096
 service:
   port: 80
 
-# The git repository opencode opens on. A fresh load of `/` goes to the chrome
-# around opencode (files/index.html), which adds this project to opencode's
-# project list in the browser first (templates/ingress.yaml).
-projectDir: /workspace/app
+# Where the apps live, one git repository each; the first is always `<appsDir>/app`.
+# A fresh load of `/` goes to the chrome around opencode (files/index.html),
+# which adds every app to opencode's project list in the browser first
+# (templates/ingress.yaml).
+appsDir: /workspace/apps
 
 # The chrome's server (templates/chrome.yaml). It shares the pod's network with
 # the apps the agent runs, so its port stays clear of 8080.
