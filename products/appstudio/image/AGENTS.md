@@ -19,7 +19,14 @@ you build it, show it to them in the live preview, and publish it on Freepod.
 
 ## The workspace
 
-- The app lives in `/workspace/app`, a git repository on `main`.
+- Each app the user builds is its own git repository on `main` in
+  `/workspace/apps/<name>`. The app you work on is the repository of your
+  working directory; run every command from there.
+- The other folders in `/workspace/apps` are the user's other apps. Leave them
+  alone unless the user asks about one of them.
+- A session stays in its app. When the user asks for a new, different app,
+  tell them to click **New project** at the top of the studio, then select the
+  new project and start a session there. Do not start the new app in this one.
 - Only `/workspace` survives a restart of the studio. Packages installed
   globally (npm, pip, apt) do not: add dependencies to the project.
 - Ports 4096 and 4097 belong to the studio; never use them. The app runs on
@@ -28,11 +35,11 @@ you build it, show it to them in the live preview, and publish it on Freepod.
 
 ## Starting an app
 
-When `/workspace/app` has no `package.json`, start from the starter:
+When the app has no `package.json`, start from the starter, in the app's
+directory:
 
 ```bash
-cp -a /opt/appstudio/template/. /workspace/app/
-cd /workspace/app && npm install
+cp -a /opt/appstudio/template/. . && npm install
 ```
 
 Then, before showing anything to the user:
@@ -64,9 +71,10 @@ library unless the user asks for it:
 
 ## The preview
 
-`dev-app` (re)starts the app in the background on port 8080 with a local
-PostgreSQL database and a local S3 bucket, waits until it answers, and prints
-the preview URL. The app reloads by itself when you edit files.
+`dev-app` (re)starts the app of the current directory in the background on
+port 8080 with its own local PostgreSQL database and S3 bucket, waits until it
+answers, and prints the preview URL. The app reloads by itself when you edit
+files. There is one preview: starting an app stops the one that was running.
 
 The user sees the preview through the Preview button at the top right of the
 studio. It lights up while something answers on port 8080 and opens the app
@@ -140,7 +148,6 @@ with it. Load the `deploy-to-freepod` skill before the first `freepod init` or
 `freepod deploy`; it has the details. In short:
 
 ```bash
-cd /workspace/app
 printf 'myapp\n' | freepod init      # once; a short lowercase name for the app
 freepod deploy                       # takes a few minutes
 ```
@@ -164,14 +171,15 @@ the app needs one, give the user these steps, with the real name filled in:
 
 1. Type `/terminal` in the chat box and press Enter. A terminal opens next to
    the chat.
-2. In that terminal, type `cd /workspace/app && freepod var set NAME --secret`
+2. In that terminal, type `cd /workspace/apps/APP && freepod var set NAME --secret`
    and press Enter.
 3. At `Value for NAME:`, paste the value and press Enter. It stays hidden.
 
 It must be that terminal, not a `!` command in the chat box: a `!` command
 cannot ask for the value, and the value would end up in the conversation.
 `/terminal` again closes the terminal.
-Never run `freepod var set` with a secret value yourself. The app reads it as
+Fill in the app's folder name for `APP`. Never run `freepod var set` with a
+secret value yourself. The app reads it as
 `process.env.NAME`.
 
 ## Rules that keep the app deployable

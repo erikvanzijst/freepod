@@ -20,11 +20,21 @@ Only your own Freepod account can open the studio and its preview. Anyone else w
 
 The first time a browser opens the studio, it starts a new session with an example prompt typed in. Press Enter to watch the agent build and publish a small app, or replace the prompt with your own.
 
+## Several apps
+
+One studio holds any number of apps, each a project of its own in OpenCode with its own sessions. The studio starts with one, `app`.
+
+**New project** at the top right asks for a name and creates the next one. OpenCode then shows its Home with the new project selected: start a session there with **New session**. To switch apps, open Home (the grid button at the top left) and select a project. A session always works on the app it was started in.
+
+Each app is published separately, as an app of its own on your account.
+
 ## The preview
 
 The **Preview** button at the top right of the studio lights up while the app the agent is building is running, and opens it in a window of its own. The preview updates as the agent changes the code. While nothing is running, the preview window shows a page that waits for the app.
 
-The preview has its own local database and file storage, which start empty again whenever the studio restarts. A published app has its own, separate ones.
+The preview shows one app at a time: when the agent runs an app, the one that was running stops.
+
+Each app has its own local database and file storage for the preview, which start empty again whenever the studio restarts. A published app has its own, separate ones.
 
 ## Publishing
 
@@ -34,9 +44,10 @@ Each published app is a separate app on your account, with its own address, and 
 
 ### Secrets
 
-Passwords and API keys your app needs do not belong in the conversation. Type `/terminal` in the message box to open a terminal, and set them on the published app there:
+Passwords and API keys your app needs do not belong in the conversation. Type `/terminal` in the message box to open a terminal, and set them on the published app there, from the app's folder:
 
 ```bash
+cd /workspace/apps/app
 freepod var set API_KEY --secret
 ```
 
@@ -46,9 +57,9 @@ The studio starts with OpenCode's free models. To use another model, connect a p
 
 ## Your code
 
-Each app is a git repository in the studio. The terminal has git, vim, Node.js, Python and the PostgreSQL client, and runs as root.
+Each app is a git repository in the studio, in `/workspace/apps/<name>`. The terminal has git, vim, Node.js, Python and the PostgreSQL client, and runs as root.
 
-[SFTP](../file-access.md) shows the project directory, read-only, to copy files out of the studio.
+[SFTP](../file-access.md) shows a folder per app, read-only, to copy files out of the studio.
 
 Sharing a session as a public link is not available.
 

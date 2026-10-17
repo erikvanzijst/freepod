@@ -1,13 +1,14 @@
 #!/bin/bash
-# Run the project's dev server in the background on port 8080, where the
-# preview shows it, with the local database and S3 in its environment.
+# Run the current app's dev server in the background on port 8080, where the
+# preview shows it, with the app's local database and S3 in its environment.
+# There is one preview: starting an app stops whatever held the port.
 #
-#   dev-app          (re)start it and wait until it answers
+#   dev-app          (re)start the app of the current directory and wait until
+#                    it answers
 #   dev-app stop     stop it
 #   dev-app logs     the last lines it printed
 set -euo pipefail
 
-PROJECT_DIR=${APPSTUDIO_PROJECT_DIR:-/workspace/app}
 PORT=8080
 LOG=/tmp/dev-app.log
 PIDFILE=/tmp/dev-app.pid
@@ -17,11 +18,16 @@ stop() {
     kill -- "-$(cat "$PIDFILE")" 2>/dev/null || true
     rm -f "$PIDFILE"
   fi
+  # Whatever else holds the port: another app's server or one started by hand.
+  fuser -s -k -TERM "$PORT/tcp" 2>/dev/null || true
   for _ in $(seq 20); do
-    curl -s -o /dev/null "http://127.0.0.1:$PORT/" || return 0
+    fuser -s "$PORT/tcp" 2>/dev/null || return 0
     sleep 0.5
   done
-  echo "dev-app: something else is still listening on port $PORT" >&2
+  fuser -s -k "$PORT/tcp" 2>/dev/null || true
+  sleep 0.5
+  fuser -s "$PORT/tcp" 2>/dev/null || return 0
+  echo "dev-app: something is still listening on port $PORT" >&2
   return 1
 }
 
@@ -32,8 +38,11 @@ case "${1:-start}" in
   *) echo "usage: dev-app [start|stop|logs]" >&2; exit 2 ;;
 esac
 
-cd "$PROJECT_DIR"
-[ -f package.json ] || { echo "dev-app: no package.json in $PROJECT_DIR; copy the starter in first" >&2; exit 1; }
+# The working directory, not the app's main directory: it may be a worktree.
+APP_DIR=$(git rev-parse --show-toplevel 2>/dev/null || true)
+appstudio-app name >/dev/null
+cd "$APP_DIR"
+[ -f package.json ] || { echo "dev-app: no package.json in $APP_DIR; copy the starter in first" >&2; exit 1; }
 stop
 [ -d node_modules ] || npm install --no-fund --no-audit >&2
 
