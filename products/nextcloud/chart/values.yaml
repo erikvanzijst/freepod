@@ -67,11 +67,15 @@ postgresql:
     requests:
       cpu: 15m
       memory: 128Mi
+    limits:
+      memory: 4Gi
 
 resources:
   requests:
     cpu: 15m
     memory: 256Mi
+  limits:
+    memory: 6Gi
 
 # Plan- and TLS-related values are injected per-deployment by the Caelus reconciler
 # (caelus.plan.*, caelus.ingress.tls). These defaults let the chart render standalone

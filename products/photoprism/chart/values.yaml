@@ -90,6 +90,8 @@ mariadb:
     requests:
       cpu: 20m
       memory: 192Mi
+    limits:
+      memory: 4Gi
 
 # No memory limit by default. Upstream is explicit that a hard limit causes
 # restarts while indexing RAW images and panoramas, and an OOM kill mid-index
@@ -99,6 +101,8 @@ resources:
   requests:
     cpu: 10m
     memory: 1Gi
+  limits:
+    memory: 6Gi
 
 # Escape hatch for PhotoPrism settings this chart does not model. Plain string
 # values only; anything needing a secret deserves a real value.

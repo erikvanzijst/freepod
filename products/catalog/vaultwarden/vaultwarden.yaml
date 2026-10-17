@@ -79,7 +79,7 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/vaultwarden
-  chart_version: 3.4.5
+  chart_version: 3.4.6
   system_values:
     image:
       tag: 1.37.4

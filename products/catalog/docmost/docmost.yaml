@@ -69,7 +69,7 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/docmost
-  chart_version: 0.1.2
+  chart_version: 0.1.3
   system_values:
     image:
       tag: 0.96.0

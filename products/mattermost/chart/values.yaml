@@ -28,6 +28,8 @@ mattermost:
     requests:
       cpu: 5m
       memory: 128Mi
+    limits:
+      memory: 4Gi
 
 # PostgreSQL configuration
 postgresql:

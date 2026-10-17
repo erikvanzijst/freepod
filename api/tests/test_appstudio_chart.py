@@ -165,6 +165,13 @@ def test_a_changed_nginx_config_rolls_the_pod():
     assert checksum() != checksum(chromePort="4199")
 
 
+def test_the_agent_caps_its_ephemeral_storage_without_reserving_it():
+    pod = next(d for d in _render() if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
+    resources = next(c for c in pod["containers"] if c["name"] == "opencode")["resources"]
+    assert resources["limits"]["ephemeral-storage"] == "5Gi"
+    assert resources["requests"]["ephemeral-storage"] == "0"
+
+
 def test_sftp_reaches_only_the_project_read_only():
     pod = next(d for d in _render() if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
     sidecar = next(c for c in pod["containers"] if c["name"] == "ssh")

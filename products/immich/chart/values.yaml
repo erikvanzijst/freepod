@@ -42,12 +42,16 @@ server:
     requests:
       cpu: 5m
       memory: 672Mi
+    limits:
+      memory: 6Gi
 
 machineLearning:
   resources:
     requests:
       cpu: 10m
       memory: 256Mi
+    limits:
+      memory: 6Gi
 
 # Bundled PostgreSQL (immich's pgvecto.rs/vectorchord image -- NOT stock postgres).
 postgresql:
@@ -71,6 +75,8 @@ postgresql:
     requests:
       cpu: 25m
       memory: 256Mi
+    limits:
+      memory: 2Gi
 
 # Bundled Valkey (Redis-compatible) for the job queue.
 valkey:
@@ -86,6 +92,8 @@ valkey:
     requests:
       cpu: 10m
       memory: 32Mi
+    limits:
+      memory: 2Gi
 
 # TLS is injected per-deployment by the Caelus reconciler (caelus.ingress.tls).
 # These defaults let the chart render standalone (helm template / tests).

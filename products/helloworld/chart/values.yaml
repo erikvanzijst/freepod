@@ -26,6 +26,8 @@ resources:
   requests:
     cpu: 5m
     memory: 16Mi
+  limits:
+    memory: 1Gi
 
 # Plan- and TLS-related values are injected per-deployment by the Caelus reconciler
 # (caelus.plan.*, caelus.ingress.tls). These defaults let the chart render standalone

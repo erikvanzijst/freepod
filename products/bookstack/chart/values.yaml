@@ -87,6 +87,8 @@ resources:
   requests:
     cpu: 10m
     memory: 112Mi
+  limits:
+    memory: 4Gi
 
 # Escape hatch for BookStack settings this chart does not model.
 extraEnv: {}

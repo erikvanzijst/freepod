@@ -374,8 +374,7 @@ def build_image(
 
     if status != STATUS_SUCCEEDED:
         raise BuildFailed(
-            f"the build {status} (build {build_id}). Nothing has been deployed; "
-            f"the log above is the platform's account of why."
+            f"the build {status} (build {build_id}). Nothing has been deployed."
         )
 
     # `image` is null until the build succeeds, so it is read from the record

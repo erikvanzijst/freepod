@@ -58,6 +58,8 @@ postgres:
     requests:
       cpu: 25m
       memory: 64Mi
+    limits:
+      memory: 2Gi
 
 redis:
   image:
@@ -80,12 +82,16 @@ redis:
     requests:
       cpu: 15m
       memory: 8Mi
+    limits:
+      memory: 1Gi
 
 # Measured idle: ~440Mi resident (Node, no tuning) and ~15m.
 resources:
   requests:
     cpu: 15m
     memory: 448Mi
+  limits:
+    memory: 6Gi
 
 # Escape hatch for Docmost settings this chart does not model.
 extraEnv: {}

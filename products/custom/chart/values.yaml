@@ -75,6 +75,7 @@ resources:
     ephemeral-storage: "0"
   limits:
     ephemeral-storage: 5Gi
+    memory: 8Gi
 
 # Whether this chart wires up object storage — an S3 bucket, NOT a volume. Named
 # `objectStorage` rather than `storage` to stay distinct from

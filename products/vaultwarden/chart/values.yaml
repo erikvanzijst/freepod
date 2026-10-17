@@ -106,6 +106,8 @@ resources:
   requests:
     cpu: 5m
     memory: 64Mi
+  limits:
+    memory: 2Gi
 
 # Escape hatch for vaultwarden settings this chart does not model yet. Plain
 # string values only; anything needing a secret deserves a real value.
