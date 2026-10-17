@@ -62,6 +62,9 @@ product:
   - file: screenshots/inference.webp
     caption: Use your preferred inference providers and models
     form: desktop
+  - file: screenshots/context.webp
+    caption: Monitor context usage and token cost
+    form: desktop
 
 upstream:
   # App Studio's image is Freepod's own and is rebuilt by hand when opencode
