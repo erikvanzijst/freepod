@@ -44,12 +44,19 @@
 
   .actions { display: flex; align-items: center; gap: 8px; }
   .preview, .new-project { position: relative; }
-  header button {
+  header button, .docs {
     display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px;
     font: inherit; color: inherit; background: transparent; cursor: pointer;
     border: 1px solid var(--rule); border-radius: 7px;
   }
-  header button:hover:not(:disabled) { background: var(--hover); }
+  header button:hover:not(:disabled), .docs:hover { background: var(--hover); }
+  .docs { text-decoration: none; }
+  .actions > *, header button { flex: none; white-space: nowrap; }
+  @media (max-width: 560px) {
+    .docs span, .new-project > button span { display: none; }
+  }
+  .docs svg { width: 13px; height: 13px; }
+  .docs[hidden] { display: none; }
   header button:disabled { color: var(--muted); cursor: default; }
   .new-project > button svg { width: 13px; height: 13px; }
   .preview .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: .6; }
@@ -95,8 +102,12 @@
     <span class="platform">Freepod</span><span class="sep">/</span><span class="product">App Studio</span>
   </a>
   <div class="actions">
+  <a class="docs" id="docs" target="_blank" rel="noopener" title="How App Studio works" aria-label="Docs" hidden>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.5h4a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 0-1.5-1.5h-4zM13.5 3.5h-4A1.5 1.5 0 0 0 8 5v8a1.5 1.5 0 0 1 1.5-1.5h4z"/></svg>
+    <span>Docs</span>
+  </a>
   <div class="new-project">
-    <button type="button" id="new-project" title="Start another app, in a project of its own">
+    <button type="button" id="new-project" title="Start another app, in a project of its own" aria-label="New project">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg>
       <span>New project</span>
     </button>
@@ -268,7 +279,12 @@
   let live = null, signedIn = false, win = null;
 
   const platformUrl = httpsUrl(config.platform);
-  if (platformUrl) document.getElementById("home").href = platformUrl;
+  if (platformUrl) {
+    document.getElementById("home").href = platformUrl;
+    const docs = document.getElementById("docs");
+    docs.href = new URL("/docs/apps/products/appstudio", platformUrl).href;
+    docs.hidden = false;
+  }
   preview.hidden = !previewUrl;
 
   const seenKey = "appstudio.previewOpened";
