@@ -32,7 +32,7 @@
 
 - [x] 6.1 Point the catalog entry (`products/catalog/appstudio/appstudio.yaml`) at the new chart version, since `catalog apply` re-asserts it on every API rollout for both environments. Verify with `caelus catalog lint --dir ../products/catalog`.
 - [x] 6.2 Publish the chart (`./scripts/publish-charts.sh appstudio`); move the dev studio to it ahead of the catalog rollout (a break-glass template, which the next dev API rollout replaces with the catalog's). Verify on `studio.erik.dev.freepod.eu`: `/workspace/apps/app` holds the old app and its git history; New project works; SFTP lists the app folders read-only; the preview follows `dev-app` between two apps.
-- [ ] 6.3 Prod follows the catalog when this change is merged and rolled out (product 16, Erik's studio). Verify the owner reaches the studio and the old app is in `apps/app`.
+- [x] 6.3 Prod follows the catalog when this change is merged and rolled out (product 16, Erik's studio). Verify the owner reaches the studio and the old app is in `apps/app`.
 
 ## Workflow follow-up
 
