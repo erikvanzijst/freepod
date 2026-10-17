@@ -56,6 +56,7 @@ from app.services.build_jobs import (
     job_is_failed,
     job_name,
     parse_image_from_termination_message,
+    parse_static_site_from_termination_message,
     parse_usage_from_termination_message,
 )
 
@@ -211,8 +212,10 @@ def _finish(
     now: datetime,
     reason: str,
     usage: BuildUsage | None = None,
+    static_site: bool = False,
 ) -> None:
     build.transition_to(status, image=image, now=now)
+    build.static_site = static_site
     # Stored with the outcome, because the report goes with the Job. Without
     # one the columns stay null and the build is estimated when recorded.
     if usage is not None:
@@ -274,6 +277,7 @@ def _advance_build(
             _finish(
                 session, build, status=BUILD_STATUS_SUCCEEDED, image=image, now=now,
                 reason="Job succeeded and reported an image", usage=usage,
+                static_site=parse_static_site_from_termination_message(message),
             )
             result.succeeded.append(build.id)
         else:

@@ -430,6 +430,16 @@ def parse_image_from_termination_message(message: str | None) -> str | None:
     return image if isinstance(image, str) and image else None
 
 
+def parse_static_site_from_termination_message(message: str | None) -> bool:
+    """Whether a build reported that its image serves a static site.
+
+    Only a JSON ``true`` counts; anything else, including a builder too old to
+    report it, means the image keeps the default request.
+    """
+    payload = _termination_payload(message)
+    return payload is not None and payload.get("static_site") is True
+
+
 @dataclass(frozen=True)
 class BuildUsage:
     """What a build container measured about its own run. Times are naive UTC."""

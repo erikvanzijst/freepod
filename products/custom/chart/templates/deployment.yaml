@@ -137,9 +137,9 @@ spec:
                 name: {{ required "custom: caelus.database.secretName is required when relational storage is enabled" .Values.caelus.database.secretName | quote }}
             {{- end }}
           {{- end }}
-          {{- with .Values.resources }}
+          {{- with include "custom.resources" . }}
           resources:
-            {{- toYaml . | nindent 12 }}
+            {{- . | nindent 12 }}
           {{- end }}
         {{- /*
         The platform's SSH sidecar, rooted at the application container: a shell

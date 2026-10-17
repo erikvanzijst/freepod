@@ -8,7 +8,7 @@ Freepod is in beta. Prices and billing are subject to change; the [pricing page]
 
 Deployments are billed by usage: the CPU and memory they use, measured hourly.
 
-- Each deployment has a minimum of about €0.35 per month, based on the CPU and memory reserved for it.
+- Each deployment has a minimum of about €0.35 per month, based on the CPU and memory reserved for it. A static site or single-page app built without a Dockerfile reserves less memory, for a minimum of about €0.18 per month.
 - Builds count as usage of the deployment they belong to.
 - Deleting a deployment ends its usage. See [Deleting a deployment](deployments-and-releases.md#deleting-a-deployment).
 

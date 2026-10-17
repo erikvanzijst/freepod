@@ -21,6 +21,7 @@ from pydantic import ConfigDict
 from sqlmodel import Field, SQLModel
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     Double,
@@ -29,6 +30,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Uuid,
+    text,
 )
 
 from app.models.core import _utcnow
@@ -95,6 +97,13 @@ class BuildORM(BuildBase, table=True):
     # product's `image` user value, and any client-side reassembly is a place
     # for the two subsystems to drift apart on format.
     image: Optional[str] = Field(default=None, sa_column=Column(String(), nullable=True))
+    # Whether `image` serves a static site with Railpack's Caddy, as the build
+    # container reported it. False means "not known to be one", which is what
+    # every build from before the field existed is (static-site-sizing).
+    static_site: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default=text("false")),
+    )
     # A mirror of the Job's current output, re-read in full on every worker
     # pass rather than appended to, and capped per `build_log_max_bytes`.
     #

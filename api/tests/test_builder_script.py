@@ -1254,7 +1254,10 @@ def test_the_build_pushes_to_the_owners_repository_with_its_capability(monkeypat
     config = json.loads((Path(os.environ["DOCKER_CONFIG"]) / "config.json").read_text())
     assert config == {"auths": {"registry.home": {"registrytoken": "capability"}}}
     assert inspected == [("registry.home", "u/7", "sha256:" + "c" * 64, "capability")]
-    assert json.loads((tmp_path / "term").read_text()) == {"image": "7@sha256:" + "c" * 64}
+    assert json.loads((tmp_path / "term").read_text()) == {
+        "image": "7@sha256:" + "c" * 64,
+        "static_site": False,
+    }
 
 
 def test_the_capability_file_is_readable_by_its_owner_alone(tmp_path):
@@ -1263,3 +1266,106 @@ def test_the_capability_file_is_readable_by_its_owner_alone(tmp_path):
 
     assert json.loads(path.read_text()) == {"auths": {"cr.test": {"registrytoken": "tok"}}}
     assert path.stat().st_mode & 0o777 == 0o600
+
+
+# ---------------------------------------------------------------------------
+# Static-site detection
+#
+# The fixtures are real plans written by `railpack prepare` at the pinned
+# version, so a Railpack bump that moves the start commands fails here rather
+# than quietly sizing every static site at the default request.
+# ---------------------------------------------------------------------------
+
+RAILPACK_PLANS = Path(__file__).parent / "fixtures" / "railpack"
+
+
+@pytest.mark.parametrize(
+    "plan, static",
+    [
+        ("static-html", True),
+        ("vite-spa", True),
+        ("node-server", False),
+        ("python-script", False),
+    ],
+)
+def test_real_plans_are_classified_by_their_start_command(plan, static):
+    assert build.serves_static_site(RAILPACK_PLANS / f"{plan}.json") is static
+
+
+def test_the_plan_fixtures_come_from_the_pinned_railpack():
+    dockerfile = (BUILD_SCRIPT.parent / "Dockerfile").read_text()
+    pinned = re.search(r"^ARG RAILPACK_VERSION=(\S+)$", dockerfile, re.M).group(1)
+    for path in RAILPACK_PLANS.glob("*.json"):
+        plan = json.loads(path.read_text())
+        assert plan["deploy"]["variables"]["RAILPACK_VERSION"] == pinned, path.name
+
+
+def _plan(tmp_path, content) -> Path:
+    path = tmp_path / build.PLAN_FILENAME
+    path.write_text(content if isinstance(content, str) else json.dumps(content))
+    return path
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "",
+        "{not json",
+        "[]",
+        "null",
+        {},
+        {"deploy": None},
+        {"deploy": []},
+        {"deploy": {}},
+        {"deploy": {"startCommand": None}},
+        {"deploy": {"startCommand": ["caddy", "run"]}},
+        # A start command the project wrote itself, even one that runs Caddy.
+        {"deploy": {"startCommand": "caddy run --config Caddyfile --adapter caddyfile"}},
+        {
+            "deploy": {
+                "startCommand": "caddy run --config Caddyfile --adapter caddyfile 2>&1; node s.js"
+            }
+        },
+        {"deploy": {"startCommand": " caddy run --config Caddyfile --adapter caddyfile 2>&1"}},
+    ],
+    ids=lambda c: repr(c)[:40],
+)
+def test_anything_unexpected_is_not_a_static_site(tmp_path, content):
+    assert build.serves_static_site(_plan(tmp_path, content)) is False
+
+
+def test_a_missing_plan_is_not_a_static_site(tmp_path):
+    assert build.serves_static_site(tmp_path / "absent.json") is False
+
+
+def test_a_static_railpack_build_reports_it(monkeypatch, tmp_path):
+    _arrange_build(monkeypatch, tmp_path, dockerfile=False)
+
+    def _prepare(source, plan_dir):
+        plan_dir.mkdir(parents=True, exist_ok=True)
+        (plan_dir / build.PLAN_FILENAME).write_text(
+            (RAILPACK_PLANS / "static-html.json").read_text()
+        )
+
+    monkeypatch.setattr(build, "prepare_plan", _prepare)
+
+    assert build.main() == 0
+    assert json.loads((tmp_path / "term").read_text())["static_site"] is True
+
+
+def test_a_dockerfile_build_is_never_a_static_site(monkeypatch, tmp_path):
+    """Even with a static-site plan lying in the work tree from a previous run."""
+    _arrange_build(monkeypatch, tmp_path, dockerfile=True)
+    (tmp_path / "plan").mkdir()
+    (tmp_path / "plan" / build.PLAN_FILENAME).write_text(
+        (RAILPACK_PLANS / "static-html.json").read_text()
+    )
+
+    assert build.main() == 0
+    assert json.loads((tmp_path / "term").read_text())["static_site"] is False
+
+
+def test_a_failed_build_reports_no_verdict(monkeypatch, tmp_path):
+    payload = _run_main(monkeypatch, tmp_path, build.BuildFailure("nope"))
+
+    assert "static_site" not in payload

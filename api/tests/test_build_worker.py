@@ -84,12 +84,17 @@ class FakeCluster:
 
     # -- test helpers -----------------------------------------------------
     def complete(
-        self, build_id: UUID, *, image: str | None = IMAGE, usage: dict | None = None
+        self,
+        build_id: UUID,
+        *,
+        image: str | None = IMAGE,
+        usage: dict | None = None,
+        extra: dict | None = None,
     ) -> None:
         self.jobs[job_name(build_id)]["status"] = {"succeeded": 1}
         if image is not None:
             self.termination[str(build_id)] = json.dumps(
-                {"image": image, **({"usage": usage} if usage else {})}
+                {"image": image, **({"usage": usage} if usage else {}), **(extra or {})}
             )
 
     def fail(
@@ -310,6 +315,45 @@ def test_success_adopts_the_reported_image(db_session, cluster, settings):
     assert build.status == BUILD_STATUS_SUCCEEDED
     assert build.image == IMAGE
     assert build.finished_at is not None
+
+
+@pytest.mark.parametrize(
+    "extra, static_site",
+    [
+        ({"static_site": True}, True),
+        ({"static_site": False}, False),
+        # A builder that predates the field.
+        ({}, False),
+        # Malformed: never believed, and never a reason to fail a good build.
+        ({"static_site": "true"}, False),
+        ({"static_site": 1}, False),
+        ({"static_site": None}, False),
+    ],
+)
+def test_success_stores_the_static_site_verdict(
+    db_session, cluster, settings, extra, static_site
+):
+    build = _running(db_session, cluster, settings)
+    cluster.complete(build.id, extra=extra)
+
+    run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert build.status == BUILD_STATUS_SUCCEEDED
+    assert build.image == IMAGE
+    assert build.static_site is static_site
+
+
+def test_a_failed_build_is_never_a_static_site(db_session, cluster, settings):
+    build = _running(db_session, cluster, settings)
+    cluster.fail(build.id)
+    cluster.termination[str(build.id)] = json.dumps({"error": "x", "static_site": True})
+
+    run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert build.status == BUILD_STATUS_FAILED
+    assert build.static_site is False
 
 
 def test_an_unsuccessful_job_fails_the_build(db_session, cluster, settings):
