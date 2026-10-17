@@ -136,6 +136,7 @@ def test_the_session_environment(deps, monkeypatch, tmp_path):
     assert env["PATH"].split(os.pathsep)[0] == str(runner.HERE / "bin")
     workspace = Path(env["UPGRADE_OUT_DIR"]).parent
     assert env["PI_CODING_AGENT_DIR"] == str(workspace / "agent")
+    assert env["TMPDIR"] == str(workspace / "tmp")
     assert env["UPGRADER_TOKEN_FILE"] == str(deps.state_dir / "tokens" / "immich")
     assert env["HOME"] == deps.agent.home
     assert env["INFERENCE_API_KEY"] == "sk-inference-secret"

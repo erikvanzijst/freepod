@@ -139,6 +139,7 @@ workspace, holding a new clone of `master` that the session user owns, with:
 - `UPGRADE_PRODUCT` set to the product's slug;
 - `UPGRADE_DRY_RUN` set to `1` in dry-run mode and `0` otherwise;
 - `UPGRADE_OUT_DIR` pointing into that workspace;
+- `TMPDIR` pointing into that workspace, so the session's temporary files are deleted with it;
 - `UPGRADE_RUN_URL` naming the product's place on its run's page, so that the session can
   send a reviewer back to it (`product-upgrade-skill`), and empty when the deployment has
   no public URL configured;

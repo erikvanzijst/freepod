@@ -45,7 +45,7 @@ MAX_TRANSCRIPT = 64 * 1024 * 1024
 # The workspace (D2). The service's own directory is closed to the session; the shared ones
 # belong to the service, so the session can fill them but not swap them for links, and the
 # sticky root keeps it from replacing anything the service put there.
-RUNNER, SHARED, CLONE = "runner", ("agent", "session", "out"), "freepod"
+RUNNER, SHARED, CLONE = "runner", ("agent", "session", "out", "tmp"), "freepod"
 
 
 @dataclass
@@ -132,6 +132,7 @@ def session_env(deps: Deps, settings: Settings, slug: str, workspace: Path, toke
         UPGRADE_PRODUCT=slug,
         UPGRADE_DRY_RUN="1" if settings.dry_run else "0",
         UPGRADE_OUT_DIR=str(workspace / "out"),
+        TMPDIR=str(workspace / "tmp"),
         UPGRADE_RUN_URL=url,
         UPGRADER_TOKEN_FILE=str(token_file),
         GH_REPO=REPO,

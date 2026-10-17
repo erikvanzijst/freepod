@@ -13,11 +13,11 @@ ARG PYTHON_VERSION=3.12.14
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
-      curl=7.88.1-10+deb12u15 \
-      git=1:2.39.5-0+deb12u3 \
-      jq=1.6-2.1+deb12u2 \
-      sudo=1.9.13p3-1+deb12u4 \
-      tini=0.19.0-1+b3 \
+      curl \
+      git \
+      jq \
+      sudo \
+      tini \
       htop \
       procps \
  && rm -rf /var/lib/apt/lists/*
