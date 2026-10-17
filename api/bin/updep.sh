@@ -3,8 +3,7 @@
 # Upgrade button does. Run it inside the API pod: the build worker has no vars
 # keyring, so deployments with vars would fail there.
 #
-#   kubectl exec -i -n caelus-dev -c api deploy/caelus-api -- sh -c 'cat > /tmp/upgrade-deployments.sh' < var/upgrade-deployments.sh
-#   kubectl exec -it -n caelus-dev -c api deploy/caelus-api -- bash /tmp/upgrade-deployments.sh upgrade -i
+#   kubectl exec -it -n caelus-dev -c api deploy/caelus-api -- bash /app/bin/updep.sh upgrade -i
 set -euo pipefail
 
 usage() {
