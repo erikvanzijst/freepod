@@ -72,6 +72,9 @@ resources:
   requests:
     cpu: 10m
     memory: 128Mi
+    ephemeral-storage: "0"
+  limits:
+    ephemeral-storage: 5Gi
 
 # Whether this chart wires up object storage — an S3 bucket, NOT a volume. Named
 # `objectStorage` rather than `storage` to stay distinct from

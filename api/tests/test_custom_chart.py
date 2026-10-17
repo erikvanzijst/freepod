@@ -206,6 +206,13 @@ def test_the_pod_runs_in_its_own_user_namespace():
     assert _pod_spec(_render(**BASE, image=f"1@{DIGEST}", **DATABASE))["hostUsers"] is False
 
 
+def test_the_app_container_caps_its_ephemeral_storage_without_reserving_it():
+    resources = _app_container(_render(**BASE))["resources"]
+
+    assert resources["limits"]["ephemeral-storage"] == "5Gi"
+    assert resources["requests"]["ephemeral-storage"] == "0"
+
+
 def test_a_node_pool_is_preferred_and_tolerated_but_not_required():
     pod = _pod_spec(_render(**BASE, nodePool="tenant"))
 
