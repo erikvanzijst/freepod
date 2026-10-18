@@ -1,0 +1,65 @@
+{{- /*
+Bundled memcached, OpenProject's Rails cache as upstream's compose runs it. It
+holds nothing that cannot be rebuilt, so it has no volume.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-memcached
+  labels:
+    {{- include "openproject.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "openproject.componentSelector" (dict "root" . "name" "memcached") | nindent 4 }}
+  ports:
+    - name: memcached
+      port: 11211
+      targetPort: memcached
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-memcached
+  labels:
+    {{- include "openproject.labels" . | nindent 4 }}
+    {{- include "openproject.componentSelector" (dict "root" . "name" "memcached") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "openproject.componentSelector" (dict "root" . "name" "memcached") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openproject.componentSelector" (dict "root" . "name" "memcached") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: memcached
+          image: {{ .Values.memcached.image.repository }}:{{ .Values.memcached.image.tag }}
+          imagePullPolicy: {{ .Values.memcached.image.pullPolicy }}
+          {{- with .Values.memcached.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 11211
+            runAsGroup: 11211
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          ports:
+            - containerPort: 11211
+              name: memcached
+          readinessProbe:
+            tcpSocket: { port: memcached }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: memcached }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          {{- with .Values.memcached.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

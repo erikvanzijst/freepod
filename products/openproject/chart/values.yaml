@@ -1,0 +1,139 @@
+# Bespoke OpenProject chart values. Flat and explicit: every image, size and
+# env the deployment uses is declared here.
+
+image:
+  repository: docker.io/openproject/openproject
+  # Defaults to the chart appVersion's -slim tag.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Public hostname: the ingress rule host and OPENPROJECT_HOST__NAME.
+host: "openproject.local"
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+
+# The owner's account, seeded on first start with the login "admin".
+# Its email comes from caelus.owner.email under Caelus and from `email`
+# standalone.
+admin:
+  name: OpenProject Admin
+  email: admin@example.com
+  # Blank generates one on first install; a tenant-supplied
+  # OPENPROJECT_ADMIN_PASSWORD var overrides it.
+  password: ""
+
+smtp:
+  host: ""
+  port: 25
+  from: openproject@example.com
+
+persistence:
+  # Attachments and other uploaded files, at /var/openproject/assets.
+  # caelus.plan.storageSize overrides the size.
+  assets:
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    storageClassName: ""
+
+# Puma in single mode: one process instead of a master and two forked
+# workers, about 1 GiB less at idle. Threads at upstream's defaults.
+web:
+  workers: 0
+  minThreads: 4
+  maxThreads: 16
+  # Measured idle: ~720Mi resident and ~6m.
+  resources:
+    requests:
+      cpu: 10m
+      memory: 768Mi
+    limits:
+      memory: 4Gi
+
+worker:
+  # Measured idle: ~670Mi resident and ~5m.
+  resources:
+    requests:
+      cpu: 10m
+      memory: 704Mi
+    limits:
+      memory: 4Gi
+
+# Migrations and seeds, in an init container on every start.
+seeder:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+
+hocuspocus:
+  image:
+    repository: docker.io/openproject/hocuspocus
+    # Defaults to the OpenProject version, which it is released under.
+    tag: ""
+    pullPolicy: IfNotPresent
+  # Measured idle: ~125Mi resident and ~2m.
+  resources:
+    requests:
+      cpu: 5m
+      memory: 128Mi
+    limits:
+      memory: 1Gi
+
+postgres:
+  image:
+    repository: docker.io/library/postgres
+    tag: "17"
+    pullPolicy: IfNotPresent
+  auth:
+    username: openproject
+    database: openproject
+    # Blank generates one on first install and reuses it from the <release>-db
+    # Secret thereafter.
+    password: ""
+  persistence:
+    accessMode: ReadWriteOnce
+    size: 5Gi
+    storageClassName: ""
+  # Measured idle on a fresh instance: ~90Mi resident and ~15m.
+  resources:
+    requests:
+      cpu: 15m
+      memory: 96Mi
+    limits:
+      memory: 2Gi
+
+memcached:
+  image:
+    repository: docker.io/library/memcached
+    tag: "1.6"
+    pullPolicy: IfNotPresent
+  args:
+    - memcached
+    - -m
+    - "64"
+  resources:
+    requests:
+      cpu: 5m
+      memory: 24Mi
+    limits:
+      memory: 128Mi
+
+# Escape hatch for OpenProject settings this chart does not model.
+extraEnv: {}
+
+# Injected per deployment by the Caelus reconciler.
+caelus:
+  releaseId: ""
+  plan: {}
+  owner: {}
+  ingress:
+    enabled: false
+    tls: {}
+  vars: {}
+
+sshSidecarImage: ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2

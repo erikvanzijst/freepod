@@ -1,0 +1,9 @@
+{{- /*
+`selector` targets the openproject pod: the library's instance-only default
+would also match the other pods, which have no sshd.
+*/}}
+{{ include "ssh-sidecar.resources" (dict
+     "root" .
+     "selector" (dict
+       "app.kubernetes.io/name" "openproject"
+       "app.kubernetes.io/instance" .Release.Name)) }}

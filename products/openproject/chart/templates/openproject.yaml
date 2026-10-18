@@ -1,0 +1,199 @@
+{{- /*
+Web and worker share one pod: both read and write the assets volume, and
+a local-path volume is only ever on one node. Upstream runs them as separate
+Deployments.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-openproject
+  labels:
+    {{- include "openproject.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "openproject.componentSelector" (dict "root" . "name" "openproject") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-openproject
+  labels:
+    {{- include "openproject.labels" . | nindent 4 }}
+    {{- include "openproject.componentSelector" (dict "root" . "name" "openproject") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "openproject.componentSelector" (dict "root" . "name" "openproject") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openproject.componentSelector" (dict "root" . "name" "openproject") | nindent 8 }}
+        {{- include "openproject.podLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      # Not runAsNonRoot here: the SSH sidecar in this pod runs as root.
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          command:
+            - sh
+            - -c
+            - until pg_isready -h {{ .Release.Name }}-postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 2; done
+        # Upstream's seeder Job, run before every start instead: it loads the
+        # schema or migrates, then seeds, and seeding is a no-op once done. The
+        # owner's account is seeded here and only on the first run.
+        - name: seeder
+          image: {{ .Values.image.repository }}:{{ include "openproject.appTag" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [/app/docker/prod/seeder]
+          securityContext:
+            {{- include "openproject.securityContext" . | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          env:
+            {{- include "openproject.env" . | nindent 12 }}
+            - name: OPENPROJECT_SEED__ADMIN__USER__MAIL
+              value: {{ .Values.caelus.owner.email | default .Values.admin.email | quote }}
+            - name: OPENPROJECT_SEED__ADMIN__USER__NAME
+              value: {{ .Values.admin.name | quote }}
+            - name: OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET
+              value: "false"
+            - name: OPENPROJECT_SEED__ADMIN__USER__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.caelus.vars.secretName | default (printf "%s-admin" .Release.Name) | quote }}
+                  key: OPENPROJECT_ADMIN_PASSWORD
+          volumeMounts:
+            - name: assets
+              mountPath: /var/openproject/assets
+          {{- with .Values.seeder.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      containers:
+        - name: web
+          image: {{ .Values.image.repository }}:{{ include "openproject.appTag" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [/app/docker/prod/web]
+          securityContext:
+            {{- include "openproject.securityContext" . | nindent 12 }}
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          env:
+            {{- include "openproject.env" . | nindent 12 }}
+          # Probes as upstream's chart sends them: by Pod IP, OpenProject
+          # answers a request for a host it does not serve with 404.
+          startupProbe:
+            httpGet:
+              path: /health_checks/default
+              port: http
+              httpHeaders:
+                - { name: Host, value: localhost }
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health_checks/default
+              port: http
+              httpHeaders:
+                - { name: Host, value: localhost }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health_checks/default
+              port: http
+              httpHeaders:
+                - { name: Host, value: localhost }
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: assets
+              mountPath: /var/openproject/assets
+          {{- with .Values.web.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        - name: worker
+          image: {{ .Values.image.repository }}:{{ include "openproject.appTag" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [/app/docker/prod/worker]
+          securityContext:
+            {{- include "openproject.securityContext" . | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          env:
+            {{- include "openproject.env" . | nindent 12 }}
+            - name: GOOD_JOB_PROBE_PORT
+              value: "7001"
+          ports:
+            - containerPort: 7001
+              name: worker-probe
+          readinessProbe:
+            httpGet: { path: /status, port: worker-probe }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /status/connected, port: worker-probe }
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: assets
+              mountPath: /var/openproject/assets
+          {{- with .Values.worker.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage
+             "sessionRoot" "volume:/assets"
+             "mounts" (list (dict "volume" "assets" "path" "/assets"))) | nindent 8 }}
+      volumes:
+        - name: assets
+          persistentVolumeClaim:
+            claimName: assets
+---
+{{- /*
+Fixed name (not release-prefixed) so an existing volume in the namespace is
+re-adopted on upgrade rather than replaced by a fresh, empty PVC.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: assets
+  labels:
+    {{- include "openproject.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.assets.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.caelus.plan.storageSize | default .Values.persistence.assets.size }}
+  {{- if .Values.persistence.assets.storageClassName }}
+  storageClassName: {{ .Values.persistence.assets.storageClassName }}
+  {{- end }}

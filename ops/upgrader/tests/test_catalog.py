@@ -38,6 +38,7 @@ def test_the_repositorys_own_catalog():
         "matrix",
         "mattermost",
         "nextcloud",
+        "openproject",
         "photoprism",
         "vaultwarden",
     ]
