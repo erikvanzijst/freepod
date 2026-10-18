@@ -62,6 +62,9 @@ product:
   - file: screenshots/inference.webp
     caption: Use your preferred inference providers and models
     form: desktop
+  - file: screenshots/studio-mobile.webp
+    caption: Continue or start a coding session on mobile
+    form: mobile
   - file: screenshots/context.webp
     caption: Monitor context usage and token cost
     form: desktop
