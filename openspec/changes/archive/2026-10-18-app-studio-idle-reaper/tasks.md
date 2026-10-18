@@ -24,7 +24,7 @@
 ## 4. Release
 
 - [x] 4.1 Publish the chart (`./scripts/publish-charts.sh appstudio`) and move the dev studio to it. Verify on the dev studio: closing the tab for 30 minutes leaves only opencode in the container (`ps`) and memory drops accordingly (`memory.current`); reopening it brings the preview back; `{namespace=~"app-studio-.*", container="opencode"} |= "appstudio-reaper:"` in Loki returns the suspend and resume lines.
-- [ ] 4.2 Prod follows the catalog on merge and rollout. Verify on a prod studio after 30 minutes unused that `memory.current` is down to roughly opencode's own footprint.
+- [x] 4.2 Prod follows the catalog on merge and rollout. Verify on a prod studio after 30 minutes unused that `memory.current` is down to roughly opencode's own footprint.
 
 ## Workflow follow-up
 
