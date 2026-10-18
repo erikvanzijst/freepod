@@ -63,6 +63,49 @@ freepod var set API_KEY --secret
 
 App Studio starts with OpenCode's free models. To use another model, connect a provider in OpenCode's settings with an API key from that provider.
 
+### Your own models
+
+To use your own locally hosted models, make sure your inference server (e.g. `llama.cpp` or `Ollama`) is accessible over the public internet and then configure it in OpenCode's settings -> Providers -> Custom provider.
+
+Unfortunately, OpenCode's settings UI cannot configure everything a custom provider's model may need, such as its context size or reasoning effort. For those, edit OpenCode's configuration file in the terminal: `vim /workspace/.config/opencode/opencode.jsonc`. It is kept when App Studio restarts, and OpenCode merges it with App Studio's own settings. For example, a self-hosted OpenAI-compatible server with a reasoning model that also reads images:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "disabled_providers": [],
+  "provider": {
+    "deprutser": {
+      "name": "De Prutser",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "https://ai.deprutser.be/v1"
+      },
+      "models": {
+        "qwen3.8-27b-q4": {
+          "name": "qwen3.8-27b-q4",
+          "reasoning": true,
+          "variants": {
+            "medium": { "reasoningEffort": "medium" },
+            "low":    { "reasoningEffort": "low" },
+            "xhigh":  { "reasoningEffort": "xhigh" }
+          },
+          "limit": {
+            "context": 200000,
+            "output": 16000
+          },
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+OpenCode reads the file when it starts. To apply your changes, run `pkill -x opencode` in the terminal: App Studio restarts, which takes a few seconds, and the preview's local databases and file storage start empty again. See OpenCode's [configuration](https://opencode.ai/docs/config/) and [providers](https://opencode.ai/docs/providers/) documentation for every setting.
+
 ## Your code
 
 Each app is a git repository in App Studio, in `/workspace/apps/<name>`. The terminal has git, vim, Node.js, Python and the PostgreSQL client, and runs as root.
