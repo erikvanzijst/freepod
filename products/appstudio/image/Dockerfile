@@ -69,7 +69,7 @@ RUN uv tool install /tmp/freepod-cli \
 # config, which overrides the user's.
 ENV XDG_CONFIG_HOME=/workspace/.config
 COPY opencode.json /etc/opencode/opencode.json
-COPY bin/appstudio-start bin/appstudio-new-app bin/appstudio-app /usr/local/bin/
+COPY bin/appstudio-start bin/appstudio-new-app bin/appstudio-app bin/appstudio-reaper /usr/local/bin/
 # The starter every app is copied from, and a reference app built on it; the
 # agent's instructions point at both. Neither is copied into the project, so
 # nothing appears in the preview before the user asks for an app.

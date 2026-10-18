@@ -12,17 +12,17 @@ App Studio is a coding agent in your browser, built on [OpenCode](https://openco
 
 | Setting | Meaning |
 | --- | --- |
-| Hostname | The studio's address |
+| Hostname | App Studio's address |
 
 ## Signing in
 
-Only your own Freepod account can open the studio and its preview. Anyone else who signs in sees a page saying they have no access.
+Only your own Freepod account can open App Studio and its preview. Anyone else who signs in sees a page saying they have no access.
 
-The first time a browser opens the studio, it starts a new session with an example prompt typed in. Press Enter to watch the agent build and publish a small app, or replace the prompt with your own.
+The first time a browser opens App Studio, it starts a new session with an example prompt typed in. Press Enter to watch the agent build and publish a small app, or replace the prompt with your own.
 
 ## Several apps
 
-One studio holds any number of apps, each a project of its own in OpenCode with its own sessions. The studio starts with one, `app`.
+One studio holds any number of apps, each a project of its own in OpenCode with its own sessions. App Studio starts with one, `app`.
 
 **New project** at the top right asks for a name and creates the next one. OpenCode then shows its Home with the new project selected: start a session there with **New session**. To switch apps, open Home (the grid button at the top left) and select a project. A session always works on the app it was started in.
 
@@ -30,17 +30,25 @@ Each app is published separately, as an app of its own on your account.
 
 ## The preview
 
-The **Preview** button at the top right of the studio lights up while the app the agent is building is running, and opens it in a window of its own. The preview updates as the agent changes the code. While nothing is running, the preview window shows a page that waits for the app.
+The **Preview** button at the top right of App Studio lights up while the app the agent is building is running, and opens it in a window of its own. The preview updates as the agent changes the code. While nothing is running, the preview window shows a page that waits for the app.
 
 The preview shows one app at a time: when the agent runs an app, the one that was running stops.
 
-Each app has its own local database and file storage for the preview, which start empty again whenever the studio restarts. A published app has its own, separate ones.
+Each app has its own local database and file storage for the preview, which start empty again whenever App Studio restarts. A published app has its own, separate ones.
+
+## When you're away
+
+The agent keeps working when you close App Studio's tab. Once no tab has had App Studio open for 30 minutes and the agent has finished, App Studio stops what is running for the preview: the app, its database and file storage, and the agent's browser. Their data is kept.
+
+When you open App Studio again, the app that was in the preview starts again within seconds. Other apps you had running are not restarted.
+
+Programs you started in the terminal keep running as long as that terminal is open.
 
 ## Publishing
 
 Ask the agent to publish the app. The first time, it signs in to Freepod with your account: it shows a link and a code, and you approve the sign-in in your browser.
 
-Each published app is a separate app on your account, with its own address, and appears in your dashboard next to your other apps. Published apps are billed by usage; see [Plans and billing](../plans-and-billing.md). The studio itself does not change when you publish.
+Each published app is a separate app on your account, with its own address, and appears in your dashboard next to your other apps. Published apps are billed by usage; see [Plans and billing](../plans-and-billing.md). App Studio itself does not change when you publish.
 
 ### Secrets
 
@@ -53,13 +61,13 @@ freepod var set API_KEY --secret
 
 ## Models
 
-The studio starts with OpenCode's free models. To use another model, connect a provider in OpenCode's settings with an API key from that provider.
+App Studio starts with OpenCode's free models. To use another model, connect a provider in OpenCode's settings with an API key from that provider.
 
 ## Your code
 
-Each app is a git repository in the studio, in `/workspace/apps/<name>`. The terminal has git, vim, Node.js, Python and the PostgreSQL client, and runs as root.
+Each app is a git repository in App Studio, in `/workspace/apps/<name>`. The terminal has git, vim, Node.js, Python and the PostgreSQL client, and runs as root.
 
-[SFTP](../file-access.md) shows a folder per app, read-only, to copy files out of the studio.
+[SFTP](../file-access.md) shows a folder per app, read-only, to copy files out of App Studio.
 
 Sharing a session as a public link is not available.
 

@@ -102,6 +102,10 @@ dev-app stop
   first, then send the user to the preview.
 - In the preview, the signed-in user is always "Developer".
 - The local database and bucket are empty after a restart of the studio.
+- When nobody has used the studio for a while, the dev server, the database
+  and S3 are stopped; their data is kept. Don't assume they are running: run
+  `dev-app`, or `eval "$(dev-postgres)"` and `eval "$(dev-s3)"`, before you
+  use them.
 
 ## Signing in to Freepod
 

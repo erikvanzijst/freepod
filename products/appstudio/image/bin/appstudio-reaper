@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+"""Stop what the agent left running once nobody is using the studio, and bring
+it back when a browser returns.
+
+The studio is idle when, for IDLE_AFTER seconds, no browser has held a
+connection to opencode and no session has been busy or emitted events, and no
+session reports itself busy right before suspending. Then:
+
+  - PostgreSQL stops (pg_ctlcluster), then every other process group that was
+    left behind, reparented to PID 1: dev servers, Garage, anything the agent
+    backgrounded. opencode's own children (MCP servers, terminals) stay.
+  - Every running Playwright MCP server is disconnected, which stops it and its
+    Chrome.
+
+When a browser connects again, those MCP servers are reconnected and the app
+that dev-app had in the preview is restarted with dev-app, which starts
+PostgreSQL and Garage as needed. What to bring back is kept in STATE_FILE, so a
+restarted reaper still resumes a suspended studio.
+
+  appstudio-reaper          run the loop
+  appstudio-reaper plan     print what a suspend would do now, and exit
+
+APPSTUDIO_IDLE_AFTER (seconds, default 1800), APPSTUDIO_REAPER_DRY_RUN=1.
+"""
+import json
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+import urllib.parse
+import urllib.request
+
+STUDIO_PORT = int(os.environ.get("STUDIO_PORT", "4096"))
+STUDIO = f"http://127.0.0.1:{STUDIO_PORT}"
+IDLE_AFTER = int(os.environ.get("APPSTUDIO_IDLE_AFTER", "1800"))
+DRY_RUN = os.environ.get("APPSTUDIO_REAPER_DRY_RUN") == "1"
+CHECK_EVERY = 5
+MCP = "playwright"
+DEV_APP_PIDFILE = "/tmp/dev-app.pid"
+STATE_FILE = "/tmp/appstudio-reaper.state"
+
+busy = set()
+last_agent = time.monotonic()
+lock = threading.Lock()
+
+
+def log(msg):
+    print(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} appstudio-reaper: {msg}", flush=True)
+
+
+def api(method, path, directory=None, timeout=30):
+    if directory:
+        path += "?directory=" + urllib.parse.quote(directory)
+    req = urllib.request.Request(STUDIO + path, method=method)
+    with urllib.request.urlopen(req, timeout=timeout) as res:
+        return json.load(res)
+
+
+def agent_active():
+    global last_agent
+    with lock:
+        last_agent = time.monotonic()
+
+
+def follow_events():
+    """Track agent activity from opencode's global event stream, which carries
+    every directory's events."""
+    while True:
+        try:
+            with urllib.request.urlopen(f"{STUDIO}/global/event", timeout=60) as res:
+                for raw in res:
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    payload = json.loads(line[5:]).get("payload", {})
+                    kind = payload.get("type", "")
+                    if not kind.startswith(("session.", "message.")):
+                        continue
+                    agent_active()
+                    props = payload.get("properties", {})
+                    sid = props.get("sessionID")
+                    with lock:
+                        if kind == "session.status" and sid:
+                            if props.get("status", {}).get("type") == "idle":
+                                busy.discard(sid)
+                            else:
+                                busy.add(sid)
+                        elif kind == "session.idle" and sid:
+                            busy.discard(sid)
+        except Exception as e:  # opencode starting or restarting, or the stream timing out
+            log(f"event stream: {e}; reconnecting")
+        time.sleep(1)
+
+
+def browsers():
+    """Established connections to opencode from anywhere but loopback: the web
+    UI holds its event stream open through the ingress while a tab is open."""
+    port = f":{STUDIO_PORT:04X}"
+    n = 0
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(table) as f:
+                next(f)
+                for row in f:
+                    local, remote, state = row.split()[1:4]
+                    if state != "01" or not local.endswith(port):
+                        continue
+                    ip = remote.split(":")[0]
+                    if len(ip) == 8 and ip[6:] == "7F":
+                        continue
+                    if ip == "00000000000000000000000001000000":
+                        continue
+                    if ip.startswith("0000000000000000FFFF0000") and ip[30:] == "7F":
+                        continue
+                    n += 1
+        except FileNotFoundError:
+            pass
+    return n
+
+
+def procs():
+    out = {}
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open(f"/proc/{pid}/stat") as f:
+                stat = f.read()
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                cmd = f.read().replace(b"\0", b" ").decode(errors="replace").strip()
+        except OSError:
+            continue
+        fields = stat.rsplit(")", 1)[1].split()
+        out[int(pid)] = {"ppid": int(fields[1]), "pgid": int(fields[2]), "cmd": cmd}
+    return out
+
+
+def cwd(pid):
+    try:
+        return os.readlink(f"/proc/{pid}/cwd")
+    except OSError:
+        return None
+
+
+def plan():
+    ps = procs()
+    oc = next((p for p, i in ps.items() if i["cmd"].startswith("opencode web")), None)
+    mine = {os.getpid(), os.getppid(), os.getpgid(0)}
+    groups = {}
+    for pid, info in ps.items():
+        if info["ppid"] == 1 and pid != oc and pid not in mine and info["pgid"] not in mine:
+            groups.setdefault(info["pgid"], []).append(info["cmd"][:100])
+    mcp_dirs = sorted({cwd(p) for p, i in ps.items()
+                       if i["ppid"] == oc and "playwright-mcp" in i["cmd"]} - {None})
+    preview_dir = None
+    try:
+        with open(DEV_APP_PIDFILE) as f:
+            preview_dir = cwd(int(f.read().strip()))
+    except (OSError, ValueError):
+        pass
+    return {"groups": groups, "mcp_dirs": mcp_dirs, "preview_dir": preview_dir}
+
+
+def busy_sessions(dirs):
+    """Sessions opencode reports as working in these directories; the event
+    stream misses a turn that started while it was not connected."""
+    found = []
+    for d in dirs:
+        try:
+            status = api("GET", "/session/status", d)
+        except Exception as e:
+            log(f"session status in {d}: {e}; not suspending")
+            return ["unknown"]
+        found += [sid for sid, s in status.items() if s.get("type") != "idle"]
+    return found
+
+
+def alive(pgid):
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+
+
+def kill_groups(groups):
+    for pgid in groups:
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    deadline = time.monotonic() + 10
+    while groups and time.monotonic() < deadline:
+        time.sleep(0.5)
+        groups = [g for g in groups if alive(g)]
+    for pgid in groups:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def suspend():
+    """Returns the state to resume from, or None when a session is still busy."""
+    p = plan()
+    working = busy_sessions(p["mcp_dirs"])
+    if working:
+        log(f"not suspending: {len(working)} session(s) busy")
+        return None
+    log(f"suspending: {len(p['groups'])} process groups, {len(p['mcp_dirs'])} MCP servers; "
+        f"preview {p['preview_dir'] or 'none'}")
+    state = {"preview_dir": p["preview_dir"], "mcp_dirs": p["mcp_dirs"]}
+    if DRY_RUN:
+        log(f"dry run: would stop {json.dumps(p, indent=1)}")
+        return state
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
+    subprocess.run(["pg_ctlcluster", "18", "main", "stop"], capture_output=True)
+    kill_groups(list(plan()["groups"]))
+    for d in p["mcp_dirs"]:
+        try:
+            api("POST", f"/mcp/{MCP}/disconnect", d)
+        except Exception as e:
+            log(f"disconnect {MCP} in {d}: {e}")
+    try:
+        os.unlink(DEV_APP_PIDFILE)
+    except FileNotFoundError:
+        pass
+    return state
+
+
+def resume(state):
+    log(f"browser back; reconnecting {len(state['mcp_dirs'])} MCP servers; "
+        f"preview {state['preview_dir'] or 'none'}")
+    if DRY_RUN:
+        return
+    for d in state["mcp_dirs"]:
+        try:
+            api("POST", f"/mcp/{MCP}/connect", d, timeout=60)
+        except Exception as e:
+            log(f"connect {MCP} in {d}: {e}")
+    preview_dir = state["preview_dir"]
+    if preview_dir and os.path.isdir(preview_dir):
+        proc = subprocess.Popen(["dev-app"], cwd=preview_dir, stdin=subprocess.DEVNULL,
+                                stdout=sys.stdout, stderr=sys.stdout, start_new_session=True)
+        threading.Thread(target=proc.wait, daemon=True).start()
+    try:
+        os.unlink(STATE_FILE)
+    except FileNotFoundError:
+        pass
+
+
+def main():
+    if sys.argv[1:] == ["plan"]:
+        print(json.dumps(plan(), indent=2))
+        return
+    state = None
+    try:
+        with open(STATE_FILE) as f:
+            state = json.load(f)
+        log("resuming from a suspend before this restart once a browser connects")
+    except (OSError, ValueError):
+        pass
+    threading.Thread(target=follow_events, daemon=True).start()
+    log(f"watching; idle after {IDLE_AFTER}s{' (dry run)' if DRY_RUN else ''}")
+    last_browser = time.monotonic()
+    while True:
+        now = time.monotonic()
+        if browsers():
+            last_browser = now
+            if state:
+                resume(state)
+                state = None
+        with lock:
+            agent_idle = not busy and now - last_agent >= IDLE_AFTER
+        if not state and agent_idle and now - last_browser >= IDLE_AFTER:
+            state = suspend()
+            if not state:
+                agent_active()
+        time.sleep(CHECK_EVERY)
+
+
+if __name__ == "__main__":
+    main()

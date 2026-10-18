@@ -52,4 +52,7 @@ freepod skill install --agent opencode >/dev/null 2>&1 \
   || echo "appstudio: could not install the freepod skill" >&2
 
 cd "$FIRST_APP"
+# Stops what the agent left running once nobody uses the studio; its output
+# goes to the container's log as well as its own file.
+(while :; do appstudio-reaper || true; sleep 10; done) 2>&1 | tee -a /tmp/appstudio-reaper.log &
 exec opencode web --hostname 0.0.0.0 --port "${STUDIO_PORT:-4096}"
