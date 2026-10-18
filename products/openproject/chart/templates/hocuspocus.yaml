@@ -1,0 +1,64 @@
+{{- /*
+The collaborative editing server for OpenProject's Documents. It authorizes
+each connection with OpenProject itself, over the Service rather than the
+public host, which is why the web process also accepts that Service name.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-hocuspocus
+  labels:
+    {{- include "openproject.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "openproject.componentSelector" (dict "root" . "name" "hocuspocus") | nindent 4 }}
+  ports:
+    - name: http
+      port: 1234
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-hocuspocus
+  labels:
+    {{- include "openproject.labels" . | nindent 4 }}
+    {{- include "openproject.componentSelector" (dict "root" . "name" "hocuspocus") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "openproject.componentSelector" (dict "root" . "name" "hocuspocus") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openproject.componentSelector" (dict "root" . "name" "hocuspocus") | nindent 8 }}
+        {{- include "openproject.podLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: hocuspocus
+          image: {{ .Values.hocuspocus.image.repository }}:{{ include "openproject.hocuspocusTag" . }}
+          imagePullPolicy: {{ .Values.hocuspocus.image.pullPolicy }}
+          securityContext:
+            {{- include "openproject.securityContext" . | nindent 12 }}
+          ports:
+            - containerPort: 1234
+              name: http
+          env:
+            - name: SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-db
+                  key: OPENPROJECT_COLLABORATIVE__EDITING__HOCUSPOCUS__SECRET
+            - name: OPENPROJECT_URL
+              value: {{ printf "http://%s-openproject:8080" .Release.Name | quote }}
+            - name: OPENPROJECT_HTTPS
+              value: "true"
+          readinessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 10
+          {{- with .Values.hocuspocus.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

@@ -1,0 +1,145 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: openproject
+  name: OpenProject
+  tagline: Plan, track and deliver projects, from the first task to the last milestone.
+  description: |-
+    OpenProject is project management for teams. Break work down into work packages, plan it on a Gantt chart, run it on agile boards, and keep track of the time and money it takes. Classic, agile and hybrid projects all fit, side by side.
+
+    On Freepod, OpenProject runs as your own private instance, hosted in the EU. Keep meeting agendas and minutes beside the work they discuss, write documents together in real time, and give every project its own wiki and forum.
+
+    Moving on later? OpenProject has a complete REST API, and exports work packages as CSV, Excel and PDF.
+  category: Project management
+  replaces: Jira · Microsoft Project
+  icon: icon.png
+  license: GPL-3.0
+  features:
+  - icon: label
+    title: Work packages
+    body: Tasks, bugs and features, with your own types, fields and workflows.
+  - icon: calendar
+    title: Gantt charts
+    body: Schedule work on a timeline, with dependencies and milestones.
+  - icon: apps
+    title: Agile boards
+    body: Kanban boards, plus a Scrum backlog with story points and burndown charts.
+  - icon: history
+    title: Time and costs
+    body: Log time against work, set budgets and report on what a project costs.
+  - icon: groups
+    title: Meetings
+    body: Agendas and minutes, linked to the work packages they discuss.
+  - icon: edit
+    title: Documents and wiki
+    body: Write documents together in real time, next to each project's wiki.
+  links:
+  - label: Website
+    href: https://www.openproject.org
+    kind: website
+  - label: Documentation
+    href: https://www.openproject.org/docs/
+    kind: docs
+  - label: Source code
+    href: https://github.com/opf/openproject
+    kind: source
+  - label: Release notes
+    href: https://www.openproject.org/docs/release-notes/
+    kind: releases
+  screenshots:
+  - file: screenshots/gantt.webp
+    caption: Plan a project on the Gantt chart
+    form: desktop
+  - file: screenshots/board.webp
+    caption: Move work across a Kanban board
+    form: desktop
+  - file: screenshots/wplist.webp
+    caption: Every work package in a project, with status, assignee and priority
+    form: desktop
+  - file: screenshots/wp.webp
+    caption: A work package with its estimates, spent time and discussion
+    form: desktop
+  - file: screenshots/meeting.webp
+    caption: A meeting agenda, linked to the work it covers
+    form: desktop
+  - file: screenshots/doc.webp
+    caption: A document, written together in real time
+    form: desktop
+  - file: screenshots/time.webp
+    caption: Your week of logged time
+    form: desktop
+  - file: screenshots/wplist-mobile.webp
+    caption: Work packages on a phone
+    form: mobile
+  - file: screenshots/wp-mobile.webp
+    caption: Update a work package on the go
+    form: mobile
+  - file: screenshots/board-mobile.webp
+    caption: Boards on mobile too
+    form: mobile
+  - file: screenshots/meeting-mobile.webp
+    caption: The meeting agenda on a phone
+    form: mobile
+  - file: screenshots/doc-mobile.webp
+    caption: Read and edit documents from your phone
+    form: mobile
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/openproject/openproject
+  # The -slim image only: the plain tags are the all-in-one image with its own
+  # database and web server, -slim-bim adds the BIM edition, and the -rc and
+  # moving major/minor tags are excluded.
+  match: ^(?P<version>\d+\.\d+\.\d+)-slim$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/openproject
+  chart_version: 0.1.2
+  system_values:
+    image:
+      tag: 17.9.2-slim
+    smtp:
+      host: smtp.mailer.svc.cluster.local
+      port: 25
+      from: openproject@freepod.eu
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      host:
+        type: string
+        title: Hostname
+        minLength: 1
+        maxLength: 253
+        description: The fully qualified domain name for OpenProject (e.g. projects.user.freepod.eu).
+      admin:
+        type: object
+        additionalProperties: false
+        properties:
+          name:
+            type: string
+            title: Your name
+            minLength: 1
+            maxLength: 60
+            pattern: ^[^\u0000-\u001f\u007f]+$
+            description: How you appear to others in OpenProject. You can change it later from your
+              OpenProject profile.
+        required:
+        - name
+      OPENPROJECT_ADMIN_PASSWORD:
+        type: string
+        title: Password
+        minLength: 10
+        maxLength: 128
+        pattern: ^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^a-zA-Z0-9])[^\u0000-\u001f\u007f]+$
+        x-caelus-target: runtime
+        x-caelus-sensitive: true
+        description: 'You sign in as "admin" with this password. Use at least 10 characters, with
+          lowercase and uppercase letters, a digit and a symbol. Store it somewhere safe: it won''t
+          be shown again. It is set on first start only; to change it later, use OpenProject''s
+          own account settings.'
+    required:
+    - host
+    - admin
+    - OPENPROJECT_ADMIN_PASSWORD

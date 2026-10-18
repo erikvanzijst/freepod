@@ -1,0 +1,9 @@
+- version: "17.9.2"
+  notes: |-
+    Create work packages straight from a document, filter the backlog, and get date alerts.
+
+    - Turn selected text in a document into a linked work package
+    - Filter the backlog by subject and other criteria
+    - Date alerts for upcoming and overdue work
+    - Enter planned work in hours, days, weeks or months
+    - Includes security fixes

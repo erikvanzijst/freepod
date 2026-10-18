@@ -1,0 +1,19 @@
+apiVersion: v2
+name: openproject
+description: >-
+  Self-contained Freepod chart for OpenProject. Renders the full deployment
+  (openproject web and worker, hocuspocus, postgres, memcached) directly.
+type: application
+version: 0.1.2
+appVersion: "17.9.2"
+keywords:
+  - openproject
+  - project-management
+  - postgres
+maintainers:
+  - name: Caelus Team
+
+dependencies:
+  - name: ssh-sidecar
+    version: "0.5.1"
+    repository: "file://../../_lib/ssh-sidecar-chart"

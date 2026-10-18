@@ -80,6 +80,7 @@ SESSION_ROOTS: dict[str, str | None] = {
     "mattermost": "volume:/data",
     "naas": None,
     "nextcloud": "volume:/data",
+    "openproject": "volume:/assets",
     "photoprism": "volume:/originals",
     "vaultwarden": "volume:/data",
 }
