@@ -29,6 +29,7 @@ from app.api import (
 from app.api.util import register_exception_handlers
 from app.db import get_session
 from app.logging_config import configure_logging
+from app.origin_guard import OriginGuard
 from app.config import get_settings
 from app.services.var_crypto import verify_keyring
 
@@ -67,13 +68,17 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
     lifespan=_lifespan,
 )
+# Origins other than the API's own whose pages may call it with credentials.
+_BROWSER_ORIGINS = ["http://localhost:3000", "http://localhost:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173", "https://app.deprutser.be"],
+    allow_origins=_BROWSER_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(OriginGuard, trusted_origins=_BROWSER_ORIGINS)
 
 
 @app.get("/", include_in_schema=False)
