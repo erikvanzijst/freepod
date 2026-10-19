@@ -10,7 +10,7 @@ variable "letsencrypt_email" {
 }
 
 variable "chart_version" {
-  description = "cert-manager Helm chart version (== app version). Matches the homelab (v1.17.2), which issues the identical apex+wildcard freepod cert cleanly via Cloudflare DNS-01."
+  description = "cert-manager Helm chart version (== app version). Upgrade one minor version at a time, to the latest patch of each, as cert-manager's upgrade guide asks."
   type        = string
-  default     = "v1.17.2"
+  default     = "v1.21.2"
 }

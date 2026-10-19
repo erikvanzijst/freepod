@@ -1,5 +1,5 @@
-# cert-manager on the freepod cluster. Mirrors the homelab helm/cert-manager
-# module. Installs CRDs and runs in its own `cert-manager` namespace.
+# cert-manager on the freepod cluster. Installs CRDs and runs in its own
+# `cert-manager` namespace.
 resource "helm_release" "cert_manager" {
   name             = "cert-manager"
   namespace        = "cert-manager"
@@ -9,8 +9,14 @@ resource "helm_release" "cert_manager" {
   chart      = "cert-manager"
   version    = var.chart_version
 
+  # Helm leaves CRDs marked keep in place on uninstall, so removing the release
+  # never deletes every Certificate in the cluster with them.
   set {
-    name  = "installCRDs"
+    name  = "crds.enabled"
+    value = "true"
+  }
+  set {
+    name  = "crds.keep"
     value = "true"
   }
 }
