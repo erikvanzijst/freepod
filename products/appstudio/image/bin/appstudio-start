@@ -21,13 +21,6 @@ if [ -z "$(git config --global user.email || true)" ]; then
   git config --file "$XDG_CONFIG_HOME/git/config" user.name "${email%%@*}"
 fi
 
-# Studios from before the apps directory kept their one app in /workspace/app.
-if [ -d /workspace/app ] && [ ! -e "$FIRST_APP" ]; then
-  mv -T /workspace/app "$FIRST_APP"
-  git -C "$FIRST_APP" worktree repair >/dev/null 2>&1 || true
-elif [ -d /workspace/app ]; then
-  echo "appstudio: both /workspace/app and $FIRST_APP exist; leaving both" >&2
-fi
 [ -e "$FIRST_APP" ] || appstudio-new-app app >/dev/null
 # opencode creates worktrees under its data directory, with no setting to move
 # them; the link puts them in /workspace/trees.

@@ -25,6 +25,7 @@ Without App Studio: set `DATABASE_URL` (and the `AWS_*` variables for S3), then
 | `server/index.ts` | Startup: migrations, then the server on `$PORT` (with Vite in development) |
 | `server/api.ts` | The API, mounted at `/api`; larger areas go in `server/routes/` |
 | `server/auth.ts` | The signed-in user from Sign in with Freepod; `requireUser` for private routes |
+| `server/same-origin.ts` | Refuses data changes sent from other sites' pages; no other site may frame the app |
 | `server/db/schema.ts` | Tables; after a change, `npm run db:generate` writes a migration to `drizzle/` |
 | `server/storage.ts` | The app's S3 bucket |
 | `src/config.ts` | The app's name |
