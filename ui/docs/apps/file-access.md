@@ -29,23 +29,23 @@ Never share the private key file, the one without `.pub`. A key works for all yo
 
 ## 3. Get the connection details
 
-Select **Files** on the app's card. It shows:
+Select the app on the dashboard to expand its row, and select **Files**. It shows:
 
-| Field | Value |
-| --- | --- |
-| Host | `freepod.eu` |
-| Port | `22` |
+| Field    | Value                                |
+|----------|--------------------------------------|
+| Host     | `freepod.eu`                         |
+| Port     | `22`                                 |
 | Username | The app's identifier, unique per app |
 
 ## 4. Connect
 
 Any SFTP client works. Use protocol **SFTP**, the host, port and username from step 3, and your private key file (`id_ed25519`) for authentication. No password is used.
 
-| Client | Platform | Where to set the private key |
-| --- | --- | --- |
-| [Cyberduck](https://cyberduck.io) | macOS, Windows | **SSH Private Key** in the connection dialog |
+| Client                                     | Platform              | Where to set the private key                           |
+|--------------------------------------------|-----------------------|--------------------------------------------------------|
+| [Cyberduck](https://cyberduck.io)          | macOS, Windows        | **SSH Private Key** in the connection dialog           |
 | [FileZilla](https://filezilla-project.org) | macOS, Windows, Linux | **Edit → Settings → Connection → SFTP → Add key file** |
-| [WinSCP](https://winscp.net) | Windows | **Advanced → SSH → Authentication → Private key file** |
+| [WinSCP](https://winscp.net)               | Windows               | **Advanced → SSH → Authentication → Private key file** |
 
 FileZilla and WinSCP offer to convert the key to their own format; accept.
 

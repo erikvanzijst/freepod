@@ -31,8 +31,8 @@ The subdomain cannot be changed or released later. **Not now** postpones the cho
 4. The first time, accept the Terms of Service.
 5. Select **Launch**. For a paid plan, you are sent to a payment page first.
 
-The app appears under **Your apps**. Its status changes from `provisioning` to `ready` when it is running; this usually takes a few minutes.
+The app appears under **Your apps**. Its status changes from **Setting up** to **Running**; this usually takes a few minutes.
 
 ## 4. Open the app
 
-Select **Open** on the app's card. Most apps need a first-time setup, such as creating an admin account. The [product guides](/apps/products) describe it for each app.
+Select **Open** on the app's row. Most apps need a first-time setup, such as creating an admin account. The [product guides](/apps/products) describe it for each app.

@@ -13,7 +13,7 @@ To use a domain you own instead, see [Custom domain](custom-domain.mdx).
 
 ## Changing the hostname
 
-1. Select **Edit** on the app's card.
+1. Select the app on the dashboard to expand its row, and select **Settings**.
 2. Change **Hostname** and select **Update**.
 
 The app is available at the new hostname once the update completes. The old hostname stops working immediately; links and bookmarks to it do not redirect.
