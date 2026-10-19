@@ -4,7 +4,9 @@
 Terminate the Keycloak SSO session as well as the local oauth2-proxy
 session when a user signs out, and route the browser-facing
 `/oauth2/sign_out` endpoint so it is reachable without authentication.
+
 ## Requirements
+
 ### Requirement: oauth2-proxy backend logout URL configuration
 The oauth2-proxy Helm deployment SHALL include a `--backend-logout-url` flag
 set to the `freepod` realm's OIDC `end_session_endpoint` with the `{id_token}`
@@ -16,13 +18,13 @@ placeholder:
 - **THEN** oauth2-proxy makes a server-side HTTP request to Keycloak's logout
   endpoint with the real `id_token` substituted for `{id_token}`
 - **AND** Keycloak terminates the user's SSO session
-- **AND** oauth2-proxy clears its own `_oauth2_proxy` session cookie
+- **AND** oauth2-proxy clears its own `__Host-freepod_platform` session cookie
 - **AND** the browser is redirected to the URL specified in the `rd` query
   parameter
 
 #### Scenario: id_token is present in session
-- **WHEN** the sign_out request carries a valid `_oauth2_proxy` cookie
-  containing an id_token
+- **WHEN** the sign_out request carries a valid `__Host-freepod_platform`
+  cookie containing an id_token
 - **THEN** the `{id_token}` placeholder in `backend-logout-url` is replaced
   with the actual token value before the server-side call
 
@@ -51,8 +53,8 @@ apply the `forward-auth` or `oauth-errors` middleware.
   request reaches oauth2-proxy, not the UI service
 
 #### Scenario: Session cookie is sent on app domain
-- **WHEN** the `_oauth2_proxy` cookie has been issued host-only by the apex
-  callback on `<app-domain>`
+- **WHEN** the `__Host-freepod_platform` cookie has been issued host-only by
+  the apex callback on `<app-domain>`
 - **AND** the browser navigates to `https://<app-domain>/oauth2/sign_out`
 - **THEN** the cookie is included in the request, allowing oauth2-proxy to read
   the session and extract the id_token
@@ -70,4 +72,3 @@ redirect the user to Keycloak's login page.
 - **AND** the oauth-errors middleware rewrites the 401 to a 302 redirect to
   `/oauth2/start?rd=https://<app-domain>`
 - **AND** oauth2-proxy redirects the browser to the Keycloak login page
-

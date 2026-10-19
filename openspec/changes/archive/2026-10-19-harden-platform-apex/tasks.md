@@ -25,6 +25,5 @@
 - [x] 4.1 Apply `tf/deps` (cluster-wide `headers-hsts`)
 - [x] 4.2 Publish `daemons:0.3.1` and the `appstudio` 0.2.13 chart; apply `tf/app` on dev, then rebuild and roll out the API image
 - [x] 4.3 On dev: `http://` redirects to `https://`; apex responses carry the framing headers; login issues `__Host-freepod_platform*` cookies; sign-out clears them; a JSON body without `Content-Type` gets `422`; a `POST` with `Sec-Fetch-Site: same-site` gets `403`
-- [ ] 4.4 Repeat 4.2–4.3 on prod; confirm a `dev` subdomain claim is refused there
+- [x] 4.4 Repeat 4.2–4.3 on prod; confirm a `dev` subdomain claim is refused there
 - [x] 4.5 Move the dev studio to chart 0.2.13 and confirm it still loads opencode in its frame
-- [ ] 4.6 Submit `freepod.eu` to the HSTS preload list
