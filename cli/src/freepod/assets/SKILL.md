@@ -377,6 +377,28 @@ What to know when writing the app:
   or have the app fall back to a fixed development identity when an env var you
   control (not a header) says it is running locally.
 
+## Sharing a site with other apps
+
+`freepod.eu` is not on the [Public Suffix List](https://publicsuffix.org), so
+every platform hostname (`myapp.{user}.freepod.eu`) is its own origin but the
+same site as every other user's app and as Freepod itself. Protections keyed on
+the site do not separate apps. Whether that matters depends on the app, but
+weigh it when choosing cookies, response headers and CSRF defenses:
+
+- Other apps' pages are `same-site`, so `SameSite` cookies don't stop them.
+  A CSRF check has to compare against the app's own origin.
+- Any app can set `Domain=freepod.eu` cookies that this app receives. Only
+  `__Host-` names are guaranteed to be the app's own, and that includes the
+  framework's session and CSRF cookies.
+- A cookie with `Domain=freepod.eu`, a CORS rule that allows `*.freepod.eu`,
+  or framing allowed by default all extend to every other user's apps.
+- Uploaded HTML or SVG shown inline, whether from the app or a presigned
+  bucket URL (also under `freepod.eu`), runs on that shared site.
+
+Sign in with Freepod already treats a data-changing request from another
+origin's page as signed out. Requests authenticated by the app's own cookies
+are the app's to check. An app on its own custom domain is its own site.
+
 ## Make the start command explicit
 
 Railpack infers a start command from the source tree. The inference is good but
