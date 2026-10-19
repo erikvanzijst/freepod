@@ -273,10 +273,10 @@ def test_no_route_changes_or_releases_a_subdomain():
     from app.main import app
 
     writes = {
-        (method, route.path)
-        for route in app.routes
-        for method in getattr(route, "methods", set())
-        if "subdomain" in getattr(route, "path", "") and method != "GET"
+        (method.upper(), path)
+        for path, operations in app.openapi()["paths"].items()
+        for method in operations
+        if "subdomain" in path and method != "get"
     }
 
     assert writes == {("POST", "/api/me/subdomain")}
