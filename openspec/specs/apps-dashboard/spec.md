@@ -67,7 +67,8 @@ progress indicator. Open SHALL be disabled until the app can be reached.
 Selecting a row SHALL expand it in place to the deployment's address (with a
 copy action), plan, version and date added, and its actions: Settings, Files
 when the deployment offers file access (described as browse and download,
-read-only), Database when it has a database, and Remove app. The requests
+read-only), Database when it has a database, Docs when its product has a
+page in the user documentation, and Remove app. The requests
 that tell whether a deployment offers file and database access SHALL be made
 only when its row is first expanded. A row whose deployment has a problem
 SHALL start expanded.
@@ -79,6 +80,11 @@ SHALL start expanded.
 #### Scenario: Expanding offers the database
 - **WHEN** a user expands the row of a deployment with a provisioned database
 - **THEN** its details are requested and the Database action is offered
+
+#### Scenario: Docs opens the app's documentation
+- **WHEN** a user expands the row of a catalog app
+- **THEN** Docs links to that app's page under `/docs/apps/products/`, and
+  for a custom deployment to the developer documentation instead
 
 ### Requirement: Problems are explained, with a route to support
 A deployment in `error` SHALL show a notice that explains in plain words that

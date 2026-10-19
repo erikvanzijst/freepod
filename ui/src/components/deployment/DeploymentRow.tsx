@@ -4,6 +4,7 @@ import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded'
 import TuneRounded from '@mui/icons-material/TuneRounded'
 import FolderOutlined from '@mui/icons-material/FolderOutlined'
 import StorageOutlined from '@mui/icons-material/StorageOutlined'
+import MenuBookRounded from '@mui/icons-material/MenuBookRounded'
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
 import { fg, line } from '../landing/landingTokens'
 import AppIcon from '../apppage/AppIcon'
@@ -85,6 +86,9 @@ export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDel
             )}
             {access.files && <Button variant="outlined" size="small" startIcon={<FolderOutlined />} onClick={access.files} title="Browse and download (read-only)">Files</Button>}
             {access.database && <Button variant="outlined" size="small" startIcon={<StorageOutlined />} onClick={access.database}>Database</Button>}
+            {view.docsUrl && (
+              <Button variant="outlined" size="small" startIcon={<MenuBookRounded />} href={view.docsUrl} target="_blank" rel="noreferrer">Docs</Button>
+            )}
             <Box sx={{ flex: 1 }} />
             {view.canRemove && (
               <Button size="small" startIcon={<DeleteOutlineRounded />} disabled={deletePending} onClick={() => onDelete(deployment)} sx={{ color: toneColor.problem }}>

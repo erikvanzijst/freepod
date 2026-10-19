@@ -107,3 +107,20 @@ describe('deploymentView plan and version', () => {
     expect(deploymentView(deployment()).versionLabel).toBe('v1.120.2')
   })
 })
+
+describe('deploymentView docs', () => {
+  const withSlug = (slug: string | null) =>
+    deployment({ desired_template: { id: 1, product: { id: 2, name: 'Immich', slug } } as Deployment['desired_template'] })
+
+  it('links a catalog app to its product guide', () => {
+    expect(deploymentView(withSlug('immich')).docsUrl).toBe('/docs/apps/products/immich')
+  })
+
+  it('links a custom deployment to the developer docs', () => {
+    expect(deploymentView(withSlug('custom')).docsUrl).toBe('/docs/developers')
+  })
+
+  it('has no docs for a product outside the catalog', () => {
+    expect(deploymentView(withSlug(null)).docsUrl).toBeNull()
+  })
+})

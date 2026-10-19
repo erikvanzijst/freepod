@@ -21,6 +21,8 @@ export interface DeploymentView {
   iconUrl: string | null
   address: string | null
   url: string | null
+  /** The app's page in the user documentation; null for products outside the catalog. */
+  docsUrl: string | null
   status: { label: string; tone: Tone; hint?: string; progress: boolean }
   problem?: DeploymentProblem
   plan?: string
@@ -34,6 +36,13 @@ export interface DeploymentView {
   openable: boolean
   canEdit: boolean
   canRemove: boolean
+}
+
+function docsUrl(slug: string | null | undefined): string | null {
+  if (!slug) return null
+  // `custom` is the developer deployment target, documented as a whole rather than as an app.
+  if (slug === 'custom') return '/docs/developers'
+  return `/docs/apps/products/${slug}`
 }
 
 function shortDate(iso: string): string {
@@ -109,6 +118,7 @@ export function deploymentView(d: Deployment): DeploymentView {
     iconUrl: product?.icon_url ? resolveApiPath(product.icon_url) : null,
     address: d.hostname,
     url: d.hostname ? ensureUrl(d.hostname) : null,
+    docsUrl: docsUrl(product?.slug),
     status: status(d),
     problem: problem(d),
     plan,

@@ -34,7 +34,7 @@ function deployment(status: Deployment['status']): Deployment {
     user_id: 1,
     created_at: '2026-08-01T00:00:00Z',
     user: { id: 1, email: 'o@example.com', is_admin: false, created_at: '2026-08-01T00:00:00Z' },
-    desired_template: { id: 1, product: { id: 1, name: 'Immich' } } as Deployment['desired_template'],
+    desired_template: { id: 1, product: { id: 1, name: 'Immich', slug: 'immich' } } as Deployment['desired_template'],
     name: 'app',
     namespace: 'ns',
     status,
@@ -107,5 +107,15 @@ describe('DeploymentRow database action', () => {
     settle()
 
     expect(await screen.findByRole('button', { name: /database/i })).toBeInTheDocument()
+  })
+})
+
+describe('DeploymentRow docs', () => {
+  it("links to the app's page in the docs", async () => {
+    getDeploymentDatabaseMock.mockRejectedValue(new ApiError('no database', 404))
+    renderRow('ready')
+
+    expect(screen.getByRole('link', { name: /docs/i })).toHaveAttribute('href', '/docs/apps/products/immich')
+    await waitFor(() => expect(getDeploymentDatabaseMock).toHaveBeenCalled())
   })
 })
