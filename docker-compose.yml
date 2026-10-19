@@ -2,6 +2,9 @@ services:
   postgres:
     image: postgres:16
     restart: unless-stopped
+    # Each api/ suite run (8 workers) holds about 80 connections at its peak,
+    # and several worktrees may run one at a time.
+    command: postgres -c max_connections=400
     environment:
       - POSTGRES_USER=caelus
       - POSTGRES_PASSWORD=caelus
