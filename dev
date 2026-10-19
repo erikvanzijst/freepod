@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+# https://github.com/microsoft/vscode-remote-release/issues/11896
+export BUILDX_BAKE_ENTITLEMENTS_FS=0
+
 case "$1" in
   build) devcontainer build --workspace-folder . ;;
   up)    devcontainer up --workspace-folder . ;;
