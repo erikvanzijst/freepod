@@ -190,6 +190,24 @@ Fill in the app's folder name for `APP`. Never run `freepod var set` with a
 secret value yourself. The app reads it as
 `process.env.NAME`.
 
+## Rules that keep the user's data safe
+
+- Only `POST`, `PUT`, `PATCH` and `DELETE` routes change data; a `GET` never
+  does, not even a "delete" or "confirm" link.
+- Keep `sameOrigin` in `server/index.ts`. An app without
+  `server/same-origin.ts` gets it from `/opt/appstudio/template/server/`, wired
+  in the way the starter's `server/index.ts` does it.
+- Do not add CORS: the pages and the API share one origin and need none.
+- Who the user is comes only from `c.get("user")`. Never keep it in a cookie.
+- If the app needs a cookie of its own, name it `__Host-<name>` and set
+  `Secure`, `HttpOnly`, `SameSite=Lax` and `Path=/`, without `Domain`. Ignore
+  every cookie the app did not set that way.
+- Send uploaded files back as downloads (`Content-Disposition: attachment`, as
+  the examples' `server/routes/files.ts` does). Only `image/png`, `image/jpeg`,
+  `image/gif` and `image/webp` may be shown inline; SVG is a download too.
+- Render what users type as text, never as HTML (`dangerouslySetInnerHTML`,
+  `innerHTML`). A link a user enters must start with `https://`.
+
 ## Rules that keep the app deployable
 
 - Keep the `start` script in `package.json`. Never serve production with
