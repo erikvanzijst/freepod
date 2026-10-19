@@ -511,3 +511,48 @@ func TestAllowedAccounts(t *testing.T) {
 		}
 	})
 }
+
+func TestRequestsFromOtherOriginsAreNotIdentified(t *testing.T) {
+	v, _, _ := newTestVerifier(t)
+	sess := sessionCookie + "=" + v.sessionFor(t, alice, milk)
+
+	cases := []struct {
+		name     string
+		method   string
+		header   http.Header
+		public   bool
+		wantCode int
+		wantUser string
+	}{
+		{"same-origin POST", "POST", http.Header{"Sec-Fetch-Site": {"same-origin"}}, false, 200, "3f2a"},
+		{"non-browser POST", "POST", nil, false, 200, "3f2a"},
+		{"same-site POST", "POST", http.Header{"Sec-Fetch-Site": {"same-site"}}, false, 401, ""},
+		{"cross-site DELETE", "DELETE", http.Header{"Sec-Fetch-Site": {"cross-site"}}, false, 401, ""},
+		{"other Origin without Sec-Fetch-Site", "PUT", http.Header{"Origin": {"https://" + notes}}, false, 401, ""},
+		{"own Origin without Sec-Fetch-Site", "PUT", http.Header{"Origin": {"https://" + milk}}, false, 200, "3f2a"},
+		{"same-site GET", "GET", http.Header{"Sec-Fetch-Site": {"same-site"}, "Sec-Fetch-Mode": {"cors"}}, false, 200, "3f2a"},
+		{"same-site WebSocket", "GET", http.Header{"Sec-Fetch-Site": {"same-site"}, "Sec-Fetch-Mode": {"websocket"}, "Sec-WebSocket-Key": {"k"}}, false, 401, ""},
+		{"WebSocket from another Origin", "GET", http.Header{"Origin": {"https://" + notes}, "Sec-WebSocket-Key": {"k"}}, false, 401, ""},
+		{"same-origin WebSocket", "GET", http.Header{"Sec-Fetch-Site": {"same-origin"}, "Sec-WebSocket-Key": {"k"}}, false, 200, "3f2a"},
+		{"same-site POST to a public path", "POST", http.Header{"Sec-Fetch-Site": {"same-site"}}, true, 200, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := http.Header{"Cookie": {sess}}
+			for k, vs := range c.header {
+				h[k] = vs
+			}
+			f := fwd{host: milk, method: c.method, uri: "/api/items", header: h}
+			if c.public {
+				f.public = publicParam("^/api/")
+			}
+			w := v.do(f)
+			if w.Code != c.wantCode {
+				t.Fatalf("status %d, want %d", w.Code, c.wantCode)
+			}
+			if got := w.Header().Get("X-Freepod-User"); got != c.wantUser {
+				t.Fatalf("X-Freepod-User = %q, want %q", got, c.wantUser)
+			}
+		})
+	}
+}
