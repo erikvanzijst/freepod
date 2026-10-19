@@ -97,23 +97,24 @@ module "garage" {
 }
 
 module "caelus" {
-  source             = "./caelus"
-  namespace          = kubernetes_namespace.caelus.metadata[0].name
-  environment        = local.environment
-  domain             = local.domain
-  api_image          = local.api_image
-  ui_image           = local.ui_image
-  rbac_name          = "caelus-api-${kubernetes_namespace.caelus.metadata[0].name}"
-  ns_login           = kubernetes_namespace.login.metadata[0].name
-  db_password        = var.db_password
-  wildcard_domains   = [local.domain]
-  reserved_hostnames = var.reserved_hostnames[terraform.workspace]
-  mollie_api_key     = var.mollie_api_key
-  sshpiper_namespace = kubernetes_namespace.sshpiper.metadata[0].name
-  builds_namespace   = kubernetes_namespace.builds.metadata[0].name
-  builder_image      = var.builder_image
-  sftp_host          = local.sftp_host
-  sftp_port          = local.sftp_port
+  source                  = "./caelus"
+  namespace               = kubernetes_namespace.caelus.metadata[0].name
+  environment             = local.environment
+  domain                  = local.domain
+  api_image               = local.api_image
+  ui_image                = local.ui_image
+  rbac_name               = "caelus-api-${kubernetes_namespace.caelus.metadata[0].name}"
+  ns_login                = kubernetes_namespace.login.metadata[0].name
+  apex_headers_middleware = module.oauth2-proxy.apex_headers_middleware
+  db_password             = var.db_password
+  wildcard_domains        = [local.domain]
+  reserved_hostnames      = var.reserved_hostnames[terraform.workspace]
+  mollie_api_key          = var.mollie_api_key
+  sshpiper_namespace      = kubernetes_namespace.sshpiper.metadata[0].name
+  builds_namespace        = kubernetes_namespace.builds.metadata[0].name
+  builder_image           = var.builder_image
+  sftp_host               = local.sftp_host
+  sftp_port               = local.sftp_port
 
   # Every sidecar trusts this; the edge holds the private half. The reconciler
   # injects it into each chart as caelus.sftp.platformPublicKey.

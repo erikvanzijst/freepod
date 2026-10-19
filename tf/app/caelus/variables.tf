@@ -13,6 +13,11 @@ variable "ns_login" {
   type        = string
 }
 
+variable "apex_headers_middleware" {
+  description = "Traefik reference to the Middleware that sets the apex's response headers (tf/app/login)."
+  type        = string
+}
+
 variable "domain" {
   description = "The base domain name (e.g. freepod.eu)"
   type        = string

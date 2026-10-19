@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "caelus"
 version = "0.1.0"
-description = "Cloud provisioning tool"
+description = "Hosting for agentic and artisanal developers"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 
 dependencies = [
-  "fastapi>=0.110",
+  "fastapi>=0.132",
   "sqlmodel>=0.0.21",
   "uvicorn[standard]>=0.27",
   "alembic>=1.13",

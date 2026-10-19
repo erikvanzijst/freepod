@@ -77,6 +77,28 @@ func isNavigation(method string, h http.Header) bool {
 	return strings.Contains(h.Get("Accept"), "text/html")
 }
 
+// foreignInitiated reports whether a browser started this state-changing
+// request, or this WebSocket handshake, from a page on another origin. Such a
+// request is never identified. Traefik strips Upgrade before forward-auth, so a
+// handshake is recognized by its Sec-WebSocket-Key. A request carrying neither
+// Sec-Fetch-Site nor Origin is not from a browser page.
+func foreignInitiated(method string, h http.Header, host string) bool {
+	websocket := h.Get("Sec-WebSocket-Key") != "" || h.Get("Sec-Fetch-Mode") == "websocket"
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		if !websocket {
+			return false
+		}
+	}
+	if site := h.Get("Sec-Fetch-Site"); site != "" {
+		return site != "same-origin" && site != "none"
+	}
+	if origin := h.Get("Origin"); origin != "" {
+		return !strings.EqualFold(origin, "https://"+host)
+	}
+	return false
+}
+
 // filterCookies returns the request's cookies minus every platform cookie, as
 // one Cookie header value, across however many Cookie lines the request had.
 // The raw pairs are passed through untouched rather than re-serialized, so an

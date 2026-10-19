@@ -210,3 +210,12 @@ def test_refuses_to_render_without_owner_only_sign_in(overrides, message):
     result = _helm({**BASE, **overrides})
     assert result.returncode != 0
     assert message in result.stderr
+
+
+def test_only_this_origin_may_frame_the_studio():
+    docs = _render()
+    assert _middleware(docs, "frame-self")["spec"]["headers"] == {"customFrameOptionsValue": "SAMEORIGIN"}
+    ingresses = {d["metadata"]["name"]: d for d in docs if d["kind"] == "Ingress"}
+    chain = lambda name: ingresses[name]["metadata"]["annotations"]["traefik.ingress.kubernetes.io/router.middlewares"].split(",")
+    assert "tenant-ns-t-frame-self@kubernetescrd" in chain("t-ingress")
+    assert "tenant-ns-t-frame-self@kubernetescrd" not in chain("t-preview")

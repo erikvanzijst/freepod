@@ -67,6 +67,9 @@ func (v *verifier) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess, ok := v.session(r.Header, host)
+	if ok && foreignInitiated(method, r.Header, host) {
+		ok = false
+	}
 	// `a` restricts the app to the accounts it lists. It is checked before the
 	// public paths, so a signed-in account that is not listed sees nothing.
 	edge := r.URL.Query()

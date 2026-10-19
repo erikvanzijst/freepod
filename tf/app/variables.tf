@@ -51,6 +51,7 @@ variable "reserved_hostnames" {
     ]
     prod = [
       "freepod.eu",
+      "dev.freepod.eu",
       "www.freepod.eu",
       "keycloak.freepod.eu",
       "account.freepod.eu",
@@ -282,7 +283,7 @@ variable "registry_pull_hmac_keys" {
 variable "app_auth_image" {
   description = "Daemons image (daemons/) that app-auth runs from, pinned to an immutable version"
   type        = string
-  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.3.0"
+  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.3.1"
 }
 
 variable "ssh_resolver_image" {

@@ -1,3 +1,22 @@
+# The SPA reads no cookies, so none are forwarded to nginx.
+resource "kubernetes_manifest" "strip_cookie" {
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "Middleware"
+    metadata = {
+      name      = "strip-cookie"
+      namespace = var.namespace
+    }
+    spec = {
+      headers = {
+        customRequestHeaders = {
+          Cookie = ""
+        }
+      }
+    }
+  }
+}
+
 # Webhook endpoints bypass oauth2-proxy entirely — Mollie (and future
 # providers) POST here without auth cookies, so no forward-auth middleware.
 resource "kubernetes_ingress_v1" "webhooks" {
@@ -6,7 +25,8 @@ resource "kubernetes_ingress_v1" "webhooks" {
     namespace = var.namespace
 
     annotations = {
-      "traefik.ingress.kubernetes.io/router.entrypoints" = "web, websecure"
+      "traefik.ingress.kubernetes.io/router.entrypoints" = "websecure"
+      "traefik.ingress.kubernetes.io/router.middlewares" = var.apex_headers_middleware
     }
   }
 
@@ -39,14 +59,14 @@ resource "kubernetes_ingress_v1" "caelus" {
     namespace = var.namespace
 
     annotations = {
-      "traefik.ingress.kubernetes.io/router.entrypoints" = "web, websecure"
+      "traefik.ingress.kubernetes.io/router.entrypoints" = "websecure"
       # forward-auth injects the trusted X-Auth-Request-Email and returns 401
       # for anonymous requests. We intentionally do NOT attach oauth-errors
       # here anymore: anonymous API calls should surface as a clean 401 that
       # the SPA handles (by showing the public landing page), not an HTML
       # redirect to Keycloak. Login is initiated explicitly by the SPA via
       # /oauth2/start.
-      "traefik.ingress.kubernetes.io/router.middlewares" = "${var.ns_login}-forward-auth@kubernetescrd"
+      "traefik.ingress.kubernetes.io/router.middlewares" = "${var.ns_login}-forward-auth@kubernetescrd,${var.apex_headers_middleware}"
     }
     # NOTE: this ingress covers only /api and /echo. The UI (/) is served
     # anonymously by the separate `caelus-ui-ingress` below so the public
@@ -108,7 +128,8 @@ resource "kubernetes_ingress_v1" "caelus_ui" {
     namespace = var.namespace
 
     annotations = {
-      "traefik.ingress.kubernetes.io/router.entrypoints" = "web, websecure"
+      "traefik.ingress.kubernetes.io/router.entrypoints" = "websecure"
+      "traefik.ingress.kubernetes.io/router.middlewares" = "${var.apex_headers_middleware},${var.namespace}-${kubernetes_manifest.strip_cookie.manifest.metadata.name}@kubernetescrd"
     }
   }
 

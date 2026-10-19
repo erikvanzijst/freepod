@@ -19,6 +19,10 @@
 # Note: the Keycloak image (deps) is not part of the default "both" build; it
 # rarely changes and is built explicitly with --keycloak.
 #
+# Every build passes --pull, so a floating base tag (nginx:alpine,
+# python:3.13-slim, golang:1.25-bookworm) resolves to what the registry serves
+# now rather than to whatever this Docker host cached, which can be months old.
+#
 # The SSH sidecar is not part of "both" or "all" either, and for a stronger
 # reason. The images above are platform Deployments on moving tags: they are
 # re-pushed to :latest / :<branch> and picked up by ./scripts/rollout.sh
@@ -190,6 +194,7 @@ if [[ "$TARGET" == "ssh-sidecar" ]]; then
   # non-goal. The Dockerfile fails the build on any other architecture.
   docker buildx build \
     --push \
+    --pull \
     --platform linux/amd64 \
     --tag "${SIDECAR_REF}" \
     "${SIDECAR_CONTEXT}"
@@ -229,6 +234,7 @@ if [[ "$TARGET" == "daemons" ]]; then
   # repository.
   docker buildx build \
     --push \
+    --pull \
     --platform linux/amd64 \
     --tag "${DAEMONS_REF}" \
     "${DAEMONS_CONTEXT}"
@@ -270,6 +276,7 @@ if [[ "$TARGET" == "builder" ]]; then
   # image whose railpack cannot exec.
   docker buildx build \
     --push \
+    --pull \
     --platform linux/amd64 \
     --tag "${BUILDER_REF}" \
     "${BUILDER_CONTEXT}"
@@ -303,6 +310,7 @@ if [[ "$TARGET" == "placeholder" ]]; then
   echo "[1/1] Building and pushing the custom placeholder image ${PLACEHOLDER_VERSION}..."
   docker buildx build \
     --push \
+    --pull \
     --platform linux/amd64 \
     --tag "${PLACEHOLDER_REF}" \
     "${PLACEHOLDER_CONTEXT}"
@@ -323,6 +331,7 @@ if [[ "$TARGET" == "both" || "$TARGET" == "all" || "$TARGET" == "api" ]]; then
   echo "[1/$(if [[ "$TARGET" == "both" ]]; then echo "2"; elif [[ "$TARGET" == "all" ]]; then echo "3"; else echo "1"; fi)] Building and pushing API image..."
   docker buildx build \
     --push \
+    --pull \
     --build-arg GIT_COMMIT="${GIT_COMMIT}" \
     --tag "${REGISTRY}/api:${TAG}" \
     --tag "${REGISTRY}/api:${BRANCH_TAG}" \
@@ -336,6 +345,7 @@ if [[ "$TARGET" == "keycloak" || "$TARGET" == "all" ]]; then
   echo "[$(if [[ "$TARGET" == "all" ]]; then echo "2/3"; else echo "1/1"; fi)] Building and pushing Keycloak image (Freepod theme baked in)..."
   docker buildx build \
     --push \
+    --pull \
     --tag "${REGISTRY}/keycloak:${TAG}" \
     --tag "${REGISTRY}/keycloak:${BRANCH_TAG}" \
     --tag "${REGISTRY}/keycloak:latest" \
@@ -347,6 +357,7 @@ if [[ "$TARGET" == "both" || "$TARGET" == "all" || "$TARGET" == "ui" ]]; then
   echo "[1/$(if [[ "$TARGET" == "both" ]]; then echo "2"; elif [[ "$TARGET" == "all" ]]; then echo "3"; else echo "1"; fi)] Building and pushing UI image..."
   docker buildx build \
     --push \
+    --pull \
     --build-arg GIT_COMMIT="${GIT_COMMIT}" \
     --tag "${REGISTRY}/ui:${TAG}" \
     --tag "${REGISTRY}/ui:${BRANCH_TAG}" \

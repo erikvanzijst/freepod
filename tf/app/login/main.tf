@@ -19,10 +19,14 @@ resource "helm_release" "oauth2_proxy" {
           email_domains = ["*"]
           ${length(var.allowed_groups) > 0 ? "allowed_groups = ${jsonencode(var.allowed_groups)}" : "# allowed_groups: unset — no group restriction in this environment"}
           upstreams = ["file:///dev/null"]
-          cookie_secure = false
-          # No cookie_domains: the cookie is issued host-only by the apex
-          # callback (${var.domain}) and is therefore never sent to wildcard
-          # user-app subdomains. whitelist_domains still guards rd= redirects.
+          # The __Host- prefix binds the cookie to the apex host. It requires
+          # Secure and Path=/, and no cookie_domains: the cookie is issued
+          # host-only by the apex callback (${var.domain}). The _0/_1 chunks
+          # and the _csrf cookie inherit the prefix. whitelist_domains still
+          # guards rd= redirects.
+          cookie_name = "__Host-freepod_platform"
+          cookie_secure = true
+          cookie_samesite = "lax"
           whitelist_domains = ["${var.domain}"]
           provider = "keycloak-oidc"
           # Routes allowed through WITHOUT a session. forward-auth returns 202
@@ -210,6 +214,26 @@ resource "kubernetes_manifest" "oauth2_proxy_middleware" {
   }
 }
 
+# Response headers for every route on the apex, referenced by the caelus
+# Ingresses as well as the /oauth2 route below.
+resource "kubernetes_manifest" "apex_headers" {
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "Middleware"
+    metadata = {
+      name      = "apex-headers"
+      namespace = var.namespace
+    }
+    spec = {
+      headers = {
+        customFrameOptionsValue = "SAMEORIGIN"
+        contentSecurityPolicy   = "frame-ancestors 'self'"
+        contentTypeNosniff      = true
+      }
+    }
+  }
+}
+
 # Serve all browser-facing /oauth2/* endpoints (start, callback, sign_out) on
 # the Caelus apex host, routed straight to oauth2-proxy with NO forward-auth
 # middleware so they are reachable unauthenticated. The callback issuing from
@@ -225,11 +249,14 @@ resource "kubernetes_manifest" "oauth2_proxy_route" {
       namespace = var.namespace
     }
     spec = {
-      entryPoints = ["web", "websecure"]
+      entryPoints = ["websecure"]
       routes = [{
         match    = "Host(`${var.domain}`) && PathPrefix(`/oauth2`)"
         kind     = "Rule"
         priority = 100
+        middlewares = [{
+          name = kubernetes_manifest.apex_headers.manifest.metadata.name
+        }]
         services = [{
           name = "oauth2-proxy"
           port = 8080
