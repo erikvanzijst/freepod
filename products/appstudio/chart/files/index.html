@@ -155,8 +155,6 @@
   // because opening `/<project>/session?prompt=` in 1.19 creates two drafts and
   // lands on the empty one. The storage keys and shapes are opencode 1.19's.
   const EXAMPLE_PROMPT = "Build and deploy a link shortener";
-  // Where the studio's one app lived before the apps directory.
-  const LEGACY_APP = "/workspace/app";
   const SERVER_KEY = "opencode.global.dat:server";
   const TABS_KEY = "opencode.window.browser.dat:tabs";
   const LAYOUT_KEY = "opencode.global.dat:layout";
@@ -205,12 +203,10 @@
       store.recentlyClosed ??= {};
       const local = (store.projects.local ??= []);
       first = local.length === 0;
-      const kept = local.filter((p) => p.worktree !== LEGACY_APP);
       for (const app of [config.firstApp, ...(apps || [])]) {
-        if (!kept.some((p) => p.worktree === app)) kept.push({ worktree: app, expanded: true });
+        if (!local.some((p) => p.worktree === app)) local.push({ worktree: app, expanded: true });
       }
-      store.projects.local = kept;
-      if (!store.lastProject.local || store.lastProject.local === LEGACY_APP) store.lastProject.local = config.firstApp;
+      store.lastProject.local ||= config.firstApp;
       localStorage.setItem(SERVER_KEY, JSON.stringify(store));
       if (select) {
         const layout = readJson(LAYOUT_KEY, {});
