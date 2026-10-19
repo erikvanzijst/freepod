@@ -17,6 +17,11 @@ resource "kubernetes_manifest" "headers_hsts_middleware" {
         stsIncludeSubdomains = true
         stsPreload           = true
         forceSTSHeader       = true
+        # Clear-Site-Data "cookies" applies beyond the host that sends it, and
+        # no platform route sends it.
+        customResponseHeaders = {
+          "Clear-Site-Data" = ""
+        }
       }
     }
   }

@@ -51,6 +51,7 @@ variable "reserved_hostnames" {
     ]
     prod = [
       "freepod.eu",
+      "dev.freepod.eu",
       "www.freepod.eu",
       "keycloak.freepod.eu",
       "account.freepod.eu",

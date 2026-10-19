@@ -175,7 +175,7 @@ resource "kubernetes_manifest" "broker_route" {
       namespace = var.namespace
     }
     spec = {
-      entryPoints = ["web", "websecure"]
+      entryPoints = ["websecure"]
       routes = [{
         match = "Host(`login.${var.domain}`)"
         kind  = "Rule"
