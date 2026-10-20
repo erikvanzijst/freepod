@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import logging
-from typing import Any
+from typing import Any, Callable
 from uuid import UUID, uuid4
 
 from sqlalchemy import update as sa_update
@@ -38,7 +38,6 @@ from app.services import template_values
 from app.services import vars as vars_service
 from app.services.errors import CaelusException, DeploymentInProgressException, IntegrityException, NotFoundException, ValidationException
 from app.services.hostnames import (
-    require_owned_subdomain,
     require_valid_hostname_for_deployment,
 )
 from app.util import set_value_at_path, value_for_path
@@ -235,23 +234,25 @@ def _iter_hostname_paths(schema: Any, path: tuple[str, ...] = ()) -> list[tuple[
     return paths
 
 
-class SubdomainRequired(ValidationException):
-    """Deploying needs the account to hold an address, with a stable `code` so a
+class HandleRequired(ValidationException):
+    """Deploying needs the account to hold a handle, with a stable `code` so a
     client tells it apart from the Terms of Service refusal."""
 
-    code = "subdomain_required"
+    code = "handle_required"
 
 
 def normalize_and_return_hostname(
     *,
     values_schema_json: dict[str, Any] | None,
     user_values_json: dict[str, Any] | None,
+    complete: Callable[[str], str] | None = None,
 ) -> str | None:
     """Derive the hostname from user values and normalize it to lowercase.
 
-    When a hostname is found, the lowercased value is written back into
-    ``user_values_json`` so that downstream consumers (e.g. the Helm
-    reconciler) receive an RFC 1123-compliant value.
+    *complete*, when given, validates the lowercased value and returns the
+    name to store (a bare label completed to an FQDN). The result is written
+    back into ``user_values_json`` so that downstream consumers (e.g. the Helm
+    reconciler) always receive a fully qualified, RFC 1123-compliant value.
     """
     if not isinstance(values_schema_json, dict):
         return None
@@ -259,9 +260,11 @@ def normalize_and_return_hostname(
         value = value_for_path(user_values_json, path)
         if value is None:
             return None
-        lowered = value.lower() if isinstance(value, str) else str(value).lower()
-        set_value_at_path(user_values_json, path, lowered)
-        return lowered
+        hostname = value.lower() if isinstance(value, str) else str(value).lower()
+        if complete is not None:
+            hostname = complete(hostname)
+        set_value_at_path(user_values_json, path, hostname)
+        return hostname
     return None
 
 
@@ -307,20 +310,19 @@ def create_deployment(
             "Template is not the current canonical for this product"
         )
 
-    # Pre-flight the user-provided values against the template's schema:
-    _validate_user_values(template, payload.user_values_json)
+    if user.handle is None:
+        raise HandleRequired("A handle must be claimed before deploying")
+    # Completed before the schema check, so a chart's hostname pattern sees the
+    # fully qualified name rather than a bare label.
     derived_hostname = normalize_and_return_hostname(
         values_schema_json=template.values_schema_json,
         user_values_json=payload.user_values_json,
+        complete=lambda hostname: require_valid_hostname_for_deployment(
+            session, hostname, handle=user.handle
+        ),
     )
-    if user.subdomain is None:
-        raise SubdomainRequired(
-            "An account address must be claimed before deploying"
-        )
-
-    if derived_hostname is not None:
-        require_owned_subdomain(derived_hostname, subdomain=user.subdomain)
-        require_valid_hostname_for_deployment(session, derived_hostname)
+    # Pre-flight the user-provided values against the template's schema:
+    _validate_user_values(template, payload.user_values_json)
 
     # Validate the plan template: must exist, belong to the same product, and be canonical.
     plan_template: PlanTemplateVersionORM = _validate_plan_template(session, payload.plan_template_id, template.product_id)
@@ -697,17 +699,18 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
     # Determine the effective user values for validation
     new_user_values = update.user_values_json if update.user_values_json is not None else deployment.user_values_json
 
-    # Pre-flight the user-provided values against the template's schema:
-    _validate_user_values(target_template, new_user_values)
     derived_hostname = normalize_and_return_hostname(
         values_schema_json=target_template.values_schema_json,
         user_values_json=new_user_values,
+        complete=lambda hostname: require_valid_hostname_for_deployment(
+            session,
+            hostname,
+            handle=deployment.user.handle,
+            exclude_deployment_id=deployment.id,
+        ),
     )
-    if derived_hostname is not None:
-        require_owned_subdomain(derived_hostname, subdomain=deployment.user.subdomain)
-        require_valid_hostname_for_deployment(
-            session, derived_hostname, exclude_deployment_id=deployment.id,
-        )
+    # Pre-flight the user-provided values against the template's schema:
+    _validate_user_values(target_template, new_user_values)
 
     # A named build must be this deployment's own -- see
     # `_validate_build_reference`.

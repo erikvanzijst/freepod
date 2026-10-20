@@ -318,7 +318,7 @@ redeploy:
 
 ```json
 "user_values": {
-  "hostname": "myapp.example.freepod.eu",
+  "hostname": "myapp",
   "auth": { "enabled": true, "public": ["^/$", "^/static/"] }
 }
 ```
@@ -379,21 +379,21 @@ What to know when writing the app:
 
 ## Sharing a site with other apps
 
-`freepod.eu` is not on the [Public Suffix List](https://publicsuffix.org), so
-every platform hostname (`myapp.{user}.freepod.eu`) is its own origin but the
-same site as every other user's app and as Freepod itself. Protections keyed on
-the site do not separate apps. Whether that matters depends on the app, but
-weigh it when choosing cookies, response headers and CSRF defenses:
+Platform hostnames (`myapp-{handle}.freepod.app`) are on `freepod.app`, a
+different site from Freepod itself. `freepod.app` is not on the
+[Public Suffix List](https://publicsuffix.org), so each app is its own origin
+but the same site as every other user's app. Protections keyed on the site do
+not separate apps. Whether that matters depends on the app, but weigh it when
+choosing cookies, response headers and CSRF defenses:
 
 - Other apps' pages are `same-site`, so `SameSite` cookies don't stop them.
   A CSRF check has to compare against the app's own origin.
-- Any app can set `Domain=freepod.eu` cookies that this app receives. Only
+- Any app can set `Domain=freepod.app` cookies that this app receives. Only
   `__Host-` names are guaranteed to be the app's own, and that includes the
   framework's session and CSRF cookies.
-- A cookie with `Domain=freepod.eu`, a CORS rule that allows `*.freepod.eu`,
+- A cookie with `Domain=freepod.app`, a CORS rule that allows `*.freepod.app`,
   or framing allowed by default all extend to every other user's apps.
-- Uploaded HTML or SVG shown inline, whether from the app or a presigned
-  bucket URL (also under `freepod.eu`), runs on that shared site.
+- Uploaded HTML or SVG shown inline from the app runs on that shared site.
 
 Sign in with Freepod already treats a data-changing request from another
 origin's page as signed out. Requests authenticated by the app's own cookies
@@ -555,10 +555,13 @@ non-interactively, pipe the answer:
 printf 'myapp\n' | freepod init
 ```
 
-A bare label becomes a subdomain of the platform (`myapp` → `myapp.{user}.freepod.eu`).
-A value containing a dot is taken as already qualified, for a custom domain
-pointed at the platform with a CNAME to `freepod.eu` — or, for a root domain
-such as `example.com`, with A/AAAA records carrying the addresses `freepod.eu`
+A bare label is an app name: the platform completes it with the account's handle
+(`myapp` → `myapp-{handle}.freepod.app`), and `freepod deploy` prints the address.
+The app name is letters, digits and hyphens, at most 34 characters, with no `--`
+and not starting with `preview-`. A value containing a dot is taken as already
+qualified, for a custom domain
+pointed at the platform with a CNAME to `freepod.app` — or, for a root domain
+such as `example.com`, with A/AAAA records carrying the addresses `freepod.app`
 resolves to (flattened CNAME or ALIAS records work too; proxying must be off).
 Certificates are issued either way.
 

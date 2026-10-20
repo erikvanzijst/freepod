@@ -171,6 +171,8 @@ freepod deploy                       # takes a few minutes
   by allowScripts".
 - After a deploy fails, read `freepod log` and the build output, fix the code,
   check it in the preview, then deploy again.
+- If `freepod` is refused with a message saying it needs upgrading, upgrading
+  it is fine; do so without asking, then run the command again.
 
 ## Secrets
 

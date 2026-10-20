@@ -25,55 +25,28 @@ variable "environment" {
   nullable    = true
 }
 
-variable "reserved_hostnames" {
-  description = "Hostnames that name platform infrastructure and so cannot be claimed as deployment hostnames, per Terraform workspace."
+variable "reserved_handles" {
+  description = "Handles no account may claim: the platform's own service names, and names that would read as Freepod's own in `<app>-<handle>`. The same in every environment."
+  type        = list(string)
+  default = [
+    "www", "login", "smtp", "imap", "ssh", "grafana", "prometheus", "loki",
+    "alerts", "alertmanager", "cr", "kube", "blob", "keycloak", "account",
+    "auth", "dev", "freepod", "admin", "support", "security", "billing",
+    "official", "mail", "erik", "at", "from", "to", "of", "freepod"
+  ]
+}
+
+variable "legacy_tenant_redirects" {
+  description = "Retired tenant hostnames (`<app>.<handle>.<domain>`) that permanently redirect to their replacements, keyed by Terraform workspace. Set in secrets.auto.tfvars, because it names tenants' applications."
   type        = map(list(string))
+  sensitive   = true
+  default     = {}
+}
 
-  # kube.freepod.eu (the CNAME target every platform wildcard points at) and
-  # blob.freepod.eu (prod's object store) are reserved in both.
-  default = {
-    default = [
-      "dev.freepod.eu",
-      "www.dev.freepod.eu",
-      "login.dev.freepod.eu",
-      "smtp.dev.freepod.eu",
-      "imap.dev.freepod.eu",
-      "ssh.dev.freepod.eu",
-      "grafana.dev.freepod.eu",
-      "prometheus.dev.freepod.eu",
-      "loki.dev.freepod.eu",
-      "alerts.dev.freepod.eu",
-      "alertmanager.dev.freepod.eu",
-      "cr.dev.freepod.eu",
-      "kube.freepod.eu",
-      "blob.freepod.eu",
-      "blob.dev.freepod.eu",
-    ]
-    prod = [
-      "freepod.eu",
-      "dev.freepod.eu",
-      "www.freepod.eu",
-      "keycloak.freepod.eu",
-      "account.freepod.eu",
-      "auth.freepod.eu",
-      "login.freepod.eu",
-      "smtp.freepod.eu",
-      "imap.freepod.eu",
-      "grafana.freepod.eu",
-      "prometheus.freepod.eu",
-      "loki.freepod.eu",
-      "alerts.freepod.eu",
-      "alertmanager.freepod.eu",
-      "cr.freepod.eu",
-      "kube.freepod.eu",
-      "blob.freepod.eu",
-    ]
-  }
-
-  validation {
-    condition     = alltrue([for k in ["default", "prod"] : contains(keys(var.reserved_hostnames), k)])
-    error_message = "reserved_hostnames must have both a \"default\" (dev) and a \"prod\" key. The dev workspace is named `default`, not `dev`."
-  }
+variable "platform_domains" {
+  description = "Domains no custom hostname may be equal to or beneath: the platform's own and every tenant domain. The same in every environment, so one environment's names are refused in the other."
+  type        = list(string)
+  default     = ["freepod.eu", "freepod.app"]
 }
 
 # Keycloak client identity, keyed by Terraform workspace.
@@ -335,21 +308,3 @@ variable "log_keepalive_seconds" {
   default     = 15
 }
 
-variable "cloudflare_api_dns_token" {
-  description = "Cloudflare API token with `Zone → DNS → Edit` on the platform zone. Set in secrets.auto.tfvars; the reconciler creates each account's wildcard record with it."
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "cloudflare_zone_id" {
-  description = "Id of the platform's DNS zone."
-  type        = string
-  default     = ""
-}
-
-variable "dns_record_target" {
-  description = "What an account's wildcard CNAME resolves to. Mirrors the platform's own `*.<domain>` record, so moving the ingress stays one edit."
-  type        = string
-  default     = "kube.freepod.eu"
-}

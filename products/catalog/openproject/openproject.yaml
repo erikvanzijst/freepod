@@ -112,7 +112,7 @@ template:
         title: Hostname
         minLength: 1
         maxLength: 253
-        description: The fully qualified domain name for OpenProject (e.g. projects.user.freepod.eu).
+        description: The address of OpenProject, such as projects-alice.freepod.app, or a domain of your own.
       admin:
         type: object
         additionalProperties: false

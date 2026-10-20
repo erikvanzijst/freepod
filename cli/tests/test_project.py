@@ -267,3 +267,38 @@ def test_saving_is_atomic_over_an_existing_file(tmp_path):
 
     assert (tmp_path / PROJECT_FILE).read_text() != original
     assert load(tmp_path).hostname == "changed.freepod.eu"
+
+
+# --------------------------------------------------------------------------
+# Hostnames earlier releases wrote
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "old,label",
+    [("photos.alice.freepod.eu", "photos"), ("notes.bob.dev.freepod.eu", "notes")],
+)
+def test_an_old_format_hostname_is_rewritten_to_its_label(tmp_path, capsys, old, label):
+    write_project(tmp_path, user_values={"hostname": old, "auth": {"enabled": True}})
+
+    project = load(tmp_path)
+
+    assert project.hostname == label
+    saved = json.loads((tmp_path / PROJECT_FILE).read_text())
+    assert saved["user_values"] == {"hostname": label, "auth": {"enabled": True}}
+    err = capsys.readouterr().err
+    assert old in err and label in err
+    assert len(err.strip().splitlines()) == 1
+
+
+@pytest.mark.parametrize(
+    "hostname",
+    ["photos", "photos-alice.freepod.app", "grafana.freepod.eu", "photos.example.com"],
+)
+def test_other_hostnames_are_untouched(tmp_path, capsys, hostname):
+    write_project(tmp_path, user_values={"hostname": hostname})
+    before = (tmp_path / PROJECT_FILE).read_text()
+
+    assert load(tmp_path).hostname == hostname
+    assert (tmp_path / PROJECT_FILE).read_text() == before
+    assert capsys.readouterr().err == ""

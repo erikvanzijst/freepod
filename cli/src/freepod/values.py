@@ -31,7 +31,7 @@ HOSTNAME_TITLE = "hostname"
 HOSTNAME_REASONS = {
     "invalid": "that is not a valid hostname",
     "reserved": "that name is reserved by the platform",
-    "claimed": "that name is under another account's subdomain",
+    "claimed": "that name ends in another account's handle",
     "in_use": "that name is already taken by another deployment",
     "not_resolving": (
         "that name does not point at the platform yet — a custom domain needs "
@@ -101,30 +101,31 @@ def is_hostname_property(spec: Dict[str, Any]) -> bool:
     return isinstance(title, str) and title.strip().lower() == HOSTNAME_TITLE
 
 
-def normalize_hostname(value: str, account_fqdn: Optional[str]) -> str:
-    """Lowercase, and complete a bare label beneath the account's subdomain.
+def normalize_hostname(value: str) -> str:
+    """Lowercase and trim, and nothing else.
 
-    An application is addressed at `<app>.<subdomain>.<domain>`, so a bare label
-    is completed with the account's own name rather than with a platform domain
-    chosen from a list -- there is no list, and no other name the account may
-    deploy beneath.
-
-    A value containing a dot is taken as already fully qualified: it may be a
-    custom domain, which the platform supports via CNAME or A/AAAA records.
+    A value without a dot is an application label, which the platform completes
+    beneath the account's handle; a value with one is fully qualified, and may
+    be a custom domain. Either way it is sent as entered: the client does not
+    know how the platform forms its hostnames.
     """
-    candidate = value.strip().lower().rstrip(".")
-    if not candidate:
-        return candidate
-    if "." not in candidate and account_fqdn:
-        return f"{candidate}.{account_fqdn}"
-    return candidate
+    return value.strip().lower().rstrip(".")
+
+
+def full_hostname(value: str, suffix: Optional[str]) -> str:
+    """What a hostname will be once the platform has completed it: a bare label
+    with the account's reported suffix appended as opaque text, for display and
+    comparison only."""
+    if "." in value or not suffix:
+        return value
+    return f"{value}{suffix}"
 
 
 def hostname_label(name: str) -> Optional[str]:
     """The DNS label closest to `name`, or None when nothing usable remains.
 
     Dots become hyphens too: a dotted suggestion would be taken as fully
-    qualified rather than completed beneath the account's subdomain.
+    qualified rather than as an application label.
     """
     label = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:63].rstrip("-")
     return label or None
@@ -196,7 +197,7 @@ class ValueCollector:
         self,
         schema: Dict[str, Any],
         *,
-        account_fqdn: Optional[str] = None,
+        suffix: Optional[str] = None,
         check_hostname: Optional[Callable[[str], Dict[str, Any]]] = None,
         suggested_hostname: Optional[str] = None,
         interactive: bool = True,
@@ -204,7 +205,7 @@ class ValueCollector:
         ask: Optional[Callable[..., str]] = None,
     ):
         self.schema = schema or {}
-        self.account_fqdn = account_fqdn
+        self.suffix = suffix
         self.check_hostname = check_hostname
         self.suggested_hostname = suggested_hostname
         self.interactive = interactive
@@ -295,9 +296,10 @@ class ValueCollector:
             answer = (answer or "").strip()
 
             if hostname:
-                answer = normalize_hostname(answer, self.account_fqdn)
-                if answer and answer != (current or "") and "." in answer:
-                    self.echo(f"  → {answer}")
+                answer = normalize_hostname(answer)
+                shown = full_hostname(answer, self.suffix)
+                if answer and shown != answer:
+                    self.echo(f"  → {shown}")
 
             problem = check_constraints(name, answer, spec)
             if problem:
@@ -318,7 +320,7 @@ class ValueCollector:
         self, name: str, spec: Dict[str, Any], value: str, hostname: bool
     ) -> str:
         if hostname:
-            value = normalize_hostname(value, self.account_fqdn)
+            value = normalize_hostname(value)
         problem = check_constraints(name, value, spec)
         if problem:
             raise ValueError_(f"{problem} (currently {value!r})")

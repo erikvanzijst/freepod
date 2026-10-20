@@ -1,5 +1,5 @@
 import { requestBlob, requestJson, requestMultipart } from './client'
-import type { Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductListing, ProductRelease, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Subdomain, TosAcceptance, UsageQuery, UsageReport, User, VarWrite } from './types'
+import type { Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductListing, ProductRelease, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Handle, TosAcceptance, UsageQuery, UsageReport, User, VarWrite } from './types'
 
 export function getMe() {
   return requestJson<User>('/me')
@@ -16,18 +16,20 @@ export function recordTosAcceptance(version: string) {
   })
 }
 
-export function getMySubdomain() {
-  return requestJson<Subdomain>('/me/subdomain')
+export function getMyHandle() {
+  return requestJson<Handle>('/me/handle')
 }
 
 /**
- * Claim the account's permanent address. Refused with `subdomain_already_claimed`
- * once one is held — there is no second claim, and no way back.
+ * Claim the account's permanent handle. Refused with `handle_already_claimed`
+ * for a different handle once one is held — there is no way back. With
+ * `dryRun`, every check runs and nothing is stored: the availability check.
  */
-export function claimSubdomain(subdomain: string) {
-  return requestJson<Subdomain>('/me/subdomain', {
+export function claimHandle(handle: string, { dryRun = false, signal }: { dryRun?: boolean; signal?: AbortSignal } = {}) {
+  return requestJson<Handle>(dryRun ? '/me/handle?dry_run=1' : '/me/handle', {
     method: 'POST',
-    body: JSON.stringify({ subdomain }),
+    body: JSON.stringify({ handle }),
+    signal,
   })
 }
 

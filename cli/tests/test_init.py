@@ -58,15 +58,15 @@ def dev_api(monkeypatch):
                 return json_response(200, ME)
             if path == "/api/products":
                 return json_response(200, products)
-            if path == "/api/me/subdomain":
+            if path == "/api/me/handle":
                 return json_response(
                     200,
                     account
                     if account is not None
                     else {
-                        "subdomain": "erik",
-                        "fqdn": "erik.dev.freepod.eu",
-                        "domain": "dev.freepod.eu",
+                        "handle": "erik",
+                        "suffix": "-erik.dev.freepod.app",
+                        "domain": "dev.freepod.app",
                     },
                 )
             if path.startswith("/api/hostnames/"):
@@ -147,7 +147,7 @@ def test_init_writes_the_project_file(dev_api, credential, answers, in_tmp_dir, 
 
     project = load(in_tmp_dir)
     assert project.env == "dev"
-    assert project.user_values == {"hostname": "myapp.erik.dev.freepod.eu"}
+    assert project.user_values == {"hostname": "myapp"}
     assert project.deployment is None
     capsys.readouterr()
 
@@ -227,8 +227,8 @@ def test_the_hostname_is_completed_and_shown(dev_api, credential, answers, in_tm
     answers("myapp")
     main(["--env", "dev", "init"])
 
-    assert load(in_tmp_dir).hostname == "myapp.erik.dev.freepod.eu"
-    assert "myapp.erik.dev.freepod.eu" in capsys.readouterr().err
+    assert load(in_tmp_dir).hostname == "myapp"
+    assert "myapp-erik.dev.freepod.app" in capsys.readouterr().err
 
 
 def test_the_directory_name_is_offered_as_the_hostname(
@@ -243,7 +243,7 @@ def test_the_directory_name_is_offered_as_the_hostname(
     assert main(["--env", "dev", "init"]) == EXIT_OK
 
     assert offered == ["my-app-v2"]
-    assert load(project_dir).hostname == "my-app-v2.erik.dev.freepod.eu"
+    assert load(project_dir).hostname == "my-app-v2"
     capsys.readouterr()
 
 
@@ -253,7 +253,7 @@ def test_an_unusable_hostname_re_prompts(dev_api, credential, answers, in_tmp_di
 
     assert main(["--env", "dev", "init"]) == EXIT_OK
 
-    assert load(in_tmp_dir).hostname == "free.erik.dev.freepod.eu"
+    assert load(in_tmp_dir).hostname == "free"
     assert "already taken" in capsys.readouterr().err
 
 
@@ -340,7 +340,7 @@ def test_force_warns_that_it_discards_the_deployment_pointer(
 
     project = load(in_tmp_dir)
     assert project.deployment is None, "--force discards the whole file, pointer included"
-    assert project.hostname == "fresh.erik.dev.freepod.eu"
+    assert project.hostname == "fresh"
 
 
 def test_the_protection_message_does_not_recommend_init_for_a_missing_value(

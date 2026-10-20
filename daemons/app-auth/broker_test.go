@@ -207,7 +207,7 @@ func TestBrokerDeploymentReplacedWhileDeciding(t *testing.T) {
 
 func TestBrokerEligibility(t *testing.T) {
 	for name, host := range map[string]string{
-		"host without authentication": "plain.erik.freepod.eu",
+		"host without authentication": "plain-erik.freepod.app",
 		"arbitrary host":              "evil.example",
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -233,9 +233,9 @@ func TestBrokerEligibility(t *testing.T) {
 	})
 
 	for name, host := range map[string]string{
-		"preview of a host without authentication": "preview-plain.erik.freepod.eu",
-		"preview of an unknown host":               "preview-nothing.erik.freepod.eu",
-		"bare preview prefix":                      "preview-.erik.freepod.eu",
+		"preview of a host without authentication": "preview-plain-erik.freepod.app",
+		"preview of an unknown host":               "preview-nothing-erik.freepod.app",
+		"bare preview prefix":                      "preview-.freepod.app",
 	} {
 		t.Run(name, func(t *testing.T) {
 			g := newBrokerRig(t)
@@ -379,7 +379,7 @@ func TestBrokerLogout(t *testing.T) {
 	})
 
 	for name, host := range map[string]string{
-		"host without authentication": "plain.erik.freepod.eu",
+		"host without authentication": "plain-erik.freepod.app",
 		"arbitrary host":              "evil.example",
 		"no host":                     "",
 	} {
@@ -445,12 +445,12 @@ func TestBrokerPreviewSharesConsent(t *testing.T) {
 
 func TestPreviewBase(t *testing.T) {
 	for host, want := range map[string]string{
-		"preview-studio.alice.freepod.eu":   "studio.alice.freepod.eu",
-		"Preview-Studio.alice.freepod.eu":   "studio.alice.freepod.eu",
-		"studio.alice.freepod.eu":           "",
-		"mypreview-studio.alice.freepod.eu": "",
-		"preview-.alice.freepod.eu":         "",
-		"preview-studio":                    "",
+		"preview-studio-alice.freepod.app":   "studio-alice.freepod.app",
+		"Preview-Studio-alice.freepod.app":   "studio-alice.freepod.app",
+		"studio-alice.freepod.app":           "",
+		"mypreview-studio-alice.freepod.app": "",
+		"preview-.freepod.app":               "",
+		"preview-studio":                     "",
 	} {
 		got, ok := previewBase(host)
 		if got != want || ok != (want != "") {

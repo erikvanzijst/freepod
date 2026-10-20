@@ -37,7 +37,7 @@ from typing import IO, Any, Callable, Dict, List, Optional, Tuple
 import httpx
 
 from . import FreepodError, RolloutFailed, UsageError
-from . import subdomain as subdomain_module
+from . import handle as handle_module
 from . import tos
 from .api import ApiClient, _json_code, _json_detail
 from .archive import packed_archive, report
@@ -56,6 +56,7 @@ from .values import (
     ValueCollector,
     check_public_patterns,
     describe_reason,
+    full_hostname,
     is_hostname_property,
     missing_required,
     normalize_hostname,
@@ -249,7 +250,7 @@ def preflight(
     plan = None
     if deployment is None:
         plan = select_free_plan(api, product)
-        subdomain_module.require(api)
+        handle_module.require(api)
         # Only a create is gated on the terms; an update is not. Asking on
         # every deploy would be nagging for a fact the platform records once.
         tos.require(api, interactive=interactive, echo=echo)
@@ -324,7 +325,7 @@ def _settle_values(
         )
         collector = ValueCollector(
             schema,
-            account_fqdn=_account_fqdn(api),
+            suffix=handle_module.held_suffix(api),
             check_hostname=api.check_hostname,
             interactive=interactive,
         )
@@ -356,29 +357,35 @@ def _settle_hostname(
 ) -> str:
     """Normalize the hostname, and check it only when it is new or changed.
 
-    `GET /api/hostnames/{fqdn}` runs without `exclude_deployment_id`, so
+    The value is sent as entered, a bare label included; the platform completes
+    it. `GET /api/hostnames/{value}` runs without `exclude_deployment_id`, so
     re-checking a name we already hold reports `in_use` against ourselves — and
     for a custom domain it performs a live DNS lookup that is slow and
-    transiently failure-prone. See design D14.
+    transiently failure-prone. See design D14. So the comparison with the
+    deployment's hostname appends the account's suffix to a bare label.
     """
-    fqdn = normalize_hostname(value, _account_fqdn(api) if "." not in value else None)
+    hostname = normalize_hostname(value)
     current = (deployment or {}).get("hostname") or ""
 
     if already_checked:
-        return fqdn
-    if fqdn.lower() == current.lower():
-        return fqdn
+        return hostname
+    if current and "." not in hostname:
+        if full_hostname(hostname, handle_module.held_suffix(api)).lower() == current.lower():
+            return hostname
+    elif hostname.lower() == current.lower():
+        return hostname
 
-    verdict = api.check_hostname(fqdn)
+    verdict = api.check_hostname(hostname)
+    checked = verdict.get("fqdn") or hostname
     if not verdict.get("usable", False):
         raise FreepodError(
-            f"{fqdn}: {describe_reason(verdict.get('reason'))}.\n"
+            f"{checked}: {describe_reason(verdict.get('reason'))}.\n"
             f"  Edit 'hostname' in {PROJECT_FILE} and re-run — nothing has been "
             f"built or deployed."
         )
     if current:
-        echo(f"Hostname {current} → {fqdn}.")
-    return fqdn
+        echo(f"Hostname {current} → {checked}.")
+    return hostname
 
 
 def _hostname_key(schema: Dict[str, Any]) -> Optional[str]:
@@ -393,19 +400,6 @@ def _hostname_key(schema: Dict[str, Any]) -> Optional[str]:
         if isinstance(spec, dict) and is_hostname_property(spec):
             return name
     return None
-
-
-def _account_fqdn(api: ApiClient) -> Optional[str]:
-    """The account's subdomain, tolerating its absence.
-
-    Only needed to complete a bare label into an FQDN; a deploy whose hostname
-    is already qualified should not fail because this read did. A create with no
-    subdomain at all was already refused in preflight.
-    """
-    try:
-        return subdomain_module.held(subdomain_module.read(api))
-    except FreepodError:
-        return None
 
 
 # --------------------------------------------------------------------------
@@ -603,10 +597,10 @@ def create_deployment(
     response = api.post(f"/api/users/{user_id}/deployments", json=body)
     if response.status_code == 409:
         raise _conflict(response, built=False)
-    if response.status_code == 400 and _json_code(response) == subdomain_module.DEPLOY_REFUSAL_CODE:
+    if response.status_code == 400 and _json_code(response) == handle_module.DEPLOY_REFUSAL_CODE:
         raise FreepodError(
             f"the platform refused the deployment because this account does not "
-            f"have a subdomain.\n"
+            f"have a handle.\n"
             f"  Choose one at {api.env.api_base}, then re-run."
         )
     if response.status_code == 400 and _json_detail(response) == tos.DEPLOY_REFUSAL:

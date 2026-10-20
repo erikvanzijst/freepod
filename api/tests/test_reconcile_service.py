@@ -17,13 +17,13 @@ from tests.provisioner_utils import FakeProvisioner
 @pytest.fixture(autouse=True)
 def _reconcile_tls_settings(monkeypatch):
     """Pin the settings the reconciler reads for TLS injection so tests don't depend
-    on ambient ``.env`` / ``.env.local`` (no wildcard domains -> hostnames classify as
+    on ambient ``.env`` / ``.env.local`` (no tenant domain -> hostnames classify as
     custom). Individual tests re-patch this to exercise the wildcard branch.
     """
     monkeypatch.setattr(
         "app.services.reconcile.get_settings",
         lambda: CaelusSettings(
-            wildcard_domains=[], tls_cluster_issuer="letsencrypt-http", domain="example.test", _env_file=None
+            tls_cluster_issuer="letsencrypt-http", domain="example.test", _env_file=None
         ),
     )
 
@@ -267,18 +267,18 @@ def test_reconcile_injects_empty_caelus_plan_when_no_storage_quota(db_session) -
 # --- _build_ingress_overrides unit tests (app-tls-termination) -----------------
 
 
-def _patch_wildcard_domains(monkeypatch, domains: list[str]) -> None:
+def _patch_tenant_domain(monkeypatch, tenant_domain: str) -> None:
     monkeypatch.setattr(
         "app.services.reconcile.get_settings",
         lambda: CaelusSettings(
-            wildcard_domains=domains, tls_cluster_issuer="letsencrypt-http", domain="example.test", _env_file=None
+            tenant_domain=tenant_domain, tls_cluster_issuer="letsencrypt-http", domain="example.test", _env_file=None
         ),
     )
 
 
 def test_build_ingress_overrides_custom_domain(monkeypatch) -> None:
     """A custom domain is classified non-wildcard and gets a per-app HTTP-01 cert."""
-    _patch_wildcard_domains(monkeypatch, ["freepod.eu"])
+    _patch_tenant_domain(monkeypatch, "freepod.app")
     deployment = SimpleNamespace(hostname="app.example.com", name="immich-ab12cd")
 
     overrides = DeploymentReconciler._build_ingress_overrides(deployment)
@@ -298,15 +298,15 @@ def test_build_ingress_overrides_custom_domain(monkeypatch) -> None:
     }
 
 
-def test_build_ingress_overrides_wildcard_domain(monkeypatch) -> None:
-    """A *.freepod.eu host is wildcard: enabled, no per-app issuer or secret."""
-    _patch_wildcard_domains(monkeypatch, ["freepod.eu"])
-    deployment = SimpleNamespace(hostname="hw.freepod.eu", name="helloworld-ab12cd")
+def test_build_ingress_overrides_tenant_domain(monkeypatch) -> None:
+    """A tenant hostname is wildcard: enabled, no per-app issuer or secret."""
+    _patch_tenant_domain(monkeypatch, "freepod.app")
+    deployment = SimpleNamespace(hostname="hw-alice.freepod.app", name="helloworld-ab12cd")
 
     ingress = DeploymentReconciler._build_ingress_overrides(deployment)["caelus"]["ingress"]
 
     assert ingress["enabled"] is True
-    assert ingress["host"] == "hw.freepod.eu"
+    assert ingress["host"] == "hw-alice.freepod.app"
     assert ingress["tls"]["wildcard"] is True
     assert "issuer" not in ingress["tls"]
     assert "secretName" not in ingress["tls"]
@@ -314,18 +314,18 @@ def test_build_ingress_overrides_wildcard_domain(monkeypatch) -> None:
 
 def test_build_ingress_overrides_hostname_case_insensitive(monkeypatch) -> None:
     """Classification and host are lower-cased."""
-    _patch_wildcard_domains(monkeypatch, ["freepod.eu"])
-    deployment = SimpleNamespace(hostname="HW.Freepod.EU", name="helloworld-ab12cd")
+    _patch_tenant_domain(monkeypatch, "freepod.app")
+    deployment = SimpleNamespace(hostname="HW-Alice.Freepod.APP", name="helloworld-ab12cd")
 
     ingress = DeploymentReconciler._build_ingress_overrides(deployment)["caelus"]["ingress"]
 
-    assert ingress["host"] == "hw.freepod.eu"
+    assert ingress["host"] == "hw-alice.freepod.app"
     assert ingress["tls"]["wildcard"] is True
 
 
 def test_build_ingress_overrides_no_hostname_returns_none(monkeypatch) -> None:
     """A deployment without a hostname gets no ingress block."""
-    _patch_wildcard_domains(monkeypatch, ["freepod.eu"])
+    _patch_tenant_domain(monkeypatch, "freepod.app")
     deployment = SimpleNamespace(hostname=None, name="naas-ab12cd")
 
     assert DeploymentReconciler._build_ingress_overrides(deployment) is None

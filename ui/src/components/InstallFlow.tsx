@@ -2,8 +2,8 @@ import { useRef, useState } from 'react'
 import type { ProductSummary } from '../api/types'
 import { useAuth } from '../state/AuthContext'
 import { DeployDialog } from './DeployDialog'
-import { ClaimSubdomainDialog } from './subdomain/ClaimSubdomainDialog'
-import { useMySubdomain } from './subdomain/useMySubdomain'
+import { ClaimHandleDialog } from './handle/ClaimHandleDialog'
+import { useMyHandle } from './handle/useMyHandle'
 
 interface InstallFlowProps {
   product: ProductSummary
@@ -16,25 +16,24 @@ interface InstallFlowProps {
 
 /**
  * Launching an app, over whatever page asked for it: the deploy dialog, preceded
- * by a subdomain claim when the user holds none. The claim gates the dialog
+ * by a handle claim when the user holds none. The claim gates the dialog
  * rather than sitting inside it, so no half-filled form is thrown away to ask
- * for a domain name.
+ * for a handle.
  */
 export function InstallFlow({ product, plan, onClose, onLaunched }: InstallFlowProps) {
   const { user } = useAuth()
-  const subdomain = useMySubdomain()
+  const handle = useMyHandle()
   const [claimed, setClaimed] = useState(false)
   // The claim dialog closes itself after a claim; that close must not end the flow.
   const claimedRef = useRef(false)
 
-  if (!user || !subdomain.isSuccess) return null
+  if (!user || !handle.isSuccess) return null
 
-  if (!subdomain.data.subdomain && !claimed) {
-    if (!subdomain.data.domain) return null
+  if (!handle.data.handle && !claimed) {
     return (
-      <ClaimSubdomainDialog
+      <ClaimHandleDialog
         open
-        domain={subdomain.data.domain}
+        domain={handle.data.domain}
         email={user.email}
         onClaimed={() => {
           claimedRef.current = true

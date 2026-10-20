@@ -79,7 +79,7 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/appstudio
-  chart_version: 0.2.14
+  chart_version: 0.2.16
   system_values:
     nodePool: tenant
     auth:
@@ -94,6 +94,6 @@ template:
         title: Hostname
         minLength: 1
         maxLength: 253
-        description: The address of your studio (e.g. studio.you.freepod.eu).
+        description: The address of your studio, such as studio-alice.freepod.app.
     required:
     - hostname

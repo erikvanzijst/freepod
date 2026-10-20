@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { isAppRoute } from './links'
 
 describe('isAppRoute', () => {
-  it.each(['/', '/dev', '/settings/domain', '/legal/terms'])('routes %s in the app', (href) => {
+  it.each(['/', '/dev', '/settings/handle', '/legal/terms'])('routes %s in the app', (href) => {
     expect(isAppRoute(href)).toBe(true)
   })
 

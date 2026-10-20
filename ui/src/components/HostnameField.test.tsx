@@ -15,28 +15,28 @@ describe('HostnameField', () => {
   describe('mode selection', () => {
     it('defaults to custom mode when the account has no domain name yet', () => {
       const onChange = vi.fn()
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
 
       expect(screen.getByLabelText('Hostname')).toBeInTheDocument()
-      expect(screen.queryByText('Free domain')).not.toBeInTheDocument()
+      expect(screen.queryByText('Freepod address')).not.toBeInTheDocument()
     })
 
     it('defaults to Freepod mode when the account holds a domain name', () => {
       const onChange = vi.fn()
       render(
-        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
+        <HostnameField value="" onChange={onChange} suffix="-alice.freepod.app" />,
       )
 
       expect(screen.getByLabelText('Hostname')).toBeInTheDocument()
-      expect(screen.getByText('.app.example.com')).toBeInTheDocument()
-      expect(screen.getByText('Free domain')).toBeInTheDocument()
+      expect(screen.getByText('-alice.freepod.app')).toBeInTheDocument()
+      expect(screen.getByText('Freepod address')).toBeInTheDocument()
       expect(screen.getByText('Custom domain')).toBeInTheDocument()
     })
 
     it('switches from Freepod to custom mode', () => {
       const onChange = vi.fn()
       render(
-        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
+        <HostnameField value="" onChange={onChange} suffix="-alice.freepod.app" />,
       )
 
       fireEvent.click(screen.getByText('Custom domain'))
@@ -46,28 +46,28 @@ describe('HostnameField', () => {
     it('switches from custom back to Freepod mode', () => {
       const onChange = vi.fn()
       render(
-        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
+        <HostnameField value="" onChange={onChange} suffix="-alice.freepod.app" />,
       )
 
       fireEvent.click(screen.getByText('Custom domain'))
-      fireEvent.click(screen.getByText('Free domain'))
-      expect(screen.getByText('.app.example.com')).toBeInTheDocument()
+      fireEvent.click(screen.getByText('Freepod address'))
+      expect(screen.getByText('-alice.freepod.app')).toBeInTheDocument()
     })
   })
 
   describe('value composition', () => {
     it('combines the app name with the account domain name', async () => {
       const onChange = vi.fn()
-      checkHostnameMock.mockResolvedValue({ fqdn: 'myapp.app.example.com', usable: true, reason: null })
+      checkHostnameMock.mockResolvedValue({ fqdn: 'myapp-alice.freepod.app', usable: true, reason: null })
 
       render(
-        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
+        <HostnameField value="" onChange={onChange} suffix="-alice.freepod.app" />,
       )
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'myapp' } })
 
       await waitFor(() => {
-        expect(onChange).toHaveBeenCalledWith('myapp.app.example.com')
+        expect(onChange).toHaveBeenCalledWith('myapp-alice.freepod.app')
       })
     })
 
@@ -75,7 +75,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'myapp.custom.com', usable: true, reason: null })
 
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'myapp.custom.com' } })
 
@@ -87,7 +87,7 @@ describe('HostnameField', () => {
     it('does not call onChange for an empty app name', () => {
       const onChange = vi.fn()
       render(
-        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
+        <HostnameField value="" onChange={onChange} suffix="-alice.freepod.app" />,
       )
 
       expect(onChange).not.toHaveBeenCalled()
@@ -99,7 +99,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'test.example.com', usable: true, reason: null })
 
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'test.example.com' } })
 
@@ -116,7 +116,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockClear()
 
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
 
       // Type something then clear it
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'x' } })
@@ -130,7 +130,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'good.example.com', usable: true, reason: null })
 
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'good.example.com' } })
 
@@ -143,7 +143,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'bad', usable: false, reason: 'invalid' })
 
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'bad' } })
 
@@ -157,7 +157,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'taken.example.com', usable: false, reason: 'in_use' })
 
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'taken.example.com' } })
 
@@ -170,7 +170,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'smtp.example.com', usable: false, reason: 'reserved' })
 
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'smtp.example.com' } })
 
@@ -183,16 +183,31 @@ describe('HostnameField', () => {
   describe('app name dot stripping', () => {
     it('strips dots from the app name', async () => {
       const onChange = vi.fn()
-      checkHostnameMock.mockResolvedValue({ fqdn: 'foobar.app.example.com', usable: true, reason: null })
+      checkHostnameMock.mockResolvedValue({ fqdn: 'foobar-alice.freepod.app', usable: true, reason: null })
 
       render(
-        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
+        <HostnameField value="" onChange={onChange} suffix="-alice.freepod.app" />,
       )
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'foo.bar' } })
 
       await waitFor(() => {
-        expect(onChange).toHaveBeenCalledWith('foobar.app.example.com')
+        expect(onChange).toHaveBeenCalledWith('foobar-alice.freepod.app')
+      })
+    })
+
+    it('allows dashes in the app name', async () => {
+      const onChange = vi.fn()
+      checkHostnameMock.mockResolvedValue({ fqdn: 'my-photos-alice.freepod.app', usable: true, reason: null })
+
+      render(
+        <HostnameField value="" onChange={onChange} suffix="-alice.freepod.app" />,
+      )
+
+      fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'my-photos' } })
+
+      await waitFor(() => {
+        expect(onChange).toHaveBeenCalledWith('my-photos-alice.freepod.app')
       })
     })
 
@@ -200,7 +215,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'foo.bar.example.com', usable: true, reason: null })
 
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'foo.bar.example.com' } })
 
@@ -215,13 +230,13 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'app.other.example.com', usable: false, reason: 'claimed' })
 
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'app.other.example.com' } })
 
       await waitFor(() => {
         expect(
-          screen.getByText("That hostname is under another account's subdomain"),
+          screen.getByText('That address belongs to another account'),
         ).toBeInTheDocument()
       })
     })
@@ -230,7 +245,7 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'a.b.example.com', usable: false, reason: 'nested_subdomain' })
 
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'a.b.example.com' } })
 
@@ -247,12 +262,12 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'app.example.com', usable: false, reason: 'not_resolving' })
 
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} cnameTarget="dev.freepod.eu" />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} cnameTarget="dev.freepod.app" />)
 
       // Custom-mode helper text reflects the environment-specific target
       expect(
         screen.getByText(
-          'Point your domain at Freepod: a CNAME record → dev.freepod.eu, or for a root domain (example.com), A/AAAA records with the same addresses as dev.freepod.eu',
+          'Point your domain at Freepod: a CNAME record → dev.freepod.app, or for a root domain (example.com), A/AAAA records with the same addresses as dev.freepod.app',
         ),
       ).toBeInTheDocument()
 
@@ -261,24 +276,24 @@ describe('HostnameField', () => {
       await waitFor(() => {
         expect(
           screen.getByText(
-            'Create a CNAME record pointing to dev.freepod.eu, or for a root domain, A/AAAA records with the same addresses as dev.freepod.eu',
+            'Create a CNAME record pointing to dev.freepod.app, or for a root domain, A/AAAA records with the same addresses as dev.freepod.app',
           ),
         ).toBeInTheDocument()
       })
     })
 
-    it('falls back to freepod.eu when cnameTarget is not provided', async () => {
+    it('falls back to freepod.app when cnameTarget is not provided', async () => {
       const onChange = vi.fn()
       checkHostnameMock.mockResolvedValue({ fqdn: 'app.example.com', usable: false, reason: 'not_resolving' })
 
-      render(<HostnameField value="" onChange={onChange} accountFqdn={null} />)
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'app.example.com' } })
 
       await waitFor(() => {
         expect(
           screen.getByText(
-            'Create a CNAME record pointing to freepod.eu, or for a root domain, A/AAAA records with the same addresses as freepod.eu',
+            'Create a CNAME record pointing to freepod.app, or for a root domain, A/AAAA records with the same addresses as freepod.app',
           ),
         ).toBeInTheDocument()
       })
@@ -289,45 +304,54 @@ describe('HostnameField', () => {
     it('switches to Freepod mode when the account domain name arrives after mount', () => {
       const onChange = vi.fn()
       const { rerender } = render(
-        <HostnameField value="" onChange={onChange} accountFqdn={null} />,
+        <HostnameField value="" onChange={onChange} suffix={null} />,
       )
 
       // Initially in custom mode: no account domain name yet
       expect(screen.getByLabelText('Hostname')).toBeInTheDocument()
-      expect(screen.queryByText('Free domain')).not.toBeInTheDocument()
+      expect(screen.queryByText('Freepod address')).not.toBeInTheDocument()
 
       // Domains arrive asynchronously
       rerender(
-        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" />,
+        <HostnameField value="" onChange={onChange} suffix="-alice.freepod.app" />,
       )
 
       // Switched to Freepod mode, rendering the account's own suffix
-      expect(screen.getByText('Free domain')).toBeInTheDocument()
-      expect(screen.getByText('.app.example.com')).toBeInTheDocument()
+      expect(screen.getByText('Freepod address')).toBeInTheDocument()
+      expect(screen.getByText('-alice.freepod.app')).toBeInTheDocument()
     })
   })
 
   describe('initial value sync', () => {
-    it('splits an initial value into app name and account domain name', () => {
+    it('splits an initial tenant hostname back into its app name', () => {
       const onChange = vi.fn()
       render(
         <HostnameField
-          value="myapp.app.example.com"
+          value="myapp-alice.freepod.app"
           onChange={onChange}
-          accountFqdn="app.example.com"
+          suffix="-alice.freepod.app"
         />,
       )
 
       expect(screen.getByLabelText('Hostname')).toHaveValue('myapp')
     })
 
-    it('falls back to custom mode when the value sits under no account domain name', () => {
+    it('treats another account\'s address as a custom value', () => {
+      const onChange = vi.fn()
+      render(
+        <HostnameField value="myapp-bob.freepod.app" onChange={onChange} suffix="-alice.freepod.app" />,
+      )
+
+      expect(screen.getByLabelText('Hostname')).toHaveValue('myapp-bob.freepod.app')
+    })
+
+    it('falls back to custom mode when the value does not end in the suffix', () => {
       const onChange = vi.fn()
       render(
         <HostnameField
           value="myapp.other.com"
           onChange={onChange}
-          accountFqdn="app.example.com"
+          suffix="-alice.freepod.app"
         />,
       )
 
@@ -342,7 +366,7 @@ describe('HostnameField', () => {
         <HostnameField
           value=""
           onChange={onChange}
-          accountFqdn={null}
+          suffix={null}
           error="Server rejected hostname"
         />,
       )
@@ -354,34 +378,34 @@ describe('HostnameField', () => {
   describe('default prefix prefill', () => {
     it('prefills the name under the account domain', async () => {
       const onChange = vi.fn()
-      checkHostnameMock.mockResolvedValue({ fqdn: 'hello-world.app.example.com', usable: true, reason: null })
+      checkHostnameMock.mockResolvedValue({ fqdn: 'hello-world-alice.freepod.app', usable: true, reason: null })
 
       render(
-        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" defaultPrefix="hello-world" />,
+        <HostnameField value="" onChange={onChange} suffix="-alice.freepod.app" defaultPrefix="hello-world" />,
       )
 
       expect(screen.getByLabelText('Hostname')).toHaveValue('hello-world')
       await waitFor(() => {
-        expect(onChange).toHaveBeenCalledWith('hello-world.app.example.com')
+        expect(onChange).toHaveBeenCalledWith('hello-world-alice.freepod.app')
       })
     })
 
     it('prefills once the account domain arrives after mount', async () => {
       const onChange = vi.fn()
-      checkHostnameMock.mockResolvedValue({ fqdn: 'hello-world.app.example.com', usable: true, reason: null })
+      checkHostnameMock.mockResolvedValue({ fqdn: 'hello-world-alice.freepod.app', usable: true, reason: null })
 
       const { rerender } = render(
-        <HostnameField value="" onChange={onChange} accountFqdn={null} defaultPrefix="hello-world" />,
+        <HostnameField value="" onChange={onChange} suffix={null} defaultPrefix="hello-world" />,
       )
       expect(screen.getByLabelText('Hostname')).toHaveValue('')
 
       rerender(
-        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" defaultPrefix="hello-world" />,
+        <HostnameField value="" onChange={onChange} suffix="-alice.freepod.app" defaultPrefix="hello-world" />,
       )
 
       await waitFor(() => {
         expect(screen.getByLabelText('Hostname')).toHaveValue('hello-world')
-        expect(onChange).toHaveBeenCalledWith('hello-world.app.example.com')
+        expect(onChange).toHaveBeenCalledWith('hello-world-alice.freepod.app')
       })
     })
 
@@ -389,9 +413,9 @@ describe('HostnameField', () => {
       const onChange = vi.fn()
       render(
         <HostnameField
-          value="myapp.app.example.com"
+          value="myapp-alice.freepod.app"
           onChange={onChange}
-          accountFqdn="app.example.com"
+          suffix="-alice.freepod.app"
           defaultPrefix="hello-world"
         />,
       )
@@ -404,20 +428,20 @@ describe('HostnameField', () => {
     it('appends a number until the name is available', async () => {
       const onChange = vi.fn()
       checkHostnameMock.mockImplementation(async (fqdn: string) =>
-        fqdn === 'hello-world-2.app.example.com'
+        fqdn === 'hello-world-2-alice.freepod.app'
           ? { fqdn, usable: true, reason: null }
           : { fqdn, usable: false, reason: 'in_use' },
       )
 
       render(
-        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" defaultPrefix="hello-world" />,
+        <HostnameField value="" onChange={onChange} suffix="-alice.freepod.app" defaultPrefix="hello-world" />,
       )
 
       await waitFor(() => {
         expect(screen.getByLabelText('Hostname')).toHaveValue('hello-world-2')
         expect(screen.getByTestId('CheckCircleIcon')).toBeInTheDocument()
       })
-      expect(onChange).toHaveBeenCalledWith('hello-world-2.app.example.com')
+      expect(onChange).toHaveBeenCalledWith('hello-world-2-alice.freepod.app')
     })
 
     it('gives up after three tries', async () => {
@@ -425,7 +449,7 @@ describe('HostnameField', () => {
       checkHostnameMock.mockResolvedValue({ fqdn: '', usable: false, reason: 'in_use' })
 
       render(
-        <HostnameField value="" onChange={vi.fn()} accountFqdn="app.example.com" defaultPrefix="hello-world" />,
+        <HostnameField value="" onChange={vi.fn()} suffix="-alice.freepod.app" defaultPrefix="hello-world" />,
       )
 
       // Three debounced checks outlast waitFor's default window.
@@ -441,7 +465,7 @@ describe('HostnameField', () => {
       checkHostnameMock.mockResolvedValue({ fqdn: '', usable: false, reason: 'in_use' })
 
       render(
-        <HostnameField value="" onChange={onChange} accountFqdn="app.example.com" defaultPrefix="hello-world" />,
+        <HostnameField value="" onChange={onChange} suffix="-alice.freepod.app" defaultPrefix="hello-world" />,
       )
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'myname' } })
@@ -450,7 +474,7 @@ describe('HostnameField', () => {
         expect(screen.getByText('Already in use')).toBeInTheDocument()
       })
       expect(screen.getByLabelText('Hostname')).toHaveValue('myname')
-      expect(checkHostnameMock).not.toHaveBeenCalledWith('myname-2.app.example.com')
+      expect(checkHostnameMock).not.toHaveBeenCalledWith('myname-2-alice.freepod.app')
     })
 
   })
@@ -464,7 +488,7 @@ describe('HostnameField', () => {
         <HostnameField
           value="existing.example.com"
           onChange={onChange}
-          accountFqdn={null}
+          suffix={null}
           initialHostname="existing.example.com"
         />,
       )
@@ -487,7 +511,7 @@ describe('HostnameField', () => {
         <HostnameField
           value=""
           onChange={onChange}
-          accountFqdn={null}
+          suffix={null}
           initialHostname="existing.example.com"
         />,
       )
@@ -508,7 +532,7 @@ describe('HostnameField', () => {
         <HostnameField
           value=""
           onChange={onChange}
-          accountFqdn={null}
+          suffix={null}
           initialHostname="original.example.com"
         />,
       )

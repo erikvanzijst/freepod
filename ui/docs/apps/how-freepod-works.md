@@ -7,13 +7,13 @@ title: How Freepod works
 
 ## Account
 
-A Freepod account belongs to one person and is identified by an email address. Each account has one [subdomain](get-started.md#2-choose-your-subdomain), such as `alice.freepod.eu`.
+A Freepod account belongs to one person and is identified by an email address. Each account has one [handle](get-started.md#2-choose-your-handle), such as `alice`.
 
 ## Apps
 
 An app is one running copy of a product from the catalog, such as Immich or Nextcloud, launched from your account. Each app:
 
-- has its own hostname, under your subdomain or on a [custom domain](managing/custom-domain.mdx);
+- has its own hostname, ending in your handle or on a [custom domain](managing/custom-domain.mdx);
 - stores its own data, separate from your other apps and from other accounts;
 - has a [plan](plans-and-billing.md) that sets its price and storage.
 

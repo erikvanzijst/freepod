@@ -1,6 +1,7 @@
-# The platform's TLS namespace: the certificate store Traefik serves from, the
-# platform wildcard behind it, and (written at runtime by the reconciler, never
-# here) every account's certificate.
+# The platform's TLS namespace: the certificate store Traefik serves from and
+# the platform certificate behind it. One certificate covers Freepod's own names
+# under freepod.eu and every tenant hostname under freepod.app, so tenant routes
+# need no certificate of their own.
 #
 # This module is a cluster singleton shared by dev and prod. Traefik honours one
 # TLSStore named `default`, so there is no per-environment version of any of it.
@@ -38,11 +39,11 @@ resource "kubernetes_manifest" "wildcard" {
 # secret without a namespace because a store's references resolve in its own
 # (D2) -- which is why the wildcard's secret had to move here too.
 #
-# `spec.certificates` is deliberately absent. Declaring it, even as an empty
-# list, would make Terraform the owner of an atomic field the reconciler must
-# own, and every reconciler apply would then conflict (D4). computed_fields
-# keeps the planner from reading what the reconciler wrote as drift; the two
-# defaults are repeated because setting the attribute replaces them.
+# `spec.certificates` is deliberately absent. Nothing writes it any more, and
+# declaring it, even as an empty list, would clear the entries it still holds,
+# which serve the retired per-account hostnames' redirects. computed_fields
+# keeps the planner from reading them as drift; the two defaults are repeated
+# because setting the attribute replaces them.
 resource "kubernetes_manifest" "store" {
   manifest = {
     apiVersion = "traefik.io/v1alpha1"

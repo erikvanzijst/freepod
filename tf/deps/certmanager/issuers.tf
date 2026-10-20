@@ -15,9 +15,9 @@ resource "kubernetes_secret" "cloudflare_api_token" {
   depends_on = [helm_release.cert_manager]
 }
 
-# DNS-01 (Cloudflare) issuer — used for the *.freepod.eu wildcard. We control
-# freepod.eu DNS on Cloudflare, so DNS-01 avoids per-app HTTP-01 round-trips and
-# keeps the freepod.eu registered domain off the HTTP-01 rate-limit path.
+# DNS-01 issuer for the platform's wildcards: freepod.eu through Cloudflare, and
+# freepod.app through the deSEC webhook (desec.tf). DNS-01 avoids per-app HTTP-01
+# round-trips and keeps both domains off the HTTP-01 rate-limit path.
 resource "kubernetes_manifest" "letsencrypt_dns" {
   manifest = yamldecode(<<-EOF
     apiVersion: cert-manager.io/v1
@@ -39,6 +39,17 @@ resource "kubernetes_manifest" "letsencrypt_dns" {
             selector:
               dnsZones:
                 - freepod.eu
+          - dns01:
+              webhook:
+                groupName: ${local.desec_webhook_group}
+                solverName: desec
+                config:
+                  apiKeySecretRef:
+                    name: ${kubernetes_secret.desec_api_token.metadata[0].name}
+                    key: token
+            selector:
+              dnsZones:
+                - freepod.app
   EOF
   )
 
@@ -66,6 +77,17 @@ resource "kubernetes_manifest" "letsencrypt_dns_staging" {
             selector:
               dnsZones:
                 - freepod.eu
+          - dns01:
+              webhook:
+                groupName: ${local.desec_webhook_group}
+                solverName: desec
+                config:
+                  apiKeySecretRef:
+                    name: ${kubernetes_secret.desec_api_token.metadata[0].name}
+                    key: token
+            selector:
+              dnsZones:
+                - freepod.app
   EOF
   )
 

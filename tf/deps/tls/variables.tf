@@ -1,5 +1,5 @@
 variable "namespace" {
-  description = "Platform TLS namespace: holds the store, the platform wildcard's secret, and every account certificate."
+  description = "Platform TLS namespace: holds the store and the platform certificate's secret."
   type        = string
   default     = "caelus-tls"
 }
@@ -11,11 +11,16 @@ variable "cluster_issuer" {
 }
 
 variable "wildcard_dns_names" {
-  description = "Names the platform wildcard covers. Changing this set issues a new certificate against the weekly allowance."
+  description = "Names the platform certificate covers, across the freepod.eu (Cloudflare) and freepod.app (deSEC) zones; the DNS-01 issuer picks the solver per zone. Changing this set issues a new certificate against the weekly allowance."
   type        = list(string)
   default = [
     "freepod.eu",
     "*.freepod.eu",
     "*.dev.freepod.eu",
+    "freepod.app",
+    # dev.freepod.app is covered by *.freepod.app; listing both is an order
+    # Let's Encrypt rejects as redundant.
+    "*.freepod.app",
+    "*.dev.freepod.app",
   ]
 }

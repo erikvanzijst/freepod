@@ -54,7 +54,7 @@ from .config import (
     wait_seconds,
 )
 from .project import DEFAULT_ENV, PROJECT_FILE, find_project_root, load
-from . import subdomain
+from . import handle
 from .values import ValueCollector, hostname_label
 
 
@@ -390,7 +390,7 @@ def init(context: Context, force: bool) -> None:
 
         collector = ValueCollector(
             schema,
-            account_fqdn=subdomain.require(api),
+            suffix=handle.held_suffix(api),
             check_hostname=api.check_hostname,
             suggested_hostname=hostname_label(root.name),
         )

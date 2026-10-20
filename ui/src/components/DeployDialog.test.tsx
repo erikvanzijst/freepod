@@ -9,9 +9,9 @@ const listPlansMock = vi.fn()
 const createDeploymentMock = vi.fn()
 const updateDeploymentMock = vi.fn()
 const checkHostnameMock = vi.fn()
-const getMySubdomainMock = vi.fn()
+const getMyHandleMock = vi.fn()
 // The account's domain; unset keeps the hostname field in custom mode.
-const subdomainMock = vi.hoisted(() => ({ fqdn: undefined as string | undefined }))
+const handleMock = vi.hoisted(() => ({ suffix: undefined as string | undefined }))
 // Default: user has NOT accepted the Terms -> checkbox is shown. Individual
 // tests override to simulate an already-accepted user.
 const getTosAcceptanceMock = vi.fn().mockResolvedValue({ version: null, accepted_at: null })
@@ -23,7 +23,7 @@ vi.mock('../api/endpoints', () => ({
   createDeployment: (...args: unknown[]) => createDeploymentMock(...args),
   updateDeployment: (...args: unknown[]) => updateDeploymentMock(...args),
   checkHostname: (...args: unknown[]) => checkHostnameMock(...args),
-  getMySubdomain: (...args: unknown[]) => getMySubdomainMock(...args),
+  getMyHandle: (...args: unknown[]) => getMyHandleMock(...args),
   getCnameTarget: vi.fn().mockResolvedValue(''),
   getTosAcceptance: (...args: unknown[]) => getTosAcceptanceMock(...args),
   recordTosAcceptance: (...args: unknown[]) => recordTosAcceptanceMock(...args),
@@ -90,9 +90,9 @@ const helloTemplate = {
   created_at: '2026-01-01T00:00:00Z',
 }
 
-vi.mock('./subdomain/useMySubdomain', () => ({
-  useMySubdomain: () => ({
-    data: subdomainMock.fqdn ? { subdomain: 'erik', fqdn: subdomainMock.fqdn, domain: 'freepod.eu' } : undefined,
+vi.mock('./handle/useMyHandle', () => ({
+  useMyHandle: () => ({
+    data: handleMock.suffix ? { handle: 'erik', suffix: handleMock.suffix, domain: 'freepod.app' } : undefined,
     isSuccess: true,
   }),
 }))
@@ -102,14 +102,14 @@ vi.mock('./subdomain/useMySubdomain', () => ({
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => {
   vi.useRealTimers()
-  subdomainMock.fqdn = undefined
+  handleMock.suffix = undefined
 })
 
 describe('DeployDialog', () => {
   it('introduces the product with its tagline, never the long description', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+    getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
 
     renderWithQuery(
       <DeployDialog product={{ ...helloWorld, tagline: 'Says hello.' }} userId={1} onClose={vi.fn()} />,
@@ -123,7 +123,7 @@ describe('DeployDialog', () => {
   it('shows no subtitle for a product without a tagline', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+    getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
 
     renderWithQuery(<DeployDialog product={helloWorld} userId={1} onClose={vi.fn()} />)
 
@@ -141,7 +141,7 @@ describe('DeployDialog', () => {
     }
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan, proPlan])
-    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+    getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
     checkHostnameMock.mockResolvedValue({ fqdn: 'test.example.com', usable: true, reason: null })
     createDeploymentMock.mockResolvedValue({ deployment: { id: '1' }, checkout_url: null })
 
@@ -163,10 +163,10 @@ describe('DeployDialog', () => {
   })
 
   it('prefills the hostname with the app name', async () => {
-    subdomainMock.fqdn = 'erik.freepod.eu'
+    handleMock.suffix = '-erik.freepod.app'
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    checkHostnameMock.mockResolvedValue({ fqdn: 'hello-world.erik.freepod.eu', usable: true, reason: null })
+    checkHostnameMock.mockResolvedValue({ fqdn: 'hello-world-erik.freepod.app', usable: true, reason: null })
 
     renderWithQuery(<DeployDialog product={helloWorld} userId={1} onClose={vi.fn()} />)
 
@@ -178,7 +178,7 @@ describe('DeployDialog', () => {
   it('shows Cancel and disabled Launch buttons', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+    getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
 
     renderWithQuery(
       <DeployDialog product={helloWorld} userId={1} onClose={vi.fn()} />,
@@ -193,7 +193,7 @@ describe('DeployDialog', () => {
   it('calls onClose when Cancel is clicked', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+    getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
     const onClose = vi.fn()
 
     renderWithQuery(
@@ -207,7 +207,7 @@ describe('DeployDialog', () => {
   it('shows warning when product has no template', async () => {
     const noTemplate: Product = { ...helloWorld, template_id: null }
     listTemplatesMock.mockResolvedValue([])
-    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+    getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
 
     renderWithQuery(
       <DeployDialog product={noTemplate} userId={1} onClose={vi.fn()} />,
@@ -221,7 +221,7 @@ describe('DeployDialog', () => {
   it('enables Launch when hostname is valid and submits deployment', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+    getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
     checkHostnameMock.mockResolvedValue({ fqdn: 'test.example.com', usable: true, reason: null })
     createDeploymentMock.mockResolvedValue({ deployment: { id: '1' }, checkout_url: null })
     const onClose = vi.fn()
@@ -269,7 +269,7 @@ describe('DeployDialog', () => {
   it('already-accepted user sees no ToS checkbox and deploys without recording again', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+    getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
     checkHostnameMock.mockResolvedValue({ fqdn: 'accepted.example.com', usable: true, reason: null })
     createDeploymentMock.mockResolvedValue({ deployment: { id: '1' }, checkout_url: null })
     // This user already accepted the current Terms.
@@ -312,7 +312,7 @@ describe('DeployDialog', () => {
   it('shows error alert on deployment failure', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+    getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
     checkHostnameMock.mockResolvedValue({ fqdn: 'test.example.com', usable: true, reason: null })
     createDeploymentMock.mockRejectedValue(new Error('Server error'))
 
@@ -342,7 +342,7 @@ describe('DeployDialog', () => {
   it('opening and closing the ToS modal preserves the entered hostname', async () => {
     listTemplatesMock.mockResolvedValue([helloTemplate])
     listPlansMock.mockResolvedValue([freePlan])
-    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+    getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
     checkHostnameMock.mockResolvedValue({ fqdn: 'keep.example.com', usable: true, reason: null })
 
     renderWithQuery(<DeployDialog product={helloWorld} userId={1} onClose={vi.fn()} />)
@@ -410,7 +410,7 @@ describe('DeployDialog', () => {
       user: { id: 1, email: 'test@example.com', is_admin: false, created_at: '2026-01-01T00:00:00Z' },
     }
 
-    getMySubdomainMock.mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' })
+    getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
     listTemplatesMock.mockClear()
     updateDeploymentMock.mockResolvedValue({ id: 42 })
     const onClose = vi.fn()
@@ -485,10 +485,10 @@ describe('DeployDialog', () => {
   it('puts a rejected var beside its field, not in the dialog alert', async () => {
     listTemplatesMock.mockResolvedValue([varsTemplate])
     listPlansMock.mockResolvedValue([{ ...freePlan, product_id: 2 }])
-    getMySubdomainMock.mockResolvedValue({
-      subdomain: 'erik',
-      fqdn: 'erik.freepod.eu',
-      domain: 'freepod.eu',
+    getMyHandleMock.mockResolvedValue({
+      handle: 'erik',
+      suffix: '-erik.freepod.app',
+      domain: 'freepod.app',
     })
     checkHostnameMock.mockResolvedValue({ fqdn: 'p.example.com', usable: true, reason: null })
     getTosAcceptanceMock.mockResolvedValue({ version: '2026-07-01', accepted_at: '2026-07-01T00:00:00Z' })
@@ -527,10 +527,10 @@ describe('DeployDialog', () => {
   it('keeps Launch disabled until every required field holds a value', async () => {
     listTemplatesMock.mockResolvedValue([varsTemplate])
     listPlansMock.mockResolvedValue([{ ...freePlan, product_id: 2 }])
-    getMySubdomainMock.mockResolvedValue({
-      subdomain: 'erik',
-      fqdn: 'erik.freepod.eu',
-      domain: 'freepod.eu',
+    getMyHandleMock.mockResolvedValue({
+      handle: 'erik',
+      suffix: '-erik.freepod.app',
+      domain: 'freepod.app',
     })
     checkHostnameMock.mockResolvedValue({ fqdn: 'p.example.com', usable: true, reason: null })
     getTosAcceptanceMock.mockResolvedValue({ version: '2026-07-01', accepted_at: '2026-07-01T00:00:00Z' })

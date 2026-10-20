@@ -79,7 +79,7 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/vaultwarden
-  chart_version: 3.4.6
+  chart_version: 3.4.7
   system_values:
     image:
       tag: 1.37.4
@@ -97,7 +97,7 @@ template:
       host:
         type: string
         title: Hostname
-        description: The fully qualified domain name used to access Vaultwarden (e.g. password.freepod.eu)
+        description: The address of Vaultwarden, such as passwords-alice.freepod.app, or a domain of your own.
       signups:
         type: object
         additionalProperties: false

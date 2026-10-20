@@ -19,7 +19,7 @@ vi.mock('../api/endpoints', () => ({
   deleteProduct: vi.fn(),
   getProductListing: vi.fn().mockResolvedValue({ product_id: 1, license: 'AGPL-3.0', features: [], links: [], screenshots: [] }),
   updateProductTemplate: vi.fn(),
-  getMySubdomain: vi.fn().mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' }),
+  getMyHandle: vi.fn().mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' }),
   getCnameTarget: vi.fn().mockResolvedValue(''),
   checkHostname: vi.fn().mockResolvedValue({ fqdn: '', usable: true, reason: null }),
 }))

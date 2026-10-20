@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	milk  = "milk.erik.freepod.eu"
-	notes = "notes.erik.freepod.eu"
+	milk  = "milk-erik.freepod.app"
+	notes = "notes-erik.freepod.app"
 	login = "https://login.freepod.eu"
 )
 

@@ -20,9 +20,9 @@ import { isTransitionalStatus } from '../utils/deploymentStatus'
 import { DeployDialog } from '../components/DeployDialog'
 import { ConfirmDeleteDialog } from '../components/ConfirmDeleteDialog'
 import { PageHeading } from '../components/PageHeading'
-import { ClaimSubdomain } from '../components/subdomain/ClaimSubdomain'
-import { ClaimSubdomainBanner } from '../components/subdomain/ClaimSubdomainBanner'
-import { useMySubdomain } from '../components/subdomain/useMySubdomain'
+import { ClaimHandle } from '../components/handle/ClaimHandle'
+import { ClaimHandleBanner } from '../components/handle/ClaimHandleBanner'
+import { useMyHandle } from '../components/handle/useMyHandle'
 import { AddAppDrawer, AddAppRow, StarterApps } from '../components/dashboard/DiscoverApps'
 import type { GalleryApp } from '../components/appsgallery/useGallery'
 import { DeploymentRow } from '../components/deployment/DeploymentRow'
@@ -42,9 +42,9 @@ function Dashboard() {
   const [, setParams] = useSearchParams()
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const subdomainQuery = useMySubdomain()
-  const holdsSubdomain = Boolean(subdomainQuery.data?.subdomain)
-  const platformDomain = subdomainQuery.data?.domain ?? ''
+  const handleQuery = useMyHandle()
+  const holdsHandle = Boolean(handleQuery.data?.handle)
+  const tenantDomain = handleQuery.data?.domain ?? ''
 
   const deploymentsQuery = useQuery({
     queryKey: ['deployments', user?.id],
@@ -120,16 +120,16 @@ function Dashboard() {
   })
 
   const claimPending =
-    !subdomainQuery.isLoading && !holdsSubdomain && Boolean(platformDomain) && Boolean(user)
+    !handleQuery.isLoading && !holdsHandle && Boolean(tenantDomain) && Boolean(user)
 
   // Not a peer of a deployment card: a task, spanning the row, with its content
-  // centred on the domain name it is asking for.
+  // centred on the address it is asking for.
   const claimCard =
     claimPending && !invitationDismissed ? (
       <Grid size={{ xs: 12 }}>
         <Card sx={{ px: 3.5, py: 5 }}>
-          <ClaimSubdomain
-            domain={platformDomain}
+          <ClaimHandle
+            domain={tenantDomain}
             email={user!.email}
             context="account"
             autoSelect
@@ -156,7 +156,7 @@ function Dashboard() {
       </Stack>
 
       {claimPending && invitationDismissed && (
-        <ClaimSubdomainBanner onChoose={() => setInvitationDismissed(false)} />
+        <ClaimHandleBanner onChoose={() => setInvitationDismissed(false)} />
       )}
 
       {claimCard && <Grid container spacing={2}>{claimCard}</Grid>}

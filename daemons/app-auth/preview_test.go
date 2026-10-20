@@ -26,7 +26,7 @@ func TestPreview(t *testing.T) {
 	mux.Handle("GET /assets/", assetHandler())
 	pages := map[string]func(w http.ResponseWriter){
 		"/consent": func(w http.ResponseWriter) {
-			renderConsent(w, consentView{chrome: c, Host: "milk.fred.dev.freepod.eu",
+			renderConsent(w, consentView{chrome: c, Host: "milk-fred.dev.freepod.app",
 				Name: "Alice Ångström", Email: "alice@example.com",
 				ShortSub: shortSub("3f2a91c0-5d7e-4b1a-9c3e-8f0d2b6a41e7"), CSRF: "x"})
 		},
@@ -37,7 +37,7 @@ func TestPreview(t *testing.T) {
 		},
 		"/declined": func(w http.ResponseWriter) {
 			renderPage(w, 200, page{chrome: c, Kind: "done", Title: "Nothing was shared",
-				Message: "milk.fred.dev.freepod.eu did not receive your name, email address or account identifier. You can close this page."})
+				Message: "milk-fred.dev.freepod.app did not receive your name, email address or account identifier. You can close this page."})
 		},
 		"/signed-out": func(w http.ResponseWriter) {
 			b := &broker{chrome: c, keys: mustKeyring(t, "k1:"+testKey('a')), now: time.Now}
@@ -54,7 +54,7 @@ func TestPreview(t *testing.T) {
 		"/callback-failed": func(w http.ResponseWriter) {
 			v := &verifier{loginURL: "http://" + addr}
 			rec := &previewRecorder{ResponseWriter: w}
-			v.failurePage(rec, "milk.fred.dev.freepod.eu")
+			v.failurePage(rec, "milk-fred.dev.freepod.app")
 		},
 	}
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {

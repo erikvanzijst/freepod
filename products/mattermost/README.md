@@ -197,7 +197,7 @@ connections, preventing startup race conditions.
 helm upgrade --install mattermost ./products/mattermost/chart \
   --namespace mattermost \
   --create-namespace \
-  --set host=mattermost.prutser.freepod.eu
+  --set host=mattermost-alice.freepod.app
 ```
 
 ### From OCI Registry
@@ -207,7 +207,7 @@ helm upgrade --install mattermost oci://ghcr.io/erikvanzijst/freepod/charts/matt
   --version 1.1.2 \
   --namespace mattermost \
   --create-namespace \
-  --set host=mattermost.prutser.freepod.eu
+  --set host=mattermost-alice.freepod.app
 ```
 
 ### Using a Values File
@@ -215,7 +215,7 @@ helm upgrade --install mattermost oci://ghcr.io/erikvanzijst/freepod/charts/matt
 Create a `values.yaml`:
 
 ```yaml
-host: mattermost.prutser.freepod.eu
+host: mattermost-alice.freepod.app
 ```
 
 ```bash

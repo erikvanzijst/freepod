@@ -16,8 +16,8 @@ from app.models import (
     DeploymentBucketRead,
     DeploymentDatabaseRead,
     SftpCredentialsRead,
-    SubdomainClaim,
-    SubdomainRead,
+    HandleClaim,
+    HandleRead,
     TosAcceptanceCreate,
     TosAcceptanceRead,
     UserORM,
@@ -123,70 +123,70 @@ def record_my_tos_acceptance(
 
 
 @me_router.get(
-    "/me/subdomain",
-    response_model=SubdomainRead,
-    summary="Get the subdomain the current user holds",
-    response_description="The caller's subdomain and the fully qualified name "
-    "it forms; both are null when they have not claimed one.",
+    "/me/handle",
+    response_model=HandleRead,
+    summary="Get the handle the current user holds",
+    response_description="The caller's handle and the suffix it gives their "
+    "hostnames; both are null when they have not claimed one.",
 )
-def get_my_subdomain(
+def get_my_handle(
     current_user: UserORM = Depends(get_current_user),
-) -> SubdomainRead:
-    """Return the subdomain the caller holds, and the name it forms.
+) -> HandleRead:
+    """Return the handle the caller holds, and the hostname suffix it forms.
 
     Always readable, and **200** even when the caller has not claimed one (in
-    which case both fields are null), so clients can treat "not claimed yet" as
-    a normal state rather than a 404.
+    which case `handle` and `suffix` are null), so clients can treat "not
+    claimed yet" as a normal state rather than a 404.
 
     ## Authorization
-    Requires authentication. Reports the authenticated caller's own subdomain.
+    Requires authentication. Reports the authenticated caller's own handle.
 
     ## Behavior
-    - **subdomain** — the label the account holds, or null.
-    - **fqdn** — `<subdomain>.<platform domain>`, the name that receives the
-      account's DNS record and wildcard certificate. Null when no subdomain is
-      held, or when the platform has no domain configured.
-    - **domain** — the platform domain alone, reported whether or not a subdomain
-      is held: a client offering the claim needs the suffix before there is a
-      label to compose it with. Null when the platform has none configured.
+    - **handle** — the handle the account holds, or null.
+    - **suffix** — the exact text that follows an application label in this
+      account's hostnames, `-<handle>.<tenant domain>`. Null when no handle is
+      held. Clients append it to a label as opaque text and never compose it.
+    - **domain** — the tenant domain, reported whether or not a handle is held.
     """
-    return user_service.get_subdomain(current_user)
+    return user_service.get_handle(current_user)
 
 
 @me_router.post(
-    "/me/subdomain",
-    response_model=SubdomainRead,
-    summary="Claim the current user's subdomain",
-    response_description="The subdomain now held, and the fully qualified name "
-    "it forms.",
+    "/me/handle",
+    response_model=HandleRead,
+    summary="Claim the current user's handle",
+    response_description="The handle now held, and the hostname suffix it forms.",
     responses={
         400: {
             "description": (
-                "The candidate cannot be claimed: `subdomain_invalid` (not a "
-                "single 2-63 character DNS label) or `subdomain_reserved` "
-                "(reserved by the platform)."
+                "The candidate cannot be claimed: `handle_invalid` (not 2-20 "
+                "lowercase letters and digits) or `handle_reserved` (reserved "
+                "by the platform)."
             )
         },
         409: {
             "description": (
-                "`subdomain_taken` (another account holds it) or "
-                "`subdomain_already_claimed` (this account already holds one)."
+                "`handle_taken` (another account holds it) or "
+                "`handle_already_claimed` (this account holds a different one)."
             )
         },
     },
 )
-def claim_my_subdomain(
-    payload: SubdomainClaim,
+def claim_my_handle(
+    payload: HandleClaim,
+    dry_run: bool = Query(
+        False,
+        description="Run every check and answer as the claim would, without storing anything.",
+    ),
     current_user: UserORM = Depends(get_current_user),
     session: Session = Depends(get_session),
-) -> SubdomainRead:
-    """Claim the subdomain every application this account deploys will be
-    addressed under.
+) -> HandleRead:
+    """Claim the handle that ends the hostname of every application this
+    account deploys, `<app>-<handle>.<tenant domain>`.
 
-    **This is permanent.** A subdomain is claimed once and is never changed,
+    **This is permanent.** A handle is claimed once and is never changed,
     released, or transferred — not by this endpoint, not by any other, and not
-    on account deletion. Correcting one is an operator intervention against the
-    database.
+    on account deletion.
 
     ## Authorization
     Requires authentication. Claims for the authenticated caller only; there is
@@ -194,23 +194,25 @@ def claim_my_subdomain(
 
     ## Behavior
     The submitted value is normalized to lowercase before it is checked or
-    stored, so case can never distinguish two accounts. It must be a single DNS
-    label of 2-63 characters — lowercase letters, digits and hyphens, starting
-    and ending with a letter or digit — that is neither reserved by the platform
-    nor held by another account, including a deleted one.
+    stored, so case can never distinguish two accounts. It must be 2-20
+    lowercase letters and digits, neither reserved by the platform nor held by
+    another account, including a deleted one.
 
-    Not idempotent: an account that already holds a subdomain is refused **409**
-    even when it submits the label it already holds.
+    Re-claiming the handle the account already holds succeeds and changes
+    nothing.
+
+    With `?dry_run=1`, every check runs and the response is exactly the one a
+    claim would receive, but nothing is stored or reserved. This is how a
+    client learns whether a handle is available.
 
     ## Errors
-    - **400** `subdomain_invalid` — not a single well-formed label of the
-      permitted length.
-    - **400** `subdomain_reserved` — the label is reserved by the platform.
-    - **409** `subdomain_taken` — another account holds it.
-    - **409** `subdomain_already_claimed` — this account already holds one.
+    - **400** `handle_invalid` — not 2-20 lowercase letters and digits.
+    - **400** `handle_reserved` — the handle is reserved by the platform.
+    - **409** `handle_taken` — another account holds it.
+    - **409** `handle_already_claimed` — this account holds a different one.
     """
-    return user_service.claim_subdomain(
-        session, user=current_user, subdomain=payload.subdomain
+    return user_service.claim_handle(
+        session, user=current_user, handle=payload.handle, dry_run=dry_run
     )
 
 

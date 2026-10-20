@@ -267,22 +267,22 @@ class ApiClient:
             raise FreepodError(f"unexpected /api/me response: {body!r}")
         return body
 
-    def subdomain(self) -> dict:
-        """`GET /api/me/subdomain` — always 200, even before one is claimed.
+    def handle(self) -> dict:
+        """`GET /api/me/handle` — always 200, even before one is claimed.
 
-        `subdomain` and `fqdn` are null until the account holds one; `domain` is
-        the platform's own and is reported either way.
+        `handle` and `suffix` are null until the account holds one; `domain` is
+        the tenant domain and is reported either way.
         """
-        body = self.get_json("/api/me/subdomain")
+        body = self.get_json("/api/me/handle")
         if not isinstance(body, dict):
-            raise FreepodError(f"unexpected /api/me/subdomain response: {body!r}")
+            raise FreepodError(f"unexpected /api/me/handle response: {body!r}")
         return body
 
     def check_hostname(self, fqdn: str) -> dict:
-        """`GET /api/hostnames/{fqdn}` — always 200 with `{fqdn, usable, reason}`.
+        """`GET /api/hostnames/{value}` — always 200 with `{fqdn, usable, reason}`.
 
-        Authenticated: the answer depends on who is asking, since an application
-        name is only usable beneath the caller's own subdomain.
+        Authenticated: the answer depends on who is asking, since a bare label is
+        completed with the caller's handle, and a tenant hostname must end in it.
 
         Advisory only: the name is claimed when the deployment is created, so a
         usable answer here is not a reservation. Note the check runs without

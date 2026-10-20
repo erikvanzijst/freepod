@@ -12,7 +12,7 @@ no lock-in.
 ## For everyone
 
 Pick an app from the catalog and Freepod installs it, gives it its own HTTPS
-address under your subdomain (or on your own domain), and keeps it up to date.
+address ending in your handle (or on your own domain), and keeps it up to date.
 Each app is your own copy, with its data kept apart from your other apps and from
 everyone else's.
 

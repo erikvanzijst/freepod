@@ -107,8 +107,11 @@ module "caelus" {
   ns_login                = kubernetes_namespace.login.metadata[0].name
   apex_headers_middleware = module.oauth2-proxy.apex_headers_middleware
   db_password             = var.db_password
-  wildcard_domains        = [local.domain]
-  reserved_hostnames      = var.reserved_hostnames[terraform.workspace]
+  tenant_domain           = local.tenant_domain
+  platform_domains        = var.platform_domains
+  reserved_handles        = var.reserved_handles
+
+  legacy_tenant_redirects = lookup(var.legacy_tenant_redirects, terraform.workspace, [])
   mollie_api_key          = var.mollie_api_key
   sshpiper_namespace      = kubernetes_namespace.sshpiper.metadata[0].name
   builds_namespace        = kubernetes_namespace.builds.metadata[0].name
@@ -130,12 +133,6 @@ module "caelus" {
   garage_admin_url   = module.garage.admin_url
   garage_admin_token = module.garage.caelus_api_admin_token
   garage_namespace   = kubernetes_namespace.garage.metadata[0].name
-
-  # Both environments write into the one platform zone; the record they create
-  # is per account, and an account exists in one environment only.
-  cloudflare_api_dns_token = var.cloudflare_api_dns_token
-  cloudflare_zone_id       = var.cloudflare_zone_id
-  dns_record_target        = var.dns_record_target
 
   # Per workspace, like the Garage key above and for the same reason: a dev key
   # must not decrypt a prod tenant's secrets. Defaults to empty so a workspace

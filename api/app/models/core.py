@@ -3,7 +3,7 @@ from enum import StrEnum
 from typing import Any, Literal, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field as PydanticField, computed_field, field_validator, model_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field as PydanticField, field_validator, model_serializer, model_validator
 from sqlmodel import Field, SQLModel, Relationship
 from sqlalchemy import (
     BigInteger,
@@ -48,8 +48,8 @@ class UserORM(UserBase, table=True):
             postgresql_where=Column("deleted_at").is_(None),
         ),
         Index(
-            "uq_user_subdomain_active",
-            func.lower(Column("subdomain")),
+            "uq_user_handle_active",
+            func.lower(Column("handle")),
             unique=True,
             postgresql_where=Column("deleted_at").is_(None),
         ),
@@ -65,7 +65,7 @@ class UserORM(UserBase, table=True):
     # instant of the click (a timestamp, the evidentiary value).
     tos_accepted_version: Optional[str] = Field(default=None, nullable=True)
     tos_accepted_at: Optional[datetime] = Field(default=None, nullable=True)
-    subdomain: Optional[str] = Field(default=None, nullable=True)
+    handle: Optional[str] = Field(default=None, nullable=True)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
     deployments: list["DeploymentORM"] = Relationship(back_populates="user")
     subscriptions: list["SubscriptionORM"] = Relationship(
@@ -82,16 +82,8 @@ class UserCreate(UserBase):
 class UserRead(UserBase):
     id: int
     is_admin: bool
-    subdomain: Optional[str] = None
+    handle: Optional[str] = None
     created_at: datetime
-
-    @computed_field
-    @property
-    def wildcard_domain(self) -> Optional[str]:
-        """`*.<subdomain>.<platform domain>`: every host the account deploys
-        under. Null until a subdomain is claimed."""
-        domain = get_settings().domain
-        return f"*.{self.subdomain}.{domain}" if self.subdomain and domain else None
 
 
 class TosAcceptanceCreate(SQLModel):
@@ -128,28 +120,28 @@ class TosAcceptanceRead(SQLModel):
     current_version: str
 
 
-class SubdomainClaim(SQLModel):
-    """Request body for claiming the current user's subdomain."""
+class HandleClaim(SQLModel):
+    """Request body for claiming the current user's handle."""
     model_config = ConfigDict(extra="forbid")
-    subdomain: str
+    handle: str
 
 
-class SubdomainRead(SQLModel):
-    """The subdomain an account holds. `subdomain` and `fqdn` are null until it
+class HandleRead(SQLModel):
+    """The handle an account holds. `handle` and `suffix` are null until it
     claims one; this resource is always readable, so "not claimed yet" is a 200
     rather than a 404.
 
-    `fqdn` is `<subdomain>.<platform domain>` -- the name that receives the
-    account's DNS record and wildcard certificate.
+    `suffix` is the exact text that follows an application label in this
+    account's hostnames (`-<handle>.<tenant domain>`). Clients use it as opaque
+    text rather than composing it.
 
-    `domain` is the platform domain alone, reported whether or not a subdomain is
-    held, because a client offering the claim has to render the suffix before
-    there is anything to compose it with. Null when the platform has none
-    configured.
+    `domain` is the tenant domain, reported whether or not a handle is held,
+    because a client offering the claim has to render it before there is a
+    handle to compose with.
     """
-    subdomain: Optional[str] = None
-    fqdn: Optional[str] = None
-    domain: Optional[str] = None
+    handle: Optional[str] = None
+    suffix: Optional[str] = None
+    domain: str
 
 
 class ProductVisibility(StrEnum):

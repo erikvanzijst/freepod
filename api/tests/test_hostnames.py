@@ -10,8 +10,6 @@ from app.config import CaelusSettings
 from app.services.errors import HostnameException
 from app.services.hostnames import (
     _check_format,
-    _check_wildcard_depth,
-    _check_reserved,
     _check_available,
     _check_dns_target,
     require_valid_hostname_for_deployment,
@@ -33,7 +31,7 @@ from tests.conftest import create_free_plan_template, create_user, make_deployme
 
 def _settings(**overrides) -> CaelusSettings:
     """Build a CaelusSettings with test defaults, ignoring env vars."""
-    defaults = {"reserved_hostnames": [], "domain": ""}
+    defaults = {"domain": ""}
     return CaelusSettings(**{**defaults, **overrides}, _env_file=None)
 
 
@@ -115,75 +113,124 @@ class TestCheckFormat:
             _check_format("bad host.example.com")
 
 
-# ── Wildcard depth check ─────────────────────────────────────────────
+# ── Tenant hostnames ──────────────────────────────────────────────────
 
 
-class TestCheckWildcardDepth:
-    """A deployment under a wildcard domain is `<app>.<account subdomain>`. One
-    label names an account instead, and three name nothing."""
-
-    def test_two_level_prefix_passes(self):
-        _check_wildcard_depth("myapp.alice.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
-
-    def test_single_level_prefix_rejected(self):
-        with pytest.raises(HostnameException, match="invalid"):
-            _check_wildcard_depth("alice.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
-
-    def test_three_level_prefix_rejected(self):
-        with pytest.raises(HostnameException, match="invalid"):
-            _check_wildcard_depth("foo.bar.alice.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
-
-    def test_bare_wildcard_domain_rejected(self):
-        with pytest.raises(HostnameException, match="invalid"):
-            _check_wildcard_depth("dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
-
-    def test_non_wildcard_fqdn_skipped(self):
-        _check_wildcard_depth("foo.bar.example.com", _settings(wildcard_domains=["dev.deprutser.be"]))
-
-    def test_empty_wildcard_domains_skips(self):
-        _check_wildcard_depth("foo.bar.example.com", _settings(wildcard_domains=[]))
-
-    def test_multiple_wildcard_domains(self):
-        settings = _settings(wildcard_domains=["dev.deprutser.be", "app.deprutser.be"])
-        _check_wildcard_depth("myapp.alice.app.deprutser.be", settings)
-        with pytest.raises(HostnameException, match="invalid"):
-            _check_wildcard_depth("alice.app.deprutser.be", settings)
+TENANT = {"tenant_domain": "freepod.app", "platform_domains": ["freepod.eu", "freepod.app"]}
 
 
-# ── Reserved check ────────────────────────────────────────────────────
+def _validate(session, value, *, handle="alice", **overrides):
+    return require_valid_hostname_for_deployment(
+        session, value, handle=handle, settings=_settings(**{**TENANT, **overrides})
+    )
 
 
-class TestCheckReserved:
-    def test_not_reserved_passes(self):
-        _check_reserved("myapp.example.com", _settings(reserved_hostnames=["smtp.example.com"]))
+def _reason(session, value, **kwargs) -> str:
+    with pytest.raises(HostnameException) as exc_info:
+        _validate(session, value, **kwargs)
+    return exc_info.value.reason
 
-    def test_reserved_raises(self):
-        with pytest.raises(HostnameException, match="reserved"):
-            _check_reserved("smtp.example.com", _settings(reserved_hostnames=["smtp.example.com"]))
 
-    def test_empty_reserved_list_passes(self):
-        _check_reserved("anything.example.com", _settings(reserved_hostnames=[]))
+class TestTenantHostname:
+    def test_bare_label_is_completed(self, db_session):
+        assert _validate(db_session, "photos") == "photos-alice.freepod.app"
 
-    def test_preview_application_label_raises(self):
-        with pytest.raises(HostnameException, match="reserved"):
-            _check_reserved("preview-studio.alice.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
+    def test_bare_label_is_lowercased_then_completed(self, db_session):
+        assert _validate(db_session, "Photos") == "photos-alice.freepod.app"
 
-    def test_preview_prefix_matched_case_insensitively(self):
-        with pytest.raises(HostnameException, match="reserved"):
-            require_valid_hostname_for_deployment(
-                Mock(), "Preview-Studio.alice.dev.deprutser.be", settings=_settings(wildcard_domains=["dev.deprutser.be"])
-            )
+    def test_own_fqdn_is_checked_as_given(self, db_session):
+        assert _validate(db_session, "photos-alice.freepod.app") == "photos-alice.freepod.app"
 
-    def test_preview_in_the_middle_of_a_label_passes(self):
-        _check_reserved("mypreview-app.alice.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
+    def test_dashes_in_the_application_part(self, db_session):
+        assert _validate(db_session, "my-photos-alice.freepod.app") == "my-photos-alice.freepod.app"
 
-    def test_preview_account_subdomain_is_not_this_rule(self):
-        # One label under the wildcard domain is an account subdomain, not an
-        # application, so the preview rule does not apply to it.
-        _check_reserved("preview-alice.dev.deprutser.be", _settings(wildcard_domains=["dev.deprutser.be"]))
+    def test_bare_label_without_a_handle_is_invalid(self, db_session):
+        assert _reason(db_session, "photos", handle=None) == "invalid"
 
-    def test_preview_label_on_a_custom_domain_passes(self):
-        _check_reserved("preview-app.example.com", _settings(wildcard_domains=["dev.deprutser.be"]))
+    def test_another_accounts_handle_is_claimed(self, db_session):
+        assert _reason(db_session, "photos-alice.freepod.app", handle="bob") == "claimed"
+
+    def test_claimed_skips_availability(self, db_session):
+        with patch("app.services.hostnames._check_available") as available:
+            assert _reason(db_session, "photos-alice.freepod.app", handle="bob") == "claimed"
+        available.assert_not_called()
+
+    @pytest.mark.parametrize("value", ["photos.freepod.app", "alice.freepod.app"])
+    def test_label_without_a_handle_segment_is_invalid(self, db_session, value):
+        assert _reason(db_session, value) == "invalid"
+
+    def test_nested_name_is_invalid(self, db_session):
+        assert _reason(db_session, "a.photos-alice.freepod.app") == "invalid"
+
+    def test_double_dash_is_invalid(self, db_session):
+        assert _reason(db_session, "my--photos-alice.freepod.app") == "invalid"
+
+    def test_application_part_limit(self, db_session):
+        assert _validate(db_session, f"{'a' * 34}-alice.freepod.app")
+        assert _reason(db_session, f"{'a' * 35}-alice.freepod.app") == "invalid"
+
+    def test_malformed_handle_segment_is_invalid(self, db_session):
+        assert _reason(db_session, "photos-a.freepod.app", handle="a") == "invalid"
+
+    def test_tenant_domain_itself_is_invalid(self, db_session):
+        assert _reason(db_session, "freepod.app") == "invalid"
+
+    def test_malformed_label_skips_ownership_and_availability(self, db_session):
+        with patch("app.services.hostnames._check_available") as available:
+            assert _reason(db_session, "my--photos-bob.freepod.app") == "invalid"
+        available.assert_not_called()
+
+    def test_preview_label_is_reserved(self, db_session):
+        assert _reason(db_session, "Preview-Studio-alice.freepod.app") == "reserved"
+
+    def test_preview_must_start_the_label(self, db_session):
+        assert _validate(db_session, "mypreview-app-alice.freepod.app")
+
+    def test_preview_on_a_custom_domain_is_not_this_rule(self, db_session):
+        assert _validate(db_session, "preview-app.example.com")
+
+    def test_no_dns_check_for_tenant_hostnames(self, db_session):
+        with patch("app.services.hostnames._check_dns_target") as dns_check:
+            _validate(db_session, "photos", domain="freepod.eu")
+        dns_check.assert_not_called()
+
+    def test_in_use(self, db_session, seed_parents):
+        make_deployment_with_release(
+            db_session,
+            user_id=seed_parents["user_id"],
+            desired_template_id=seed_parents["template_id"],
+            hostname="photos-alice.freepod.app",
+            status=DEPLOYMENT_STATUS_PROVISIONING,
+            name="tenant-in-use",
+            namespace="tenant-in-use",
+        )
+        db_session.flush()
+        assert _reason(db_session, "photos") == "in_use"
+
+
+class TestPlatformDomains:
+    @pytest.mark.parametrize(
+        "value", ["grafana.freepod.eu", "SMTP.freepod.eu", "freepod.eu", "photos.alice.freepod.eu"]
+    )
+    def test_names_under_a_platform_domain_are_reserved(self, db_session, value):
+        assert _reason(db_session, value) == "reserved"
+
+    def test_the_other_environments_tenant_name_is_reserved(self, db_session):
+        assert _reason(db_session, "photos-alice.freepod.app", tenant_domain="dev.freepod.app") == "reserved"
+
+    def test_this_environments_tenant_name_under_a_platform_domain(self, db_session):
+        assert _validate(db_session, "photos", tenant_domain="dev.freepod.app") == "photos-alice.dev.freepod.app"
+
+    def test_reserved_skips_availability_and_dns(self, db_session):
+        with patch("app.services.hostnames._check_available") as available, patch(
+            "app.services.hostnames._check_dns_target"
+        ) as dns_check:
+            assert _reason(db_session, "grafana.freepod.eu", domain="freepod.eu") == "reserved"
+        available.assert_not_called()
+        dns_check.assert_not_called()
+
+    def test_custom_domain_is_unaffected(self, db_session):
+        assert _validate(db_session, "photos.example.com") == "photos.example.com"
 
 
 # ── Availability check ────────────────────────────────────────────────
@@ -298,17 +345,6 @@ class TestCheckCname:
         mock_auth.assert_not_called()
         mock_resolve.assert_not_called()
 
-    def test_skipped_for_wildcard_subdomain(self):
-        with patch("app.services.hostnames._authoritative_resolver") as mock_auth, patch(
-            "app.services.hostnames.dns.resolver.resolve"
-        ) as mock_resolve:
-            _check_dns_target(
-                "foo.freepod.eu",
-                _settings(domain="freepod.eu", wildcard_domains=["freepod.eu"]),
-            )
-        mock_auth.assert_not_called()
-        mock_resolve.assert_not_called()
-
     def test_queries_authoritative_and_bypasses_recursive_resolver(self):
         """The CNAME is read from the authoritative servers, not the cache-prone
         system resolver — so a freshly created record is seen immediately."""
@@ -369,6 +405,38 @@ def _fake_dns(records: dict[tuple[str, str], list[str]]):
         return _address_answer(*values)
 
     return resolve
+
+
+class TestTenantDomainTarget:
+    """Custom domains point at the tenant domain, and nowhere else."""
+
+    SETTINGS = {"domain": "freepod.eu", "tenant_domain": "freepod.app"}
+
+    @pytest.mark.parametrize("target", ["freepod.app", "FREEPOD.APP"])
+    def test_the_tenant_domain_passes(self, no_authoritative, target):
+        with patch(
+            "app.services.hostnames.dns.resolver.resolve",
+            side_effect=_fake_dns({("good.example.com", "CNAME"): [target]}),
+        ):
+            _check_dns_target("good.example.com", _settings(**self.SETTINGS))
+
+    @pytest.mark.parametrize(
+        "target", ["freepod.eu", "x.freepod.app", "dev.freepod.app", "other.example"]
+    )
+    def test_any_other_target_fails(self, no_authoritative, target):
+        with patch(
+            "app.services.hostnames.dns.resolver.resolve",
+            side_effect=_fake_dns({("bad.example.com", "CNAME"): [target]}),
+        ):
+            with pytest.raises(HostnameException, match="not_resolving"):
+                _check_dns_target("bad.example.com", _settings(**self.SETTINGS))
+
+    def test_addresses_are_compared_with_the_tenant_domains(self, no_authoritative):
+        records = {("freepod.app", "A"): [PLATFORM_V4], ("example.com", "A"): [PLATFORM_V4]}
+        with patch(
+            "app.services.hostnames.dns.resolver.resolve", side_effect=_fake_dns(records)
+        ):
+            _check_dns_target("example.com", _settings(**self.SETTINGS))
 
 
 class TestCheckAddressRecords:
@@ -484,37 +552,19 @@ class TestCheckAddressRecords:
 
 
 class TestRequireValidHostname:
-    def test_valid_hostname_returns_none(self, db_session):
+    def test_valid_hostname_returns_it(self, db_session):
         result = require_valid_hostname_for_deployment(
-            db_session, "valid.example.com", settings=_settings(),
+            db_session, "valid.example.com", handle=None, settings=_settings(),
         )
-        assert result is None
+        assert result == "valid.example.com"
 
     def test_short_circuits_on_format(self, db_session):
         """Format failure should not touch the DB or DNS."""
         with pytest.raises(HostnameException) as exc_info:
             require_valid_hostname_for_deployment(
-                db_session, "-invalid", settings=_settings(domain="freepod.eu"),
+                db_session, "-invalid", handle=None, settings=_settings(domain="freepod.eu"),
             )
         assert exc_info.value.reason == "invalid"
-
-    def test_short_circuits_on_wildcard_depth(self, db_session):
-        """A wrong depth should not check reserved, availability, or DNS."""
-        with pytest.raises(HostnameException) as exc_info:
-            require_valid_hostname_for_deployment(
-                db_session, "foo.bar.alice.dev.deprutser.be",
-                settings=_settings(wildcard_domains=["dev.deprutser.be"], domain="freepod.eu"),
-            )
-        assert exc_info.value.reason == "invalid"
-
-    def test_short_circuits_on_reserved(self, db_session):
-        """Reserved failure should not check availability or DNS."""
-        with pytest.raises(HostnameException) as exc_info:
-            require_valid_hostname_for_deployment(
-                db_session, "smtp.example.com",
-                settings=_settings(reserved_hostnames=["smtp.example.com"], domain="freepod.eu"),
-            )
-        assert exc_info.value.reason == "reserved"
 
     def test_mixed_case_detected_as_in_use(self, db_session, seed_parents):
         """Mixed-case FQDN should be detected as in-use when lowercase variant exists."""
@@ -531,18 +581,10 @@ class TestRequireValidHostname:
         with pytest.raises(HostnameException) as exc_info:
             require_valid_hostname_for_deployment(
                 db_session, "Taken.Example.COM",
+                handle=None,
                 settings=_settings(),
             )
         assert exc_info.value.reason == "in_use"
-
-    def test_reserved_matching_is_case_insensitive(self, db_session):
-        """Reserved hostname check should match regardless of input case."""
-        with pytest.raises(HostnameException) as exc_info:
-            require_valid_hostname_for_deployment(
-                db_session, "SMTP.Example.Com",
-                settings=_settings(reserved_hostnames=["smtp.example.com"]),
-            )
-        assert exc_info.value.reason == "reserved"
 
     def test_short_circuits_on_in_use(self, db_session, seed_parents):
         """In-use failure should not perform DNS resolution."""
@@ -559,6 +601,7 @@ class TestRequireValidHostname:
         with pytest.raises(HostnameException) as exc_info:
             require_valid_hostname_for_deployment(
                 db_session, "taken.example.com",
+                handle=None,
                 settings=_settings(domain="freepod.eu"),
             )
         assert exc_info.value.reason == "in_use"
@@ -584,12 +627,12 @@ class TestHostnameCheckEndpoint:
         assert data["usable"] is False
         assert data["reason"] == "invalid"
 
-    def test_reserved_hostname(self, client, monkeypatch):
+    def test_name_under_a_platform_domain(self, client, monkeypatch):
         monkeypatch.setattr(
             "app.services.hostnames.get_settings",
-            lambda: _settings(reserved_hostnames=["smtp.example.com"]),
+            lambda: _settings(platform_domains=["freepod.eu"]),
         )
-        resp = client.get("/api/hostnames/smtp.example.com")
+        resp = client.get("/api/hostnames/smtp.freepod.eu")
         assert resp.status_code == 200
         assert resp.json()["usable"] is False
         assert resp.json()["reason"] == "reserved"
@@ -647,8 +690,8 @@ class TestHostnameCheckEndpoint:
         assert resp.json()["reason"] == "not_resolving"
 
     def test_auth_required(self, db_session):
-        """The check answers by depth, and the deployment-side answer depends on
-        whose subdomain the name sits under, so it is no longer public."""
+        """Whether a name is usable depends on whose handle it ends in, so the
+        check is not public."""
         def override_get_db():
             yield db_session
 
@@ -683,6 +726,13 @@ class TestCnameTargetEndpoint:
         assert resp.status_code == 200
         assert resp.json() == "dev.freepod.eu"
 
+    def test_advertises_the_tenant_domain(self, client, monkeypatch):
+        monkeypatch.setattr(
+            "app.api.hostnames.get_settings",
+            lambda: _settings(domain="dev.freepod.eu", tenant_domain="dev.freepod.app"),
+        )
+        assert client.get("/api/cname-target").json() == "dev.freepod.app"
+
     def test_returns_empty_string_when_unconfigured(self, client, monkeypatch):
         monkeypatch.setattr(
             "app.api.hostnames.get_settings",
@@ -710,7 +760,7 @@ class TestServerSideEnforcement:
     def test_create_deployment_rejects_reserved_hostname(self, client, db_session, monkeypatch):
         monkeypatch.setattr(
             "app.services.hostnames.get_settings",
-            lambda: _settings(reserved_hostnames=["reserved.example.com"]),
+            lambda: _settings(platform_domains=["example.com"]),
         )
         product = client.post("/api/products", json={"name": "enforce-prod", "description": "test"})
         product_id = product.json()["id"]

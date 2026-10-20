@@ -36,7 +36,6 @@ ENDPOINT = "https://blob.example.invalid"
 @pytest.fixture(autouse=True)
 def _settings(monkeypatch):
     settings = CaelusSettings(
-        wildcard_domains=[],
         tls_cluster_issuer="letsencrypt-http",
         domain="example.test",
         s3_endpoint_url=ENDPOINT,

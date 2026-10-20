@@ -101,8 +101,8 @@ func freePort(t *testing.T) int {
 }
 
 const (
-	authHost  = "milk.erik.freepod.eu"
-	plainHost = "plain.erik.freepod.eu"
+	authHost  = "milk-erik.freepod.app"
+	plainHost = "plain-erik.freepod.app"
 )
 
 // edge is Traefik in front of an echo app, with the chart's two middlewares on

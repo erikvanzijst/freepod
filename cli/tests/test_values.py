@@ -13,6 +13,7 @@ from freepod.values import (
     check_constraints,
     check_public_patterns,
     describe_reason,
+    full_hostname,
     hostname_label,
     is_hostname_property,
     missing_required,
@@ -40,7 +41,7 @@ CUSTOM_SCHEMA = {
     "additionalProperties": False,
 }
 
-ACCOUNT_FQDN = "erik.dev.freepod.eu"
+SUFFIX = "-erik.dev.freepod.app"
 
 
 class Asker:
@@ -73,7 +74,7 @@ def collector(schema=CUSTOM_SCHEMA, *, answers=(), usable=True, reasons=None, **
     asker = Asker(*answers)
     instance = ValueCollector(
         schema,
-        account_fqdn=ACCOUNT_FQDN,
+        suffix=SUFFIX,
         check_hostname=check,
         echo=messages.append,
         ask=asker,
@@ -91,7 +92,7 @@ def test_only_required_properties_are_prompted_for():
     values, asker, _ = collector(answers=["myapp"])
     result = values.collect()
 
-    assert result == {"hostname": "myapp.erik.dev.freepod.eu"}
+    assert result == {"hostname": "myapp"}
     assert len(asker.prompts) == 1, "image is not required and must not be asked for"
 
 
@@ -111,7 +112,7 @@ def test_an_unknown_required_property_is_prompted_for():
     }
     values, asker, messages = collector(schema, answers=["myapp", "eu-west"])
 
-    assert values.collect() == {"hostname": "myapp.erik.dev.freepod.eu", "region": "eu-west"}
+    assert values.collect() == {"hostname": "myapp", "region": "eu-west"}
     assert any("region" in prompt for prompt in asker.prompts)
     assert any("Where to run it." in message for message in messages)
 
@@ -185,30 +186,28 @@ def test_the_hostname_property_is_identified_by_title_case_insensitively():
     assert not is_hostname_property({})
 
 
-def test_a_bare_label_becomes_a_platform_subdomain():
-    assert normalize_hostname("MyApp", ACCOUNT_FQDN) == "myapp.erik.dev.freepod.eu"
+def test_a_bare_label_is_kept_as_a_label():
+    assert normalize_hostname("MyApp") == "myapp"
 
 
 def test_a_qualified_name_is_lowercased_and_left_intact():
-    assert normalize_hostname("App.Example.COM", ACCOUNT_FQDN) == "app.example.com"
+    assert normalize_hostname("App.Example.COM") == "app.example.com"
 
 
 def test_a_trailing_dot_is_stripped():
-    assert normalize_hostname("myapp.example.com.", ACCOUNT_FQDN) == "myapp.example.com"
+    assert normalize_hostname("myapp.example.com.") == "myapp.example.com"
 
 
-def test_a_bare_label_completes_beneath_the_account_name():
-    assert normalize_hostname("x", "erik.example") == "x.erik.example"
-
-
-def test_a_bare_label_with_no_account_name_is_left_alone():
-    assert normalize_hostname("myapp", None) == "myapp"
+def test_the_full_hostname_appends_the_suffix_to_a_bare_label():
+    assert full_hostname("photos", "-alice.freepod.app") == "photos-alice.freepod.app"
+    assert full_hostname("photos.example.com", "-alice.freepod.app") == "photos.example.com"
+    assert full_hostname("photos", None) == "photos"
 
 
 def test_the_completed_name_is_shown():
     values, _, messages = collector(answers=["myapp"])
     values.collect()
-    assert any("myapp.erik.dev.freepod.eu" in message for message in messages)
+    assert any("myapp-erik.dev.freepod.app" in message for message in messages)
 
 
 # --------------------------------------------------------------------------
@@ -219,7 +218,7 @@ def test_the_completed_name_is_shown():
 def test_an_unusable_hostname_re_prompts_with_its_reason():
     values, asker, messages = collector(answers=["taken", "free"], reasons=["in_use", None])
 
-    assert values.collect() == {"hostname": "free.erik.dev.freepod.eu"}
+    assert values.collect() == {"hostname": "free"}
     assert len(asker.prompts) == 2
     assert any("already taken" in message for message in messages)
 
@@ -230,7 +229,7 @@ def test_an_unusable_hostname_re_prompts_with_its_reason():
         ("in_use", "already taken"),
         ("reserved", "reserved"),
         ("invalid", "not a valid hostname"),
-        ("claimed", "another account's subdomain"),
+        ("claimed", "another account's handle"),
         ("not_resolving", "A/AAAA"),
     ],
 )
@@ -244,19 +243,19 @@ def test_an_unknown_reason_is_passed_through():
 
 def test_a_usable_hostname_is_recorded():
     values, _, _ = collector(answers=["myapp"], usable=True)
-    assert values.collect()["hostname"] == "myapp.erik.dev.freepod.eu"
+    assert values.collect()["hostname"] == "myapp"
 
 
 def test_the_check_is_skipped_when_no_checker_is_supplied():
     """`deploy` skips it for an unchanged hostname — design D14."""
     instance = ValueCollector(
         CUSTOM_SCHEMA,
-        account_fqdn=ACCOUNT_FQDN,
+        suffix=SUFFIX,
         check_hostname=None,
         echo=lambda _m: None,
         ask=Asker("myapp"),
     )
-    assert instance.collect()["hostname"] == "myapp.erik.dev.freepod.eu"
+    assert instance.collect()["hostname"] == "myapp"
 
 
 # --------------------------------------------------------------------------
@@ -266,9 +265,9 @@ def test_the_check_is_skipped_when_no_checker_is_supplied():
 
 def test_only_missing_mode_leaves_settled_values_alone():
     values, asker, _ = collector(answers=[])
-    result = values.collect({"hostname": "existing.erik.dev.freepod.eu"}, only_missing=True)
+    result = values.collect({"hostname": "existing-erik.dev.freepod.app"}, only_missing=True)
 
-    assert result == {"hostname": "existing.erik.dev.freepod.eu"}
+    assert result == {"hostname": "existing-erik.dev.freepod.app"}
     assert asker.prompts == [], "a settled value must not be re-asked"
 
 
@@ -281,23 +280,23 @@ def test_only_missing_mode_prompts_for_what_is_absent():
         "required": ["hostname", "region"],
     }
     values, asker, _ = collector(schema, answers=["eu-west"])
-    result = values.collect({"hostname": "existing.erik.dev.freepod.eu"}, only_missing=True)
+    result = values.collect({"hostname": "existing-erik.dev.freepod.app"}, only_missing=True)
 
-    assert result == {"hostname": "existing.erik.dev.freepod.eu", "region": "eu-west"}
+    assert result == {"hostname": "existing-erik.dev.freepod.app", "region": "eu-west"}
     assert len(asker.prompts) == 1
 
 
 def test_an_empty_string_counts_as_missing():
     values, asker, _ = collector(answers=["myapp"])
     result = values.collect({"hostname": ""}, only_missing=True)
-    assert result["hostname"] == "myapp.erik.dev.freepod.eu"
+    assert result["hostname"] == "myapp"
     assert len(asker.prompts) == 1
 
 
 def test_unrelated_existing_values_are_carried_through():
     values, _, _ = collector(answers=[])
     result = values.collect(
-        {"hostname": "a.erik.dev.freepod.eu", "custom_setting": "kept"}, only_missing=True
+        {"hostname": "a-erik.dev.freepod.app", "custom_setting": "kept"}, only_missing=True
     )
     assert result["custom_setting"] == "kept"
 
@@ -314,7 +313,7 @@ def test_missing_required_reports_absent_names():
 
 
 def test_a_missing_value_with_no_prompt_names_the_field():
-    instance = ValueCollector(CUSTOM_SCHEMA, account_fqdn=ACCOUNT_FQDN, interactive=False)
+    instance = ValueCollector(CUSTOM_SCHEMA, suffix=SUFFIX, interactive=False)
 
     with pytest.raises(ValueError_) as raised:
         instance.collect()
@@ -336,8 +335,8 @@ def test_a_present_but_invalid_value_with_no_prompt_names_the_constraint():
 
 
 def test_a_valid_value_with_no_prompt_is_accepted():
-    instance = ValueCollector(CUSTOM_SCHEMA, account_fqdn=ACCOUNT_FQDN, interactive=False)
-    assert instance.collect({"hostname": "a.erik.dev.freepod.eu"}) == {"hostname": "a.erik.dev.freepod.eu"}
+    instance = ValueCollector(CUSTOM_SCHEMA, suffix=SUFFIX, interactive=False)
+    assert instance.collect({"hostname": "a-erik.dev.freepod.app"}) == {"hostname": "a-erik.dev.freepod.app"}
 
 
 # --------------------------------------------------------------------------
@@ -364,7 +363,7 @@ def test_a_directory_name_reduces_to_one_dns_label(name, expected):
 def test_the_suggestion_is_offered_and_can_be_accepted():
     values, asker, _ = collector(answers=[None], suggested_hostname="myapp")
 
-    assert values.collect()["hostname"] == "myapp.erik.dev.freepod.eu"
+    assert values.collect()["hostname"] == "myapp"
     assert asker.defaults == ["myapp"]
 
 
@@ -373,7 +372,7 @@ def test_a_rejected_suggestion_is_not_offered_again():
         answers=[None, "free"], reasons=["in_use", None], suggested_hostname="myapp"
     )
 
-    assert values.collect()["hostname"] == "free.erik.dev.freepod.eu"
+    assert values.collect()["hostname"] == "free"
     assert asker.defaults == ["myapp", None]
 
 

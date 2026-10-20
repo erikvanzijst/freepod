@@ -56,6 +56,12 @@ variable "cloudflare_api_token" {
   sensitive   = true
 }
 
+variable "desec_api_token" {
+  description = "deSEC API token for the freepod.app zone (DNS-01 issuance). Its token policies allow writing TXT RRsets in freepod.app and nothing else. Use secrets.auto.tfvars."
+  type        = string
+  sensitive   = true
+}
+
 variable "cloudflare_email" {
   description = "Cloudflare account email. Declared for parity with the homelab tfvars; the DNS-01 token solver does not use it."
   type        = string

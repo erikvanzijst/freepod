@@ -50,6 +50,7 @@ module "keycloak_config" {
 module "certmanager" {
   source               = "./certmanager"
   cloudflare_api_token = var.cloudflare_api_token
+  desec_api_token      = var.desec_api_token
   letsencrypt_email    = var.letsencrypt_email
 }
 

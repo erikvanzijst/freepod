@@ -15,8 +15,14 @@ def test_default_values(monkeypatch):
     assert settings.database_url == "postgresql+psycopg://caelus:caelus@localhost:5432/caelus"
     assert settings.log_level == "INFO"
     assert settings.domain == ""
-    assert settings.wildcard_domains == []
-    assert settings.reserved_hostnames == []
+    assert settings.tenant_domain == ""
+    assert settings.platform_domains == []
+    assert settings.reserved_handles == []
+
+
+def test_retired_hostname_settings_are_gone():
+    assert "wildcard_domains" not in CaelusSettings.model_fields
+    assert "reserved_hostnames" not in CaelusSettings.model_fields
 
 
 def test_env_var_loading(monkeypatch):
@@ -30,11 +36,11 @@ def test_env_var_loading(monkeypatch):
 
 
 def test_list_field_json_parsing(monkeypatch):
-    monkeypatch.setenv("CAELUS_WILDCARD_DOMAINS", '["app.deprutser.be","apps.example.com"]')
-    monkeypatch.setenv("CAELUS_RESERVED_HOSTNAMES", '["smtp.app.deprutser.be"]')
+    monkeypatch.setenv("CAELUS_PLATFORM_DOMAINS", '["freepod.eu","freepod.app"]')
+    monkeypatch.setenv("CAELUS_RESERVED_HANDLES", '["www","admin"]')
     settings = CaelusSettings(_env_file=None)
-    assert settings.wildcard_domains == ["app.deprutser.be", "apps.example.com"]
-    assert settings.reserved_hostnames == ["smtp.app.deprutser.be"]
+    assert settings.platform_domains == ["freepod.eu", "freepod.app"]
+    assert settings.reserved_handles == ["www", "admin"]
 
 
 def test_var_encryption_keys_are_comma_separated(monkeypatch):

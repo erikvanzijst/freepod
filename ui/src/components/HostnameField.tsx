@@ -24,11 +24,11 @@ const REASON_LABELS: Record<string, string> = {
   invalid: 'Invalid hostname format',
   reserved: 'Hostname is reserved',
   in_use: 'Already in use',
-  claimed: "That hostname is under another account's subdomain",
+  claimed: 'That address belongs to another account',
 }
 
 // Shown when the platform's CNAME target is unknown (endpoint unconfigured).
-const DEFAULT_CNAME_TARGET = 'freepod.eu'
+const DEFAULT_CNAME_TARGET = 'freepod.app'
 
 type ValidationState =
   | { status: 'idle' }
@@ -41,11 +41,11 @@ interface HostnameFieldProps {
   onChange: (hostname: string) => void
   onValidationChange?: (valid: boolean) => void
   /**
-   * The account's own domain name, e.g. `erik.freepod.eu`. An application is
-   * addressed beneath it, so there is one suffix rather than a list to choose
-   * from. Absent only while it is still loading.
+   * The text that follows an application label in this account's hostnames,
+   * as the platform reports it (e.g. `-erik.freepod.app`). Opaque: it is
+   * appended to the label, never taken apart. Absent only while loading.
    */
-  accountFqdn?: string | null
+  suffix?: string | null
   cnameTarget?: string
   required?: boolean
   error?: string
@@ -58,7 +58,7 @@ interface HostnameFieldProps {
 
 type Mode = 'freepod' | 'custom'
 
-export function HostnameField({ value, onChange, onValidationChange, accountFqdn, cnameTarget, required, error, description, initialHostname, readOnly, defaultPrefix }: HostnameFieldProps) {
+export function HostnameField({ value, onChange, onValidationChange, suffix, cnameTarget, required, error, description, initialHostname, readOnly, defaultPrefix }: HostnameFieldProps) {
   if (readOnly) {
     return (
       <TextField
@@ -71,7 +71,7 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
     )
   }
 
-  const hasFreepodAddress = Boolean(accountFqdn)
+  const hasFreepodAddress = Boolean(suffix)
   const [mode, setMode] = useState<Mode>(hasFreepodAddress ? 'freepod' : 'custom')
   const [prefix, setPrefix] = useState('')
   const [customFqdn, setCustomFqdn] = useState('')
@@ -82,27 +82,27 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
   // user edits the field: a name someone chose is never silently replaced.
   const autoNameRef = useRef<{ base: string; tries: number } | null>(null)
 
-  // The account's domain name arrives asynchronously; a value parked in the
-  // custom field before it did may turn out to sit beneath it after all.
+  // The account's suffix arrives asynchronously; a value parked in the custom
+  // field before it did may turn out to be a Freepod address after all.
   const addressInitializedRef = useRef(hasFreepodAddress)
   useEffect(() => {
-    if (addressInitializedRef.current || !accountFqdn) return
+    if (addressInitializedRef.current || !suffix) return
     addressInitializedRef.current = true
 
-    if (customFqdn && customFqdn.endsWith(`.${accountFqdn}`)) {
-      setPrefix(customFqdn.slice(0, -(accountFqdn.length + 1)))
+    if (customFqdn && customFqdn.endsWith(suffix)) {
+      setPrefix(customFqdn.slice(0, -suffix.length))
       setCustomFqdn('')
     }
     setMode('freepod')
-  }, [accountFqdn, customFqdn])
+  }, [suffix, customFqdn])
 
   // Sync initial value into local state on mount, or with none, prefill the
-  // default name once the account's domain is known.
+  // default name once the account's suffix is known.
   const initializedRef = useRef(false)
   useEffect(() => {
     if (initializedRef.current) return
     if (!value) {
-      if (!defaultPrefix || !accountFqdn) return
+      if (!defaultPrefix || !suffix) return
       initializedRef.current = true
       autoNameRef.current = { base: defaultPrefix, tries: 1 }
       setPrefix(defaultPrefix)
@@ -111,17 +111,17 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
     }
     initializedRef.current = true
 
-    if (accountFqdn && value.endsWith(`.${accountFqdn}`)) {
-      setPrefix(value.slice(0, -(accountFqdn.length + 1)))
+    if (suffix && value.endsWith(suffix) && value.length > suffix.length) {
+      setPrefix(value.slice(0, -suffix.length))
       setMode('freepod')
       return
     }
     setCustomFqdn(value)
     setMode('custom')
-  }, [value, accountFqdn, defaultPrefix])
+  }, [value, suffix, defaultPrefix])
 
   const currentFqdn =
-    mode === 'freepod' ? (prefix ? `${prefix}.${accountFqdn}` : '') : customFqdn
+    mode === 'freepod' ? (prefix ? `${prefix}${suffix}` : '') : customFqdn
 
   const validate = useCallback((fqdn: string) => {
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -236,7 +236,7 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
       sx={{ alignSelf: 'flex-end' }}
     >
       <ToggleButton value="freepod" sx={{ whiteSpace: 'nowrap' }}>
-        <Typography variant="caption">Free domain</Typography>
+        <Typography variant="caption">Freepod address</Typography>
       </ToggleButton>
       <ToggleButton value="custom" sx={{ whiteSpace: 'nowrap' }}>
         <Typography variant="caption">Custom domain</Typography>
@@ -266,7 +266,7 @@ export function HostnameField({ value, onChange, onValidationChange, accountFqdn
                 endAdornment: (
                   <InputAdornment position="end">
                     <Typography sx={{ color: 'text.secondary', mr: 1, whiteSpace: 'nowrap' }}>
-                      .{accountFqdn}
+                      {suffix}
                     </Typography>
                     {statusIcon}
                   </InputAdornment>

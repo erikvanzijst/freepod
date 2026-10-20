@@ -5,9 +5,8 @@ export interface User {
   id: number
   email: string
   is_admin: boolean
-  subdomain?: string | null
-  /** `*.<subdomain>.<platform domain>`; null until a subdomain is claimed. */
-  wildcard_domain?: string | null
+  /** Ends every hostname the account deploys under; null until claimed. */
+  handle?: string | null
   created_at: IsoDate
 }
 
@@ -19,15 +18,16 @@ export interface TosAcceptance {
 }
 
 /**
- * The subdomain an account holds. `subdomain` and `fqdn` are null until it claims
- * one; `domain` is the platform's own domain and is reported either way, so the
- * claim dialog can render the suffix before there is a label to compose it with.
- * Sourced from GET /api/me/subdomain.
+ * The handle an account holds. `handle` and `suffix` are null until it claims
+ * one. `suffix` is the exact text that follows an application label in this
+ * account's hostnames, used as opaque text and never composed. `domain` is the
+ * tenant domain and is reported either way, so the claim dialog can render the
+ * address before there is a handle. Sourced from GET /api/me/handle.
  */
-export interface Subdomain {
-  subdomain: string | null
-  fqdn: string | null
-  domain: string | null
+export interface Handle {
+  handle: string | null
+  suffix: string | null
+  domain: string
 }
 
 /** Whether a product is offered to end users ('public'), offered through the API and CLI but kept out of the storefront ('unlisted'), or hidden ('admin'). */

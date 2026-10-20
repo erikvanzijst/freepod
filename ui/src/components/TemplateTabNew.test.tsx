@@ -5,7 +5,7 @@ import { TemplateTabNew } from './TemplateTabNew'
 import type { Product, ProductTemplate } from '../api/types'
 
 vi.mock('../api/endpoints', () => ({
-  getMySubdomain: vi.fn().mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' }),
+  getMyHandle: vi.fn().mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' }),
   getCnameTarget: vi.fn().mockResolvedValue(''),
   checkHostname: vi.fn().mockResolvedValue({ fqdn: '', usable: true, reason: null }),
 }))

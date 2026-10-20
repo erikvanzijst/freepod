@@ -26,7 +26,6 @@ HMAC_KEY = "test-pull-hmac-key"
 
 def _use_settings(monkeypatch, **registry) -> None:
     settings = CaelusSettings(
-        wildcard_domains=[],
         tls_cluster_issuer="letsencrypt-http",
         domain="example.test",
         _env_file=None,
