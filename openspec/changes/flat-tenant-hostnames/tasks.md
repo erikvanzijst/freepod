@@ -69,7 +69,7 @@
 ## 13. App Studio
 
 - [x] 13.1 Update `products/appstudio/image/AGENTS.md` to describe only the current hostname format, and add that upgrading the CLI is fine when the API refuses it with an upgrade message, leaving how to the agent. Verify by reading it for any `subdomain` or `.freepod.eu` app hostnames
-- [ ] 13.2 Bump the image (bundling the new CLI) and the chart version that references it, and publish both once the CLI is installable (design: dev first with the branch CLI if needed). Verify that the dev catalog points at the new chart and a studio deploys an app
+- [x] 13.2 Bump the image (bundling the new CLI) and the chart version that references it, and publish both once the CLI is installable (design: dev first with the branch CLI if needed). Verify that the dev catalog points at the new chart and a studio deploys an app
 
 ## 14. Repository docs
 
@@ -79,8 +79,8 @@
 
 - [x] 15.1 Dev: apply `tf/deps` (group 2), then `tf/app`. Roll out the API and UI. Install the CLI from the branch. Run the script dry, then `--apply`. Verify that every dev deployment is ready on its new hostname
 - [x] 15.2 Dev: apply the redirect list. Verify that an old dev hostname answers 301/308 to its new one, a preview signs in, and a CLI deploy with an old-format `.freepod.json` succeeds after the rewrite
-- [ ] 15.3 Prod: `tf/app`, then the API and UI. Publish the CLI release. Run the script. Apply the redirect list. Point the prod catalog at the new App Studio, and move each live studio onto it (`caelus update-deployment --desired-template-id`). Verify as in 15.1–15.2, and that an older CLI gets the 426 message
-- [ ] 15.4 Delete `api/scripts/migrate_tenant_hostnames.py` and its test. Verify that `git grep migrate_tenant_hostnames` is empty
+- [x] 15.3 Prod: `tf/app`, then the API and UI. Publish the CLI release. Run the script. Apply the redirect list. Point the prod catalog at the new App Studio, and move each live studio onto it (`caelus update-deployment --desired-template-id`). Verify as in 15.1–15.2, and that an older CLI gets the 426 message
+- [x] 15.4 Delete `api/scripts/migrate_tenant_hostnames.py` and its test. Verify that `git grep migrate_tenant_hostnames` is empty
 
 ## Workflow follow-up
 
