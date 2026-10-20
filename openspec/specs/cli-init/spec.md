@@ -5,6 +5,7 @@ Turning an ordinary directory into a Freepod project: discovering what a user-su
 application deployment requires, collecting it interactively, and recording it — without
 provisioning anything.
 ## Requirements
+
 ### Requirement: Initialization resolves the user-application product by slug
 
 The client SHALL locate the product that runs tenant-supplied images by its stable slug
@@ -50,24 +51,6 @@ re-prompted. Constraints the client cannot evaluate SHALL be left to the platfor
 
 - **WHEN** the schema declares a property that is not required
 - **THEN** initialization neither prompts for it nor writes it to the project file
-
-### Requirement: A hostname without a domain is completed from a platform domain
-
-The client SHALL identify the hostname property by its schema title, matched
-case-insensitively, which is the same rule the platform uses to derive a deployment's
-hostname. It SHALL lowercase the entered value, and when the entered value contains no
-dot, SHALL append the platform's first wildcard domain to form a fully-qualified name.
-
-#### Scenario: A bare label becomes a platform subdomain
-
-- **WHEN** the user enters a hostname containing no dot
-- **THEN** the client appends the platform's first wildcard domain
-- **AND** shows the resulting fully-qualified name
-
-#### Scenario: A fully-qualified name is left intact
-
-- **WHEN** the user enters a hostname containing a dot
-- **THEN** the client lowercases it and uses it as entered
 
 ### Requirement: The hostname prompt offers the directory's name
 
@@ -144,3 +127,21 @@ presented anywhere as the remedy for a missing or newly required configuration v
 - **WHEN** initialization runs with overwriting requested
 - **THEN** the client warns that the existing deployment pointer will be discarded
 
+### Requirement: A hostname without a dot is kept as an application label
+
+The client SHALL identify the hostname property by its schema title, matched
+case-insensitively, the same rule the platform uses. It SHALL lowercase the entered value
+and write it to the project file as entered. A value without a dot is an application label,
+which the platform completes beneath the account's handle. When the account holds a handle,
+the client SHALL show the resulting address by appending the reported `suffix`.
+
+#### Scenario: A bare label is kept as a label
+
+- **WHEN** the user enters `Photos` and the account's suffix is `-alice.freepod.app`
+- **THEN** the project file records `photos`
+- **AND** the client shows `photos-alice.freepod.app` as the address it will have
+
+#### Scenario: A fully-qualified name is left intact
+
+- **WHEN** the user enters a hostname containing a dot
+- **THEN** the client lowercases it and records it as entered

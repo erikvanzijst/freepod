@@ -494,7 +494,7 @@ Spec: [account-handle](../openspec/specs/account-handle/spec.md),
 [deployment-create-contract](../openspec/specs/deployment-create-contract/spec.md),
 [platform-tls-store](../openspec/specs/platform-tls-store/spec.md) ·
 Rationale:
-[flat-tenant-hostnames](../openspec/changes/flat-tenant-hostnames/design.md)
+[flat-tenant-hostnames](../openspec/changes/archive/2026-10-20-flat-tenant-hostnames/design.md)
 
 ## Client Version Gate
 

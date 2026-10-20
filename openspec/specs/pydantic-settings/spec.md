@@ -3,6 +3,7 @@
 ## Purpose
 TBD - created by archiving change hostname-validation-and-domains. Update Purpose after archive.
 ## Requirements
+
 ### Requirement: Centralized configuration via Pydantic BaseSettings
 The system MUST provide a `CaelusSettings` class in `api/app/config.py` using Pydantic `BaseSettings` with `env_prefix="CAELUS_"`. All application configuration MUST be read through this class.
 
@@ -28,20 +29,6 @@ All environment variable names MUST use the `CAELUS_` prefix. The previous unpre
 - **WHEN** the application starts with `DATABASE_URL=postgresql://old` set but `CAELUS_DATABASE_URL` is not set
 - **THEN** the settings use the default database URL, not the value from `DATABASE_URL`
 
-### Requirement: Settings includes hostname-related configuration fields
-The `CaelusSettings` class MUST include the following fields with their default values:
-- `lb_ips: list[str] = []` — IPv4 and IPv6 addresses of Caelus' load balancer
-- `wildcard_domains: list[str] = []` — Caelus-provided wildcard domain suffixes
-- `reserved_hostnames: list[str] = []` — Blacklisted hostnames
-
-#### Scenario: LB IPs configured via JSON env var
-- **WHEN** `CAELUS_LB_IPS='["1.2.3.4","2001:db8::1"]'` is set
-- **THEN** `get_settings().lb_ips` returns `["1.2.3.4", "2001:db8::1"]`
-
-#### Scenario: Hostname-related fields default to empty lists
-- **WHEN** none of `CAELUS_LB_IPS`, `CAELUS_WILDCARD_DOMAINS`, or `CAELUS_RESERVED_HOSTNAMES` are set
-- **THEN** all three fields default to empty lists
-
 ### Requirement: Existing config consumers are migrated
 All existing code that reads `DATABASE_URL`, `STATIC_PATH`, or `CAELUS_LOG_LEVEL` directly from `os.environ` MUST be updated to use the `CaelusSettings` instance. This includes `db.py`, `logging_config.py`, and `main.py`.
 
@@ -65,3 +52,23 @@ The platform runs more than one environment against shared infrastructure, and c
 #### Scenario: An unconfigured platform is not production
 - **WHEN** the application starts without `CAELUS_ENVIRONMENT` set
 - **THEN** `get_settings().environment` returns a value other than `prod`
+
+### Requirement: Settings include the tenant hostname configuration
+The `CaelusSettings` class MUST include the following fields with their default values:
+- `tenant_domain: str = ""` — the domain tenant hostnames are formed under (`freepod.app`, `dev.freepod.app`)
+- `platform_domains: list[str] = []` — domains no custom hostname may be under
+- `reserved_handles: list[str] = []` — handles no account may claim
+
+It MUST NOT include `wildcard_domains` or `reserved_hostnames`.
+
+#### Scenario: Platform domains configured via JSON env var
+- **WHEN** `CAELUS_PLATFORM_DOMAINS='["freepod.eu","freepod.app"]'` is set
+- **THEN** `get_settings().platform_domains` returns `["freepod.eu", "freepod.app"]`
+
+#### Scenario: Hostname-related fields default to empty
+- **WHEN** none of `CAELUS_TENANT_DOMAIN`, `CAELUS_PLATFORM_DOMAINS`, or `CAELUS_RESERVED_HANDLES` are set
+- **THEN** `tenant_domain` is `""` and the two lists are empty
+
+#### Scenario: Retired settings are gone
+- **WHEN** the settings fields are examined
+- **THEN** neither `wildcard_domains` nor `reserved_hostnames` exists

@@ -173,7 +173,7 @@ This repository is a monorepo with:
   [cli-handle-required](openspec/specs/cli-handle-required/spec.md),
   [hostname-validation](openspec/specs/hostname-validation/spec.md),
   [tenant-domain-edge](openspec/specs/tenant-domain-edge/spec.md) · Rationale:
-  [flat-tenant-hostnames](openspec/changes/flat-tenant-hostnames/design.md)
+  [flat-tenant-hostnames](openspec/changes/archive/2026-10-20-flat-tenant-hostnames/design.md)
 - **One platform certificate serves Freepod and every tenant hostname**: the
   store's default certificate covers `freepod.eu` and both tenant domains, with
   their wildcards, issued over DNS-01 in two zones. The store and that

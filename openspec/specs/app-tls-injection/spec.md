@@ -4,19 +4,20 @@
 Expose per-app routing via a `caelus.ingress` Helm values block, mark app Ingresses as websecure-only by omitting the entrypoint annotation (so unannotated routers bind `websecure` only and HTTP falls through to a cluster-wide redirect), and wire cert-manager for custom-domain TLS.
 
 ## Requirements
+
 ### Requirement: The reconciler injects a system-controlled caelus.ingress values block
 The deployment reconciler (`api/app/services/reconcile.py`) SHALL compute a `caelus.ingress` Helm
 values block per deployment and merge it as a system override (highest precedence, via
 `merge_values_scoped`), mirroring the existing `_build_plan_overrides` pattern. The block SHALL set
 `caelus.ingress.enabled: true` (the platform exposes this deployment via an Ingress) and
 `caelus.ingress.host` (the routing host and cert SAN), and SHALL classify the deployment hostname
-under `caelus.ingress.tls` as **wildcard** (ends with a configured `settings.wildcard_domains`
-entry) or **custom**, reusing the classification logic shape from `hostnames.py`. The issuer name
-SHALL come from settings (`api/app/config.py`: `tls_cluster_issuer`), never hardcoded in chart
-sources.
+under `caelus.ingress.tls` as **wildcard** (under the configured `settings.tenant_domain`, and so
+served by the platform's default certificate) or **custom**. The key keeps the name `wildcard`
+in the chart contract. The issuer name SHALL come from settings (`api/app/config.py`:
+`tls_cluster_issuer`), never hardcoded in chart sources.
 
 #### Scenario: Wildcard host injection
-- **WHEN** a deployment hostname ends with a configured wildcard domain (e.g. `hw.freepod.eu`)
+- **WHEN** a deployment hostname is under the tenant domain (e.g. `hw-alice.freepod.app` with tenant domain `freepod.app`)
 - **THEN** `caelus.ingress` has `enabled: true`, `host` set, and `tls.wildcard: true`
 - **AND** no per-app issuer or TLS secret is required (the host is served by Traefik's default
   cert store)
@@ -80,4 +81,3 @@ install.
 #### Scenario: Schema accepts injected values
 - **WHEN** the reconciler injects a populated `caelus.ingress` block
 - **THEN** `validate_user_values` and Helm accept it against the chart's `values.schema.json`
-

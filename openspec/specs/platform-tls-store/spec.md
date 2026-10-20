@@ -7,6 +7,7 @@ and owned field by field so that neither Terraform nor the ingress controller's 
 revert it.
 
 ## Requirements
+
 ### Requirement: The store is a platform-owned object, not a chart value
 
 The certificate store MUST be an object the platform owns, in the namespace holding the
@@ -41,114 +42,6 @@ store's own namespace. There is no cross-namespace form to reach for.
 - **WHEN** the store names a certificate secret
 - **THEN** that secret exists in the store's own namespace
 
-### Requirement: Ownership is split by field, not by object
-
-The default certificate and the membership list MUST be owned by different actors and written
-by different mechanisms: the default certificate declaratively by infrastructure code, the
-membership list by the reconciler at runtime. Each MUST write only the fields it owns, MUST
-omit the fields it does not — declaring a field, even as an empty value, claims ownership of it —
-and neither MUST override the other's ownership.
-
-Splitting by field is what lets the object be created and shaped declaratively while its
-membership changes with the fleet. Overriding the other's ownership — which the tooling offers
-as a way past a conflict — would let the reconciler take the default certificate and drop it on
-its next write, leaving connections with no fallback.
-
-#### Scenario: Infrastructure code owns the default certificate
-
-- **WHEN** the store is applied by infrastructure code
-- **THEN** it sets the default certificate and omits the membership list entirely, rather than
-  setting it to an empty one — declaring the field claims ownership of it, and the list is
-  atomic, so an empty declaration makes every later write by the reconciler a conflict
-
-#### Scenario: The reconciler owns the membership list
-
-- **WHEN** the reconciler writes the store
-- **THEN** it sets the membership list and does not set the default certificate
-
-#### Scenario: Ownership is never forced
-
-- **WHEN** the reconciler writes the store
-- **THEN** it does not override another actor's ownership of any field
-
-#### Scenario: The reconciler updates the store but never creates it
-
-- **WHEN** the reconciler is about to write membership and the store does not exist
-- **THEN** it refuses rather than creating one, because a store it created would carry no default
-  certificate and leave connections matching nothing with no fallback
-
-#### Scenario: An absent membership list is not an obstacle
-
-- **WHEN** the reconciler writes membership to a store that has never had a membership list
-- **THEN** the write succeeds and the list is created by it
-
-### Requirement: Membership is derived from the certificates that exist
-
-The membership list MUST be computed from the certificate secrets present in the namespace,
-not from the platform's own records of which accounts should have one.
-
-The question is which certificates can be served, and the cluster is authoritative for it. A
-list built from the database can name a secret that has not been issued yet — which the ingress
-controller reports as an error on every reload — and can omit one that has.
-
-#### Scenario: Only issued certificates are listed
-
-- **WHEN** an account's certificate has been requested but not yet issued
-- **THEN** it is not in the list, and appears once its secret exists
-
-#### Scenario: The list never names a missing secret
-
-- **WHEN** the store is inspected
-- **THEN** every secret it names exists
-
-### Requirement: The list is written with a compare-and-swap precondition
-
-Every write of the membership list MUST carry the version of the object it was computed
-against, so that a write made from a stale view is rejected rather than applied. A rejected
-write MUST be retried from a fresh read, a bounded number of times.
-
-The reconciler runs as several concurrent processes. Two of them writing a whole list computed
-at different moments is a lost update: the later write drops the entry the earlier one added,
-and an account's applications are served the wrong certificate with nothing to indicate why.
-Recomputing the whole list does not avoid this — it is the mechanism of it.
-
-#### Scenario: A stale write is refused
-
-- **WHEN** a worker writes the list computed against a version of the object that has since
-  changed
-- **THEN** the write is refused
-
-#### Scenario: A refused write converges
-
-- **WHEN** a write is refused
-- **THEN** the worker reads again, recomputes, and writes, and the resulting list contains both
-  workers' certificates
-
-#### Scenario: Concurrent additions both survive
-
-- **WHEN** two workers add certificates for different accounts at the same time
-- **THEN** the store ends up listing both
-
-### Requirement: Any reconcile converges the whole store
-
-Because the list is derived from the whole namespace rather than from the deployment being
-reconciled, any reconcile that writes it MUST bring it to the complete correct set, correcting
-drift for every account rather than only the one at hand. A reconcile that finds the list
-already correct MUST NOT write.
-
-This is what removes the need for a periodic sweep: correction is a side effect of ordinary
-work, and the common case costs a read.
-
-#### Scenario: Drift is corrected by unrelated work
-
-- **WHEN** an account's certificate is missing from the list and any deployment reconciles
-- **THEN** the list is corrected
-
-#### Scenario: A correct list is not rewritten
-
-- **WHEN** a reconcile finds the list already matches the certificates that exist
-- **THEN** no write is made
-
 ### Requirement: A listed certificate is served to routes that do not reference it
 
 A certificate in the store MUST be served for connections whose name it matches, to routes
@@ -173,3 +66,25 @@ namespaces.
 
 - **WHEN** a connection arrives with a server name no listed certificate matches
 - **THEN** the default certificate is served, as before
+
+### Requirement: Only the default certificate is managed
+
+Infrastructure code MUST own the store's default certificate, written declaratively, and MUST
+omit the membership list entirely rather than declaring it, even as an empty list. No platform
+component writes the membership list. It keeps whatever entries it last held, which serve
+retired tenant hostnames until a later change removes them.
+
+#### Scenario: Infrastructure code owns the default certificate
+
+- **WHEN** the store is applied by infrastructure code
+- **THEN** it sets the default certificate and omits the membership list entirely
+
+#### Scenario: The membership list is left as it is
+
+- **WHEN** deployments are created, updated, reconciled or deleted
+- **THEN** the store's membership list is not written
+
+#### Scenario: Applying the store does not clear membership
+
+- **WHEN** infrastructure code re-applies the store
+- **THEN** the entries already in the membership list remain

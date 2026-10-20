@@ -26,16 +26,19 @@ the same way as the rest of the admin surface (visible to admins only).
 ### Requirement: Users table lists all users
 The users panel SHALL display a table containing every user returned by
 `GET /api/users`. Each row SHALL show the user's id, email, admin status,
-subdomain, and join date. The subdomain SHALL be shown as the user's
-`wildcard_domain` as returned by the API (`*.<subdomain>.<platform domain>`,
-the name every host the account deploys is addressed under). A user who has
-not claimed a subdomain SHALL show an empty subdomain cell.
+handle, and join date. The handle SHALL be shown as the user's `handle` as
+returned by the API. A user who has not claimed a handle SHALL show an empty
+handle cell.
 
 #### Scenario: Table populated
 - **WHEN** an admin opens the Users tab and the user list has loaded
 - **THEN** the table SHALL contain one row per user
-- **AND** each row SHALL show the user's id, email, admin status, subdomain,
+- **AND** each row SHALL show the user's id, email, admin status, handle,
   and join date
+
+#### Scenario: An unclaimed handle is an empty cell
+- **WHEN** a listed user holds no handle
+- **THEN** their handle cell is empty
 
 #### Scenario: Loading state
 - **WHEN** the user list has not yet loaded

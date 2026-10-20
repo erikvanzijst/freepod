@@ -103,32 +103,6 @@ chosen plan in the same parameter, by name.
   such plan
 - **THEN** the page opens with its default plan preselected and no error
 
-### Requirement: Install opens the deploy dialog for a signed-in visitor
-For a signed-in visitor, Install SHALL open the existing deploy dialog for
-that product over the app page, with the plan chosen on the page preselected.
-The dialog's existing gates, such as claiming a subdomain first, SHALL still
-apply. Closing the dialog SHALL leave the visitor on the app page; only a
-successful launch SHALL take them to the dashboard.
-
-#### Scenario: Signed-in install with a chosen plan
-- **WHEN** a signed-in visitor chooses the Pro plan on the Immich page and
-  selects Install
-- **THEN** the deploy dialog for Immich opens over the Immich page with the
-  Pro plan selected
-
-#### Scenario: Install canceled
-- **WHEN** the visitor closes the deploy dialog without launching
-- **THEN** they are still on the Immich page
-
-#### Scenario: Install launched
-- **WHEN** the visitor launches the app from the dialog on a free plan
-- **THEN** they are taken to the dashboard
-
-#### Scenario: Subdomain not yet claimed
-- **WHEN** a signed-in visitor without a subdomain selects Install
-- **THEN** the subdomain claim is asked for first, and the deploy dialog opens
-  with the chosen plan once it is claimed
-
 ### Requirement: Install by an anonymous visitor resumes after sign-up
 For an anonymous visitor, Install SHALL start the sign-up or sign-in flow and,
 once it completes, SHALL open the deploy dialog for that product with the
@@ -201,13 +175,13 @@ expanded.
 
 ### Requirement: Install from the catalog follows the app page's install
 Install in a catalog preview SHALL behave as Install on the app page: for a
-signed-in visitor it SHALL open the install flow, with the subdomain claim
+signed-in visitor it SHALL open the install flow, with the handle claim
 first when needed, over the catalog; for an anonymous visitor it SHALL start
 sign-up and return them to the app's page with the deploy dialog open. A
 chosen plan SHALL carry through in both cases.
 
 #### Scenario: Signed-in install from a row
-- **WHEN** a signed-in visitor holding a subdomain selects Install in the
+- **WHEN** a signed-in visitor holding a handle selects Install in the
   Vaultwarden preview
 - **THEN** the deploy dialog for Vaultwarden opens over the catalog
 
@@ -215,3 +189,29 @@ chosen plan SHALL carry through in both cases.
 - **WHEN** an anonymous visitor selects Install in the Vaultwarden preview and
   completes sign-up
 - **THEN** they land on the Vaultwarden page with its deploy dialog open
+
+### Requirement: A signed-in visitor's Install opens the deploy dialog
+For a signed-in visitor, Install SHALL open the existing deploy dialog for
+that product over the app page, with the plan chosen on the page preselected.
+The dialog's existing gates, such as claiming a handle first, SHALL still
+apply. Closing the dialog SHALL leave the visitor on the app page; only a
+successful launch SHALL take them to the dashboard.
+
+#### Scenario: Signed-in install with a chosen plan
+- **WHEN** a signed-in visitor chooses the Pro plan on the Immich page and
+  selects Install
+- **THEN** the deploy dialog for Immich opens over the Immich page with the
+  Pro plan selected
+
+#### Scenario: Install canceled
+- **WHEN** the visitor closes the deploy dialog without launching
+- **THEN** they are still on the Immich page
+
+#### Scenario: Install launched
+- **WHEN** the visitor launches the app from the dialog on a free plan
+- **THEN** they are taken to the dashboard
+
+#### Scenario: Handle not yet claimed
+- **WHEN** a signed-in visitor without a handle selects Install
+- **THEN** the handle claim is asked for first, and the deploy dialog opens
+  with the chosen plan once it is claimed

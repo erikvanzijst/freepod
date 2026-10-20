@@ -28,7 +28,7 @@ independent state and does not use Terraform workspaces.
   [platform-tls-store](../../openspec/specs/platform-tls-store/spec.md),
   [freepod-tls-termination](../../openspec/specs/freepod-tls-termination/spec.md)
   · Rationale:
-  [per-user-tls-certificates](../../openspec/changes/per-user-tls-certificates/design.md)
+  [per-user-tls-certificates](../../openspec/changes/archive/2026-09-08-per-user-tls-certificates/design.md)
 
 ## Prerequisites
 
