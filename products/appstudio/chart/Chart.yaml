@@ -4,7 +4,7 @@ description: >-
   Freepod App Studio: opencode's web UI over a persistent workspace, with the
   toolchains and the freepod CLI to build and deploy apps.
 type: application
-version: 0.2.15
+version: 0.2.16
 appVersion: "1.19.0"
 keywords:
   - opencode

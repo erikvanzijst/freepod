@@ -8,7 +8,7 @@
       "title": "Hostname",
       "minLength": 1,
       "maxLength": 253,
-      "description": "The fully qualified domain name used to access Vaultwarden (e.g. password.freepod.eu)"
+      "description": "The address of Vaultwarden, such as passwords-alice.freepod.app, or a domain of your own."
     },
     "signups": {
       "type": "object",

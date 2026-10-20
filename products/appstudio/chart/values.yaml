@@ -32,8 +32,8 @@ chromePort: 4097
 platformUrl: https://freepod.eu
 
 # The app the agent is building, live at preview-<first label>.<rest of the
-# hostname>: a sibling name, so the account's wildcard certificate covers it.
-# Rendered only for wildcard-certificate hosts. While nothing listens on `port`,
+# hostname>: a sibling name, so the tenant domain's wildcard certificate covers
+# it. Rendered only for hosts under the tenant domain. While nothing listens on `port`,
 # it serves a page that waits for the app.
 preview:
   enabled: true

@@ -87,7 +87,7 @@ template:
         title: Hostname
         minLength: 1
         maxLength: 253
-        description: The fully qualified domain name for your wiki (e.g. wiki.user.freepod.eu).
+        description: The address of your wiki, such as wiki-alice.freepod.app, or a domain of your own.
       admin:
         type: object
         additionalProperties: false

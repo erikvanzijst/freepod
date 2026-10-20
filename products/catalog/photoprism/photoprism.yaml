@@ -112,7 +112,7 @@ template:
         title: Hostname
         minLength: 1
         maxLength: 253
-        description: The fully qualified domain name for your library (e.g. photos.user.freepod.eu).
+        description: The address of your library, such as photos-alice.freepod.app, or a domain of your own.
       admin:
         type: object
         additionalProperties: false

@@ -7,7 +7,7 @@
       "title": "hostname",
       "minLength": 1,
       "maxLength": 253,
-      "description": "The fully qualified hostname for the app."
+      "description": "A name for the app, such as myapp; Freepod adds your handle to make its address. A domain of your own works too."
     },
     "image": {
       "type": "string",

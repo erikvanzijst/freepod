@@ -91,7 +91,7 @@ template:
         title: Hostname
         minLength: 1
         maxLength: 253
-        description: The fully qualified domain name for your instance (e.g. lemmy.user.freepod.eu). Federation
+        description: The address of your instance, such as lemmy-alice.freepod.app, or a domain of your own. Federation
           bakes this into every user and community address, so it cannot be changed later without losing
           your identity on the network.
       siteName:
