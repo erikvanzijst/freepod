@@ -24,7 +24,8 @@ package version.
 The API MUST refuse, on every endpoint and before routing, any request whose `User-Agent`
 names `freepod/<version>` with a version lower than the API's minimum supported client
 version. The refusal MUST be **426** with the code `client_upgrade_required` and a detail
-naming the minimum version and the command `uv tool upgrade freepod`. Versions MUST be
+naming the minimum version and the upgrade command for each way the CLI is commonly installed
+(uv, Homebrew, pip). Versions MUST be
 compared as package versions, not as text.
 
 #### Scenario: An old client is refused everywhere
@@ -37,7 +38,8 @@ compared as package versions, not as text.
 #### Scenario: The refusal says how to upgrade
 
 - **WHEN** an old client is refused
-- **THEN** the detail names the minimum version and `uv tool upgrade freepod`
+- **THEN** the detail names the minimum version, `uv tool update freepod`,
+  `brew upgrade freepod` and `pip install --upgrade freepod`
 
 #### Scenario: A current client passes
 

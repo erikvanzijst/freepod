@@ -132,7 +132,8 @@ be expressed by the tenant pattern.
 
 A middleware parses `User-Agent` for `freepod/<version>`. When the version (compared with PEP
 440 ordering) is below `MIN_CLIENT_VERSION`, it answers **426** with
-`{"detail": "...run `uv tool upgrade freepod`...", "code": "client_upgrade_required"}`
+`{"detail": "...Upgrade `freepod` to continue (uv tool update freepod || brew upgrade freepod ||
+pip install --upgrade freepod).", "code": "client_upgrade_required"}`
 before routing. Requests without a `freepod/` agent, or with an unparseable version, pass
 through: the gate concerns the platform's own client, not the general HTTP surface.
 `MIN_CLIENT_VERSION` is a constant in the API code. It is raised in the same commit as any

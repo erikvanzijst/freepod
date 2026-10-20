@@ -32,8 +32,8 @@ class ClientVersionGate:
                 {
                     "detail": (
                         f"This version of freepod is no longer supported; version "
-                        f"{self.minimum} or later is required. Run `uv tool upgrade "
-                        f"freepod` to upgrade."
+                        f"{self.minimum} or later is required. Upgrade `freepod` to continue "
+                        f"(uv tool update freepod || brew upgrade freepod || pip install --upgrade freepod)."
                     ),
                     "code": "client_upgrade_required",
                 }

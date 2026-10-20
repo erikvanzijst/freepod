@@ -24,7 +24,8 @@ def test_the_refusal_says_how_to_upgrade(client):
 
     detail = resp.json()["detail"]
     assert str(MIN_CLIENT_VERSION) in detail
-    assert "uv tool upgrade freepod" in detail
+    for command in ("uv tool update freepod", "brew upgrade freepod", "pip install --upgrade freepod"):
+        assert command in detail
 
 
 def test_an_old_client_does_not_run_the_endpoint(client, monkeypatch):
