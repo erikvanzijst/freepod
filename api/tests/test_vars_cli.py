@@ -30,7 +30,7 @@ from tests.conftest import (  # noqa: F401
     CURRENT_TOS_VERSION,
     cli_runner,
     create_free_plan_template,
-    subdomain_for,
+    handle_for,
 )
 
 OPERATOR = "cli-test@example.com"
@@ -57,7 +57,7 @@ def _user(session: Session, email: str, *, is_admin: bool = False) -> int:
     user = UserORM(
         email=email,
         is_admin=is_admin,
-        subdomain=subdomain_for(email),
+        handle=handle_for(email),
         tos_accepted_version=CURRENT_TOS_VERSION,
     )
     session.add(user)

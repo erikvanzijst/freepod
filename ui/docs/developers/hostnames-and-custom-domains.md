@@ -4,20 +4,20 @@ title: Hostnames and custom domains
 
 # Hostnames and custom domains
 
-Each deployment has exactly one hostname, set as `hostname` in `.freepod.json`. It is either under your subdomain or a domain you own.
+Each deployment has exactly one hostname, set as `hostname` in `.freepod.json`. It is either a Freepod hostname ending in your handle, or a domain you own.
 
-## Hostnames under your subdomain
+## Freepod hostnames
 
-Your account's subdomain, such as `alice.freepod.eu`, is chosen once in the browser. See [Get started](get-started.mdx#3-choose-your-subdomain). Deployments use hostnames one level below it:
+Your account's handle, such as `alice`, is chosen once in the browser. See [Get started](get-started.mdx#3-choose-your-handle). A Freepod hostname is an app name followed by `-` and your handle:
 
 ```
-myapp.alice.freepod.eu
+myapp-alice.freepod.app
 ```
 
-- The label (`myapp`) is 1 to 63 characters of letters, digits and hyphens, and does not start or end with a hyphen.
-- `freepod init` completes a single label under your subdomain: entering `myapp` sets `myapp.alice.freepod.eu`.
-- There is no limit on the number of hostnames under your subdomain, but each deployment has one, and a hostname can be used by only one deployment at a time.
-- Hostnames under another account's subdomain, and hostnames more than one level below yours (`a.b.alice.freepod.eu`), are refused.
+- Set `hostname` to the app name alone (`myapp`). Freepod completes it with your handle, and `freepod deploy` prints the resulting address.
+- The app name is 1 to 34 characters of letters, digits and hyphens. It does not start or end with a hyphen and does not contain `--`. Names starting with `preview-` are reserved.
+- There is no limit on the number of hostnames ending in your handle, but each deployment has one, and a hostname can be used by only one deployment at a time.
+- Hostnames ending in another account's handle, and names nested below a Freepod hostname (`a.myapp-alice.freepod.app`), are refused.
 - Certificates for these hostnames are in place before the first deploy.
 
 ## Custom domains
@@ -28,8 +28,8 @@ A deployment can use a domain you own: a name within it, such as `app.example.co
 
    | Hostname | Record |
    | --- | --- |
-   | `app.example.com` | `CNAME` to `freepod.eu` |
-   | `example.com` | `ALIAS`, `ANAME` or flattened `CNAME` to `freepod.eu`, where the provider offers one. Without one, the domain itself cannot be used. |
+   | `app.example.com` | `CNAME` to `freepod.app` |
+   | `example.com` | `ALIAS`, `ANAME` or flattened `CNAME` to `freepod.app`, where the provider offers one. Without one, the domain itself cannot be used. |
 
    Step-by-step instructions for common providers are in [Custom domain](/apps/managing/custom-domain).
 
@@ -45,8 +45,8 @@ A deployment can use a domain you own: a name within it, such as `app.example.co
 
 Freepod checks the record with the domain's authoritative nameservers at every release, and refuses the release if it does not point to Freepod:
 
-- A `CNAME` must point to exactly `freepod.eu`.
-- Without a `CNAME`, as with `ALIAS`, `ANAME` and flattened records, every `A` and `AAAA` address of the hostname must be one of `freepod.eu`'s current addresses. Do not create `A` or `AAAA` records with Freepod's addresses by hand: they can change.
+- A `CNAME` must point to exactly `freepod.app`.
+- Without a `CNAME`, as with `ALIAS`, `ANAME` and flattened records, every `A` and `AAAA` address of the hostname must be one of `freepod.app`'s current addresses. Do not create `A` or `AAAA` records with Freepod's addresses by hand: they can change.
 
 It obtains a TLS certificate for the hostname from Let's Encrypt and renews it automatically. Keep the record in place: releases and certificate renewal depend on it.
 

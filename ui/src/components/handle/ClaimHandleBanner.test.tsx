@@ -1,20 +1,20 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { ClaimSubdomainBanner } from './ClaimSubdomainBanner'
+import { ClaimHandleBanner } from './ClaimHandleBanner'
 
-describe('ClaimSubdomainBanner', () => {
+describe('ClaimHandleBanner', () => {
   it('keeps the claim reachable after it is dismissed', () => {
     const onChoose = vi.fn()
-    render(<ClaimSubdomainBanner onChoose={onChoose} />)
+    render(<ClaimHandleBanner onChoose={onChoose} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Claim your free subdomain' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Choose your handle' }))
 
     expect(onChoose).toHaveBeenCalled()
   })
 
   it('records nothing', () => {
     const before = { ...localStorage }
-    render(<ClaimSubdomainBanner onChoose={vi.fn()} />)
+    render(<ClaimHandleBanner onChoose={vi.fn()} />)
 
     expect({ ...localStorage }).toEqual(before)
   })

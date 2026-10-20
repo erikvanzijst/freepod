@@ -42,7 +42,7 @@ checked as given. It MUST NOT answer questions about handles.
 - **THEN** the endpoint returns HTTP 200 with `usable` false and `reason` `reserved`
 
 #### Scenario: Custom hostname does not point at the platform domain
-- **WHEN** an authenticated client sends `GET /api/hostnames/example.com` and the FQDN has neither a CNAME record pointing to `settings.domain` nor A/AAAA records that are all among `settings.domain`'s addresses
+- **WHEN** an authenticated client sends `GET /api/hostnames/example.com` and the FQDN has neither a CNAME record pointing to the CNAME target (see `hostname-validation`) nor A/AAAA records that are all among the CNAME target's addresses
 - **THEN** the endpoint returns HTTP 200 with `fqdn` `example.com`, `usable` false, and `reason` `not_resolving`
 
 ### Requirement: Hostname check response reports the name, usability and reason
@@ -55,6 +55,15 @@ a 200 body, not as an error status.
 #### Scenario: Response shape
 - **WHEN** the endpoint returns a response
 - **THEN** the JSON body contains only the keys `fqdn`, `usable` and `reason`
+
+### Requirement: The CNAME target is the tenant domain
+
+`GET /api/cname-target` MUST return the CNAME target, the tenant domain (see
+`hostname-validation`), and an empty string when no platform domain is configured.
+
+#### Scenario: The tenant domain is advertised
+- **WHEN** the tenant domain is `dev.freepod.app` and `settings.domain` is `dev.freepod.eu`
+- **THEN** `GET /api/cname-target` returns `"dev.freepod.app"`
 
 ## REMOVED Requirements
 

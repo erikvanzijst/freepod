@@ -231,47 +231,47 @@ func TestEligibility(t *testing.T) {
 	ctx := context.Background()
 	u := f.unique
 
-	enabled := f.deployment("milk-"+u+".erik.freepod.eu", "provisioned", authOn)
+	enabled := f.deployment("milk-"+u+"-erik.freepod.app", "provisioned", authOn)
 	custom := f.deployment("shop-"+u+".example.com", "provisioned", authOn)
-	f.deployment("plain-"+u+".erik.freepod.eu", "provisioned", `{"hostname":"x"}`)
-	f.deployment("off-"+u+".erik.freepod.eu", "provisioned", `{"hostname":"x","auth":{"enabled":false}}`)
-	f.deployment("gone-"+u+".erik.freepod.eu", "deleted", authOn)
-	rolling := f.deployment("rolling-"+u+".erik.freepod.eu", "provisioned", `{"hostname":"x"}`)
+	f.deployment("plain-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x"}`)
+	f.deployment("off-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x","auth":{"enabled":false}}`)
+	f.deployment("gone-"+u+"-erik.freepod.app", "deleted", authOn)
+	rolling := f.deployment("rolling-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x"}`)
 	f.desire(rolling, authOn)
-	disabling := f.deployment("disabling-"+u+".erik.freepod.eu", "provisioned", authOn)
+	disabling := f.deployment("disabling-"+u+"-erik.freepod.app", "provisioned", authOn)
 	f.desire(disabling, `{"hostname":"x"}`)
 	// Any product qualifies, and a template may turn authentication on itself;
 	// its system value wins over the user's, as the reconciler merges them.
-	other := f.deploymentOf(f.otherProductID, "other-"+u+".erik.freepod.eu", "provisioned", authOn, "")
-	templated := f.deploymentOf(f.otherProductID, "templated-"+u+".erik.freepod.eu", "provisioned", `{"hostname":"x"}`, `{"auth":{"enabled":true}}`)
-	overridden := f.deploymentOf(f.otherProductID, "overridden-"+u+".erik.freepod.eu", "provisioned",
+	other := f.deploymentOf(f.otherProductID, "other-"+u+"-erik.freepod.app", "provisioned", authOn, "")
+	templated := f.deploymentOf(f.otherProductID, "templated-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x"}`, `{"auth":{"enabled":true}}`)
+	overridden := f.deploymentOf(f.otherProductID, "overridden-"+u+"-erik.freepod.app", "provisioned",
 		`{"hostname":"x","auth":{"enabled":false}}`, `{"auth":{"enabled":true}}`)
-	f.deploymentOf(f.otherProductID, "templateoff-"+u+".erik.freepod.eu", "provisioned", authOn, `{"auth":{"enabled":false}}`)
-	f.deploymentOf(f.otherProductID, "nosetting-"+u+".erik.freepod.eu", "provisioned", `{"hostname":"x"}`, `{"nodePool":"tenant"}`)
+	f.deploymentOf(f.otherProductID, "templateoff-"+u+"-erik.freepod.app", "provisioned", authOn, `{"auth":{"enabled":false}}`)
+	f.deploymentOf(f.otherProductID, "nosetting-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x"}`, `{"nodePool":"tenant"}`)
 	// The store matches hostnames exactly; preview hostnames are the broker's.
-	f.deployment("preview-milk-"+u+".erik.freepod.eu", "provisioned", `{"hostname":"x"}`)
+	f.deployment("preview-milk-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x"}`)
 
 	cases := []struct {
 		host string
 		want string
 	}{
-		{"milk-" + u + ".erik.freepod.eu", enabled},
-		{"MILK-" + u + ".Erik.Freepod.EU", enabled},
+		{"milk-" + u + "-erik.freepod.app", enabled},
+		{"MILK-" + u + "-Erik.Freepod.APP", enabled},
 		{"shop-" + u + ".example.com", custom},
-		{"plain-" + u + ".erik.freepod.eu", ""},
-		{"off-" + u + ".erik.freepod.eu", ""},
-		{"gone-" + u + ".erik.freepod.eu", ""},
+		{"plain-" + u + "-erik.freepod.app", ""},
+		{"off-" + u + "-erik.freepod.app", ""},
+		{"gone-" + u + "-erik.freepod.app", ""},
 		{"evil.example", ""},
 		// The edge enforces what the applied release rendered, so the broker
 		// agrees with it until the new release is live.
-		{"rolling-" + u + ".erik.freepod.eu", ""},
-		{"disabling-" + u + ".erik.freepod.eu", disabling},
-		{"other-" + u + ".erik.freepod.eu", other},
-		{"templated-" + u + ".erik.freepod.eu", templated},
-		{"overridden-" + u + ".erik.freepod.eu", overridden},
-		{"templateoff-" + u + ".erik.freepod.eu", ""},
-		{"nosetting-" + u + ".erik.freepod.eu", ""},
-		{"preview-milk-" + u + ".erik.freepod.eu", ""},
+		{"rolling-" + u + "-erik.freepod.app", ""},
+		{"disabling-" + u + "-erik.freepod.app", disabling},
+		{"other-" + u + "-erik.freepod.app", other},
+		{"templated-" + u + "-erik.freepod.app", templated},
+		{"overridden-" + u + "-erik.freepod.app", overridden},
+		{"templateoff-" + u + "-erik.freepod.app", ""},
+		{"nosetting-" + u + "-erik.freepod.app", ""},
+		{"preview-milk-" + u + "-erik.freepod.app", ""},
 	}
 	for _, c := range cases {
 		id, ok, err := st.eligible(ctx, c.host)
@@ -288,7 +288,7 @@ func TestConsent(t *testing.T) {
 	f := newFixture(t)
 	st := f.store(rolePool(t))
 	ctx := context.Background()
-	dep := f.deployment("c-"+f.unique+".erik.freepod.eu", "provisioned", authOn)
+	dep := f.deployment("c-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
 
 	if ok, _ := st.hasConsent(ctx, "3f2a", dep, disclosedClaims); ok {
 		t.Fatal("consent before any was given")
@@ -309,7 +309,7 @@ func TestConsent(t *testing.T) {
 	if ok, _ := st.hasConsent(ctx, "3f2a", dep, append([]string{"picture"}, disclosedClaims...)); ok {
 		t.Fatal("consent covered a claim it was never given for")
 	}
-	other := f.deployment("c2-"+f.unique+".erik.freepod.eu", "provisioned", authOn)
+	other := f.deployment("c2-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
 	if ok, _ := st.hasConsent(ctx, "3f2a", other, disclosedClaims); ok {
 		t.Fatal("consent for one deployment counted for another")
 	}
@@ -389,7 +389,7 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 	f := newFixture(t)
 	pool := rolePool(t)
 	ctx := context.Background()
-	dep := f.deployment("r-"+f.unique+".erik.freepod.eu", "provisioned", authOn)
+	dep := f.deployment("r-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
 
 	denied := map[string]string{
 		"write deployments":        `UPDATE deployment SET hostname = hostname WHERE id = '` + dep + `'`,

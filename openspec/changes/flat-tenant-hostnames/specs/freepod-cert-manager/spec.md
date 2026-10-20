@@ -7,7 +7,7 @@
 The system SHALL define a Let's Encrypt **DNS-01** `ClusterIssuer` with one solver per zone:
 Cloudflare for `freepod.eu`, and a deSEC webhook for `freepod.app`, each selected by its
 zone. It SHALL issue a single `Certificate` covering `freepod.eu`, `*.freepod.eu`,
-`*.dev.freepod.eu`, `freepod.app`, `*.freepod.app`, `dev.freepod.app` and `*.dev.freepod.app`.
+`*.dev.freepod.eu`, `freepod.app`, `*.freepod.app` and `*.dev.freepod.app`.
 Each provider's API token SHALL be a Kubernetes Secret in the `cert-manager` namespace. A
 **staging** issuer variant SHALL exist.
 
@@ -15,8 +15,14 @@ Each provider's API token SHALL be a Kubernetes Secret in the `cert-manager` nam
 - **WHEN** the platform `Certificate` is reconciled by cert-manager
 - **THEN** challenges for `freepod.eu` names are solved through Cloudflare and challenges for
   `freepod.app` names through deSEC
-- **AND** the resulting secret contains a valid certificate for every name listed above
+- **AND** the resulting secret contains a valid certificate for every name listed above, and
+  for `dev.freepod.app`
 - **AND** no `:80`/HTTP reachability is required for issuance
+
+#### Scenario: No name is listed that a wildcard already covers
+- **WHEN** the platform `Certificate`'s names are inspected
+- **THEN** `dev.freepod.app` is not among them, because `*.freepod.app` covers it and the
+  certificate authority refuses an order listing both
 
 #### Scenario: The deSEC token is narrowly scoped
 - **WHEN** the deSEC token's policies are inspected

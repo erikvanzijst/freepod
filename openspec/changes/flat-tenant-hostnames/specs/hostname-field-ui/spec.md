@@ -92,7 +92,7 @@ a check is in flight. The tooltip MUST name the cause:
 - `"claimed"` → the address belongs to another account
 - `"not_resolving"` → "Create a CNAME record pointing to <cname-target>, or for a root
   domain, A/AAAA records with the same addresses as <cname-target>", where
-  `<cname-target>` comes from `GET /api/cname-target`, falling back to `freepod.eu` when
+  `<cname-target>` comes from `GET /api/cname-target`, falling back to `freepod.app` when
   empty or unavailable
 
 No message for `nested_subdomain` may remain: the reason is retired.
@@ -110,8 +110,8 @@ No message for `nested_subdomain` may remain: the reason is retired.
 - **THEN** a red Error icon is displayed with a tooltip saying the address belongs to another account
 
 #### Scenario: Not-resolving hostname shows DNS instruction in tooltip
-- **WHEN** the API returns `{"fqdn": "myapp.example.com", "usable": false, "reason": "not_resolving"}` and `GET /api/cname-target` returned `"dev.freepod.eu"`
-- **THEN** a red Error icon is displayed with tooltip text "Create a CNAME record pointing to dev.freepod.eu, or for a root domain, A/AAAA records with the same addresses as dev.freepod.eu"
+- **WHEN** the API returns `{"fqdn": "myapp.example.com", "usable": false, "reason": "not_resolving"}` and `GET /api/cname-target` returned `"dev.freepod.app"`
+- **THEN** a red Error icon is displayed with tooltip text "Create a CNAME record pointing to dev.freepod.app, or for a root domain, A/AAAA records with the same addresses as dev.freepod.app"
 
 #### Scenario: A retired reason is gone
 - **WHEN** the field's reason messages are examined

@@ -759,12 +759,12 @@ def test_cli_creates_free_plan_deployment(cli_runner, monkeypatch):
     user = yaml.safe_load(result.output)
     user_id = user["id"]
 
-    # Deploying requires prior ToS acceptance and a claimed subdomain.
+    # Deploying requires prior ToS acceptance and a claimed handle.
     assert runner.invoke(
         app, ["accept-tos", "--user-id", str(user_id), "--version", CURRENT_TOS_VERSION]
     ).exit_code == 0
     assert runner.invoke(
-        app, ["claim-subdomain", "--user-id", str(user_id), "--subdomain", "freecli"]
+        app, ["claim-handle", "--user-id", str(user_id), "--handle", "freecli"]
     ).exit_code == 0
 
     # Deploy with free plan — should succeed

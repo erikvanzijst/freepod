@@ -152,7 +152,7 @@ tenant domain.
 The system MUST provide a hostname validation function `require_valid_hostname_for_deployment(session, fqdn, *, handle)` in `api/app/services/hostnames.py` that validates whether a given hostname can be used for a deployment owned by an account holding `handle` (or none). The function MUST lowercase the value and complete a bare label (see *A bare application label is completed beneath the owner's handle*) before performing any checks. The function MUST return the completed, lowercased FQDN on success or raise a `HostnameException` with a `reason` attribute on failure.
 
 #### Scenario: Valid hostname passes all checks
-- **WHEN** `require_valid_hostname_for_deployment` is called with a well-formed custom FQDN that is not under a platform domain, not in use by any active deployment, and points at the platform in DNS (a CNAME to `settings.domain`, or A/AAAA records on its addresses)
+- **WHEN** `require_valid_hostname_for_deployment` is called with a well-formed custom FQDN that is not under a platform domain, not in use by any active deployment, and points at the platform in DNS (a CNAME to the CNAME target, or A/AAAA records on its addresses)
 - **THEN** the function returns that FQDN
 
 #### Scenario: Mixed-case hostname is normalized before checks
@@ -176,7 +176,7 @@ The system MUST provide a hostname validation function `require_valid_hostname_f
 - **THEN** the function raises `HostnameException` with `reason="in_use"`
 
 #### Scenario: Hostname does not point at the platform
-- **WHEN** `require_valid_hostname_for_deployment` is called with a custom FQDN whose CNAME does not point exactly to `settings.domain`, or that has no CNAME and whose A/AAAA records are not all among `settings.domain`'s addresses
+- **WHEN** `require_valid_hostname_for_deployment` is called with a custom FQDN whose CNAME does not point exactly to the CNAME target, or that has no CNAME and whose A/AAAA records are not all among the CNAME target's addresses
 - **THEN** the function raises `HostnameException` with `reason="not_resolving"`
 
 #### Scenario: Hostname does not exist in DNS
@@ -184,13 +184,15 @@ The system MUST provide a hostname validation function `require_valid_hostname_f
 - **THEN** the function raises `HostnameException` with `reason="not_resolving"`
 
 ### Requirement: DNS check validates hostname points at the platform
-The DNS check MUST accept a custom hostname that reaches the platform in either of two ways: a CNAME record whose target is `settings.domain`, or — the only form a domain apex can take, and what CNAME flattening, ALIAS and ANAME records answer with — A/AAAA records on the platform's own addresses. It MUST use the `dnspython` library.
+The **CNAME target** is the tenant domain, or `settings.domain` where no tenant domain is configured. It is what custom domains are told to point at.
+
+The DNS check MUST accept a custom hostname that reaches the platform in either of two ways: a CNAME record whose target is the CNAME target, or — the only form a domain apex can take, and what CNAME flattening, ALIAS and ANAME records answer with — A/AAAA records on the platform's own addresses. It MUST use the `dnspython` library.
 
 To avoid being misled by a recursive resolver's negative cache (a freshly created record would otherwise be masked by a previously cached "no record" answer until its TTL expires), every lookup MUST query the queried name's zone's authoritative nameservers directly when they can be determined, and MAY fall back to the default system resolver only when those nameservers cannot be determined or reached. A negative answer (NXDOMAIN or no records of the type) from an authoritative nameserver is final and MUST NOT be retried through the system resolver.
 
-The check MUST first query the FQDN's CNAME record. When one exists, its target (trailing dot stripped, lowercased) MUST equal `settings.domain` exactly, and the FQDN's addresses MUST NOT be consulted: a CNAME elsewhere is refused even when the name it leads to shares the platform's addresses.
+The check MUST first query the FQDN's CNAME record. When one exists, its target (trailing dot stripped, lowercased) MUST equal the CNAME target exactly, and the FQDN's addresses MUST NOT be consulted: a CNAME elsewhere is refused even when the name it leads to shares the platform's addresses.
 
-When the FQDN has no CNAME, the check MUST collect its A and AAAA records and the platform's addresses, which are the A and AAAA records `settings.domain` itself resolves to at check time, following any CNAME chain. The platform's addresses MUST NOT be hardcoded, and MUST be read from `settings.domain`'s authoritative nameservers by the same rule, so the cluster's own resolver cannot substitute a different answer. Addresses MUST be compared as IP addresses, not as text. The check MUST pass only when the FQDN has at least one A or AAAA record and **every** one of them is among the platform's addresses. One foreign address refuses the hostname, because the clients — and the certificate authority's HTTP-01 validation — that reach it would not reach the platform. A hostname MAY carry only A records or only AAAA records, and need not carry every address family the platform does.
+When the FQDN has no CNAME, the check MUST collect its A and AAAA records and the platform's addresses, which are the A and AAAA records the CNAME target itself resolves to at check time, following any CNAME chain. The platform's addresses MUST NOT be hardcoded, and MUST be read from the CNAME target's authoritative nameservers by the same rule, so the cluster's own resolver cannot substitute a different answer. Addresses MUST be compared as IP addresses, not as text. The check MUST pass only when the FQDN has at least one A or AAAA record and **every** one of them is among the platform's addresses. One foreign address refuses the hostname, because the clients — and the certificate authority's HTTP-01 validation — that reach it would not reach the platform. A hostname MAY carry only A records or only AAAA records, and need not carry every address family the platform does.
 
 The check MUST be skipped when `settings.domain` is an empty string, or when the FQDN is under the tenant domain (the platform serves those names from its own static record). Any failure — a CNAME elsewhere, no records, a foreign address, NXDOMAIN, the platform's own addresses being unresolvable, or a lookup that no server answers — MUST raise `HostnameException(reason="not_resolving")`.
 
@@ -203,23 +205,27 @@ The check MUST be skipped when `settings.domain` is an empty string, or when the
 - **THEN** the check falls back to the default system resolver, and a definitive resolver failure still raises `HostnameException(reason="not_resolving")`
 
 #### Scenario: CNAME points exactly to domain
-- **WHEN** the FQDN has a CNAME record whose target equals `settings.domain` (e.g. `"freepod.eu"`)
+- **WHEN** the FQDN has a CNAME record whose target equals the CNAME target (e.g. `"freepod.app"`)
 - **THEN** the DNS check passes without looking up any addresses
 
+#### Scenario: CNAME points to the platform domain
+- **WHEN** the tenant domain is `"freepod.app"`, `settings.domain` is `"freepod.eu"`, and the FQDN has a CNAME record whose target is `"freepod.eu"`
+- **THEN** the function raises `HostnameException(reason="not_resolving")`
+
 #### Scenario: CNAME points to a subdomain of domain
-- **WHEN** the FQDN has a CNAME record whose target is a subdomain of `settings.domain` (e.g. `"ingress.freepod.eu"`), even one resolving to the platform's addresses
+- **WHEN** the FQDN has a CNAME record whose target is a subdomain of the CNAME target (e.g. `"x.freepod.app"`), even one resolving to the platform's addresses
 - **THEN** the function raises `HostnameException(reason="not_resolving")`
 
 #### Scenario: CNAME points to a different domain
-- **WHEN** the FQDN has a CNAME record whose target is unrelated to `settings.domain`
+- **WHEN** the FQDN has a CNAME record whose target is not the CNAME target
 - **THEN** the function raises `HostnameException(reason="not_resolving")`
 
 #### Scenario: Apex with A records on the platform's addresses
-- **WHEN** `example.com` has no CNAME and an A record whose address is one `settings.domain` resolves to
+- **WHEN** `example.com` has no CNAME and an A record whose address is one the CNAME target resolves to
 - **THEN** the DNS check passes
 
 #### Scenario: Platform domain reached through its own CNAME
-- **WHEN** `settings.domain` is `"dev.freepod.eu"`, itself a CNAME to a name with A records, and the FQDN's A records carry those addresses
+- **WHEN** the CNAME target is `"dev.freepod.app"`, itself a CNAME to a name with A records, and the FQDN's A records carry those addresses
 - **THEN** the DNS check passes
 
 #### Scenario: IPv4-only hostname on a dual-stack platform
@@ -251,7 +257,7 @@ The check MUST be skipped when `settings.domain` is an empty string, or when the
 - **THEN** the function raises `HostnameException(reason="not_resolving")`
 
 #### Scenario: Platform addresses cannot be determined
-- **WHEN** the FQDN has A records but `settings.domain` resolves to no A or AAAA record
+- **WHEN** the FQDN has A records but the CNAME target resolves to no A or AAAA record
 - **THEN** the function raises `HostnameException(reason="not_resolving")`
 
 #### Scenario: DNS resolver times out

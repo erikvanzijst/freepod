@@ -1,14 +1,14 @@
 import { Dialog, DialogContent } from '@mui/material'
-import { ClaimSubdomain } from './ClaimSubdomain'
+import { ClaimHandle } from './ClaimHandle'
 
-interface ClaimSubdomainDialogProps {
+interface ClaimHandleDialogProps {
   open: boolean
-  /** The platform domain, e.g. `freepod.eu`. */
+  /** The tenant domain, e.g. `freepod.app`. */
   domain: string
   email: string
   onClose: () => void
-  /** Called once the domain name is held, so a deploy the claim interrupted can go on. */
-  onClaimed?: (subdomain: string) => void
+  /** Called once the handle is held, so a deploy the claim interrupted can go on. */
+  onClaimed?: (handle: string) => void
 }
 
 /**
@@ -17,11 +17,11 @@ interface ClaimSubdomainDialogProps {
  * renders the same picker inline instead — a modal nobody opened is an
  * interruption of nothing.
  */
-export function ClaimSubdomainDialog({ open, domain, email, onClose, onClaimed }: ClaimSubdomainDialogProps) {
+export function ClaimHandleDialog({ open, domain, email, onClose, onClaimed }: ClaimHandleDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogContent sx={{ p: 3.75 }}>
-        <ClaimSubdomain
+        <ClaimHandle
           domain={domain}
           email={email}
           onDismiss={onClose}

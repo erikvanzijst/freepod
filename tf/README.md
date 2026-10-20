@@ -51,27 +51,30 @@ Three things put a certificate in front of a request, and which one serves a
 given connection is decided by server name during the handshake, before
 routing:
 
-- **The store's default certificate** — the `*.freepod.eu` wildcard, serving
-  the apex and every single-label application hostname.
-- **The store's membership list** — one certificate per account, covering
-  everything under that account's own subdomain. Nothing is copied into a
-  tenant namespace and no route references these: a certificate in the store is
-  served to routes that know nothing about it, which is the whole point of it
-  being a store rather than a per-route secret.
+- **The store's default certificate** — the platform certificate, covering
+  `freepod.eu`, `*.freepod.eu`, `*.dev.freepod.eu` and the tenant domains
+  `freepod.app` and `dev.freepod.app` with their wildcards (`*.freepod.app`
+  covers `dev.freepod.app` itself). It serves Freepod's
+  own hosts and every tenant hostname, `<app>-<handle>.<tenant domain>`.
+- **The store's membership list** — certificates for retired per-account
+  names, kept only so their redirects complete a handshake. Nothing writes it.
 - **A route's own TLS secret** — custom domains, issued over HTTP-01 in the
   tenant's own namespace.
 
-The store, the platform wildcard and every account certificate live in
-`caelus-tls` (`tf/deps/tls`), because a store's certificate references carry no
-namespace and resolve in its own. **All three are cluster singletons shared by
-dev and prod** — `tf/deps` has no workspaces and the ingress controller honors
-one store — so a change to any of them is never dev-only, whatever else is
-being rolled out per environment.
+The store and the platform certificate live in `caelus-tls` (`tf/deps/tls`),
+because a store's certificate references carry no namespace and resolve in its
+own. **Both are cluster singletons shared by dev and prod** — `tf/deps` has no
+workspaces and the ingress controller honors one store — so a change to either
+is never dev-only, whatever else is being rolled out per environment.
 
-Terraform owns the store's default certificate; the reconciler owns its
-membership list, written with a version precondition as a separate field
-manager. Neither may force its way past the other, and the flag that would is
-named and forbidden in `tf/deps/tls/main.tf`.
+Terraform owns the store's default certificate and leaves the membership list
+out entirely, since declaring it would clear what it still holds.
+
+The certificate's DNS-01 order spans two DNS providers: Cloudflare for
+`freepod.eu` and deSEC for `freepod.app`, selected per zone by the issuer in
+`tf/deps/certmanager`. `dev.freepod.app` and `*.dev.freepod.app` carry their
+own records at deSEC rather than relying on `*.freepod.app`, because the
+challenge record beneath `dev.freepod.app` would otherwise hide the wildcard.
 
 Traefik is pinned to that namespace with
 `providers.kubernetesCRD.defaultTLSResourcesNamespace`. Without the pin a
@@ -122,14 +125,13 @@ Each project has its own `secrets.auto.tfvars` (gitignored):
 - `tf/app/secrets.auto.tfvars`: `db_password`, `smtp_password`,
   `oauth2_proxy_client_ids`, `oauth2_proxy_client_secrets`,
   `oauth2_proxy_cookie_secret`,
-  `cloudflare_api_dns_token`, `cloudflare_zone_id` — the last two here rather
-  than in `tf/deps` beside the other `cloudflare_*` values, because the root
-  module that renders the reconciler's pod is the one that can reach them and
-  the two roots share no state; and the tenant registry's keys,
+  `legacy_tenant_redirects` — the retired tenant hostnames that redirect to
+  their replacements, kept out of the repository because they name tenants'
+  applications; and the tenant registry's keys,
   `registry_signing_private_keys`, `registry_jwks` and
   `registry_pull_hmac_keys` — see § Tenant registry keys
 - `tf/deps/secrets.auto.tfvars`: `keycloak_admin_password`, `smtp_*`,
-  `cloudflare_*`, `grafana_admin_password`
+  `cloudflare_*`, `desec_api_token`, `grafana_admin_password`
 
 `oauth2_proxy_client_ids` and `oauth2_proxy_client_secrets` are **maps keyed
 by workspace name**, not scalars — Terraform auto-loads `*.auto.tfvars` for

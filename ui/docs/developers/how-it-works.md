@@ -26,7 +26,7 @@ A directory with a `.freepod.json` file, created by `freepod init`. Commands run
     "name": "custom-user-app-l2dhi5"
   },
   "user_values": {
-    "hostname": "myapp.alice.freepod.eu"
+    "hostname": "myapp"
   }
 }
 ```

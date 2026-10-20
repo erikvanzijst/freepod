@@ -13,7 +13,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getCnameTarget } from '../api/endpoints'
-import { useMySubdomain } from './subdomain/useMySubdomain'
+import { useMyHandle } from './handle/useMyHandle'
 import { HostnameField } from './HostnameField'
 import { SensitiveVarField } from './SensitiveVarField'
 import { isStringList, linesToList } from './stringListField'
@@ -242,7 +242,7 @@ export function UserValuesForm({
     () => fields.some((f) => f.title?.toLowerCase() === 'hostname'),
     [fields],
   )
-  const subdomainQuery = useMySubdomain()
+  const handleQuery = useMyHandle()
   const cnameTargetQuery = useQuery({
     queryKey: ['cname-target'],
     queryFn: getCnameTarget,
@@ -453,7 +453,7 @@ export function UserValuesForm({
               value={typeof formData[field.path] === 'string' ? (formData[field.path] as string) : ''}
               onChange={(hostname) => handleChange(field.path, hostname, 'string')}
               onValidationChange={onHostnameValidationChange}
-              accountFqdn={subdomainQuery.data?.fqdn}
+              suffix={handleQuery.data?.suffix}
               cnameTarget={cnameTargetQuery.data || undefined}
               required={field.required}
               error={fieldErrors[field.path]}

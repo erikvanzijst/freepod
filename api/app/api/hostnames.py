@@ -9,7 +9,11 @@ from app.db import get_session
 from app.deps import get_current_user
 from app.models import UserORM
 from app.services.errors import HostnameException
-from app.services.hostnames import check_hostname_availability
+from app.services.hostnames import (
+    cname_target as platform_cname_target,
+    complete_hostname,
+    require_valid_hostname_for_deployment,
+)
 
 router = APIRouter(tags=["hostnames"])
 
@@ -18,18 +22,18 @@ class HostnameCheck(BaseModel):
     """Result of validating a candidate hostname for a deployment.
 
     Fields:
-    - ``fqdn``: the fully-qualified domain name that was checked, normalized to
-      lowercase (echoed back so the caller sees the canonical form).
+    - ``fqdn``: the name that was checked: lowercased, and for a bare
+      application label, completed beneath the caller's handle.
     - ``usable``: ``True`` when the name passed every validation check and can
       be used for a deployment; ``False`` otherwise.
     - ``reason``: ``None`` when ``usable`` is ``True``. When ``usable`` is
       ``False`` this is a short machine-readable code explaining the rejection,
-      one of: ``invalid`` (malformed name, or the wrong number of labels under
-      a platform wildcard domain), ``reserved`` (reserved by the platform),
-      ``claimed`` (a subdomain another account holds, or an application under
-      one), ``in_use`` (already in use by another deployment), or
-      ``not_resolving`` (neither a CNAME to the platform domain nor A/AAAA
-      records on that domain's addresses).
+      one of: ``invalid`` (malformed name, or not a tenant label of the form
+      `<app>-<handle>`), ``reserved`` (reserved by the platform), ``claimed``
+      (a tenant hostname ending in another account's handle), ``in_use``
+      (already in use by another deployment), or ``not_resolving`` (neither a
+      CNAME to the platform domain nor A/AAAA records on that domain's
+      addresses).
     """
 
     fqdn: str
@@ -38,12 +42,12 @@ class HostnameCheck(BaseModel):
 
 
 @router.get(
-    "/hostnames/{fqdn}",
+    "/hostnames/{value}",
     response_model=HostnameCheck,
     summary="Check whether a hostname is usable for a deployment",
     response_description=(
-        "A HostnameCheck: the normalized `fqdn`, a `usable` boolean, and a "
-        "human-readable `reason` code when `usable` is false."
+        "A HostnameCheck: the checked `fqdn`, a `usable` boolean, and a "
+        "machine-readable `reason` code when `usable` is false."
     ),
     responses={
         200: {
@@ -56,60 +60,60 @@ class HostnameCheck(BaseModel):
     },
 )
 def check_hostname(
-    fqdn: str = Path(
+    value: str = Path(
         ...,
         description=(
-            "Fully-qualified domain name to validate. Lowercased server-side "
-            "before any checks run and echoed back normalized in the response."
+            "A bare application label (`photos`), completed beneath the caller's "
+            "handle, or a fully qualified name, checked as given. Lowercased "
+            "before any checks run."
         ),
     ),
     current_user: UserORM = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> HostnameCheck:
-    """Validate a candidate hostname and report whether it can be used for a
-    deployment, without creating or reserving anything.
+    """Validate a candidate deployment hostname and report whether it can be
+    used, without creating or reserving anything.
 
     ## Authorization
     Requires authentication. The answer depends on who is asking: whether
-    `photos.alice.freepod.eu` is usable is a different answer for the account
+    `photos-alice.freepod.app` is usable is a different answer for the account
     holding `alice` than for any other.
 
     ## Parameters
-    - `fqdn` (path): the hostname to validate. Normalized to lowercase; the
-      normalized form is echoed back in the response.
+    - `value` (path): a bare application label, completed to
+      `<label>-<handle>.<tenant domain>` with the caller's handle, or a fully
+      qualified name. The checked name is echoed back as `fqdn`.
 
     ## Behavior
-    Which question is asked depends on the name's depth under a platform
-    wildcard domain. A **single label** (`alice.freepod.eu`) asks whether that
-    account subdomain can be claimed; **two labels**
-    (`photos.alice.freepod.eu`) ask whether that application name is usable
-    beneath the caller's own subdomain. A name outside every wildcard domain is
-    a custom deployment hostname and is answered as one.
+    A name under the tenant domain must be one label of the form
+    `<app>-<handle>`, ending in the caller's own handle. Any other name is a
+    custom domain, which may not be under a platform domain and must point at
+    the platform in DNS. Handle availability is not answered here; see the
+    dry run of `POST /me/handle`.
 
     Checks stop at the first failure. On success the response is `usable=true`
     with `reason=null`. On failure it is `usable=false` with a machine-readable
     `reason` code; a rejected name is never returned as an error status:
-    - `invalid` — malformed name, or the wrong number of labels under a platform
-      wildcard domain.
-    - `reserved` — the name is reserved by the platform.
-    - `claimed` — a subdomain another account holds, or an application name
-      placed under somebody else's subdomain.
+    - `invalid` — malformed name, a tenant label not of the form
+      `<app>-<handle>`, or a bare label from a caller holding no handle.
+    - `reserved` — a `preview-` tenant label, or a name under a platform
+      domain that is not a tenant hostname here.
+    - `claimed` — a tenant hostname ending in another account's handle.
     - `in_use` — the hostname is already in use by another deployment.
-    - `not_resolving` — the hostname neither has a CNAME record pointing at
-      the platform domain (see `GET /cname-target`) nor A/AAAA records that
-      are all among that domain's own addresses, the form a domain apex takes
-      (including flattened CNAMEs and ALIAS records). Not applicable to a name
-      under a platform wildcard domain, or when no platform domain is
-      configured.
+    - `not_resolving` — a custom domain that neither has a CNAME record
+      pointing at the platform domain (see `GET /cname-target`) nor A/AAAA
+      records that are all among that domain's own addresses, the form a
+      domain apex takes (including flattened CNAMEs and ALIAS records).
 
     ## Errors
     Always returns **200** for an authenticated caller. Rejected names are
     reported in the body via `usable=false` and a `reason` code; no 4xx status
     is returned for them.
     """
-    fqdn = fqdn.lower()
+    fqdn = value.lower()
     try:
-        check_hostname_availability(session, fqdn, subdomain=current_user.subdomain)
+        fqdn = complete_hostname(fqdn, handle=current_user.handle)
+        require_valid_hostname_for_deployment(session, fqdn, handle=current_user.handle)
         return HostnameCheck(fqdn=fqdn, usable=True)
     except HostnameException as exc:
         return HostnameCheck(fqdn=fqdn, usable=False, reason=exc.reason)
@@ -118,12 +122,12 @@ def check_hostname(
 @router.get(
     "/cname-target",
     response_model=str,
-    summary="Get the platform domain custom hostnames must CNAME to",
-    response_description="The platform CNAME target domain as a JSON string (empty string when unconfigured).",
-    responses={200: {"description": "The CNAME target, e.g. `\"dev.freepod.eu\"`, or `\"\"` when no domain is configured."}},
+    summary="Get the domain custom hostnames must CNAME to",
+    response_description="The CNAME target domain as a JSON string (empty string when unconfigured).",
+    responses={200: {"description": "The CNAME target, e.g. `\"dev.freepod.app\"`, or `\"\"` when no domain is configured."}},
 )
 def cname_target() -> str:
-    """Return the platform domain that custom hostnames must point to.
+    """Return the domain that custom hostnames must point to: the tenant domain.
 
     To use your own domain with a deployment, create a CNAME record for it
     whose target is exactly this value, or, for a domain apex, A/AAAA records
@@ -134,11 +138,12 @@ def cname_target() -> str:
     Public — no authentication required.
 
     ## Behavior
-    Returns the CNAME target domain. Returns an
-    empty string when no platform domain is configured, in which case custom
+    Returns the CNAME target domain. Returns an empty
+    string when no platform domain is configured, in which case custom
     hostnames are not subject to the DNS check.
 
     ## Errors
     - Always **200**.
     """
-    return get_settings().domain
+    settings = get_settings()
+    return platform_cname_target(settings) if settings.domain else ""

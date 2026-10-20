@@ -7,7 +7,6 @@ import yaml
 from PIL import Image
 
 from app.db import session_scope
-from datetime import UTC, datetime
 
 from app.models import DeploymentORM, DeploymentReconcileJobORM
 from app.services.jobs import JobService
@@ -40,11 +39,11 @@ def _seed_deployment_via_services() -> tuple[int, int]:
 
     with session_scope() as session:
         user = user_service.create_user(session, UserCreate(email="getdep@example.com"))
-        # Deploying requires prior ToS acceptance and a claimed subdomain, both
+        # Deploying requires prior ToS acceptance and a claimed handle, both
         # recorded on the user.
         orm = session.get(UserORM, user.id)
         user_service.record_tos_acceptance(session, user=orm, version=CURRENT_TOS_VERSION)
-        orm.subdomain = "getdep"
+        orm.handle = "getdep"
         session.add(orm)
         session.commit()
         product = product_service.create_product(
@@ -81,10 +80,10 @@ def _seed_deployment_via_services() -> tuple[int, int]:
         return user.id, deployment.id
 
 
-def _claim_subdomain(runner, app, user_id: int) -> None:
+def _claim_handle(runner, app, user_id: int) -> None:
     """Give a user the address deploying now requires (parity with the API guard)."""
     res = runner.invoke(
-        app, ["claim-subdomain", "--user-id", str(user_id), "--subdomain", f"acct{user_id}"]
+        app, ["claim-handle", "--user-id", str(user_id), "--handle", f"acct{user_id}"]
     )
     assert res.exit_code == 0, res.output
 
@@ -563,7 +562,7 @@ def test_cli_create_deployment_uses_current_payload_shape(cli_runner):
 
     user_res = runner.invoke(app, ["create-user", "newdep@example.com"])
     assert user_res.exit_code == 0
-    _claim_subdomain(runner, app, 1)
+    _claim_handle(runner, app, 1)
 
     product_res = runner.invoke(app, ["create-product", "dep-cli-product", "dep product desc"])
     assert product_res.exit_code == 0
@@ -614,7 +613,7 @@ def test_cli_create_deployment_accepts_user_values_json(cli_runner):
 
     user_res = runner.invoke(app, ["create-user", "depjson@example.com"])
     assert user_res.exit_code == 0
-    _claim_subdomain(runner, app, 1)
+    _claim_handle(runner, app, 1)
 
     product_res = runner.invoke(app, ["create-product", "dep-json-product", "dep json desc"])
     assert product_res.exit_code == 0
@@ -669,7 +668,7 @@ def test_cli_create_deployment_requires_tos_acceptance(cli_runner):
     user_res = runner.invoke(app, ["create-user", "deptos@example.com"])
     assert user_res.exit_code == 0
     user_id = _parse_yaml_stdout(user_res)["id"]
-    _claim_subdomain(runner, app, user_id)
+    _claim_handle(runner, app, user_id)
     assert runner.invoke(app, ["create-product", "dep-tos-product", "dep tos desc"]).exit_code == 0
     template_res = runner.invoke(
         app,
@@ -723,7 +722,7 @@ def test_cli_create_deployment_accepts_user_values_file(cli_runner, tmp_path):
 
     user_res = runner.invoke(app, ["create-user", "depfile@example.com"])
     assert user_res.exit_code == 0
-    _claim_subdomain(runner, app, 1)
+    _claim_handle(runner, app, 1)
 
     product_res = runner.invoke(app, ["create-product", "dep-file-product", "dep file desc"])
     assert product_res.exit_code == 0
@@ -865,7 +864,7 @@ def test_cli_upgrade_deployment_and_delete_enqueue_jobs(cli_runner):
 
     user_res = runner.invoke(app, ["create-user", "upgradecli@example.com"])
     assert user_res.exit_code == 0
-    _claim_subdomain(runner, app, 1)
+    _claim_handle(runner, app, 1)
 
     product_res = runner.invoke(app, ["create-product", "upgrade-cli-product", "desc"])
     assert product_res.exit_code == 0
@@ -967,7 +966,7 @@ def test_cli_update_deployment_user_values_json_migrates_layout(cli_runner):
     runner, app = cli_runner
 
     assert runner.invoke(app, ["create-user", "migratecli@example.com"]).exit_code == 0
-    _claim_subdomain(runner, app, 1)
+    _claim_handle(runner, app, 1)
     assert runner.invoke(app, ["create-product", "migrate-cli-product", "desc"]).exit_code == 0
 
     # tmpl1: hostname nested under old_host; tmpl2: hostname hoisted to top-level host.
@@ -1074,14 +1073,8 @@ def test_cli_reconcile_command_reconciles_deployment(cli_runner, monkeypatch):
         def ensure_tenant_network_policies(self, *, namespace: str, labels=None, system_values_json=None):
             return None
 
-        def ensure_account_certificate(self, *, fqdn: str):
-            return "acct-" + fqdn.replace(".", "-")
 
-        def account_certificate_state(self, *, name: str):
-            return True, None
 
-        def reconcile_certificate_store(self):
-            return False
 
         def helm_upgrade_install(self, **kwargs):
             return None
@@ -1122,15 +1115,6 @@ class _FakeProvisioner:
 
     def ensure_tenant_network_policies(self, *, namespace: str, labels=None, system_values_json=None):
         return None
-
-    def ensure_account_certificate(self, *, fqdn: str):
-        return "acct-" + fqdn.replace(".", "-")
-
-    def account_certificate_state(self, *, name: str):
-        return True, None
-
-    def reconcile_certificate_store(self):
-        return False
 
     def helm_upgrade_install(self, **kwargs):
         return None
@@ -1234,91 +1218,6 @@ def test_cli_worker_processes_job_successfully(cli_runner, monkeypatch):
     assert process_one_job("worker-test") is None
 
 
-def test_cli_reconcile_reports_a_wait_without_polling(cli_runner, monkeypatch):
-    """No job row to defer here, and nothing sleeps in-process: the deployment
-    stays provisioning and the queued job carries the retry."""
-    runner, app = cli_runner
-    _, deployment_id = _seed_deployment_via_services()
-
-    class _WaitingProvisioner(_FakeProvisioner):
-        def account_certificate_state(self, *, name: str):
-            return False, "waiting for DNS-01 propagation"
-
-    monkeypatch.setattr(reconcile_service, "default_provisioner", _WaitingProvisioner())
-    result = runner.invoke(app, ["reconcile", str(deployment_id)])
-
-    assert result.exit_code == 0
-    assert "waiting for its account" in result.output
-    assert _get_deployment_by_id(deployment_id).status == "provisioning"
-
-    with session_scope() as session:
-        jobs = JobService(session).list_jobs(deployment_id=deployment_id, statuses=["queued"])
-        assert len(jobs) == 1
-        assert jobs[0].locked_by is None
-
-
-def test_cli_reconcile_queues_the_retry_it_promises(cli_runner, monkeypatch):
-    """A deferred result puts the deployment into `provisioning`, which only a
-    completed reconcile moves it out of. Without a job that is a deployment
-    stranded by an operator command."""
-    runner, app = cli_runner
-    _, deployment_id = _seed_deployment_via_services()
-
-    class _WaitingProvisioner(_FakeProvisioner):
-        def account_certificate_state(self, *, name: str):
-            return False, "issuing"
-
-    monkeypatch.setattr(reconcile_service, "default_provisioner", _WaitingProvisioner())
-
-    with session_scope() as session:
-        for job in JobService(session).list_jobs(
-            deployment_id=deployment_id, statuses=["queued", "running"]
-        ):
-            JobService(session).mark_job_done(job_id=job.id)
-
-    result = runner.invoke(app, ["reconcile", str(deployment_id)])
-
-    assert result.exit_code == 0
-    with session_scope() as session:
-        open_jobs = JobService(session).list_jobs(
-            deployment_id=deployment_id, statuses=["queued"]
-        )
-        assert len(open_jobs) == 1
-
-
-def test_cli_worker_defers_a_job_waiting_for_a_certificate(cli_runner, monkeypatch):
-    """The worker hands the job back rather than holding a process or a lease."""
-    runner, app = cli_runner
-
-    user_id, deployment_id = _seed_deployment_via_services()
-
-    class _WaitingProvisioner(_FakeProvisioner):
-        def account_certificate_state(self, *, name: str):
-            return False, "waiting for DNS-01 propagation"
-
-    monkeypatch.setattr(reconcile_service, "default_provisioner", _WaitingProvisioner())
-
-    from app.worker import process_one_job
-
-    result = process_one_job("worker-defer")
-    assert result is not None
-    assert result["status"] == "queued"
-
-    with session_scope() as session:
-        jobs = JobService(session).list_jobs(deployment_id=deployment_id, statuses=["queued"])
-        assert len(jobs) == 1
-        assert jobs[0].locked_by is None
-        assert jobs[0].attempt == 0
-        # Naive out of Postgres for this column, like every other timestamp here.
-        assert jobs[0].run_after.replace(tzinfo=UTC) > datetime.now(UTC)
-
-        deployment = session.get(DeploymentORM, deployment_id)
-        assert deployment.status == "provisioning"
-
-    # Not due yet, so the next turn of the loop finds nothing to do.
-    assert process_one_job("worker-defer") is None
-
-
 def test_cli_worker_marks_failure(cli_runner, monkeypatch):
     runner, app = cli_runner
 
@@ -1376,7 +1275,7 @@ def test_cli_worker_parallel_processes_multiple_jobs(cli_runner, monkeypatch):
         user = user_service.create_user(session, UserCreate(email="parallel@example.com"))
         orm = session.get(UserORM, user.id)
         user_service.record_tos_acceptance(session, user=orm, version=CURRENT_TOS_VERSION)
-        orm.subdomain = "parallel"
+        orm.handle = "parallel"
         session.add(orm)
         session.commit()
         for i in range(3):

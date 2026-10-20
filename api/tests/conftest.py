@@ -342,7 +342,7 @@ def _hermetic_hostname_settings(monkeypatch):
 
     monkeypatch.setattr(
         "app.services.hostnames.get_settings",
-        lambda: CaelusSettings(reserved_hostnames=[], domain="", _env_file=None),
+        lambda: CaelusSettings(domain="", _env_file=None),
     )
 
 
@@ -365,16 +365,15 @@ def cli_runner(test_database, monkeypatch):
     _reset(test_database)
     monkeypatch.setenv("CAELUS_USER_EMAIL", "cli-test@example.com")
 
-    # Same reason as `_hostname_settings` above, for the other half of the
-    # reconcile: it derives the account's name from `CAELUS_DOMAIN`, which comes
-    # from the gitignored `.env.local` and so is set on a developer's machine and
+    # Same reason as `_hostname_settings` above, for the reconcile: the
+    # gitignored `.env.local` sets values on a developer's machine that are
     # empty in CI. Pinned here rather than left ambient, so these tests fail or
     # pass for the same reason in both places.
     from app.config import CaelusSettings
 
     monkeypatch.setattr(
         "app.services.reconcile.get_settings",
-        lambda: CaelusSettings(wildcard_domains=[], domain="cli.example.test", _env_file=None),
+        lambda: CaelusSettings(domain="cli.example.test", _env_file=None),
     )
 
     import app.cli as cli
@@ -535,7 +534,7 @@ OTHER_AUTH_HEADER = {"X-Auth-Request-Email": OTHER_EMAIL}
 
 
 def create_user(
-    client, email: str, accept_tos: bool = True, claim_subdomain: bool = True
+    client, email: str, accept_tos: bool = True, claim_handle: bool = True
 ) -> dict:
     """Provision a regular (non-admin) user and return its ``UserRead`` dict.
 
@@ -545,8 +544,8 @@ def create_user(
     ``POST /api/users`` endpoint for test setup.
 
     Both user-level preconditions for deploying are settled by default: the
-    current Terms of Service are accepted, and a subdomain is claimed. Pass
-    ``accept_tos=False`` or ``claim_subdomain=False`` to leave one unsettled,
+    current Terms of Service are accepted, and a handle is claimed. Pass
+    ``accept_tos=False`` or ``claim_handle=False`` to leave one unsettled,
     for tests of the flows that settle them.
     """
     resp = client.get("/api/me", headers={"X-Auth-Request-Email": email})
@@ -558,51 +557,24 @@ def create_user(
             headers={"X-Auth-Request-Email": email},
         )
         assert acc.status_code == 200, f"accepting tos for {email}: {acc.status_code}"
-    if claim_subdomain:
+    if claim_handle:
         claim = client.post(
-            "/api/me/subdomain",
-            json={"subdomain": subdomain_for(email)},
+            "/api/me/handle",
+            json={"handle": handle_for(email)},
             headers={"X-Auth-Request-Email": email},
         )
-        assert claim.status_code == 200, f"claiming subdomain for {email}: {claim.text}"
+        assert claim.status_code == 200, f"claiming handle for {email}: {claim.text}"
     return resp.json()
 
 
-class FakeDnsProvider:
-    """Records what the reconciler asked DNS to do, and does nothing."""
-
-    def __init__(self) -> None:
-        self.ensured: list[str] = []
-        self.records: set[str] = set()
-        self.fail_with: Exception | None = None
-
-    def wildcard_record_exists(self, name: str) -> bool:
-        if self.fail_with is not None:
-            raise self.fail_with
-        return f"*.{name}" in self.records
-
-    def ensure_wildcard_record(self, name: str) -> None:
-        self.ensured.append(name)
-        if self.fail_with is not None:
-            raise self.fail_with
-        self.records.add(f"*.{name}")
-
-
-@pytest.fixture(autouse=True)
-def fake_dns(monkeypatch) -> FakeDnsProvider:
-    """No test reaches a DNS provider unless it asks for one by name."""
-    provider = FakeDnsProvider()
-    monkeypatch.setattr("app.services.dns.from_settings", lambda settings=None: provider)
-    return provider
-
-
-def subdomain_for(email: str) -> str:
-    """A label for a test user.
+def handle_for(email: str) -> str:
+    """A handle for a test user: the email's local part, reduced to letters and
+    digits within the handle's 2-20 characters.
 
     Every account that can deploy holds one, so a fixture that omits it builds a
-    user the reconciler refuses -- see `account-subdomain-claim`.
+    user deployment create refuses -- see `account-handle`.
     """
-    return re.sub(r"[^a-z0-9]", "", email.split("@")[0].lower())[:63] or "acct"
+    return re.sub(r"[^a-z0-9]", "", email.split("@")[0].lower())[:20].ljust(2, "0")
 
 
 def make_accepted_user(session, email: str):
@@ -617,7 +589,7 @@ def make_accepted_user(session, email: str):
     user = _users.create_user(session, _users.UserCreate(email=email))
     orm = session.get(UserORM, user.id)
     _users.record_tos_acceptance(session, user=orm, version=CURRENT_TOS_VERSION)
-    orm.subdomain = subdomain_for(email)
+    orm.handle = handle_for(email)
     session.add(orm)
     session.commit()
     return user
@@ -633,7 +605,7 @@ def client(db_session):
     app.dependency_overrides[get_payment_provider] = lambda: None
 
     # Pre-create the default test user as admin so existing tests pass
-    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True, subdomain=subdomain_for(ADMIN_EMAIL),
+    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True, handle=handle_for(ADMIN_EMAIL),
                          tos_accepted_version=CURRENT_TOS_VERSION, tos_accepted_at=_utcnow())
     db_session.add(admin_user)
     db_session.commit()
@@ -665,7 +637,7 @@ def paid_client(db_session, fake_payment_provider, monkeypatch):
     app.dependency_overrides[get_session] = override_get_db
     app.dependency_overrides[get_payment_provider] = lambda: fake_payment_provider
 
-    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True, subdomain=subdomain_for(ADMIN_EMAIL),
+    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True, handle=handle_for(ADMIN_EMAIL),
                          tos_accepted_version=CURRENT_TOS_VERSION, tos_accepted_at=_utcnow())
     db_session.add(admin_user)
     db_session.commit()
@@ -686,12 +658,12 @@ def user_client(db_session):
     app.dependency_overrides[get_session] = override_get_db
 
     # Pre-create admin user (some tests need resources created by admin)
-    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True, subdomain=subdomain_for(ADMIN_EMAIL),
+    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True, handle=handle_for(ADMIN_EMAIL),
                          tos_accepted_version=CURRENT_TOS_VERSION, tos_accepted_at=_utcnow())
     db_session.add(admin_user)
     # Pre-create the acting regular user as already-accepted so deploy tests
     # under this client don't trip the acceptance precondition.
-    regular_user = UserORM(email=USER_EMAIL, subdomain=subdomain_for(USER_EMAIL),
+    regular_user = UserORM(email=USER_EMAIL, handle=handle_for(USER_EMAIL),
                            tos_accepted_version=CURRENT_TOS_VERSION, tos_accepted_at=_utcnow())
     db_session.add(regular_user)
     db_session.commit()

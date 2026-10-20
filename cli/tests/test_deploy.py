@@ -82,7 +82,7 @@ def deployment(
     name="custom-d8dtx4",
     status="ready",
     generation=3,
-    hostname="myapp.erik.freepod.eu",
+    hostname="myapp-erik.freepod.app",
     template_id=49,
     chart_version="0.1.0",
     last_error=None,
@@ -147,6 +147,7 @@ class Platform:
         create=None,
         create_status=201,
         create_detail=None,
+        create_code=None,
         update=None,
         update_status=200,
         update_detail=None,
@@ -158,7 +159,7 @@ class Platform:
         tos_version=TOS_VERSION,
         tos_current=TOS_VERSION,
         tos_post_status=200,
-        subdomain=None,
+        handle=None,
     ):
         self.user_id = user_id
         self.catalog = [product()] if catalog is None else catalog
@@ -168,6 +169,7 @@ class Platform:
         self.create = create
         self.create_status = create_status
         self.create_detail = create_detail
+        self.create_code = create_code
         self.update = update
         self.update_status = update_status
         self.update_detail = update_detail
@@ -181,12 +183,12 @@ class Platform:
         self.tos_version = tos_version
         self.tos_current = tos_current
         self.tos_post_status = tos_post_status
-        # Held by default: a subdomain is a first-deploy precondition, not the
+        # Held by default: a handle is a first-deploy precondition, not the
         # subject of most of these tests.
-        self.subdomain = (
-            {"subdomain": "erik", "fqdn": "erik.freepod.eu", "domain": "freepod.eu"}
-            if subdomain is None
-            else subdomain
+        self.handle = (
+            {"handle": "erik", "suffix": "-erik.freepod.app", "domain": "freepod.app"}
+            if handle is None
+            else handle
         )
 
         self.calls = []
@@ -225,8 +227,8 @@ class Platform:
         if re.fullmatch(r"/api/products/\d+/plans", path):
             return json_response(200, self.plans)
 
-        if path == "/api/me/subdomain":
-            return json_response(200, self.subdomain)
+        if path == "/api/me/handle":
+            return json_response(200, self.handle)
 
         if path.startswith("/api/hostnames/"):
             fqdn = path.rsplit("/", 1)[-1]
@@ -239,7 +241,10 @@ class Platform:
         if re.fullmatch(r"/api/users/\d+/deployments", path) and method == "POST":
             self.bodies["create"] = json.loads(request.content)
             if self.create_detail is not None:
-                return json_response(self.create_status, {"detail": self.create_detail})
+                body = {"detail": self.create_detail}
+                if self.create_code is not None:
+                    body["code"] = self.create_code
+                return json_response(self.create_status, body)
             record = self.create or deployment(status="provisioning", generation=1)
             return json_response(
                 self.create_status,
@@ -317,7 +322,7 @@ def project_at(tmp_path, *, values=None, pointer=None, env="prod", files=True):
         "version": 1,
         "env": env,
         "deployment": pointer,
-        "user_values": {"hostname": "myapp.erik.freepod.eu"} if values is None else values,
+        "user_values": {"hostname": "myapp-erik.freepod.app"} if values is None else values,
     }
     (tmp_path / ".freepod.json").write_text(json.dumps(document))
     if files:
@@ -488,10 +493,10 @@ def test_a_missing_value_without_a_terminal_names_the_field(make_api, tmp_path):
 def test_an_unchanged_hostname_is_not_re_checked(make_api, tmp_path):
     """The platform's check runs without `exclude_deployment_id`, so
     re-checking a name we already hold reports `in_use` against ourselves."""
-    platform = Platform(reads=[deployment(hostname="myapp.erik.freepod.eu")])
+    platform = Platform(reads=[deployment(hostname="myapp-erik.freepod.app")])
     project_at(
         tmp_path,
-        values={"hostname": "myapp.erik.freepod.eu"},
+        values={"hostname": "myapp-erik.freepod.app"},
         pointer={"id": deployment()["id"], "name": "custom-d8dtx4"},
     )
     api, _, _ = make_api(platform)
@@ -542,20 +547,52 @@ def test_an_unusable_changed_hostname_stops_the_deploy(make_api, tmp_path):
     assert "/api/artifacts" not in platform.paths()
 
 
-def test_a_bare_label_is_completed_before_it_is_checked_or_submitted(make_api, tmp_path):
-    """A hand-edited file can carry a bare label. Checking it unqualified asks
-    the platform about a name that does not exist, and submitting it would
-    hand the platform a hostname it never agreed to."""
+def test_a_bare_label_is_submitted_as_a_label(make_api, tmp_path):
+    """The platform completes a bare label beneath the account's handle; the
+    client neither builds the name nor second-guesses it."""
     platform = Platform(
-        create=deployment(status="provisioning", generation=1, hostname="myapp.erik.freepod.eu"),
-        reads=[deployment(status="ready", generation=1)],
+        create=deployment(status="provisioning", generation=1, hostname="myapp-erik.freepod.app"),
+        reads=[deployment(status="ready", generation=1, hostname="myapp-erik.freepod.app")],
     )
     project_at(tmp_path, values={"hostname": "MyApp"})
 
+    live = run(make_api, platform, tmp_path)
+
+    assert platform.hostname_checks == ["myapp"]
+    assert platform.bodies["create"]["user_values_json"]["hostname"] == "myapp"
+    assert live == "https://myapp-erik.freepod.app"
+
+
+def test_an_unchanged_bare_label_is_not_rechecked(make_api, tmp_path):
+    platform = Platform(
+        reads=[
+            deployment(status="ready", generation=3, hostname="myapp-erik.freepod.app"),
+            deployment(status="ready", generation=4, hostname="myapp-erik.freepod.app"),
+        ],
+        update=deployment(status="provisioning", generation=4, hostname="myapp-erik.freepod.app"),
+    )
+    project_at(
+        tmp_path,
+        values={"hostname": "myapp"},
+        pointer={"id": deployment()["id"], "name": "custom-d8dtx4"},
+    )
+
     run(make_api, platform, tmp_path)
 
-    assert platform.hostname_checks == ["myapp.erik.freepod.eu"]
-    assert platform.bodies["create"]["user_values_json"]["hostname"] == "myapp.erik.freepod.eu"
+    assert platform.hostname_checks == []
+
+
+def test_a_custom_domain_is_left_alone(make_api, tmp_path):
+    platform = Platform(
+        create=deployment(status="provisioning", generation=1, hostname="photos.example.com"),
+        reads=[deployment(status="ready", generation=1, hostname="photos.example.com")],
+    )
+    project_at(tmp_path, values={"hostname": "photos.example.com"})
+
+    run(make_api, platform, tmp_path)
+
+    assert platform.hostname_checks == ["photos.example.com"]
+    assert platform.bodies["create"]["user_values_json"]["hostname"] == "photos.example.com"
 
 
 def test_a_hostname_is_lowercased_before_it_is_submitted(make_api, tmp_path):
@@ -563,20 +600,20 @@ def test_a_hostname_is_lowercased_before_it_is_submitted(make_api, tmp_path):
     file would make every subsequent comparison a false difference."""
     platform = Platform(
         reads=[
-            deployment(status="ready", generation=3, hostname="myapp.erik.freepod.eu"),
-            deployment(status="ready", generation=4, hostname="myapp.erik.freepod.eu"),
+            deployment(status="ready", generation=3, hostname="myapp-erik.freepod.app"),
+            deployment(status="ready", generation=4, hostname="myapp-erik.freepod.app"),
         ],
         update=deployment(status="provisioning", generation=4),
     )
     project_at(
         tmp_path,
-        values={"hostname": "MyApp.Erik.Freepod.EU"},
+        values={"hostname": "MyApp-Erik.Freepod.APP"},
         pointer={"id": deployment()["id"], "name": "custom-d8dtx4"},
     )
 
     run(make_api, platform, tmp_path)
 
-    assert platform.bodies["update"]["user_values_json"]["hostname"] == "myapp.erik.freepod.eu"
+    assert platform.bodies["update"]["user_values_json"]["hostname"] == "myapp-erik.freepod.app"
     assert platform.hostname_checks == []
 
 
@@ -588,7 +625,7 @@ def test_a_first_deploy_checks_its_hostname(make_api, tmp_path):
 
     preflight(api, "prod", root=tmp_path, echo=lambda _m: None)
 
-    assert platform.hostname_checks == ["myapp.erik.freepod.eu"]
+    assert platform.hostname_checks == ["myapp-erik.freepod.app"]
 
 
 # --------------------------------------------------------------------------
@@ -770,7 +807,7 @@ def test_the_creation_carries_no_image_and_no_build(make_api, tmp_path):
     body = platform.bodies["create"]
     assert body["desired_template_id"] == 49
     assert body["plan_template_id"] == 11
-    assert body["user_values_json"] == {"hostname": "myapp.erik.freepod.eu"}
+    assert body["user_values_json"] == {"hostname": "myapp-erik.freepod.app"}
     assert "build_id" not in body
 
 
@@ -781,7 +818,7 @@ def test_the_first_release_carries_the_built_image(make_api, tmp_path):
     run(make_api, platform, tmp_path)
 
     assert platform.bodies["update"]["user_values_json"] == {
-        "hostname": "myapp.erik.freepod.eu",
+        "hostname": "myapp-erik.freepod.app",
         "image": IMAGE,
     }
 
@@ -942,14 +979,14 @@ def test_partial_user_values_are_never_sent(make_api, tmp_path):
     )
     project_at(
         tmp_path,
-        values={"hostname": "myapp.erik.freepod.eu"},
+        values={"hostname": "myapp-erik.freepod.app"},
         pointer={"id": deployment()["id"], "name": "custom-d8dtx4"},
     )
 
     run(make_api, platform, tmp_path)
 
     assert platform.bodies["update"]["user_values_json"] == {
-        "hostname": "myapp.erik.freepod.eu",
+        "hostname": "myapp-erik.freepod.app",
         "image": IMAGE,
     }
 
@@ -1189,11 +1226,11 @@ def test_a_stale_ready_is_not_mistaken_for_success(make_api):
 def test_a_successful_deploy_reports_the_live_address(make_api, tmp_path):
     platform = Platform(
         create=deployment(status="provisioning", generation=1),
-        reads=[deployment(status="ready", generation=1, hostname="myapp.erik.freepod.eu")],
+        reads=[deployment(status="ready", generation=1, hostname="myapp-erik.freepod.app")],
     )
     project_at(tmp_path)
 
-    assert run(make_api, platform, tmp_path) == "https://myapp.erik.freepod.eu"
+    assert run(make_api, platform, tmp_path) == "https://myapp-erik.freepod.app"
 
 
 def test_a_failed_rollout_reports_the_platform_error_with_exit_5(make_api, tmp_path):
@@ -1334,7 +1371,7 @@ def test_a_first_release_names_the_build_that_produced_its_image(make_api, tmp_p
     build can belong to a deployment that does not exist yet.
     """
     platform = _first_deploy()
-    project_at(tmp_path, values={"hostname": "myapp.erik.freepod.eu"})
+    project_at(tmp_path, values={"hostname": "myapp-erik.freepod.app"})
 
     run(make_api, platform, tmp_path)
 
@@ -1351,7 +1388,7 @@ def test_an_updated_deployment_names_the_build_too(make_api, tmp_path):
     )
     project_at(
         tmp_path,
-        values={"hostname": "myapp.erik.freepod.eu"},
+        values={"hostname": "myapp-erik.freepod.app"},
         pointer={"id": deployment()["id"], "name": "custom-d8dtx4"},
     )
 
@@ -1367,7 +1404,7 @@ def test_releasing_without_a_build_sends_no_build_reference(make_api, tmp_path):
     from freepod.deploy import preflight
 
     platform = Platform()
-    project_at(tmp_path, values={"hostname": "myapp.erik.freepod.eu"})
+    project_at(tmp_path, values={"hostname": "myapp-erik.freepod.app"})
     api, _, _ = make_api(platform)
     state = preflight(api, "prod", root=tmp_path, echo=lambda _m: None)
     ensure_deployment(api, state, echo=lambda _m: None)

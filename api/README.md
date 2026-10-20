@@ -436,15 +436,15 @@ Spec: [deployment-release-ledger](../openspec/specs/deployment-release-ledger/sp
 ## Critical Invariants
 
 - Active user emails are unique (`deleted_at IS NULL` scoped uniqueness).
-- An account subdomain, once claimed, belongs to that account permanently and
-  is never claimable by another — the one uniqueness guarantee here that spans
-  deleted rows as well as active ones. Certificate transparency has already
-  published the name, so releasing it would hand a stranger the traffic, links
-  and DNS caches of the previous holder. Enforced in two places, because
-  neither covers the other: `uq_user_subdomain_active` is partial
-  (`deleted_at IS NULL`, mirroring `uq_user_active` for email) and so only
-  constrains live rows, while the claim check queries the column unfiltered
-  and is what refuses a deleted account's label.
+- An account handle, once claimed, belongs to that account permanently and is
+  never claimable by another — the one uniqueness guarantee here that spans
+  deleted rows as well as active ones. Every link to the account's apps ends in
+  it, so releasing it would hand a stranger the traffic and links of the
+  previous holder. Enforced in two places, because neither covers the other:
+  `uq_user_handle_active` is partial (`deleted_at IS NULL`, mirroring
+  `uq_user_active` for email) and so only constrains live rows, while the claim
+  check queries the column unfiltered and is what refuses a deleted account's
+  handle.
 - Active product names are unique (`deleted_at IS NULL` scoped uniqueness).
 - Active product slugs are unique (`deleted_at IS NULL` scoped uniqueness).
 - `product.slug` and `product.curated` are written only by `CatalogReconciler`;
@@ -475,38 +475,35 @@ Spec: [deployment-create-contract](../openspec/specs/deployment-create-contract/
 [deployment-payment-states](../openspec/specs/deployment-payment-states/spec.md),
 [deployment-release-api](../openspec/specs/deployment-release-api/spec.md)
 
-## The Account Domain Name
+## The Account Handle
 
-Every account holds one permanent DNS label, and every application it deploys
-is addressed beneath it at `<app>.<subdomain>.<domain>`. It is claimed once
-through its own resource and is never changed, released, or transferred — not
-by any endpoint, not on account deletion.
+Every account holds one permanent handle, and every application it deploys is
+addressed at `<app>-<handle>.<tenant_domain>`. The handle has no `-`, so it is
+always the label's last segment. It is claimed once through its own resource,
+whose dry run is the availability check, and is never changed, released, or
+transferred — not by any endpoint, not on account deletion.
 
-Spec: [account-subdomain-record](../openspec/specs/account-subdomain-record/spec.md),
+Wherever a hostname enters (create, update, the hostname check), a bare label
+is completed beneath the owner's handle and the completed name is written back
+into the user values. Nothing under a platform domain can be a custom domain.
+Tenant hostnames are served by the platform's default certificate, so the
+reconcile provisions nothing per account.
+
+Spec: [account-handle](../openspec/specs/account-handle/spec.md),
 [hostname-validation](../openspec/specs/hostname-validation/spec.md),
-[deployment-create-contract](../openspec/specs/deployment-create-contract/spec.md) ·
-Rationale:
-[account-subdomain-claim](../openspec/changes/archive/2026-09-09-account-subdomain-claim/design.md)
-
-## Per-Account TLS
-
-Every account holds one wildcard certificate covering every hostname its
-applications will ever be addressed at, and a DNS record that keeps those
-hostnames resolving. Both are provisioned by the reconcile, before the Helm
-release, and neither is ever deleted. Nothing copies certificate material
-anywhere: the certificate is added to the ingress controller's certificate
-store, which serves it to routes in namespaces that never reference it.
-
-A deployment whose account holds no certificate does not complete. The
-reconcile defers — the deployment stays `provisioning` and its job returns to
-the queue — until the certificate is issued, and fails the deployment when the
-waiting budget runs out. That is the terminal behavior, not a placeholder.
-
-Spec: [account-dns-record](../openspec/specs/account-dns-record/spec.md),
-[account-tls-certificate](../openspec/specs/account-tls-certificate/spec.md),
+[deployment-create-contract](../openspec/specs/deployment-create-contract/spec.md),
 [platform-tls-store](../openspec/specs/platform-tls-store/spec.md) ·
 Rationale:
-[per-user-tls-certificates](../openspec/changes/archive/2026-09-08-per-user-tls-certificates/design.md)
+[flat-tenant-hostnames](../openspec/changes/flat-tenant-hostnames/design.md)
+
+## Client Version Gate
+
+`app/client_version_gate.py` refuses every request whose `User-Agent` names a
+`freepod` CLI older than `MIN_CLIENT_VERSION` with 426 and the code
+`client_upgrade_required`, before routing. The constant is raised in the same
+change as any backend change a released client cannot survive.
+
+Spec: [client-version-gate](../openspec/specs/client-version-gate/spec.md)
 
 ## Reconcile Queue Semantics
 

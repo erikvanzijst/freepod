@@ -12,7 +12,7 @@ import { SectionSidebar, type SectionNavItem } from '../components/SectionSideba
  * without reworking the page.
  */
 const navItems: SectionNavItem[] = [
-  { label: 'Subdomain', path: '/settings/domain', icon: <LanguageOutlinedIcon /> },
+  { label: 'Handle', path: '/settings/handle', icon: <LanguageOutlinedIcon /> },
   { label: 'SSH keys', path: '/settings/ssh-keys', icon: <VpnKeyOutlinedIcon /> },
   { label: 'Usage', path: '/settings/usage', icon: <InsightsOutlinedIcon /> },
 ]

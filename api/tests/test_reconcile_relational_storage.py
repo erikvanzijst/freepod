@@ -34,7 +34,6 @@ POOLER_HOST = "caelus-tenant-pooler.caelus-test.svc.cluster.local"
 @pytest.fixture(autouse=True)
 def _settings(monkeypatch):
     settings = CaelusSettings(
-        wildcard_domains=[],
         tls_cluster_issuer="letsencrypt-http",
         domain="example.test",
         tenant_db_pooler_host=POOLER_HOST,

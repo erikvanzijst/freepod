@@ -15,7 +15,7 @@ vi.mock('../api/endpoints', () => ({
   deleteDeployment: vi.fn(),
   getDeploymentSftp: vi.fn().mockResolvedValue(null),
   getDeploymentDatabase: vi.fn().mockResolvedValue(null),
-  getMySubdomain: vi.fn().mockResolvedValue({ subdomain: 'erik', fqdn: 'erik.freepod.eu', domain: 'freepod.eu' }),
+  getMyHandle: vi.fn().mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' }),
   getCnameTarget: vi.fn().mockResolvedValue(''),
   checkHostname: vi.fn().mockResolvedValue({ fqdn: '', usable: true, reason: null }),
 }))

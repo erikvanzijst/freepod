@@ -7,11 +7,10 @@ from uuid import UUID
 
 import dns.exception
 import dns.resolver
-from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.config import CaelusSettings, get_settings
-from app.models import DeploymentORM, UserORM
+from app.models import DeploymentORM
 from app.services.errors import HostnameException
 from app.services.reconcile_constants import DEPLOYMENT_STATUS_DELETED
 
@@ -23,11 +22,19 @@ logger = logging.getLogger(__name__)
 # Total FQDN max 253 chars.
 _LABEL_RE = re.compile(r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$")
 
-# An account subdomain is 2-63 characters: 63 is the same RFC 1035 label limit,
-# and the lower bound holds single characters back for the platform.
-SUBDOMAIN_MIN_LENGTH = 2
-SUBDOMAIN_MAX_LENGTH = 63
-_SUBDOMAIN_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$")
+# A tenant hostname is one label beneath the tenant domain, `<app>-<handle>`.
+# A handle has no `-`, so it is the text after the label's last one; the
+# application part is 1-34 characters, which with the reserved `preview-`
+# prefix (8) and a 20-character handle is the 63-character label limit.
+APP_LABEL_MAX_LENGTH = 34
+_APP_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
+HANDLE_MIN_LENGTH = 2
+HANDLE_MAX_LENGTH = 20
+HANDLE_RE = re.compile(rf"^[a-z0-9]{{{HANDLE_MIN_LENGTH},{HANDLE_MAX_LENGTH}}}$")
+
+# `preview-<app>-<handle>` names the live preview of the application at
+# `<app>-<handle>`, so no deployment may claim one.
+PREVIEW_LABEL_PREFIX = "preview-"
 
 
 def _check_format(fqdn: str) -> None:
@@ -41,38 +48,43 @@ def _check_format(fqdn: str) -> None:
             raise HostnameException("invalid")
 
 
-def wildcard_prefix(fqdn: str, settings: CaelusSettings) -> list[str] | None:
-    """The labels *fqdn* places under a configured wildcard domain, or ``None``
-    when it is not under one at all.
+def _under(fqdn: str, domain: str) -> bool:
+    return bool(domain) and (fqdn == domain or fqdn.endswith(f".{domain}"))
 
-    One label is an account subdomain, two are an application beneath one. The
-    two namespaces are separated by depth alone, so this is what tells them
-    apart everywhere.
+
+def complete_hostname(
+    value: str, *, handle: str | None, settings: CaelusSettings | None = None
+) -> str:
+    """Lowercase *value* and, when it is a bare application label (no dot),
+    complete it beneath *handle* as `<label>-<handle>.<tenant domain>`.
+
+    A bare label for an owner holding no handle has nothing to complete to and
+    is refused as invalid.
     """
-    for domain in settings.wildcard_domains:
-        if fqdn == domain:
-            return []
-        if fqdn.endswith(f".{domain}"):
-            return fqdn[: -(len(domain) + 1)].split(".")
-    return None
-
-
-def _check_wildcard_depth(fqdn: str, settings: CaelusSettings) -> None:
-    labels = wildcard_prefix(fqdn, settings)
-    if labels is not None and len(labels) != 2:
+    value = value.lower()
+    if "." in value:
+        return value
+    if not handle:
         raise HostnameException("invalid")
+    settings = settings or get_settings()
+    return f"{value}-{handle}.{settings.tenant_domain}"
 
 
-# `preview-<label>` under an account subdomain names the live preview of the
-# application at `<label>`, so no deployment may claim one.
-PREVIEW_LABEL_PREFIX = "preview-"
-
-
-def _check_reserved(fqdn: str, settings: CaelusSettings) -> None:
-    if fqdn in settings.reserved_hostnames:
-        raise HostnameException("reserved")
-    labels = wildcard_prefix(fqdn, settings)
-    if labels is not None and len(labels) == 2 and labels[0].startswith(PREVIEW_LABEL_PREFIX):
+def _check_tenant_label(fqdn: str, *, handle: str | None, settings: CaelusSettings) -> None:
+    label = fqdn[: -(len(settings.tenant_domain) + 1)] if fqdn != settings.tenant_domain else ""
+    if not label or "." in label or "-" not in label:
+        raise HostnameException("invalid")
+    app, _, owner = label.rpartition("-")
+    if (
+        not HANDLE_RE.match(owner)
+        or len(app) > APP_LABEL_MAX_LENGTH
+        or not _APP_LABEL_RE.match(app)
+        or "--" in app
+    ):
+        raise HostnameException("invalid")
+    if owner != (handle or "").lower():
+        raise HostnameException("claimed")
+    if app.startswith(PREVIEW_LABEL_PREFIX):
         raise HostnameException("reserved")
 
 
@@ -85,48 +97,6 @@ def _check_available(session: Session, fqdn: str, *, exclude_deployment_id: UUID
         stmt = stmt.where(DeploymentORM.id != exclude_deployment_id)
     if session.exec(stmt).first() is not None:
         raise HostnameException("in_use")
-
-
-def _check_subdomain_format(label: str) -> None:
-    if not _SUBDOMAIN_RE.match(label):
-        raise HostnameException("invalid")
-
-
-def _check_subdomain_reserved(label: str, settings: CaelusSettings) -> None:
-    for domain in settings.wildcard_domains:
-        if f"{label}.{domain}" in settings.reserved_hostnames:
-            raise HostnameException("reserved")
-
-
-def _check_subdomain_claimed(session: Session, label: str) -> None:
-    # Deliberately unfiltered by `deleted_at`: a deleted account keeps its
-    # label rather than releasing it back into circulation.
-    held = session.exec(
-        select(UserORM.id).where(func.lower(UserORM.subdomain) == label)
-    ).first()
-    if held is not None:
-        raise HostnameException("claimed")
-
-
-def require_valid_subdomain(
-    session: Session,
-    label: str,
-    *,
-    settings: CaelusSettings | None = None,
-) -> None:
-    """Validate that *label* can be claimed as an account subdomain.
-
-    Raises ``HostnameException(reason=...)`` on the first failing check.
-    Checks run in order: format, reserved, claimed.
-
-    The deployments table is never consulted: an application is addressed one
-    label further down, so no deployment hostname can contend with a claim.
-    """
-    settings = settings or get_settings()
-    label = label.lower()
-    _check_subdomain_format(label)
-    _check_subdomain_reserved(label, settings)
-    _check_subdomain_claimed(session, label)
 
 
 def _authoritative_resolver(fqdn: str) -> dns.resolver.Resolver | None:
@@ -196,19 +166,20 @@ def _addresses(fqdn: str, resolver: dns.resolver.Resolver | None) -> set[IPAddre
     }
 
 
+def cname_target(settings: CaelusSettings) -> str:
+    """The name custom domains are told to point at: the tenant domain, which
+    the platform keeps pointed at its edge."""
+    return settings.tenant_domain or settings.domain
+
+
 def _check_dns_target(fqdn: str, settings: CaelusSettings) -> None:
     """Require a custom hostname to reach the platform: a CNAME to
-    ``settings.domain``, or failing that, A/AAAA records that are all among
-    ``settings.domain``'s own addresses (an apex cannot carry a CNAME).
+    :func:`cname_target`, or failing that, A/AAAA records that are all among
+    its own addresses (an apex cannot carry a CNAME).
     """
     if not settings.domain:
         return
-
-    # Wildcard subdomains are served by platform-managed records, not
-    # user-delegated ones, so they bypass the check entirely.
-    for domain in settings.wildcard_domains:
-        if fqdn == domain or fqdn.endswith(f".{domain}"):
-            return
+    target_domain = cname_target(settings)
 
     # Query the zone's authoritative nameservers directly so a record created
     # *after* a first failed check is picked up immediately, instead of waiting
@@ -217,7 +188,7 @@ def _check_dns_target(fqdn: str, settings: CaelusSettings) -> None:
     cname = _lookup(fqdn, "CNAME", resolver)
     if cname:
         target = cname[0].target.to_text().rstrip(".").lower()
-        if target != settings.domain.lower():
+        if target != target_domain.lower():
             raise HostnameException("not_resolving")
         return
 
@@ -226,76 +197,41 @@ def _check_dns_target(fqdn: str, settings: CaelusSettings) -> None:
         raise HostnameException("not_resolving")
     # The platform's own records, from its authoritative servers too: the
     # cluster's resolver may answer for the platform domain differently.
-    platform = _addresses(settings.domain, _authoritative_resolver(settings.domain))
+    platform = _addresses(target_domain, _authoritative_resolver(target_domain))
     if not addresses <= platform:
         raise HostnameException("not_resolving")
-
-
-def require_owned_subdomain(
-    fqdn: str,
-    *,
-    subdomain: str | None,
-    settings: CaelusSettings | None = None,
-) -> None:
-    """Refuse a wildcard-domain hostname sitting under another account's
-    subdomain, raising ``HostnameException("claimed")``.
-
-    Separate from the validation sequence because it needs the owner, which a
-    session and an FQDN do not supply (D10). Hostnames outside every configured
-    wildcard domain are the user's own DNS and are not subject to it.
-    """
-    settings = settings or get_settings()
-    labels = wildcard_prefix(fqdn.lower(), settings)
-    if labels is None or len(labels) != 2:
-        return
-    if labels[1] != (subdomain or "").lower():
-        raise HostnameException("claimed")
 
 
 def require_valid_hostname_for_deployment(
     session: Session,
     fqdn: str,
     *,
+    handle: str | None,
     exclude_deployment_id: UUID | None = None,
     settings: CaelusSettings | None = None,
-) -> None:
-    """Validate that *fqdn* can be used for a new or updated deployment.
+) -> str:
+    """Validate that *fqdn* can be used for a new or updated deployment owned
+    by an account holding *handle*, and return the completed, lowercased name.
 
-    Raises ``HostnameException(reason=...)`` on the first failing check.
-    Checks run in order: format → wildcard depth → reserved → availability →
-    DNS target (CNAME, or A/AAAA records on the platform's addresses).
+    Raises ``HostnameException(reason=...)`` on the first failing check. A bare
+    label is completed beneath the handle first; then format, and under the
+    tenant domain the tenant pattern, ownership, the preview reservation and
+    availability. Anywhere else: the platform-domain refusal, availability,
+    and the DNS target (CNAME, or A/AAAA records on the platform's addresses).
+    Tenant hostnames need no DNS check: the platform serves them itself.
 
     Pass *exclude_deployment_id* when updating an existing deployment so its
     own hostname doesn't trigger an "in_use" conflict.
     """
     settings = settings or get_settings()
-    fqdn = fqdn.lower()
+    fqdn = complete_hostname(fqdn, handle=handle, settings=settings)
     _check_format(fqdn)
-    _check_wildcard_depth(fqdn, settings)
-    _check_reserved(fqdn, settings)
+    if _under(fqdn, settings.tenant_domain):
+        _check_tenant_label(fqdn, handle=handle, settings=settings)
+        _check_available(session, fqdn, exclude_deployment_id=exclude_deployment_id)
+        return fqdn
+    if any(_under(fqdn, domain) for domain in settings.platform_domains):
+        raise HostnameException("reserved")
     _check_available(session, fqdn, exclude_deployment_id=exclude_deployment_id)
     _check_dns_target(fqdn, settings)
-
-
-def check_hostname_availability(
-    session: Session,
-    fqdn: str,
-    *,
-    subdomain: str | None,
-    settings: CaelusSettings | None = None,
-) -> None:
-    """Validate *fqdn* as whatever its depth says it is, for a caller holding
-    *subdomain*.
-
-    A single label under a configured wildcard domain is an account subdomain;
-    anything else is a deployment hostname, which must sit under the caller's
-    own subdomain when it is under a wildcard domain at all.
-    """
-    settings = settings or get_settings()
-    fqdn = fqdn.lower()
-    labels = wildcard_prefix(fqdn, settings)
-    if labels is not None and len(labels) == 1:
-        require_valid_subdomain(session, labels[0], settings=settings)
-        return
-    require_owned_subdomain(fqdn, subdomain=subdomain, settings=settings)
-    require_valid_hostname_for_deployment(session, fqdn, settings=settings)
+    return fqdn

@@ -2,30 +2,31 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Box, CircularProgress, Typography } from '@mui/material'
 import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
-import { checkHostname } from '../../api/endpoints'
+import { ApiError } from '../../api/client'
+import { claimHandle } from '../../api/endpoints'
 import { accent, fg, line, MONO } from '../landing/landingTokens'
 import { AppNameReel, type AppNameReelHandle } from './AppNameReel'
-import { claimReasonText } from './subdomainReasons'
+import { claimReasonText } from './handleReasons'
 
 const DEBOUNCE_MS = 400
 
-export type SubdomainStatus =
+export type HandleStatus =
   | { status: 'empty' }
   | { status: 'checking' }
   | { status: 'available' }
   | { status: 'refused'; reason: string }
 
-interface SubdomainFieldProps {
+interface HandleFieldProps {
   value: string
-  onChange: (label: string) => void
-  /** The platform domain the label sits under, e.g. `freepod.eu`. */
+  onChange: (handle: string) => void
+  /** The tenant domain the address ends in, e.g. `freepod.app`. */
   domain: string
-  onStatusChange?: (status: SubdomainStatus) => void
+  onStatusChange?: (status: HandleStatus) => void
   /** Select the prefill on mount so typing replaces it. */
   autoSelect?: boolean
   disabled?: boolean
   /**
-   * The odometer answers "what goes in front of my domain name?", which is only a
+   * The odometer answers "what goes in front of my handle?", which is only a
    * live question once the user has an application in mind. Off where they are
    * simply choosing the account's own name.
    */
@@ -35,17 +36,20 @@ interface SubdomainFieldProps {
 }
 
 /**
- * The domain name, with only the user's part editable.
+ * The address a handle completes, with only the handle editable.
  *
  * A bare text field asks for a name whose significance the user cannot see, so
- * the platform domain is always rendered alongside it. With `showReel`, an
- * application label joins them and the whole deployment hostname is on screen.
+ * the tenant domain is always rendered after it. With `showReel`, an
+ * application label and its `-` come first and the whole deployment hostname is
+ * on screen.
  *
  * The input is sized to its content rather than filling the row, and the whole
- * control hugs what it holds: a label at one end and its domain at the other do
- * not read as one hostname, which is the only thing this control has to say.
+ * control hugs what it holds: a handle at one end and its domain at the other
+ * do not read as one hostname, which is the only thing this control has to say.
+ *
+ * Availability is a dry-run claim, so the answer is the one claiming would get.
  */
-export function SubdomainField({
+export function HandleField({
   value,
   onChange,
   domain,
@@ -54,8 +58,8 @@ export function SubdomainField({
   disabled = false,
   showReel = true,
   align = 'start',
-}: SubdomainFieldProps) {
-  const [state, setState] = useState<SubdomainStatus>({ status: 'empty' })
+}: HandleFieldProps) {
+  const [state, setState] = useState<HandleStatus>({ status: 'empty' })
   const reelRef = useRef<AppNameReelHandle | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -85,8 +89,8 @@ export function SubdomainField({
     return () => clearTimeout(timer)
   }, [reducedMotion, showReel])
 
-  const settle = useCallback((next: SubdomainStatus) => {
-    // Motion as feedback, and only here: the moment a typed label first comes
+  const settle = useCallback((next: HandleStatus) => {
+    // Motion as feedback, and only here: the moment a typed handle first comes
     // back available. Fired after the debounce, so it never moves under the
     // cursor while somebody is still typing.
     const becameAvailable = next.status === 'available' && lastStatusRef.current !== 'available'
@@ -99,8 +103,8 @@ export function SubdomainField({
     if (timerRef.current) clearTimeout(timerRef.current)
     if (abortRef.current) abortRef.current.abort()
 
-    const label = value.trim().toLowerCase()
-    if (!label) {
+    const handle = value.trim().toLowerCase()
+    if (!handle) {
       lastStatusRef.current = 'empty'
       setState({ status: 'empty' })
       return
@@ -112,19 +116,20 @@ export function SubdomainField({
 
     timerRef.current = setTimeout(async () => {
       try {
-        const result = await checkHostname(`${label}.${domain}`)
+        await claimHandle(handle, { dryRun: true, signal: controller.signal })
         if (controller.signal.aborted) return
-        settle(result.usable ? { status: 'available' } : { status: 'refused', reason: result.reason ?? 'invalid' })
-      } catch {
+        settle({ status: 'available' })
+      } catch (error) {
         if (controller.signal.aborted) return
-        settle({ status: 'refused', reason: 'invalid' })
+        const code = error instanceof ApiError ? error.code : undefined
+        settle({ status: 'refused', reason: code ?? 'handle_invalid' })
       }
     }, DEBOUNCE_MS)
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
     }
-  }, [value, domain, settle])
+  }, [value, settle])
 
   const borderColor =
     state.status === 'available'
@@ -168,7 +173,7 @@ export function SubdomainField({
           alignItems: 'center',
           fontFamily: MONO,
           fontSize: { xs: 13.5, sm: 17 },
-          // Both the label and the domain are one line tall and centred by the
+          // Both the handle and the domain are one line tall and centred by the
           // row, so their baselines cannot drift apart.
           lineHeight: 1,
           border: `1px solid ${borderColor}`,
@@ -178,7 +183,12 @@ export function SubdomainField({
           transition: 'border-color .18s ease',
         }}
       >
-        {showReel && <AppNameReel ref={reelRef} reducedMotion={reducedMotion} />}
+        {showReel && (
+          <>
+            <AppNameReel ref={reelRef} reducedMotion={reducedMotion} />
+            <Box sx={{ flex: 'none', pl: 1.25, color: fg.faint }}>-</Box>
+          </>
+        )}
         <Box
           component="input"
           ref={inputRef}
@@ -186,11 +196,9 @@ export function SubdomainField({
           disabled={disabled}
           spellCheck={false}
           autoComplete="off"
-          aria-label="Your subdomain"
-          aria-describedby="subdomain-field-message"
-          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-            onChange(event.target.value.replace(/\./g, ''))
-          }
+          aria-label="Your handle"
+          aria-describedby="handle-field-message"
+          onChange={(event: React.ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
           style={{ width: `${inputChars}ch` }}
           sx={{
             // content-box, so the `ch` width is the text's own and the padding
@@ -203,9 +211,9 @@ export function SubdomainField({
             background: 'transparent',
             font: 'inherit',
             color: fg.primary,
-            pl: 1.25,
+            pl: showReel ? 0 : 1.25,
             pr: 0,
-            textAlign: 'right',
+            textAlign: showReel ? 'left' : 'right',
             '&::selection': { background: 'rgba(109,91,255,0.45)' },
           }}
         />
@@ -239,7 +247,7 @@ export function SubdomainField({
           minHeight: 20,
         }}
       >
-        <Typography id="subdomain-field-message" sx={{ fontSize: 13, color: messageColor }}>
+        <Typography id="handle-field-message" sx={{ fontSize: 13, color: messageColor }}>
           {message}
         </Typography>
         {showReel && !reducedMotion && (

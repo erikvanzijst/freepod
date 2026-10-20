@@ -4,6 +4,10 @@ locals {
   ns_caelus = local.is_prod_workspace ? "caelus" : "caelus-dev"
   domain    = local.is_prod_workspace ? "freepod.eu" : "dev.freepod.eu"
 
+  # Tenant hostnames are `<app>-<handle>.<tenant_domain>`, on a domain of their
+  # own so no tenant shares a site with the platform.
+  tenant_domain = local.is_prod_workspace ? "freepod.app" : "dev.freepod.app"
+
   environment = var.environment != null ? var.environment : (
     local.is_prod_workspace ? "prod" : "dev"
   )

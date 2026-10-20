@@ -98,13 +98,17 @@ Rejected: it is exactly what makes this change break every released client.
         (no DNS check: the platform serves it)
    no:  under any platform_domains entry?          --> reserved
         held by a live deployment?                 --> in_use
-        CNAME to settings.domain, or A/AAAA on its addresses? else --> not_resolving
+        CNAME to tenant_domain, or A/AAAA on its addresses?  else --> not_resolving
 ```
 
 The owner is now an input to validation. Previously, ownership was a separate check run by the
 deployment service, because the validator had no notion of an owner. With the handle encoded in
 the label, ownership is part of the format question, so the validator takes the owner's handle.
 The reason codes are unchanged.
+
+Custom domains point at the tenant domain (`GET /api/cname-target`), which always resolves to
+the platform's edge. A CNAME to `settings.domain` is refused like any other: the few custom
+domains that point there are re-pointed by their owners.
 
 `platform_domains` is `["freepod.eu", "freepod.app"]` in both environments. A name equal to an
 entry or beneath it is never a custom domain. This covers Freepod's own hosts, every retired
@@ -152,7 +156,8 @@ answers handle questions at all.
 ### D7. Tenant TLS through the default certificate
 
 The `wildcard_dns_names` of the platform certificate in `tf/deps/tls` gains `freepod.app`,
-`*.freepod.app`, `dev.freepod.app` and `*.dev.freepod.app`. The DNS-01 issuer picks the solver
+`*.freepod.app` and `*.dev.freepod.app`. `dev.freepod.app` is covered by `*.freepod.app`, and
+listing it as well makes Let's Encrypt refuse the order as redundant. The DNS-01 issuer picks the solver
 per zone, using the Cloudflare selector for `freepod.eu` and the deSEC selector for
 `freepod.app`, so one order covers both zones. The certificate is already the store's
 `defaultCertificate`, so every tenant hostname is served without touching the store's
@@ -244,12 +249,17 @@ handle, which is also what a cloned project should do.
   hasn't been upgraded.
 - **App Studio workspaces carry old-format `.freepod.json` files** → rewritten by the new CLI
   on the next deploy (D12). The new studio image bundles that CLI.
+  The studio's CLI is installed from a path, so the generic `uv tool upgrade freepod` does not
+  work there; a live studio is moved onto the new chart instead.
 
 ## Migration Plan
 
 Dev first, end to end, then prod.
 
 1. `tf/deps`: the deSEC webhook and solver (the spike), then the extra certificate names.
+   `dev.freepod.app` and `*.dev.freepod.app` carry their own CNAMEs to `freepod.app`: without
+   them, the challenge record `_acme-challenge.dev.freepod.app` would make `dev.freepod.app` an
+   empty non-terminal and stop `*.freepod.app` from answering beneath it during every order.
    Wait for the `Certificate` to be Ready, and confirm it serves `*.freepod.app` and
    `*.dev.freepod.app`.
 2. `tf/app` (dev): `tenant_domain`, `reserved_handles`, `platform_domains`, the

@@ -5,33 +5,33 @@ import PublicIcon from '@mui/icons-material/Public'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../../api/client'
-import { claimSubdomain } from '../../api/endpoints'
+import { claimHandle } from '../../api/endpoints'
 import { DISPLAY, fg, line, MONO } from '../landing/landingTokens'
-import { SubdomainField, type SubdomainStatus } from './SubdomainField'
-import { claimReasonText } from './subdomainReasons'
+import { HandleField, type HandleStatus } from './HandleField'
+import { claimReasonText } from './handleReasons'
 
 /** Everything on this screen is one measure wide, whatever container holds it. */
 const MEASURE = 520
 
-/** The email local part, reduced to something that could be a DNS label. */
-export function labelFromEmail(email: string): string {
-  return email.split('@')[0].toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/^-+|-+$/g, '').slice(0, 63)
+/** The email local part, reduced to something that could be a handle. */
+export function handleFromEmail(email: string): string {
+  return email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20)
 }
 
-interface ClaimSubdomainProps {
-  /** The platform domain, e.g. `freepod.eu`. */
+interface ClaimHandleProps {
+  /** The tenant domain, e.g. `freepod.app`. */
   domain: string
   email: string
   /** "Not now": closes the modal, or collapses the dashboard section to a banner. */
   onDismiss: () => void
-  /** Called once the domain name is held, so a deploy the claim interrupted can go on. */
-  onClaimed?: (subdomain: string) => void
+  /** Called once the handle is held, so a deploy the claim interrupted can go on. */
+  onClaimed?: (handle: string) => void
   /** Focus and select the prefill. Right when a modal opens; not on page load. */
   autoSelect?: boolean
   /**
    * Which question is being asked.
    *
-   * On the dashboard the user is choosing the account's own domain name with no
+   * On the dashboard the user is choosing the account's own handle with no
    * application in mind, so no application label is shown — the odometer would
    * be answering a question nobody has asked yet. On the deploy path they are
    * one step from creating an instance, and the whole hostname is the thing to
@@ -42,21 +42,21 @@ interface ClaimSubdomainProps {
 
 /**
  * On the dashboard the claim is the page's one task, so it is centred and the
- * domain name is its focal point. In the deploy modal it is a form the user opened
+ * address is its focal point. In the deploy modal it is a form the user opened
  * on the way to something else, and reads left-aligned like one.
  */
 
-export function ClaimSubdomain({
+export function ClaimHandle({
   domain,
   email,
   onDismiss,
   onClaimed,
   autoSelect = false,
   context = 'deploy',
-}: ClaimSubdomainProps) {
+}: ClaimHandleProps) {
   const queryClient = useQueryClient()
-  const [label, setLabel] = useState(() => labelFromEmail(email))
-  const [status, setStatus] = useState<SubdomainStatus>({ status: 'empty' })
+  const [handle, setHandle] = useState(() => handleFromEmail(email))
+  const [status, setStatus] = useState<HandleStatus>({ status: 'empty' })
   const [confirming, setConfirming] = useState(false)
   const [claimError, setClaimError] = useState<string | null>(null)
 
@@ -65,29 +65,29 @@ export function ClaimSubdomain({
   const align = centred ? 'center' : 'flex-start'
 
   const claim = useMutation({
-    mutationFn: () => claimSubdomain(label.trim().toLowerCase()),
+    mutationFn: () => claimHandle(handle.trim().toLowerCase()),
     onSuccess: (held) => {
-      queryClient.invalidateQueries({ queryKey: ['my-subdomain'] })
-      onClaimed?.(held.subdomain ?? label)
+      queryClient.invalidateQueries({ queryKey: ['my-handle'] })
+      onClaimed?.(held.handle ?? handle)
       onDismiss()
     },
     onError: (error: unknown) => {
-      // The claim races other claims: two accounts can be told the same label is
-      // free. The unique index decides, and the loser lands back here.
+      // The claim races other claims: two accounts can be told the same handle
+      // is free. The unique index decides, and the loser lands back here.
       const code = error instanceof ApiError ? error.code : undefined
       setClaimError(
-        code === 'subdomain_taken'
-          ? claimReasonText('claimed')
+        code === 'handle_taken'
+          ? claimReasonText(code)
           : error instanceof Error
             ? error.message
-            : 'The domain could not be claimed.',
+            : 'The handle could not be claimed.',
       )
       setConfirming(false)
     },
   })
 
   const canClaim = status.status === 'available' && !claim.isPending
-  const fqdn = useMemo(() => `${label.trim().toLowerCase()}.${domain}`, [label, domain])
+  const frozen = useMemo(() => `-${handle.trim().toLowerCase()}.${domain}`, [handle, domain])
 
   const handleDismiss = () => {
     setConfirming(false)
@@ -137,7 +137,7 @@ export function ClaimSubdomain({
             color: fg.primary,
           }}
         >
-          {fqdn}
+          {frozen}
         </Box>
 
         <Alert
@@ -145,7 +145,7 @@ export function ClaimSubdomain({
           severity="warning"
           sx={{ mt: 1.5, mb: 2.75, borderRadius: '11px' }}
         >
-          Your subdomain can't be changed or released. Support can't move one for you later.
+          Your handle can't be changed or released. Support can't move one for you later.
         </Alert>
 
         <Stack direction="row" spacing={1.25} justifyContent={deploying ? 'flex-end' : 'center'}>
@@ -171,19 +171,19 @@ export function ClaimSubdomain({
         mx: 'auto',
       }}
     >
-      {eyebrow('Your subdomain')}
-      {heading('Claim your free subdomain')}
+      {eyebrow('Your handle')}
+      {heading('Choose your handle')}
       <Typography sx={{ fontSize: 14.5, color: 'text.secondary', mb: 3, maxWidth: '54ch' }}>
         {deploying
-          ? 'Your app gets a hostname under this subdomain.'
-          : 'Every app you deploy gets a hostname under this subdomain. Nobody else can use it.'}
+          ? 'Your app gets a hostname ending in this handle.'
+          : 'Every app you deploy gets a hostname ending in this handle. Nobody else can use it.'}
       </Typography>
 
-      <SubdomainField
-        value={label}
+      <HandleField
+        value={handle}
         onChange={(next) => {
           setClaimError(null)
-          setLabel(next)
+          setHandle(next)
         }}
         domain={domain}
         onStatusChange={setStatus}
@@ -214,15 +214,15 @@ export function ClaimSubdomain({
         <Stack component="li" direction="row" spacing={1.25} alignItems="flex-start" sx={{ flex: 1 }}>
           <ErrorOutlineIcon sx={{ fontSize: 17, color: fg.faint, mt: 0.4 }} />
           <Typography sx={{ fontSize: 13.5, color: 'text.secondary' }}>
-            <strong>It's permanent.</strong> Apps, links and certificates are all issued
-            against it, so it can't be changed later.
+            <strong>It's permanent.</strong> Every app address and every link to it
+            ends in your handle, so it can't be changed later.
           </Typography>
         </Stack>
         <Stack component="li" direction="row" spacing={1.25} alignItems="flex-start" sx={{ flex: 1 }}>
           <PublicIcon sx={{ fontSize: 17, color: fg.faint, mt: 0.4 }} />
           <Typography sx={{ fontSize: 13.5, color: 'text.secondary' }}>
-            <strong>It's public.</strong> It appears in your app addresses and in public
-            certificate logs, so pick something you're happy being seen.
+            <strong>It's public.</strong> It appears in the address of every app you
+            deploy, so pick something you're happy being seen.
           </Typography>
         </Stack>
       </Stack>

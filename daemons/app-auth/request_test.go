@@ -79,7 +79,7 @@ func TestIsNavigation(t *testing.T) {
 }
 
 func TestNormalizeHost(t *testing.T) {
-	for in, want := range map[string]string{"Milk.Erik.Freepod.EU": "milk.erik.freepod.eu", "milk.example:443": "milk.example", " a.b ": "a.b"} {
+	for in, want := range map[string]string{"Milk-Erik.Freepod.APP": "milk-erik.freepod.app", "milk.example:443": "milk.example", " a.b ": "a.b"} {
 		if got := normalizeHost(in); got != want {
 			t.Errorf("normalizeHost(%q) = %q", in, got)
 		}

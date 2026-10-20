@@ -21,7 +21,7 @@ const columns: GridColDef<UserRow>[] = [
     width: 90,
     renderCell: ({ value }) => (value ? 'Yes' : 'No'),
   },
-  { field: 'wildcard_domain', headerName: 'Subdomain', flex: 1.5, minWidth: 200 },
+  { field: 'handle', headerName: 'Handle', flex: 1, minWidth: 140 },
   {
     field: 'created_at',
     headerName: 'Joined',

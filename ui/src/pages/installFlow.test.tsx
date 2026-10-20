@@ -8,11 +8,11 @@ import Dashboard from './Dashboard'
 import AppPage from './AppPage'
 
 const auth = vi.hoisted(() => ({ user: null as null | { id: number; email: string }, setEmail: vi.fn() }))
-const subdomain = vi.hoisted(() => ({ value: 'alex' as string | null }))
+const handle = vi.hoisted(() => ({ value: 'alex' as string | null }))
 
 vi.mock('../state/AuthContext', () => ({ useAuth: () => auth }))
-vi.mock('../components/subdomain/useMySubdomain', () => ({
-  useMySubdomain: () => ({ data: { subdomain: subdomain.value, domain: 'example.test' }, isSuccess: true }),
+vi.mock('../components/handle/useMyHandle', () => ({
+  useMyHandle: () => ({ data: { handle: handle.value, suffix: handle.value ? `-${handle.value}.example.test` : null, domain: 'example.test' }, isSuccess: true }),
 }))
 vi.mock('../api/endpoints', () => ({
   listProducts: () => Promise.resolve(products),
@@ -35,13 +35,13 @@ vi.mock('../components/DeployDialog', () => ({
     ),
 }))
 // Like the real one, a claim reports the held name and then closes the dialog.
-vi.mock('../components/subdomain/ClaimSubdomainDialog', () => ({
-  ClaimSubdomainDialog: (props: { open: boolean; onClose: () => void; onClaimed?: (name: string) => void }) =>
+vi.mock('../components/handle/ClaimHandleDialog', () => ({
+  ClaimHandleDialog: (props: { open: boolean; onClose: () => void; onClaimed?: (name: string) => void }) =>
     props.open ? createPortal(
       <div role="dialog" aria-label="claim">
         <button
           onClick={() => {
-            subdomain.value = 'alex'
+            handle.value = 'alex'
             props.onClaimed?.('alex')
             props.onClose()
           }}
@@ -116,7 +116,7 @@ async function renderAt(path: string) {
 beforeEach(() => {
   auth.user = { id: 1, email: 'alex@example.com' }
   auth.setEmail.mockReset()
-  subdomain.value = 'alex'
+  handle.value = 'alex'
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
 })
 
@@ -149,8 +149,8 @@ describe('Install on an app page', () => {
     expect(screen.getByLabelText('location')).toHaveTextContent(/^\/$/)
   })
 
-  it('asks for a subdomain first, then continues to the deploy dialog', async () => {
-    subdomain.value = null
+  it('asks for a handle first, then continues to the deploy dialog', async () => {
+    handle.value = null
     await installImmich()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Claim' }))
@@ -159,7 +159,7 @@ describe('Install on an app page', () => {
   })
 
   it('ends the install when the claim is declined', async () => {
-    subdomain.value = null
+    handle.value = null
     await installImmich()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Not now' }))
@@ -238,8 +238,8 @@ describe('Installing from the dashboard', () => {
     expect(screen.getByLabelText('location')).toHaveTextContent(/^\/$/)
   })
 
-  it('asks for a subdomain first when the user holds none', async () => {
-    subdomain.value = null
+  it('asks for a handle first when the user holds none', async () => {
+    handle.value = null
     await installFromPanel()
 
     expect(await screen.findByRole('dialog', { name: 'claim' })).toBeInTheDocument()

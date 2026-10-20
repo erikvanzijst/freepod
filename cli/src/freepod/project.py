@@ -11,7 +11,7 @@ merge conflict for any team of two. See design D4.
 {
   "version": 1,
   "deployment": {"id": "40bd8dea-…", "name": "custom-d8dtx4"},
-  "user_values": {"hostname": "myapp.freepod.eu"}
+  "user_values": {"hostname": "myapp"}
 }
 ```
 
@@ -23,8 +23,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+import click
 
 from . import FreepodError, UsageError
 
@@ -44,6 +47,13 @@ FORMAT_VERSION = 1
 #: `additionalProperties: false`, so neither a value nor an explicit null
 #: belongs in a file that is committed and diffed.
 BUILD_OUTPUT_KEYS = frozenset({"image"})
+
+#: The hostnames earlier releases of this client wrote, `<label>.<account>.freepod.eu`
+#: and `<label>.<account>.dev.freepod.eu`. Fixed here rather than learned from
+#: the platform: the rewrite only corrects this client's own earlier output.
+_LEGACY_HOSTNAME = re.compile(
+    r"^(?P<label>[a-z0-9-]+)\.(?:(?!dev\.)[a-z0-9-]+\.freepod\.eu|[a-z0-9-]+\.dev\.freepod\.eu)$"
+)
 
 
 class Project:
@@ -195,13 +205,28 @@ def load(root: Path) -> Project:
         if not isinstance(deployment, dict) or not deployment.get("id"):
             raise FreepodError(f"{path}: 'deployment' must be null or carry an 'id'")
 
-    return Project(
+    project = Project(
         root=Path(root),
         env=env,
         user_values=user_values,
         deployment=deployment,
         version=version,
     )
+    _rewrite_legacy_hostname(project)
+    return project
+
+
+def _rewrite_legacy_hostname(project: Project) -> None:
+    """Replace an old-format hostname with its application label, which the
+    platform completes beneath the account's handle, and save the file."""
+    hostname = project.hostname
+    match = _LEGACY_HOSTNAME.match(hostname.strip().lower()) if hostname else None
+    if match is None:
+        return
+    label = match.group("label")
+    project.user_values["hostname"] = label
+    project.save()
+    click.echo(f"Rewrote hostname {hostname} → {label} in {PROJECT_FILE}.", err=True)
 
 
 def require_project(start: Optional[Path] = None) -> Project:

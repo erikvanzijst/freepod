@@ -41,8 +41,8 @@ accounts there are.
   code that created them, waited for them and listed them in the TLS store is removed. Records
   and certificates that already exist stay in place, untouched, to keep the old hostnames'
   redirects working.
-- The platform's default certificate also covers `freepod.app`, `*.freepod.app`,
-  `dev.freepod.app` and `*.dev.freepod.app`. These are issued by DNS-01 through deSEC, which
+- The platform's default certificate also covers `freepod.app`, `*.freepod.app` and
+  `*.dev.freepod.app` (`dev.freepod.app` falls under `*.freepod.app`). These are issued by DNS-01 through deSEC, which
   hosts the `freepod.app` zone.
 - Every live deployment on the old pattern is moved to its new hostname by a one-off script.
   Each old hostname then permanently redirects (**308**) to its new one, through a static list

@@ -7,7 +7,7 @@ title: Hostname
 
 An app's hostname is its address. Each app has one.
 
-A hostname under your subdomain has one name in front of it: `photos.alice.freepod.eu`. The name is 1 to 63 letters, digits and hyphens, and does not start or end with a hyphen. Each hostname can be used by one app at a time.
+A Freepod hostname is the app's name followed by your handle: `photos-alice.freepod.app`. The app's name is 1 to 34 letters, digits and hyphens, does not start or end with a hyphen, and does not contain two hyphens in a row. Names that start with `preview-` are reserved. Each hostname can be used by one app at a time.
 
 To use a domain you own instead, see [Custom domain](custom-domain.mdx).
 

@@ -62,9 +62,21 @@ variable "mailer_namespace" {
   default     = "mailer"
 }
 
-variable "wildcard_domains" {
-  description = "Freely available wildcard domains"
+variable "tenant_domain" {
+  description = "The domain tenant hostnames are formed under, as `<app>-<handle>.<tenant_domain>`"
+  type        = string
+}
+
+variable "platform_domains" {
+  description = "Domains no custom hostname may be under"
   type        = list(string)
+}
+
+variable "legacy_tenant_redirects" {
+  description = "Retired `<app>.<handle>.<domain>` hostnames that permanently redirect to `<app>-<handle>.<tenant_domain>`"
+  type        = list(string)
+  sensitive   = true
+  default     = []
 }
 
 variable "mollie_api_key" {
@@ -73,8 +85,8 @@ variable "mollie_api_key" {
   sensitive   = true
 }
 
-variable "reserved_hostnames" {
-  description = "Hostnames that cannot be claimed by users"
+variable "reserved_handles" {
+  description = "Handles no account may claim"
   type        = list(string)
 }
 
@@ -256,25 +268,6 @@ variable "registry_pod_labels" {
 variable "registry_cluster_ip" {
   description = "The tenant registry's pinned ClusterIP, for the builds NetworkPolicy's pre-DNAT match"
   type        = string
-}
-
-variable "cloudflare_api_dns_token" {
-  description = "Cloudflare API token with `Zone → DNS → Edit` on the platform zone, used by the reconciler to create each account's wildcard record."
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "cloudflare_zone_id" {
-  description = "Id of the platform's DNS zone. An id rather than a name so the token needs no `Zone → Read`."
-  type        = string
-  default     = ""
-}
-
-variable "dns_record_target" {
-  description = "What an account's wildcard CNAME resolves to. Mirrors the platform's own `*.<domain>` record."
-  type        = string
-  default     = ""
 }
 
 variable "app_auth_verify_url" {
