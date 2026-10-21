@@ -1,11 +1,11 @@
-# App Studio: opencode's web UI over a persistent /workspace, with the
+# App Studio: opencode's server and web UI over a persistent /workspace, with the
 # toolchains and the `freepod` CLI an agent needs to build and ship apps.
 #
 # The CLI is installed from this repository's cli/, passed as a named build
 # context: --build-context freepod-cli=cli (see ../README.md).
 FROM node:24-bookworm
 
-ARG OPENCODE_VERSION=1.19.0
+ARG OPENCODE_VERSION=2.1.2
 ARG YQ_VERSION=v4.54.1
 ARG YQ_SHA256=8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f
 
@@ -45,7 +45,7 @@ COPY bin/dev-s3 bin/dev-postgres bin/dev-app /usr/local/bin/
 ENV UV_TOOL_DIR=/opt/uv/tools \
     UV_TOOL_BIN_DIR=/usr/local/bin
 
-RUN npm install -g opencode-ai@${OPENCODE_VERSION} \
+RUN npm install -g @opencode/cli@${OPENCODE_VERSION} \
  && npm cache clean --force
 
 # Playwright's MCP server, for the agent to open and inspect the app in a

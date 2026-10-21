@@ -75,6 +75,11 @@ spec:
           env:
             - name: STUDIO_PORT
               value: {{ .Values.containerPort | quote }}
+            - name: OPENCODE_SERVER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-opencode
+                  key: password
             {{- with include "appstudio.previewHost" . }}
             - name: APPSTUDIO_PREVIEW_URL
               value: {{ printf "https://%s" . | quote }}
@@ -127,6 +132,8 @@ spec:
                 path: index.html
               - key: preview-down.html
                 path: preview-down.html
+              - key: sw.js
+                path: sw.js
         - name: workspace
           persistentVolumeClaim:
             claimName: workspace

@@ -22,6 +22,7 @@ restarted reaper still resumes a suspended studio.
 
 APPSTUDIO_IDLE_AFTER (seconds, default 1800), APPSTUDIO_REAPER_DRY_RUN=1.
 """
+import base64
 import json
 import os
 import signal
@@ -34,6 +35,8 @@ import urllib.request
 
 STUDIO_PORT = int(os.environ.get("STUDIO_PORT", "4096"))
 STUDIO = f"http://127.0.0.1:{STUDIO_PORT}"
+AUTH = "Basic " + base64.b64encode(
+    f"opencode:{os.environ.get('OPENCODE_SERVER_PASSWORD', '')}".encode()).decode()
 IDLE_AFTER = int(os.environ.get("APPSTUDIO_IDLE_AFTER", "1800"))
 DRY_RUN = os.environ.get("APPSTUDIO_REAPER_DRY_RUN") == "1"
 CHECK_EVERY = 5
@@ -50,12 +53,16 @@ def log(msg):
     print(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} appstudio-reaper: {msg}", flush=True)
 
 
-def api(method, path, directory=None, timeout=30):
+def request(method, path, directory=None):
     if directory:
-        path += "?directory=" + urllib.parse.quote(directory)
-    req = urllib.request.Request(STUDIO + path, method=method)
-    with urllib.request.urlopen(req, timeout=timeout) as res:
-        return json.load(res)
+        path += "?" + urllib.parse.urlencode({"location[directory]": directory})
+    return urllib.request.Request(STUDIO + path, method=method, headers={"Authorization": AUTH})
+
+
+def api(method, path, directory=None, timeout=30):
+    with urllib.request.urlopen(request(method, path, directory), timeout=timeout) as res:
+        body = res.read()
+        return json.loads(body) if body else None
 
 
 def agent_active():
@@ -65,29 +72,25 @@ def agent_active():
 
 
 def follow_events():
-    """Track agent activity from opencode's global event stream, which carries
-    every directory's events."""
+    """Track agent activity from opencode's event stream, which carries every
+    directory's events."""
     while True:
         try:
-            with urllib.request.urlopen(f"{STUDIO}/global/event", timeout=60) as res:
+            with urllib.request.urlopen(request("GET", "/api/event"), timeout=60) as res:
                 for raw in res:
                     line = raw.decode("utf-8", "replace").strip()
                     if not line.startswith("data:"):
                         continue
-                    payload = json.loads(line[5:]).get("payload", {})
-                    kind = payload.get("type", "")
-                    if not kind.startswith(("session.", "message.")):
+                    event = json.loads(line[5:])
+                    kind = event.get("type", "")
+                    if not kind.startswith("session."):
                         continue
                     agent_active()
-                    props = payload.get("properties", {})
-                    sid = props.get("sessionID")
+                    sid = (event.get("data") or {}).get("sessionID")
                     with lock:
-                        if kind == "session.status" and sid:
-                            if props.get("status", {}).get("type") == "idle":
-                                busy.discard(sid)
-                            else:
-                                busy.add(sid)
-                        elif kind == "session.idle" and sid:
+                        if kind == "session.execution.started" and sid:
+                            busy.add(sid)
+                        elif kind.startswith("session.execution.") and sid:
                             busy.discard(sid)
         except Exception as e:  # opencode starting or restarting, or the stream timing out
             log(f"event stream: {e}; reconnecting")
@@ -146,7 +149,7 @@ def cwd(pid):
 
 def plan():
     ps = procs()
-    oc = next((p for p, i in ps.items() if i["cmd"].startswith("opencode web")), None)
+    oc = next((p for p, i in ps.items() if i["cmd"].startswith("opencode serve")), None)
     mine = {os.getpid(), os.getppid(), os.getpgid(0)}
     groups = {}
     for pid, info in ps.items():
@@ -163,18 +166,14 @@ def plan():
     return {"groups": groups, "mcp_dirs": mcp_dirs, "preview_dir": preview_dir}
 
 
-def busy_sessions(dirs):
-    """Sessions opencode reports as working in these directories; the event
-    stream misses a turn that started while it was not connected."""
-    found = []
-    for d in dirs:
-        try:
-            status = api("GET", "/session/status", d)
-        except Exception as e:
-            log(f"session status in {d}: {e}; not suspending")
-            return ["unknown"]
-        found += [sid for sid, s in status.items() if s.get("type") != "idle"]
-    return found
+def busy_sessions():
+    """Sessions opencode reports as running in any directory; the event stream
+    misses a turn that started while it was not connected."""
+    try:
+        return list(api("GET", "/api/session/active")["data"])
+    except Exception as e:
+        log(f"active sessions: {e}; not suspending")
+        return ["unknown"]
 
 
 def alive(pgid):
@@ -205,7 +204,7 @@ def kill_groups(groups):
 def suspend():
     """Returns the state to resume from, or None when a session is still busy."""
     p = plan()
-    working = busy_sessions(p["mcp_dirs"])
+    working = busy_sessions()
     if working:
         log(f"not suspending: {len(working)} session(s) busy")
         return None
@@ -221,7 +220,7 @@ def suspend():
     kill_groups(list(plan()["groups"]))
     for d in p["mcp_dirs"]:
         try:
-            api("POST", f"/mcp/{MCP}/disconnect", d)
+            api("POST", f"/api/experimental/mcp/{MCP}/disconnect", d)
         except Exception as e:
             log(f"disconnect {MCP} in {d}: {e}")
     try:
@@ -238,7 +237,7 @@ def resume(state):
         return
     for d in state["mcp_dirs"]:
         try:
-            api("POST", f"/mcp/{MCP}/connect", d, timeout=60)
+            api("POST", f"/api/experimental/mcp/{MCP}/connect", d, timeout=60)
         except Exception as e:
             log(f"connect {MCP} in {d}: {e}")
     preview_dir = state["preview_dir"]
