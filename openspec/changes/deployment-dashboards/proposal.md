@@ -19,7 +19,7 @@ capacity planning) and stays as it is.
 - The reconciler labels each deployment namespace with
   `caelus.dev/deployment-id`, and kube-state-metrics publishes it on
   `kube_namespace_labels`. That one label joins a namespace to its database
-  (`datname` is the ID without hyphens) and its bucket (`dep-<id>`).
+  (`datname` ends in the ID as hex) and its bucket (`dep-<id>`).
   `caelus sync-network-policies` backfills existing namespaces.
 - **Freepod: deployments**: one row per deployment in an environment, with
   hostname, product, owner, CPU, memory, pod network, HTTP requests, database,

@@ -1243,7 +1243,7 @@ class DeploymentDatabaseORM(SQLModel, table=True):
         )
     )
 
-    # D2: both are the deployment UUID with its hyphens removed, so one string
+    # D2: both are `dpl_` plus the deployment UUID as hex, so one string
     # identifies the tenant across pg_database, pg_roles, pg_stat_activity, the
     # pooler and here. Stored rather than derived so that changing the
     # derivation rule cannot orphan an existing database, and so operator SQL

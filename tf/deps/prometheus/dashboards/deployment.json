@@ -159,10 +159,10 @@
           "uid": "${datasource}"
         },
         "query": {
-          "query": "query_result(label_replace(max by (label_caelus_dev_deployment_id) (kube_namespace_labels{job=\"prometheus-kube-state-metrics\",namespace=\"$deployment\"}), \"datname\", \"$1$2$3$4$5\", \"label_caelus_dev_deployment_id\", \"([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\"))",
+          "query": "query_result(max by (datname) (max by (datname, deployment_hex) (label_replace(pg_database_size_bytes, \"deployment_hex\", \"$1\", \"datname\", \".*([0-9a-f]{32})\")) * on (deployment_hex) group_left () label_replace(max by (label_caelus_dev_deployment_id) (kube_namespace_labels{job=\"prometheus-kube-state-metrics\",namespace=\"$deployment\"}), \"deployment_hex\", \"$1$2$3$4$5\", \"label_caelus_dev_deployment_id\", \"([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\")))",
           "refId": "database"
         },
-        "definition": "query_result(label_replace(max by (label_caelus_dev_deployment_id) (kube_namespace_labels{job=\"prometheus-kube-state-metrics\",namespace=\"$deployment\"}), \"datname\", \"$1$2$3$4$5\", \"label_caelus_dev_deployment_id\", \"([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\"))",
+        "definition": "query_result(max by (datname) (max by (datname, deployment_hex) (label_replace(pg_database_size_bytes, \"deployment_hex\", \"$1\", \"datname\", \".*([0-9a-f]{32})\")) * on (deployment_hex) group_left () label_replace(max by (label_caelus_dev_deployment_id) (kube_namespace_labels{job=\"prometheus-kube-state-metrics\",namespace=\"$deployment\"}), \"deployment_hex\", \"$1$2$3$4$5\", \"label_caelus_dev_deployment_id\", \"([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\")))",
         "regex": "/datname=\"([^\"]+)\"/",
         "refresh": 1,
         "multi": false,

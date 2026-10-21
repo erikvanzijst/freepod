@@ -19,7 +19,7 @@ product and environment, and kube-state-metrics SHALL publish that label on
 
 - **WHEN** a dashboard needs a deployment's database or bucket size by
   namespace
-- **THEN** it derives the `datname` and `dep-<id>` bucket name from the
+- **THEN** it matches the `datname` and `dep-<id>` bucket name to the
   namespace's deployment ID label, with no platform database lookup
 
 ### Requirement: Fleet deployments dashboard

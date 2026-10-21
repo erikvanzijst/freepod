@@ -2,8 +2,9 @@
 
 Every series a deployment produces names it differently: kubelet and
 kube-state-metrics by namespace, Traefik by router or service name (which
-begin with the namespace), the tenant database exporter by `datname` (the
-deployment ID without hyphens, `deployment_database` D2), and the bucket
+begin with the namespace), the tenant database exporter by `datname`
+(`dpl_` and the deployment ID as hex, `relational_storage.database_name`),
+and the bucket
 exporter by `dep-<deployment id>`. Prometheus holds no mapping between a
 namespace and a deployment ID, and Grafana has no access to the platform
 database.
@@ -14,8 +15,9 @@ database.
 
 The reconciler already labels each namespace with owner, product and
 environment for exactly this purpose, so the deployment ID is one more entry
-in `deployment_namespace_labels`. `label_replace` derives `datname` and the
-bucket name from it at query time.
+in `deployment_namespace_labels`. `label_replace` derives the bucket name
+from it at query time, and matches it to the 32 hex digits a `datname` ends
+in, so the database join does not depend on the `dpl_` prefix.
 
 **Alternative rejected:** a Grafana PostgreSQL datasource on the platform
 database. It would also give names and emails, but it gives Grafana read

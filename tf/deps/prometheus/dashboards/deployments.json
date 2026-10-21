@@ -414,7 +414,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(max by (namespace) (\n  label_replace(kube_namespace_labels{job=\"prometheus-kube-state-metrics\",label_caelus_dev_tenant=\"true\",label_caelus_dev_environment=\"$environment\"}, \"datname\", \"$1$2$3$4$5\", \"label_caelus_dev_deployment_id\", \"([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\")\n  * on (datname) group_left ()\n  max by (datname) (pg_database_size_bytes)\n))",
+          "expr": "sum(max by (namespace) (\n  label_replace(kube_namespace_labels{job=\"prometheus-kube-state-metrics\",label_caelus_dev_tenant=\"true\",label_caelus_dev_environment=\"$environment\"}, \"deployment_hex\", \"$1$2$3$4$5\", \"label_caelus_dev_deployment_id\", \"([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\")\n  * on (deployment_hex) group_left ()\n  max by (deployment_hex) (max by (datname, deployment_hex) (label_replace(pg_database_size_bytes, \"deployment_hex\", \"$1\", \"datname\", \".*([0-9a-f]{32})\")))\n))",
           "refId": "A",
           "range": true
         }
@@ -683,7 +683,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (namespace) (\n  label_replace(kube_namespace_labels{job=\"prometheus-kube-state-metrics\",label_caelus_dev_tenant=\"true\",label_caelus_dev_environment=\"$environment\"}, \"datname\", \"$1$2$3$4$5\", \"label_caelus_dev_deployment_id\", \"([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\")\n  * on (datname) group_left ()\n  max by (datname) (pg_database_size_bytes)\n)",
+          "expr": "max by (namespace) (\n  label_replace(kube_namespace_labels{job=\"prometheus-kube-state-metrics\",label_caelus_dev_tenant=\"true\",label_caelus_dev_environment=\"$environment\"}, \"deployment_hex\", \"$1$2$3$4$5\", \"label_caelus_dev_deployment_id\", \"([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\")\n  * on (deployment_hex) group_left ()\n  max by (deployment_hex) (max by (datname, deployment_hex) (label_replace(pg_database_size_bytes, \"deployment_hex\", \"$1\", \"datname\", \".*([0-9a-f]{32})\")))\n)",
           "refId": "H",
           "instant": true,
           "range": false,
