@@ -28,7 +28,11 @@ def _label_value(raw: str | None) -> str | None:
 
 
 def deployment_namespace_labels(
-    *, owner_id: int | None, product: str | None, environment: str | None
+    *,
+    deployment_id: str | None,
+    owner_id: int | None,
+    product: str | None,
+    environment: str | None,
 ) -> dict[str, str]:
     """``TENANT_NAMESPACE_LABELS`` plus the identity metrics aggregate on.
 
@@ -36,9 +40,13 @@ def deployment_namespace_labels(
     dashboards can group by owner or product. ``environment`` belongs here
     because both environments share a cluster while ``user.id`` is per-database:
     without it, owner 5 in dev and owner 5 in prod sum together.
+    ``deployment-id`` is what joins a namespace to the deployment's database and
+    bucket series, which are named after the deployment rather than the
+    namespace.
     """
     labels = dict(TENANT_NAMESPACE_LABELS)
     for key, raw in (
+        ("caelus.dev/deployment-id", deployment_id),
         ("caelus.dev/owner-id", owner_id),
         ("caelus.dev/product", product),
         ("caelus.dev/environment", environment),

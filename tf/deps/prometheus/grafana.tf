@@ -179,6 +179,15 @@ resource "helm_release" "grafana" {
           "tenant-usage" = {
             json = file("${path.module}/dashboards/tenant-usage.json")
           }
+          # Ours: every deployment side by side, and one deployment's health,
+          # resources, HTTP, database, storage and logs in one view. Joined
+          # through the `caelus.dev/deployment-id` namespace label.
+          "deployments" = {
+            json = file("${path.module}/dashboards/deployments.json")
+          }
+          "deployment" = {
+            json = file("${path.module}/dashboards/deployment.json")
+          }
         }
       }
     })

@@ -4,6 +4,7 @@ from app.config import CaelusSettings
 from app.network_policy import (
     TENANT_NAMESPACE_LABELS,
     build_tenant_baseline_policy,
+    deployment_namespace_labels,
     tenant_network_policies,
 )
 
@@ -183,3 +184,22 @@ def test_tenant_labels_enforce_pod_security_baseline() -> None:
     # NetworkPolicy via hostNetwork; without it the netpol is theater.
     assert TENANT_NAMESPACE_LABELS["pod-security.kubernetes.io/enforce"] == "baseline"
     assert TENANT_NAMESPACE_LABELS["caelus.dev/tenant"] == "true"
+
+
+def test_deployment_labels_carry_the_join_key_for_storage_series() -> None:
+    labels = deployment_namespace_labels(
+        deployment_id="0b9f3f0e-5a7c-4d0e-9a51-3c2d8e1f4a6b",
+        owner_id=5,
+        product="immich",
+        environment="prod",
+    )
+    assert labels["caelus.dev/deployment-id"] == "0b9f3f0e-5a7c-4d0e-9a51-3c2d8e1f4a6b"
+    assert labels["caelus.dev/owner-id"] == "5"
+    assert labels["caelus.dev/tenant"] == "true"
+
+
+def test_deployment_labels_omit_what_is_unknown() -> None:
+    labels = deployment_namespace_labels(
+        deployment_id=None, owner_id=None, product=None, environment=None
+    )
+    assert labels == TENANT_NAMESPACE_LABELS
