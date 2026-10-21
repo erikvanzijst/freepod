@@ -1,3 +1,9 @@
+- version: "3.3.4"
+  notes: |-
+    The people performance work is finally done for everyone.
+
+    - Finding people is now fast for the last people who still saw the old slowdown
+    - A missing translation is fixed
 - version: "3.3.3"
   notes: |-
     A small fix-up release that makes finding people faster.
