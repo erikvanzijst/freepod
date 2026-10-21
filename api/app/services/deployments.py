@@ -69,10 +69,11 @@ logger = logging.getLogger(__name__)
 
 
 def namespace_labels(deployment: DeploymentORM) -> dict[str, str]:
-    """The tenant jail's labels plus this deployment's owner, product and environment."""
+    """The tenant jail's labels plus this deployment's identity, owner, product and environment."""
     template = deployment.desired_template or deployment.applied_template
     product = template.product if template is not None else None
     return deployment_namespace_labels(
+        deployment_id=str(deployment.id),
         owner_id=deployment.user_id,
         product=(product.slug or product.name) if product is not None else None,
         environment=get_settings().environment,

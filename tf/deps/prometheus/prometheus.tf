@@ -56,7 +56,7 @@ resource "helm_release" "prometheus" {
         # (opt-in since KSM 2.0). The reconciler sets these; see
         # app/network_policy.py. One series per namespace.
         metricLabelsAllowlist = [
-          "namespaces=[caelus.dev/tenant,caelus.dev/owner-id,caelus.dev/product,caelus.dev/environment]"
+          "namespaces=[caelus.dev/tenant,caelus.dev/deployment-id,caelus.dev/owner-id,caelus.dev/product,caelus.dev/environment]"
         ]
       }
 

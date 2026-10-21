@@ -1249,7 +1249,8 @@ def sync_network_policies(
 ) -> None:
     """Re-apply the baseline NetworkPolicy + tenant labels across running deployments.
 
-    Also the backfill path for the owner/product/environment namespace labels.
+    Also the backfill path for the deployment/owner/product/environment
+    namespace labels.
 
     Use this to roll out a change to the baseline policy after editing the
     template/settings. NetworkPolicy updates reprogram the CNI dataplane without
