@@ -74,7 +74,7 @@ freepod deploy      # from ops/upgrader/
 ```
 
 Builds `Dockerfile`, uploads this directory only, and rolls the deployment named
-in `.freepod.json` (`upgrader.prutser.freepod.eu`). Migrations run before the
+in `.freepod.json` (`upgrader-prutser.freepod.app`). Migrations run before the
 server binds. Nothing in CI builds or publishes this image; `uv run pytest` runs
 in CI as the `upgrader-test` job.
 

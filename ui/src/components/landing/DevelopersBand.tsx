@@ -11,7 +11,7 @@ const snippet = [
     lang: 'shell' as const,
     code: `$ freepod init
 $ freepod deploy
-https://myapp.ada.freepod.eu`,
+https://myapp-ada.freepod.app`,
   },
 ]
 

@@ -176,7 +176,7 @@ Results go to **stdout**, everything else to **stderr**, so a piped stdout
 carries only the result:
 
 ```bash
-URL=$(freepod deploy)      # https://myapp.freepod.eu
+URL=$(freepod deploy)      # https://myapp-ada.freepod.app
 ```
 
 `--quiet` silences the diagnostics and leaves the result and any error; a quiet
@@ -555,7 +555,7 @@ that has never run.
 {
   "version": 1,
   "deployment": {"id": "40bd8dea-…", "name": "custom-app-d8dtx4"},
-  "user_values": {"hostname": "myapp.freepod.eu"}
+  "user_values": {"hostname": "myapp-ada.freepod.app"}
 }
 ```
 

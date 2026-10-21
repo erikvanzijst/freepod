@@ -30,7 +30,7 @@ const facts: Fact[] = [
   {
     icon: <LanguageRoundedIcon sx={iconSx} />,
     title: 'Your own address',
-    body: 'Claim a name once and your apps live under it, like photos.alex.freepod.eu. Or use a domain you already own.',
+    body: 'Claim a name once and your apps live under it, like photos-alex.freepod.app. Or use a domain you already own.',
   },
   {
     icon: <SwapHorizRoundedIcon sx={iconSx} />,
