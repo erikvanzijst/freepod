@@ -56,7 +56,7 @@ export function PodPreview() {
         {['#F87171', '#FBBF24', '#34D399'].map((c) => (
           <Box key={c} sx={{ width: 9, height: 9, borderRadius: '50%', background: c, opacity: 0.55 }} />
         ))}
-        <Typography sx={{ fontFamily: MONO, fontSize: 12.5, color: fg.faint, pl: 1 }}>{NAME}.freepod.eu</Typography>
+        <Typography sx={{ fontFamily: MONO, fontSize: 12.5, color: fg.faint, pl: 1 }}>{NAME}.freepod.app</Typography>
       </Stack>
 
       <Box sx={{ px: 2.5, pt: 2.25, pb: 1 }}>
@@ -75,7 +75,7 @@ export function PodPreview() {
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography noWrap sx={{ fontFamily: SANS, fontWeight: 600, fontSize: 15, color: fg.primary }}>{app.category}</Typography>
                 <Typography noWrap sx={{ fontFamily: SANS, fontSize: 13, color: fg.faint }}>
-                  {label}.{NAME}.freepod.eu
+                  {label}-{NAME}.freepod.app
                 </Typography>
               </Box>
               <Stack direction="row" alignItems="center" spacing={0.75}>

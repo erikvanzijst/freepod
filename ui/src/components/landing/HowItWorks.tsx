@@ -6,7 +6,7 @@ import Reveal from './Reveal'
 const steps = [
   {
     title: 'Claim your name',
-    body: 'Pick a free domain name for your personal cloud, like alex.freepod.eu.',
+    body: 'Pick a free domain name for your personal cloud, like alex.freepod.app.',
   },
   {
     title: 'Install an app',

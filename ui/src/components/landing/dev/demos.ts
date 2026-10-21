@@ -21,7 +21,7 @@ const tool = (name: string): Seg[] => [['● ', 'accent'], [name.padEnd(7), 'fg'
 export const manualDemo: Demo = {
   id: 'manual',
   windowTitle: '~/hello — zsh',
-  url: 'hello.ada.freepod.eu',
+  url: 'hello-ada.freepod.app',
   steps: [
     { kind: 'wait', ms: 500 },
     { kind: 'cmd', text: 'npm init -y > /dev/null' },
@@ -32,7 +32,7 @@ export const manualDemo: Demo = {
     { kind: 'out', segs: [['^D', 'dim']], delay: 260 },
     { kind: 'cmd', text: 'freepod init', pause: 500 },
     { kind: 'type', text: '', prefix: [['  hostname ', 'muted'], ['[hello]', 'dim'], [': ', 'muted']], pause: 700 },
-    { kind: 'out', segs: [['  → ', 'dim'], ['hello.ada.freepod.eu', 'fg']] },
+    { kind: 'out', segs: [['  → ', 'dim'], ['hello-ada.freepod.app', 'fg']] },
     { kind: 'out', segs: [['~/hello/.freepod.json', 'muted']], delay: 220 },
     { kind: 'cmd', text: 'freepod deploy', pause: 450 },
     {
@@ -53,7 +53,7 @@ export const manualDemo: Demo = {
       ms: 1300,
       done: [['✓ ', 'ok'], ['Released   ', 'fg'], ['TLS certificate issued', 'dim']],
     },
-    { kind: 'out', segs: [['https://hello.ada.freepod.eu', 'link']], delay: 260 },
+    { kind: 'out', segs: [['https://hello-ada.freepod.app', 'link']], delay: 260 },
     { kind: 'cmd', text: '', pause: 0 },
   ],
 }
@@ -61,7 +61,7 @@ export const manualDemo: Demo = {
 export const agentDemo: Demo = {
   id: 'agent',
   windowTitle: '~/links — agent',
-  url: 'links.ada.freepod.eu',
+  url: 'links-ada.freepod.app',
   tui: true,
   steps: [
     { kind: 'wait', ms: 600 },
@@ -91,7 +91,7 @@ export const agentDemo: Demo = {
       kind: 'task',
       segs: [...tool('Bash'), ['freepod init', 'muted']],
       ms: 700,
-      done: [...tool('Bash'), ['freepod init', 'muted'], ['  → links.ada.freepod.eu', 'dim']],
+      done: [...tool('Bash'), ['freepod init', 'muted'], ['  → links-ada.freepod.app', 'dim']],
     },
     {
       kind: 'task',
@@ -101,7 +101,7 @@ export const agentDemo: Demo = {
     },
     blank,
     { kind: 'out', segs: [['  Your link shortener is live:', 'fg']], delay: 300 },
-    { kind: 'out', segs: [['  '], ['https://links.ada.freepod.eu', 'link']], delay: 120 },
+    { kind: 'out', segs: [['  '], ['https://links-ada.freepod.app', 'link']], delay: 120 },
     { kind: 'mark', name: 'work-end' },
     { kind: 'wait', ms: 400 },
   ],
