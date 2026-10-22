@@ -1,0 +1,35 @@
+{{- /*
+opencode's own password. opencode serves nothing without one, so the studio
+Ingress sends it on every request once app-auth has let the owner in, and the
+browser never sees it. Generated on first install and carried over on every
+upgrade; the Secret and the Middleware are rendered from the same value. lookup
+is empty under `helm template`, so a dry run renders a throwaway one.
+*/}}
+{{- $name := printf "%s-opencode" .Release.Name }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $name }}
+{{- $password := randAlphaNum 43 }}
+{{- if and $existing (hasKey $existing.data "password") }}
+{{- $password = index $existing.data "password" | b64dec }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "appstudio.labels" . | nindent 4 }}
+type: Opaque
+data:
+  password: {{ $password | b64enc }}
+{{- if .Values.caelus.ingress.enabled }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ .Release.Name }}-opencode-auth
+  labels:
+    {{- include "appstudio.labels" . | nindent 4 }}
+spec:
+  headers:
+    customRequestHeaders:
+      Authorization: {{ printf "Basic %s" (printf "opencode:%s" $password | b64enc) | quote }}
+{{- end }}

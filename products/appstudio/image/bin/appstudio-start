@@ -1,5 +1,6 @@
 #!/bin/sh
-# Prepare /workspace and serve opencode's web UI from the studio's first app.
+# Prepare /workspace and serve opencode's API and web UI from the studio's first
+# app.
 set -eu
 
 APPS_DIR=${APPSTUDIO_APPS_DIR:-/workspace/apps}
@@ -7,6 +8,9 @@ export APPSTUDIO_APPS_DIR=$APPS_DIR
 FIRST_APP=$APPS_DIR/app
 TREES_DIR=/workspace/trees
 DATA_DIR=/root/.local/share/opencode
+# opencode always asks for a password; the ingress sends it once the owner has
+# signed in, so the browser never sees it.
+: "${OPENCODE_SERVER_PASSWORD:?appstudio: OPENCODE_SERVER_PASSWORD is not set}"
 
 mkdir -p "$APPS_DIR" "$TREES_DIR" "$XDG_CONFIG_HOME" "$DATA_DIR" /root/.ssh
 chmod 700 /root/.ssh
@@ -48,4 +52,4 @@ cd "$FIRST_APP"
 # Stops what the agent left running once nobody uses the studio; its output
 # goes to the container's log as well as its own file.
 (while :; do appstudio-reaper || true; sleep 10; done) 2>&1 | tee -a /tmp/appstudio-reaper.log &
-exec opencode web --hostname 0.0.0.0 --port "${STUDIO_PORT:-4096}"
+exec opencode serve --hostname 0.0.0.0 --port "${STUDIO_PORT:-4096}"

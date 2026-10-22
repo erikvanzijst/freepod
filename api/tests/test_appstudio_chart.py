@@ -110,10 +110,46 @@ def test_verifier_sets_exactly_the_identity_headers():
     assert strip["spec"]["headers"]["customRequestHeaders"] == {h: "" for h in _identity_headers_in_go()}
 
 
-def test_no_password_remains():
-    rendered = yaml.safe_dump_all(_render())
-    assert "OPENCODE_SERVER_PASSWORD" not in rendered
-    assert "basicAuth" not in rendered
+def test_the_studio_ingress_sends_opencodes_password_after_sign_in():
+    docs = _render()
+    secret = next(d for d in docs if d["kind"] == "Secret" and d["metadata"]["name"] == "t-opencode")
+    password = base64.b64decode(secret["data"]["password"]).decode()
+    assert len(password) >= 32
+    header = _middleware(docs, "opencode-auth")["spec"]["headers"]["customRequestHeaders"]["Authorization"]
+    assert header == "Basic " + base64.b64encode(f"opencode:{password}".encode()).decode()
+
+    pod = next(d for d in docs if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
+    env = {e["name"]: e for e in next(c for c in pod["containers"] if c["name"] == "opencode")["env"]}
+    assert env["OPENCODE_SERVER_PASSWORD"]["valueFrom"] == {"secretKeyRef": {"name": "t-opencode", "key": "password"}}
+
+    ingresses = {d["metadata"]["name"]: d for d in docs if d["kind"] == "Ingress"}
+    chain = lambda name: ingresses[name]["metadata"]["annotations"]["traefik.ingress.kubernetes.io/router.middlewares"].split(",")
+    studio = chain("t-ingress")
+    assert studio.index("tenant-ns-t-opencode-auth@kubernetescrd") > studio.index("tenant-ns-t-app-auth@kubernetescrd")
+    assert "tenant-ns-t-opencode-auth@kubernetescrd" not in chain("t-preview")
+
+
+def test_the_chrome_replaces_opencodes_service_worker():
+    """opencode's worker answers every navigation with opencode's page, the
+    chrome's included, so the studio serves its own at the same path."""
+    docs = _render()
+    ingress = next(d for d in docs if d["kind"] == "Ingress" and d["metadata"]["name"] == "t-ingress")
+    paths = {p["path"]: p for p in ingress["spec"]["rules"][0]["http"]["paths"]}
+    # Traefik ranks by rule length: Path(`/sw.js`) would lose to PathPrefix(`/`).
+    assert paths["/sw.js"]["pathType"] == "Prefix"
+    assert paths["/sw.js"]["backend"]["service"]["port"] == {"name": "chrome"}
+    chrome = next(d for d in docs if d["kind"] == "ConfigMap" and d["metadata"]["name"] == "t-chrome")["data"]
+    assert "location = /sw.js {" in chrome["nginx.conf"]
+    assert "skipWaiting" in chrome["sw.js"] and "fetch" not in chrome["sw.js"]
+    pod = next(d for d in docs if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
+    pages = next(v for v in pod["volumes"] if v["name"] == "chrome-pages")["configMap"]["items"]
+    assert {"key": "sw.js", "path": "sw.js"} in pages
+
+
+def test_the_preview_probe_never_forwards_opencodes_password():
+    conf = next(d for d in _render() if d["kind"] == "ConfigMap" and d["metadata"]["name"] == "t-chrome")["data"]["nginx.conf"]
+    probe = conf.split("location = /.appstudio/probe {", 1)[1].split("}", 1)[0]
+    assert 'proxy_set_header Authorization "";' in probe
 
 
 def _chrome_page(docs: list[dict]) -> str:

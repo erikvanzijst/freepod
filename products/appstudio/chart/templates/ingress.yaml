@@ -30,7 +30,7 @@ metadata:
   labels:
     {{- include "appstudio.labels" . | nindent 4 }}
   annotations:
-    traefik.ingress.kubernetes.io/router.middlewares: {{ include "appstudio.routerMiddlewares" (dict "root" . "extra" (list "open-project" "frame-self")) | quote }}
+    traefik.ingress.kubernetes.io/router.middlewares: {{ include "appstudio.routerMiddlewares" (dict "root" . "extra" (list "open-project" "frame-self" "opencode-auth")) | quote }}
     {{- if $tlsCustom }}
     cert-manager.io/cluster-issuer: {{ .Values.caelus.ingress.tls.issuer | quote }}
     {{- end }}
@@ -47,6 +47,16 @@ spec:
       http:
         paths:
           - path: /.appstudio
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-app
+                port:
+                  name: chrome
+          {{- /* In place of opencode's service worker (files/sw.js). Prefix, not
+                 Exact: Traefik ranks routers by rule length, and Path(`/sw.js`)
+                 is shorter than the catch-all's PathPrefix(`/`). */}}
+          - path: /sw.js
             pathType: Prefix
             backend:
               service:

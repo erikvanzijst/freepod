@@ -7,10 +7,10 @@ hostname: ""
 # --- System values ------------------------------------------------------------
 
 # Built from products/appstudio/image.
-image: ghcr.io/erikvanzijst/freepod/appstudio:0.1.29
+image: ghcr.io/erikvanzijst/freepod/appstudio:0.1.30
 pullPolicy: IfNotPresent
 
-# Injected as STUDIO_PORT; the image runs `opencode web --port $STUDIO_PORT`.
+# Injected as STUDIO_PORT; the image runs `opencode serve --port $STUDIO_PORT`.
 # Deliberately not 8080, which apps the agent builds use (see image/Dockerfile).
 containerPort: 4096
 

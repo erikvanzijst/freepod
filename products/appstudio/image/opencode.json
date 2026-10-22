@@ -1,43 +1,44 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "update": "disable",
   "share": "disabled",
-  "autoupdate": false,
   "instructions": [
     "/opt/appstudio/AGENTS.md"
   ],
   "mcp": {
-    "playwright": {
-      "type": "local",
-      "command": [
-        "playwright-mcp",
-        "--headless",
-        "--browser",
-        "chromium",
-        "--no-sandbox",
-        "--isolated",
-        "--idle-timeout",
-        "600000",
-        "--output-dir",
-        "/tmp/playwright-mcp"
-      ],
-      "enabled": true
+    "servers": {
+      "playwright": {
+        "type": "local",
+        "command": [
+          "playwright-mcp",
+          "--headless",
+          "--browser",
+          "chromium",
+          "--no-sandbox",
+          "--isolated",
+          "--idle-timeout",
+          "600000",
+          "--output-dir",
+          "/tmp/playwright-mcp"
+        ]
+      }
     }
   },
-  "permission": {
-    "read": "allow",
-    "edit": "allow",
-    "glob": "allow",
-    "grep": "allow",
-    "list": "allow",
-    "bash": "allow",
-    "task": "allow",
-    "external_directory": "allow",
-    "todowrite": "allow",
-    "question": "allow",
-    "webfetch": "allow",
-    "websearch": "allow",
-    "lsp": "allow",
-    "skill": "allow",
-    "doom_loop": "ask"
-  }
+  "permissions": [
+    { "action": "read", "resource": "*", "effect": "allow" },
+    { "action": "edit", "resource": "*", "effect": "allow" },
+    { "action": "glob", "resource": "*", "effect": "allow" },
+    { "action": "grep", "resource": "*", "effect": "allow" },
+    { "action": "list", "resource": "*", "effect": "allow" },
+    { "action": "shell", "resource": "*", "effect": "allow" },
+    { "action": "subagent", "resource": "*", "effect": "allow" },
+    { "action": "external_directory", "resource": "*", "effect": "allow" },
+    { "action": "todowrite", "resource": "*", "effect": "allow" },
+    { "action": "question", "resource": "*", "effect": "allow" },
+    { "action": "webfetch", "resource": "*", "effect": "allow" },
+    { "action": "websearch", "resource": "*", "effect": "allow" },
+    { "action": "lsp", "resource": "*", "effect": "allow" },
+    { "action": "skill", "resource": "*", "effect": "allow" },
+    { "action": "doom_loop", "resource": "*", "effect": "ask" }
+  ]
 }

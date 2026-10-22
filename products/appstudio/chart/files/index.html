@@ -151,9 +151,8 @@
   // file API), and Home is pointed at a new project.
   //
   // First visit in a browser (no projects yet): a new session in the first app
-  // opens with an example prompt typed in. It is a draft tab added here,
-  // because opening `/<project>/session?prompt=` in 1.19 creates two drafts and
-  // lands on the empty one. The storage keys and shapes are opencode 1.19's.
+  // opens with an example prompt typed in, as a draft tab added here. The
+  // storage keys and shapes are opencode 2.1's.
   const EXAMPLE_PROMPT = "Build and deploy a link shortener";
   const SERVER_KEY = "opencode.global.dat:server";
   const TABS_KEY = "opencode.window.browser.dat:tabs";
@@ -183,10 +182,11 @@
   // The apps' directories, or null when they cannot be listed.
   async function listApps() {
     try {
-      const query = new URLSearchParams({ directory: config.apps, path: "." });
-      const res = await fetch(`/file?${query}`, { cache: "no-store" });
+      const query = new URLSearchParams({ "location[directory]": config.apps, path: "." });
+      const res = await fetch(`/api/fs/list?${query}`, { cache: "no-store" });
       if (!res.ok) return null;
-      return (await res.json())
+      return (await res.json()).data
+        .map((entry) => ({ ...entry, name: entry.path.replace(/\/$/, "") }))
         .filter((entry) => entry.type === "directory" && !entry.name.startsWith("."))
         .map((entry) => `${config.apps}/${entry.name}`);
     } catch { return null; }
@@ -226,9 +226,7 @@
       localStorage.setItem(TABS_KEY, JSON.stringify(tabs));
       return `/new-session?${new URLSearchParams({ draftId: draftID, prompt: EXAMPLE_PROMPT })}`;
     } catch {}
-    const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(config.firstApp)))
-      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-    return `/${encoded}/session`;
+    return "/?home";
   }
 
   const navigate = (path) => new Promise((resolve) => {
@@ -358,17 +356,22 @@
     if (!before) throw new Error("Could not reach the studio. Try again.");
     const dir = `${config.apps}/${name}`;
     if (before.includes(dir)) throw new Error(`There is already a project called "${name}".`);
-    const query = new URLSearchParams({ directory: config.firstApp });
-    const res = await fetch(`/pty?${query}`, {
+    const query = new URLSearchParams({ "location[directory]": config.firstApp });
+    const res = await fetch(`/api/pty?${query}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ command: "appstudio-new-app", args: [name], cwd: config.apps, title: "New project" }),
     });
     if (!res.ok) throw new Error("Could not create the project. Try again.");
+    const pty = (await res.json()).data.id;
     for (let tries = 0; tries < 34; tries++) {
       await new Promise((resolve) => setTimeout(resolve, 300));
       const apps = await listApps();
-      if (apps && apps.includes(dir)) return apps;
+      if (apps && apps.includes(dir)) {
+        // opencode keeps an exited terminal listed until it is removed.
+        fetch(`/api/pty/${encodeURIComponent(pty)}?${query}`, { method: "DELETE" }).catch(() => {});
+        return apps;
+      }
     }
     throw new Error("The project did not appear. Try again.");
   }

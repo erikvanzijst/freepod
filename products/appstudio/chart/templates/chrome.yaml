@@ -1,6 +1,7 @@
 {{- /*
 The chrome around opencode (files/index.html), the page the preview shows
-while nothing runs (files/preview-down.html), and the nginx that serves them.
+while nothing runs (files/preview-down.html), the service worker that stands
+in for opencode's (files/sw.js), and the nginx that serves them.
 */}}
 apiVersion: v1
 kind: ConfigMap
@@ -12,3 +13,4 @@ data:
   nginx.conf: {{ tpl (.Files.Get "files/nginx.conf") . | quote }}
   index.html: {{ tpl (.Files.Get "files/index.html") . | quote }}
   preview-down.html: {{ .Files.Get "files/preview-down.html" | quote }}
+  sw.js: {{ .Files.Get "files/sw.js" | quote }}

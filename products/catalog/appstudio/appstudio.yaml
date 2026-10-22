@@ -79,7 +79,7 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/appstudio
-  chart_version: 0.2.16
+  chart_version: 0.2.18
   system_values:
     nodePool: tenant
     auth:
