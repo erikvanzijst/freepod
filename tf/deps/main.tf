@@ -4,12 +4,6 @@ resource "kubernetes_namespace" "keycloak" {
   }
 }
 
-resource "kubernetes_namespace" "echo" {
-  metadata {
-    name = "echo"
-  }
-}
-
 resource "kubernetes_namespace" "mailer" {
   metadata {
     name = "mailer"

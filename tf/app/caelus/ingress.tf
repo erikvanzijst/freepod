@@ -68,7 +68,7 @@ resource "kubernetes_ingress_v1" "caelus" {
       # /oauth2/start.
       "traefik.ingress.kubernetes.io/router.middlewares" = "${var.ns_login}-forward-auth@kubernetescrd,${var.apex_headers_middleware}"
     }
-    # NOTE: this ingress covers only /api and /echo. The UI (/) is served
+    # NOTE: this ingress covers only /api. The UI (/) is served
     # anonymously by the separate `caelus-ui-ingress` below so the public
     # landing page can load before login. /oauth2/* on this host is served
     # unauthenticated by the higher-priority `oauth2-endpoints` IngressRoute
@@ -95,20 +95,6 @@ resource "kubernetes_ingress_v1" "caelus" {
             }
           }
         }
-
-        path {
-          path      = "/echo"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.echo.metadata[0].name
-              port {
-                number = 8080
-              }
-            }
-          }
-        }
       }
     }
   }
@@ -119,7 +105,7 @@ resource "kubernetes_ingress_v1" "caelus" {
 # the security boundary lives at the API (forward-auth + per-endpoint
 # Depends). The SPA decides landing-vs-dashboard by calling GET /api/me.
 #
-# This is a lower-priority `/` router than the `/api` and `/echo` prefixes on
+# This is a lower-priority `/` router than the `/api` prefix on
 # caelus-ingress and the `/oauth2` IngressRoute, so those more-specific paths
 # still win; everything else (the SPA and its assets) falls through to here.
 resource "kubernetes_ingress_v1" "caelus_ui" {
@@ -153,28 +139,5 @@ resource "kubernetes_ingress_v1" "caelus_ui" {
         }
       }
     }
-  }
-}
-
-resource "kubernetes_service" "echo_proxy" {
-  metadata {
-    name      = "echo-proxy"
-    namespace = var.namespace
-  }
-
-  spec {
-    # No selector — routes to the echo service in the echo namespace
-    # via the manually-defined Endpoints resource below.
-    port {
-      port        = 8080
-      target_port = 8080
-    }
-  }
-}
-
-data "kubernetes_service" "echo" {
-  metadata {
-    name      = "echo"
-    namespace = "echo"
   }
 }
