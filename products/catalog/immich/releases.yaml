@@ -1,3 +1,8 @@
+- version: "3.3.5"
+  notes: |-
+    A maintenance and security update.
+
+    - Updates the trusted certificate data, following a compromise at one certificate authority
 - version: "3.3.4"
   notes: |-
     The people performance work is finally done for everyone.
