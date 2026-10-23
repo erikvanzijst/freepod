@@ -3,6 +3,10 @@ variable "haproxy_edge_ip" {
   type        = string
 }
 
+# Upgrading: tenants' HTTP access logs (api/app/services/http_logs.py) select a
+# deployment's requests by Traefik's Ingress router names, which this version
+# writes as `<namespace>-<ingress>-<host+path>@kubernetes`. A release that names
+# routers differently leaves `freepod log --http` empty, so check it after a bump.
 variable "traefik_chart_version" {
   description = "Upstream Traefik Helm chart version. 41.5.0 ships Traefik app v3.7.13, raised from 39.0.5/v3.6.10 for providers.kubernetesCRD.defaultTLSResourcesNamespace, which v3.7 introduced and v3.6 rejects as an unknown field. The chart renamed two keys this release range: providers.kubernetesIngressNginx -> kubernetesIngressNGINX, and logs.{general,access} -> top-level log/accessLog."
   type        = string

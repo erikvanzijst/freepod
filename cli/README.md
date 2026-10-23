@@ -46,7 +46,7 @@ project that *does* have a `Dockerfile` in its root is built from that instead.
 | `freepod init`     | Set the current directory up as a project: choose a hostname, write `.freepod.json`. |
 | `freepod deploy`   | Pack, build and release the current project.                                         |
 | `freepod var`      | Read and change the environment your application runs with.                          |
-| `freepod log`      | Stream your application's pod output.                                                |
+| `freepod log`      | Stream your application's pod output, or with `--http` its HTTP access log.          |
 | `freepod shell`    | Open a shell in the deployment's application container, or run a command in it.      |
 | `freepod cp`       | Copy a file or directory between here and the deployment, either direction.          |
 | `freepod builds`   | List your builds, most recent first.                                                 |

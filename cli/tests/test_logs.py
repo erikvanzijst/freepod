@@ -10,13 +10,16 @@ from pathlib import Path
 import httpx
 import pytest
 
-from freepod import FreepodError
+from freepod import EXIT_USAGE, FreepodError, UsageError
+from freepod.cli import main
 from freepod.logs import (
     Cursor,
     LogStreamInterrupted,
     follow_stream,
     format_line,
+    format_request,
     format_timestamp,
+    parse_since,
     parse_sse,
     resolve_deployment,
     run,
@@ -483,3 +486,228 @@ def test_a_resume_does_not_re_announce_the_release_it_was_already_following(make
         out=io.StringIO(), say=said.append, sleep=lambda _s: None,
     )
     assert not [line for line in said if "Now following" in line]
+
+
+# --------------------------------------------------------------------------
+# --since
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text, seconds", [("30s", 30), ("15m", 900), ("2h", 7200), ("3d", 259200), ("14d", 1209600)]
+)
+def test_since_accepts_a_whole_number_and_a_unit(text, seconds):
+    assert parse_since(text) == seconds
+
+
+@pytest.mark.parametrize("text", ["1w", "90", "0m", "1.5h", "-1h", "h", "1 h", ""])
+def test_since_refuses_anything_else(text):
+    with pytest.raises(UsageError, match="30s, 15m, 2h, 3d"):
+        parse_since(text)
+
+
+def test_a_malformed_since_is_refused_before_anything_is_sent(stub_api, capsys):
+    def handler(request):
+        raise AssertionError(f"no request should be made, got {request.url}")
+
+    stub_api(handler)
+    assert main(["log", "--since", "1w"]) == EXIT_USAGE
+    assert "--since" in capsys.readouterr().err
+
+
+def test_a_window_is_sent_as_lookback_seconds(make_api):
+    api, recorder, _ = make_api(lambda request: stream_response(sse(end())))
+    stream_once(
+        api, 7, DEPLOYMENT, Cursor(), follow=False, lookback=3600,
+        out=io.StringIO(), say=lambda _m: None,
+    )
+    assert recorder.requests[0].url.params["lookback"] == "3600"
+
+
+def test_a_reconnect_resumes_from_the_cursor_and_does_not_resend_the_window(make_api):
+    attempts = {"n": 0}
+
+    def handler(request):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            return stream_response(sse(log_event(TS1, "before")))
+        return stream_response(sse(end()))
+
+    api, recorder, _ = make_api(handler)
+    follow_stream(
+        api, 7, DEPLOYMENT, tail=None, release=None, lookback=600, timestamps=False,
+        out=io.StringIO(), say=lambda _m: None, sleep=lambda _s: None,
+    )
+
+    assert recorder.requests[0].url.params["lookback"] == "600"
+    assert "lookback" not in recorder.requests[-1].url.params
+    assert recorder.requests[-1].url.params["since"] == TS1
+
+
+def test_the_platforms_refusal_of_a_window_is_reported_with_its_reason(make_api):
+    api, _, _ = make_api(
+        lambda request: json_response(
+            400, {"detail": "A log can be read at most 14 days back; 30 days was requested."}
+        )
+    )
+    with pytest.raises(FreepodError, match="at most 14 days back"):
+        stream_once(
+            api, 7, DEPLOYMENT, Cursor(), follow=False, lookback=30 * 86400,
+            out=io.StringIO(), say=lambda _m: None,
+        )
+
+
+def test_an_empty_window_says_so(make_api, tmp_path):
+    project_at(tmp_path)
+    api, _, _ = make_api(
+        lambda request: json_response(200, {"id": 7})
+        if request.url.path == "/api/me"
+        else stream_response(sse(end()))
+    )
+    said = []
+    assert run(api, "prod", root=tmp_path, lookback=60, out=io.StringIO(), say=said.append) == 0
+    assert any("in that window" in line for line in said)
+
+
+# --------------------------------------------------------------------------
+# --json
+# --------------------------------------------------------------------------
+
+
+def test_json_prints_one_object_per_line_with_a_string_timestamp(make_api, tmp_path):
+    project_at(tmp_path)
+    body = sse(log_event(TS1, "hello"), log_event(TS2, 'say "hi"', release=None), end())
+    api, _, _ = make_api(
+        lambda request: json_response(200, {"id": 7})
+        if request.url.path == "/api/me"
+        else stream_response(body)
+    )
+    out = io.StringIO()
+
+    run(api, "prod", root=tmp_path, as_json=True, timestamps=True, out=out, say=lambda _m: None)
+
+    lines = out.getvalue().splitlines()
+    assert [json.loads(line) for line in lines] == [
+        {"ts": TS1, "line": "hello", "release": RELEASE},
+        {"ts": TS2, "line": 'say "hi"', "release": None},
+    ]
+    # Every digit of the timestamp, as a string: no float ever touched it.
+    assert f'"ts":"{TS1}"' in lines[0]
+
+
+# --------------------------------------------------------------------------
+# --http
+# --------------------------------------------------------------------------
+
+REQUEST = {
+    "ts": TS1,
+    "time": "2026-10-23T12:50:48.123456789Z",
+    "host": "myapp.freepod.eu",
+    "remote_addr": "203.0.113.7",
+    "method": "GET",
+    "path": "/index.html",
+    "protocol": "HTTP/2.0",
+    "status": 200,
+    "bytes": 512,
+    "duration_ms": 32.412,
+    "referer": "https://example.org/",
+    "user_agent": "Mozilla/5.0 (X11; Linux x86_64)",
+}
+
+
+def request_event(record) -> str:
+    return f"id: {record['ts']}\nevent: request\ndata: {json.dumps(record)}"
+
+
+def test_a_request_prints_in_combined_log_format():
+    assert format_request(REQUEST, timestamps=False) == (
+        '203.0.113.7 - - [23/Oct/2026:12:50:48 +0000] "GET /index.html HTTP/2.0" 200 512 '
+        '"https://example.org/" "Mozilla/5.0 (X11; Linux x86_64)"'
+    )
+
+
+def test_absent_headers_print_as_a_dash():
+    line = format_request({**REQUEST, "referer": None, "user_agent": None}, timestamps=False)
+    assert line.endswith('200 512 "-" "-"')
+
+
+def test_quotes_and_control_characters_are_escaped_onto_one_line():
+    line = format_request(
+        {**REQUEST, "path": '/a"b\\c\nd', "user_agent": 'evil" agent'}, timestamps=False
+    )
+    assert "\n" not in line
+    assert '"GET /a\\"b\\\\c\\x0ad HTTP/2.0"' in line
+    assert line.endswith('"evil\\" agent"')
+    # Splitting on unescaped quotes still yields exactly the combined fields.
+    assert len(re.findall(r'"(?:[^"\\]|\\.)*"', line)) == 3
+
+
+def test_timestamps_prefix_the_time_the_request_was_logged():
+    line = format_request(REQUEST, timestamps=True)
+    assert line.startswith(format_timestamp(TS1) + " 203.0.113.7 - - [")
+
+
+def test_the_month_does_not_follow_the_locale(monkeypatch):
+    import locale
+
+    try:
+        locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
+    except locale.Error:
+        pytest.skip("no German locale here")
+    try:
+        record = {**REQUEST, "time": "2026-03-05T01:02:03Z"}
+        assert "[05/Mar/2026:01:02:03 +0000]" in format_request(record, timestamps=False)
+    finally:
+        locale.setlocale(locale.LC_TIME, "C")
+
+
+def test_http_reads_the_access_log_endpoint(make_api, tmp_path):
+    project_at(tmp_path)
+    api, recorder, _ = make_api(
+        lambda request: json_response(200, {"id": 7})
+        if request.url.path == "/api/me"
+        else stream_response(sse(request_event(REQUEST), end()))
+    )
+    out = io.StringIO()
+
+    run(api, "prod", root=tmp_path, http=True, out=out, say=lambda _m: None)
+
+    assert recorder.requests[-1].url.path == f"/api/users/7/deployments/{DEPLOYMENT}/http-log"
+    assert out.getvalue() == format_request(REQUEST, timestamps=False) + "\n"
+
+
+def test_http_json_prints_the_record_unchanged(make_api, tmp_path):
+    project_at(tmp_path)
+    api, _, _ = make_api(
+        lambda request: json_response(200, {"id": 7})
+        if request.url.path == "/api/me"
+        else stream_response(sse(request_event(REQUEST), end()))
+    )
+    out = io.StringIO()
+
+    run(api, "prod", root=tmp_path, http=True, as_json=True, out=out, say=lambda _m: None)
+
+    assert json.loads(out.getvalue()) == REQUEST
+
+
+def test_http_with_a_release_is_refused_before_anything_is_sent(stub_api, capsys):
+    def handler(request):
+        raise AssertionError(f"no request should be made, got {request.url}")
+
+    stub_api(handler)
+    assert main(["log", "--http", "-r", "3"]) == EXIT_USAGE
+    assert "cannot be pinned to a release" in capsys.readouterr().err
+
+
+def test_no_requests_is_reported_on_stderr(make_api, tmp_path):
+    project_at(tmp_path)
+    api, _, _ = make_api(
+        lambda request: json_response(200, {"id": 7})
+        if request.url.path == "/api/me"
+        else stream_response(sse(end()))
+    )
+    out, said = io.StringIO(), []
+
+    assert run(api, "prod", root=tmp_path, http=True, out=out, say=said.append) == 0
+    assert out.getvalue() == ""
+    assert any("No HTTP requests" in line for line in said)

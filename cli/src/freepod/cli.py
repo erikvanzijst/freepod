@@ -1646,6 +1646,18 @@ if __name__ == "__main__":  # pragma: no cover
     "-t", "--timestamps", is_flag=True,
     help="prefix each line with the time the platform recorded for it",
 )
+@click.option(
+    "--since", metavar="DURATION",
+    help="only lines from this long ago until now, e.g. 30s, 15m, 2h, 3d (at most --tail of them)",
+)
+@click.option(
+    "--http", "http", is_flag=True,
+    help="the HTTP requests that reached the deployment, in Combined Log Format",
+)
+@click.option(
+    "--json", "as_json", is_flag=True,
+    help="one JSON object per line, with every field the platform sends",
+)
 @click.pass_obj
 def log_command(
     context: Context,
@@ -1653,14 +1665,29 @@ def log_command(
     tail: Optional[int],
     release: Optional[int],
     timestamps: bool,
+    since: Optional[str],
+    http: bool,
+    as_json: bool,
 ) -> None:
-    """Print this project's application output.
+    """Print this project's application output, or its HTTP access log.
 
     Application output goes to stdout and freepod's own messages to stderr, so
     `freepod log > app.log` captures only your app's output.
 
     With `-f` the stream stays open, including across redeploys.
+
+    `--http` prints each request that reached the deployment as one line in
+    Combined Log Format; with `--json` each line is a JSON record that also
+    carries the hostname and the request's duration. Requests belong to the
+    deployment rather than to a release, so `--http` cannot be combined with `-r`.
     """
+    if http and release is not None:
+        raise UsageError(
+            "the HTTP access log cannot be pinned to a release: requests are routed to "
+            "the deployment, not to a release. Drop -r, or use --since to look back."
+        )
+    lookback = logs_module.parse_since(since) if since is not None else None
+
     session = context.session()
     session.authenticate(interactive=False)
     with context.client(session) as api:
@@ -1672,7 +1699,10 @@ def log_command(
                 follow=follow,
                 tail=tail,
                 release=release,
+                lookback=lookback,
                 timestamps=timestamps,
+                http=http,
+                as_json=as_json,
                 say=context.say,
             )
         except KeyboardInterrupt:

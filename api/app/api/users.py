@@ -24,6 +24,8 @@ from app.models import (
     UserRead, DeploymentUpdate,
 )
 from app.services import deployment_logs as log_service
+from app.services import http_logs
+from app.services import log_stream
 from app.services import deployments as deployment_service, users as user_service
 from app.services.loki import LokiException, LokiQueryClient
 from app.services.mollie import PaymentProvider
@@ -756,7 +758,11 @@ def delete_deployment_endpoint(
         "comments and must be ignored."
     ),
     responses={
-        400: {"description": "Malformed resume point, or too many open streams."},
+        400: {
+            "description": (
+                "Malformed resume point, a window beyond retention, or too many open streams."
+            )
+        },
         403: {"description": "Caller may only read their own deployments."},
         404: {"description": "No such deployment, or no such release for it."},
         503: {"description": "The log store could not be reached."},
@@ -781,6 +787,14 @@ async def get_deployment_log(
             "event received. Decimal digits only."
         ),
     ),
+    lookback: int | None = Query(
+        None,
+        ge=1,
+        description=(
+            "Only lines written in this many seconds before now. Bounded by the log "
+            "store's retention; ignored when `since` is given."
+        ),
+    ),
     current_user: UserORM = Depends(require_self),
     session: Session = Depends(get_session),
 ) -> StreamingResponse:
@@ -795,17 +809,20 @@ async def get_deployment_log(
     - **release** — pin to one release by number, including one that failed and
       whose pods were deleted.
     - **since** — inclusive resume point.
+    - **lookback** — a window in seconds; at most `tail` lines from it, the
+      newest. A resume point takes precedence.
 
     ## Errors
-    - **400 Bad Request** — malformed `since`, or more concurrent streams than
-      the platform allows.
+    - **400 Bad Request** — malformed `since`, a `lookback` beyond the log
+      store's retention, or more concurrent streams than the platform allows.
     - **403 Forbidden** — reading another account's deployment without
       administrator privileges.
     - **404 Not Found** — no such deployment, or no such release number for it.
     - **503 Service Unavailable** — the log store could not be reached.
     """
     settings = get_settings()
-    resume_ns = log_service.parse_resume_timestamp(since)
+    resume_ns = log_stream.parse_resume_timestamp(since)
+    lookback_seconds = log_stream.check_lookback(lookback, settings)
     requested_tail = min(tail or settings.log_tail_lines, settings.log_max_tail_lines)
 
     # Authorize and resolve *now*, while the session is still open, and hold
@@ -818,7 +835,12 @@ async def get_deployment_log(
     client = LokiQueryClient.from_settings(settings)
     try:
         initial = await log_service.fetch_initial(
-            client, target, tail=requested_tail, resume_ns=resume_ns, settings=settings
+            client,
+            target,
+            tail=requested_tail,
+            resume_ns=resume_ns,
+            settings=settings,
+            lookback_seconds=lookback_seconds,
         )
     except LokiException as exc:
         # Before the first byte, so a status code is still available. An
@@ -830,7 +852,7 @@ async def get_deployment_log(
             detail=f"Log store is unavailable: {exc}",
         ) from exc
 
-    log_service.stream_registry.acquire(
+    log_stream.stream_registry.acquire(
         current_user.id, limit=settings.log_max_streams_per_user
     )
 
@@ -841,7 +863,129 @@ async def get_deployment_log(
             ):
                 yield chunk
         finally:
-            log_service.stream_registry.release(current_user.id)
+            log_stream.stream_registry.release(current_user.id)
+
+    return StreamingResponse(
+        body(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@router.get(
+    "/{user_id}/deployments/{deployment_id}/http-log",
+    summary="Stream a deployment's HTTP access log",
+    response_description=(
+        "The requests that reached the deployment, as Server-Sent Events (SSE). Each "
+        "`request` event carries `ts` (the nanosecond timestamp the store recorded, as a "
+        "**string**), `time` (when the request started, RFC 3339 UTC), `host`, "
+        "`remote_addr`, `method`, `path`, `protocol`, `status`, `bytes`, `duration_ms`, "
+        "`referer` and `user_agent` (both null when absent). Lines beginning with `:` are "
+        "keepalive comments and must be ignored."
+    ),
+    responses={
+        400: {
+            "description": (
+                "Malformed resume point, a window beyond retention, or too many open streams."
+            )
+        },
+        403: {"description": "Caller may only read their own deployments."},
+        404: {"description": "No such deployment."},
+        503: {"description": "The log store could not be reached."},
+    },
+)
+async def get_deployment_http_log(
+    user_id: int = Path(..., description="ID of the user that owns the deployment."),
+    deployment_id: UUID = Path(..., description="UUID of the deployment to read."),
+    follow: bool = Query(
+        False, description="Hold the response open and emit requests as they are logged."
+    ),
+    tail: int | None = Query(
+        None, ge=1, description="How many of the most recent requests to start with."
+    ),
+    since: str | None = Query(
+        None,
+        description=(
+            "Resume from this nanosecond timestamp, inclusive — the `ts` of the last "
+            "event received. Decimal digits only."
+        ),
+    ),
+    lookback: int | None = Query(
+        None,
+        ge=1,
+        description=(
+            "Only requests logged in this many seconds before now. Bounded by the log "
+            "store's retention; ignored when `since` is given."
+        ),
+    ),
+    current_user: UserORM = Depends(require_self),
+    session: Session = Depends(get_session),
+) -> StreamingResponse:
+    """Stream the HTTP requests that reached a deployment owned by ``user_id``.
+
+    Every request routed to any of the deployment's hostnames and paths, as the
+    platform's edge logged it. Requests cannot be pinned to a release: they are
+    routed to the deployment, not to a rollout.
+
+    ## Parameters
+    - **user_id** — owner of the deployment.
+    - **deployment_id** — UUID of the deployment.
+    - **follow** — hold the stream open.
+    - **tail** — most recent requests to start with; bounded by the platform.
+    - **since** — inclusive resume point.
+    - **lookback** — a window in seconds; at most `tail` requests from it, the
+      newest. A resume point takes precedence.
+
+    ## Errors
+    - **400 Bad Request** — malformed `since`, a `lookback` beyond the log
+      store's retention, or more concurrent streams than the platform allows.
+    - **403 Forbidden** — reading another account's deployment without
+      administrator privileges.
+    - **404 Not Found** — no such deployment.
+    - **503 Service Unavailable** — the log store could not be reached.
+    """
+    settings = get_settings()
+    resume_ns = log_stream.parse_resume_timestamp(since)
+    lookback_seconds = log_stream.check_lookback(lookback, settings)
+    requested_tail = min(tail or settings.log_tail_lines, settings.log_max_tail_lines)
+
+    target = http_logs.resolve_target(session, deployment_id=deployment_id, user_id=user_id)
+    source = http_logs.log_source(target)
+
+    client = LokiQueryClient.from_settings(settings)
+    try:
+        initial = await log_stream.fetch_initial(
+            client,
+            source.selector,
+            tail=requested_tail,
+            resume_ns=resume_ns,
+            settings=settings,
+            lookback_seconds=lookback_seconds,
+        )
+    except LokiException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Log store is unavailable: {exc}",
+        ) from exc
+
+    # One cap across both logs: it protects the API's single worker, whichever
+    # log a stream reads.
+    log_stream.stream_registry.acquire(
+        current_user.id, limit=settings.log_max_streams_per_user
+    )
+
+    async def body():
+        try:
+            async for chunk in log_stream.stream(
+                client, source, initial=initial, follow=follow, settings=settings
+            ):
+                yield chunk
+        finally:
+            log_stream.stream_registry.release(current_user.id)
 
     return StreamingResponse(
         body(),

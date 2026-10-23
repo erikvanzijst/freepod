@@ -14,11 +14,40 @@ freepod log -n 1000      # the most recent 1000 lines (at most 5000)
 freepod log -f           # stream output, across releases
 freepod log -r 4         # output of release 4, including a failed one
 freepod log -t           # prefix each line with its timestamp
+freepod log --since 2h   # only the last two hours (30s, 15m, 2h, 3d; at most -n lines)
+freepod log --json       # one JSON object per line: ts, line, release
 ```
 
 Application output goes to stdout and the client's own messages to stderr, so `freepod log > app.log` captures only the application's output. Release numbers come from `freepod releases`.
 
+`--since` returns at most `-n` lines (200 by default), the newest in the window. It reaches back at most 14 days.
+
 When a release fails, `freepod deploy` prints the last lines of the failed container's output. `freepod log -r <release>` shows all of it.
+
+## HTTP requests
+
+`freepod log --http` prints the requests that reached the deployment, one per line, in Combined Log Format:
+
+```bash
+freepod log --http                  # the most recent 200 requests
+freepod log --http -f               # stream requests as they arrive
+freepod log --http --since 1h -n 5000
+freepod log --http --json           # one JSONL record per request
+```
+
+```
+203.0.113.7 - - [23/Oct/2026:12:50:48 +0000] "GET /index.html HTTP/2.0" 200 512 "https://example.org/" "Mozilla/5.0 (X11; Linux x86_64)"
+```
+
+The fields are the client address, the time the request started (UTC), the request line, the status, the response size in bytes, the referer and the user agent. `-t` prefixes the time the request was logged, after it finished.
+
+`--json` records also carry `host` (useful when the deployment serves several hostnames) and `duration_ms`:
+
+```json
+{"ts":"1792759848155836101","time":"2026-10-23T12:50:48.123456789Z","host":"myapp.freepod.app","remote_addr":"203.0.113.7","method":"GET","path":"/index.html","protocol":"HTTP/2.0","status":200,"bytes":512,"duration_ms":32.412,"referer":"https://example.org/","user_agent":"Mozilla/5.0 (X11; Linux x86_64)"}
+```
+
+`referer` and `user_agent` are `null` when the request carried none. Requests are routed to the deployment, not to a release, so `--http` does not combine with `-r`. HTTP requests are kept for 14 days.
 
 ## SSH key
 
@@ -64,7 +93,7 @@ The deployment side is marked with a leading `:`. A relative remote path is rela
 | --- | --- |
 | `freepod deploy` exits with code `4` | The build log printed by `deploy`; `freepod builds` |
 | `freepod deploy` exits with code `5` | The output printed by `deploy`; `freepod log -r <release>`. Usually the server exits at startup or does not listen on `0.0.0.0:$PORT`. |
-| Requests fail, logs look normal | `freepod releases`: a failed release leaves the previous one running |
+| Requests fail, logs look normal | `freepod log --http` shows whether requests reach the application and what status they get; `freepod releases`: a failed release leaves the previous one running |
 | Configuration seems wrong | `freepod shell env` shows the environment the application receives |
 | Files seem missing | `freepod shell ls -la` shows what the image contains; see [Builds: What is uploaded](builds/index.md#what-is-uploaded) |
 | Database errors | [PostgreSQL](storage/postgresql.mdx): read-only at 100 % of the allowance, connections refused at 150 % |

@@ -9,13 +9,14 @@ would be untestable against one.
 from __future__ import annotations
 
 import json
+import time
 from uuid import UUID, uuid4
 
 import pytest
 
 from app.config import CaelusSettings
 from app.models import DeploymentORM, DeploymentReconcileJobORM, DeploymentReleaseORM
-from app.services import deployment_logs as log_service
+from app.services import log_stream
 from app.services.loki import LogEntry, LokiException
 from app.services.jobs import JobService
 from sqlmodel import select
@@ -275,6 +276,75 @@ def test_the_first_connect_is_backward_and_bounded(client, db_session, loki):
     assert fake.queries[0]["end_ns"] is not None
 
 
+def test_a_window_narrows_the_first_connect_to_the_newest_tail_within_it(
+    client, db_session, loki
+):
+    """The store filters by time; what the endpoint owns is asking for the
+    window's newest `tail` lines, which is the backward first-connect query
+    with a later start."""
+    user_id, _, deployment_id = _setup(client, db_session, "window@example.com")
+    fake = loki([[]])
+    before = time.time_ns()
+    client.get(
+        f"/api/users/{user_id}/deployments/{deployment_id}/log",
+        params={"lookback": 3600, "tail": 20},
+    )
+    after = time.time_ns()
+    query = fake.queries[0]
+    assert query["direction"] == "backward"
+    assert query["limit"] == 20
+    assert before - 3600 * 10**9 <= query["start_ns"] <= after - 3600 * 10**9
+    assert query["end_ns"] is not None
+
+
+def test_a_window_beyond_retention_is_refused_with_the_maximum(
+    client, db_session, loki, _log_settings
+):
+    user_id, _, deployment_id = _setup(client, db_session, "toolong@example.com")
+    fake = loki([[]])
+    resp = client.get(
+        f"/api/users/{user_id}/deployments/{deployment_id}/log",
+        params={"lookback": _log_settings.log_initial_lookback_seconds + 1},
+    )
+    assert resp.status_code == 400
+    assert "14 days" in resp.json()["detail"]
+    assert fake.queries == []
+
+
+def test_a_window_at_retention_is_accepted(client, db_session, loki, _log_settings):
+    user_id, _, deployment_id = _setup(client, db_session, "atlimit@example.com")
+    loki([[]])
+    resp = client.get(
+        f"/api/users/{user_id}/deployments/{deployment_id}/log",
+        params={"lookback": _log_settings.log_initial_lookback_seconds},
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.parametrize("bad", ["0", "-5", "1.5", "1h", ""])
+def test_a_malformed_window_is_rejected_and_reaches_no_query(client, db_session, loki, bad):
+    user_id, _, deployment_id = _setup(
+        client, db_session, f"badwin{abs(hash(bad))}@example.com"
+    )
+    fake = loki([[]])
+    resp = client.get(
+        f"/api/users/{user_id}/deployments/{deployment_id}/log", params={"lookback": bad}
+    )
+    assert resp.status_code in (400, 422)
+    assert fake.queries == []
+
+
+def test_a_resume_point_takes_precedence_over_a_window(client, db_session, loki):
+    user_id, _, deployment_id = _setup(client, db_session, "resumewin@example.com")
+    fake = loki([[]])
+    client.get(
+        f"/api/users/{user_id}/deployments/{deployment_id}/log",
+        params={"since": TS1, "lookback": 60},
+    )
+    assert fake.queries[0]["start_ns"] == int(TS1)
+    assert fake.queries[0]["direction"] == "forward"
+
+
 def test_the_tail_is_capped_by_the_platform(client, db_session, loki, _log_settings):
     user_id, _, deployment_id = _setup(client, db_session, "cap@example.com")
     fake = loki([[]])
@@ -331,8 +401,8 @@ def test_a_malformed_resume_point_is_rejected_and_reaches_no_query(
 
 def test_a_valid_resume_point_is_an_int_before_it_becomes_start(client, db_session, loki):
     """Never through a float at any point: `float(TS1)` loses the low digits."""
-    assert log_service.parse_resume_timestamp(TS1) == int(TS1)
-    assert str(log_service.parse_resume_timestamp(TS1)) == TS1
+    assert log_stream.parse_resume_timestamp(TS1) == int(TS1)
+    assert str(log_stream.parse_resume_timestamp(TS1)) == TS1
     assert int(float(TS1)) != int(TS1)  # the corruption being avoided
 
 
@@ -495,7 +565,7 @@ def test_the_stream_cap_is_released_when_a_stream_ends(client, db_session, loki)
             client.get(f"/api/users/{user_id}/deployments/{deployment_id}/log").status_code
             == 200
         )
-    assert log_service.stream_registry.open_count(caller_id) == 0
+    assert log_stream.stream_registry.open_count(caller_id) == 0
 
 
 def test_too_many_concurrent_streams_are_refused(client, db_session, loki, _log_settings):
@@ -507,7 +577,7 @@ def test_too_many_concurrent_streams_are_refused(client, db_session, loki, _log_
     caller_id = client.get("/api/me").json()["id"]
 
     for _ in range(_log_settings.log_max_streams_per_user):
-        log_service.stream_registry.acquire(
+        log_stream.stream_registry.acquire(
             caller_id, limit=_log_settings.log_max_streams_per_user
         )
     try:
@@ -516,5 +586,5 @@ def test_too_many_concurrent_streams_are_refused(client, db_session, loki, _log_
         assert "concurrent log streams" in resp.json()["detail"]
     finally:
         for _ in range(_log_settings.log_max_streams_per_user):
-            log_service.stream_registry.release(caller_id)
-    assert log_service.stream_registry.open_count(caller_id) == 0
+            log_stream.stream_registry.release(caller_id)
+    assert log_stream.stream_registry.open_count(caller_id) == 0
