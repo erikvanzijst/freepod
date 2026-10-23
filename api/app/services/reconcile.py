@@ -12,6 +12,7 @@ from app.models import DeploymentORM, DeploymentReleaseORM, ProductTemplateVersi
 from app.provisioner import Provisioner, provisioner as default_provisioner
 from app.services import (
     deployment_logs,
+    log_stream,
     object_storage,
     relational_storage,
     template_values,
@@ -214,7 +215,7 @@ class DeploymentReconciler:
             )
             entries = LokiQueryClient.from_settings(settings).query_range(
                 query=deployment_logs.build_selector(target),
-                start_ns=int(started.timestamp() * deployment_logs.NS_PER_SECOND),
+                start_ns=int(started.timestamp() * log_stream.NS_PER_SECOND),
                 limit=settings.log_failure_tail_lines,
                 direction=DIRECTION_BACKWARD,
             )

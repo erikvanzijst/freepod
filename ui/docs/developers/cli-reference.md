@@ -363,12 +363,17 @@ Works for keys this machine does not hold, such as one on a lost laptop.
 freepod log [OPTIONS]
 ```
 
-Print this project's application output.
+Print this project's application output, or its HTTP access log.
 
 Application output goes to stdout and freepod's own messages to stderr, so
 `freepod log > app.log` captures only your app's output.
 
 With `-f` the stream stays open, including across redeploys.
+
+`--http` prints each request that reached the deployment as one line in
+Combined Log Format; with `--json` each line is a JSON record that also
+carries the hostname and the request's duration. Requests belong to the
+deployment rather than to a release, so `--http` cannot be combined with `-r`.
 
 | Option | Description |
 | --- | --- |
@@ -376,6 +381,9 @@ With `-f` the stream stays open, including across redeploys.
 | `-n, --tail LINES` | how many recent lines to show first (default: set by the platform) |
 | `-r, --release NUMBER` | pin to one release by its number, including one that failed and was rolled back |
 | `-t, --timestamps` | prefix each line with the time the platform recorded for it |
+| `--since DURATION` | only lines from this long ago until now, e.g. 30s, 15m, 2h, 3d (at most --tail of them) |
+| `--http` | the HTTP requests that reached the deployment, in Combined Log Format |
+| `--json` | one JSON object per line, with every field the platform sends |
 
 ## `freepod login`
 

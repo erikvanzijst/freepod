@@ -1,4 +1,4 @@
-"""`freepod log` — reading a deployment's application output.
+"""`freepod log` — reading a deployment's application output, or its HTTP access log.
 
 Stream discipline is the opposite of `deploy`'s, and deliberately so. There,
 the build log is the platform narrating its progress towards a result, so it
@@ -10,12 +10,16 @@ word the client says about itself goes to stderr.
 The transport is Server-Sent Events over the existing `ApiClient`, parsed with
 `iter_lines()`. No dependency is added: `httpx` is already here, and SSE is a
 line format rather than a protocol needing a library.
+
+The access log (`--http`) rides the same stream, resume and reconnect path; only
+the endpoint, the event name and how a record is rendered differ.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -37,6 +41,7 @@ from .project import find_project_root, load
 # Event names the platform emits. A line beginning with ':' is a comment --
 # the keepalive -- and is discarded without ever reaching the output.
 EVENT_LOG = "log"
+EVENT_REQUEST = "request"
 EVENT_ERROR = "error"
 EVENT_END = "end"
 
@@ -48,6 +53,25 @@ END_COMPLETE = "complete"
 
 class LogStreamInterrupted(FreepodError):
     """The stream ended without the platform saying it was finished."""
+
+
+_SINCE = re.compile(r"[1-9][0-9]*([smhd])")
+_SINCE_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
+
+def parse_since(text: str) -> int:
+    """`--since` as whole seconds, checked before anything is sent.
+
+    How far back the platform can reach is its own business -- it holds the
+    retention and says so when asked for more -- so only the form is checked here.
+    """
+    match = _SINCE.fullmatch(text.strip())
+    if match is None:
+        raise UsageError(
+            f"--since takes a whole number followed by s, m, h or d "
+            f"(e.g. 30s, 15m, 2h, 3d), not {text!r}."
+        )
+    return int(text.strip()[:-1]) * _SINCE_UNITS[match.group(1)]
 
 
 @dataclass
@@ -168,6 +192,76 @@ def format_line(data: Dict[str, Any], *, timestamps: bool) -> str:
     return " ".join(prefixes + [line]) if prefixes else line
 
 
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def format_request(data: Dict[str, Any], *, timestamps: bool) -> str:
+    """Render one request in Combined Log Format, as nginx and Apache write it.
+
+    Plain combined, so the tools that read access logs read this unmodified;
+    the host and duration it has no room for are in `--json`. With
+    `--timestamps`, the time the platform logged the request -- after it
+    finished -- is prefixed, the same field the application log prefixes.
+    """
+    referer = data.get("referer")
+    agent = data.get("user_agent")
+    request = " ".join(
+        _escape(str(data.get(key) or "-")) for key in ("method", "path", "protocol")
+    )
+    line = (
+        f"{data.get('remote_addr') or '-'} - - [{_clf_time(data)}] \"{request}\" "
+        f"{data.get('status', '-')} {data.get('bytes', '-')} "
+        f"\"{_escape(referer) if referer else '-'}\" \"{_escape(agent) if agent else '-'}\""
+    )
+    return f"{format_timestamp(data.get('ts'))} {line}" if timestamps else line
+
+
+def _clf_time(data: Dict[str, Any]) -> str:
+    """The request's start, as `23/Oct/2026:12:50:48 +0000`.
+
+    Month names from a fixed list rather than `%b`, which follows the locale.
+    """
+    text = str(data.get("time") or "")
+    match = re.match(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})", text)
+    if match is None:
+        return "-"
+    year, month, day, hour, minute, second = match.groups()
+    if not 1 <= int(month) <= 12:
+        return "-"
+    return f"{day}/{_MONTHS[int(month) - 1]}/{year}:{hour}:{minute}:{second} +0000"
+
+
+def _escape(value: str) -> str:
+    """Escape as Apache does, so a quoted field stays one field on one line."""
+    out = []
+    for char in value:
+        if char == "\\":
+            out.append("\\\\")
+        elif char == '"':
+            out.append('\\"')
+        elif ord(char) < 0x20 or ord(char) == 0x7F:
+            out.append(f"\\x{ord(char):02x}")
+        else:
+            out.append(char)
+    return "".join(out)
+
+
+def format_json(data: Dict[str, Any]) -> str:
+    """One event's record as one line of JSON, exactly as the platform sent it.
+
+    `ts` arrives as a string and stays one: nothing here parses it.
+    """
+    return json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+
+
+def render(data: Dict[str, Any], *, http: bool, as_json: bool, timestamps: bool) -> str:
+    if as_json:
+        return format_json(data)
+    if http:
+        return format_request(data, timestamps=timestamps)
+    return format_line(data, timestamps=timestamps)
+
+
 def format_timestamp(ts: Optional[str]) -> str:
     """Render a nanosecond timestamp as UTC, without ever touching a float.
 
@@ -234,7 +328,10 @@ def stream_once(
     follow: bool,
     tail: Optional[int] = None,
     release: Optional[int] = None,
+    lookback: Optional[int] = None,
     timestamps: bool = False,
+    http: bool = False,
+    as_json: bool = False,
     out: TextIO,
     say: Callable[[str], None],
 ) -> Optional[str]:
@@ -251,13 +348,18 @@ def stream_once(
         params["tail"] = str(tail)
     if release is not None:
         params["release"] = str(release)
+    if lookback is not None and cursor.ts is None:
+        # A window is the first connect's question. Once anything has been
+        # printed, the cursor is the only place to resume from.
+        params["lookback"] = str(lookback)
     if cursor.ts is not None:
         # Inclusive, and the platform's business: a line sharing this instant
         # may arrive twice, which is the mechanism working. Suppressing
         # duplicates here would risk discarding a line that was genuinely new.
         params["since"] = cursor.ts
 
-    path = f"/api/users/{user_id}/deployments/{deployment_id}/log"
+    endpoint, line_event = ("http-log", EVENT_REQUEST) if http else ("log", EVENT_LOG)
+    path = f"/api/users/{user_id}/deployments/{deployment_id}/{endpoint}"
     with api.stream("GET", path, params=params, timeout=_timeout(follow)) as response:
         if response.status_code == 503:
             raise FreepodError(
@@ -270,6 +372,10 @@ def stream_once(
                 f"no such deployment or release{env_suffix(api.env.name)}.\n"
                 f"  {_detail(response)}"
             )
+        if response.status_code == 400:
+            # The platform's own reason -- a window longer than it keeps logs
+            # for, or too many streams open -- is the useful part.
+            raise FreepodError(f"the platform refused to read the log: {_detail(response)}")
         if not response.is_success:
             raise FreepodError(
                 f"could not read the log: HTTP {response.status_code} "
@@ -277,7 +383,7 @@ def stream_once(
             )
 
         for event in parse_sse(response.iter_lines()):
-            if event.event == EVENT_LOG:
+            if event.event == line_event:
                 release_id = event.data.get("release")
                 if release_id and release_id not in cursor.seen_releases:
                     # A rollover: the user is watching an application, not a
@@ -289,7 +395,11 @@ def stream_once(
                     if cursor.seen_releases:
                         say(f"Now following release {release_id}.")
                     cursor.seen_releases.add(release_id)
-                print(format_line(event.data, timestamps=timestamps), file=out, flush=True)
+                print(
+                    render(event.data, http=http, as_json=as_json, timestamps=timestamps),
+                    file=out,
+                    flush=True,
+                )
                 ts = event.data.get("ts")
                 if ts:
                     cursor.ts = ts
@@ -326,6 +436,9 @@ def follow_stream(
     timestamps: bool,
     out: TextIO,
     say: Callable[[str], None],
+    lookback: Optional[int] = None,
+    http: bool = False,
+    as_json: bool = False,
     attempts: int = LOG_RECONNECT_ATTEMPTS,
     backoff: float = LOG_RECONNECT_BACKOFF_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
@@ -352,10 +465,12 @@ def follow_stream(
         try:
             reason = stream_once(
                 api, user_id, deployment_id, cursor,
-                # The tail is a *first connect* concern. Re-requesting it on a
-                # reconnect would reprint what the user has already read.
+                # The tail and window are *first connect* concerns.
+                # Re-requesting them on a reconnect would reprint what the user
+                # has already read.
                 follow=True, tail=tail if first else None, release=release,
-                timestamps=timestamps, out=out, say=say,
+                lookback=lookback if first else None,
+                timestamps=timestamps, http=http, as_json=as_json, out=out, say=say,
             )
         except (httpx.HTTPError, LogStreamInterrupted) as exc:
             failures += 1
@@ -412,11 +527,14 @@ def run(
     follow: bool = False,
     tail: Optional[int] = None,
     release: Optional[int] = None,
+    lookback: Optional[int] = None,
     timestamps: bool = False,
+    http: bool = False,
+    as_json: bool = False,
     out: Optional[TextIO] = None,
     say: Callable[[str], None] = log,
 ) -> int:
-    """Stream the project's deployment log. Returns an exit code."""
+    """Stream the project's deployment log or access log. Returns an exit code."""
     out = out if out is not None else sys.stdout
     deployment_id = resolve_deployment(root, env_name)
     user_id = api.me()["id"]
@@ -427,14 +545,15 @@ def run(
     if follow:
         cursor = follow_stream(
             api, user_id, deployment_id,
-            tail=tail, release=release, timestamps=timestamps, out=out, say=say,
+            tail=tail, release=release, lookback=lookback, timestamps=timestamps,
+            http=http, as_json=as_json, out=out, say=say,
         )
     else:
         cursor = Cursor()
         stream_once(
             api, user_id, deployment_id, cursor,
-            follow=False, tail=tail, release=release,
-            timestamps=timestamps, out=out, say=say,
+            follow=False, tail=tail, release=release, lookback=lookback,
+            timestamps=timestamps, http=http, as_json=as_json, out=out, say=say,
         )
 
     if cursor.lines == 0:
@@ -442,5 +561,9 @@ def run(
         # as one rather than as a broken command. On stderr, so a redirected
         # stdout stays byte-for-byte the application's own output -- which here
         # is correctly empty.
-        say("The application has produced no output.")
+        window = " in that window" if lookback is not None else ""
+        if http:
+            say(f"No HTTP requests have reached this deployment{window}.")
+        else:
+            say(f"The application has produced no output{window}.")
     return 0

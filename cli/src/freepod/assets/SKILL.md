@@ -663,7 +663,13 @@ is already there.
 freepod log             # recent output, then exit
 freepod log -f          # keep watching; then exercise the failing request
 freepod log -r 4        # one release, including one that failed and was rolled back
+freepod log --http -f   # the requests reaching the app, and the status each got
 ```
+
+When a request misbehaves and the application logged nothing about it,
+`freepod log --http` answers the question before it: whether the request
+reached the deployment at all, and what status and size went back. Each line is
+in Combined Log Format; `--json` adds the hostname and the request's duration.
 
 `freepod releases` is where the number for `-r` comes from. It lists this
 project's rollouts, most recent first, with the status of each, the image it
@@ -766,7 +772,7 @@ redeploy.
 | `freepod whoami`   | Report the authenticated account. Never starts a login.                                                                                                              |
 | `freepod init`     | Set up the directory; prompts for a hostname.                                                                                                                        |
 | `freepod deploy`   | Pack, build, release. Prints the URL on stdout.                                                                                                                      |
-| `freepod log`      | Read the application's output. `-f` follows, `-r N` pins one release, `-t` adds timestamps.                                                                          |
+| `freepod log`      | Read the application's output. `-f` follows, `-r N` pins one release, `-t` adds timestamps, `--http` shows the requests instead.                                     |
 | `freepod shell`    | Run a command in the application container: `freepod shell env`. Always pass one — with no command it is interactive. Needs a registered key and `ssh`.              |
 | `freepod cp`       | Copy a file or directory between here and the deployment: `freepod cp :/app/app.log ./app.log`. Mark the deployment's side with `:`; the direction follows. Needs a registered key and `sftp`. |
 | `freepod builds`   | List this project's builds, most recent first.                                                                                                                       |
