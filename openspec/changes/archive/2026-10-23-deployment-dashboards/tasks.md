@@ -11,5 +11,5 @@
 
 ## 3. Rollout
 
-- [ ] 3.1 Apply `tf/deps`, roll out the API, and run `caelus sync-network-policies` in each environment
-- [ ] 3.2 Confirm the fleet table's database and bucket columns fill in, and that the picker finds a deployment by hostname and by ID
+- [x] 3.1 Apply `tf/deps`, roll out the API, and run `caelus sync-network-policies` in each environment
+- [x] 3.2 Confirm the fleet table's database and bucket columns fill in, and that the picker finds a deployment by hostname and by ID
