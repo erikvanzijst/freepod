@@ -173,27 +173,24 @@ resource "helm_release" "promtail" {
             - job_name: kubernetes-pods
               pipeline_stages:
                 - cri: {}
-                # Parse Traefik CLF access logs (kube-system/traefik) so the
-                # upstream app is queryable. Non-access lines (Traefik's own
-                # app logs) simply don't match the regex and pass through untouched.
+                # Label Traefik's JSON access log (kube-system/traefik). Traefik's
+                # own log lines carry no RequestMethod and skip this stage. The
+                # labels are a contract: the tenant HTTP log selects a
+                # deployment's requests by `router`. Every other field stays in
+                # the line, readable with LogQL `| json`. A request that matched
+                # no router has no RouterName and so gets no `router` label.
                 - match:
-                    selector: '{namespace="kube-system", container="traefik"}'
+                    selector: '{namespace="kube-system", container="traefik"} |= "RequestMethod"'
                     stages:
-                      - regex:
-                          expression: '^(?P<remote_addr>\S+) - (?P<remote_user>\S+) \[(?P<time_local>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) (?P<protocol>[^"]+)" (?P<status>\d{3}) (?P<bytes>\d+) "(?P<referer>[^"]*)" "(?P<user_agent>[^"]*)" (?P<request_count>\d+) "(?P<router>[^"]*)" "(?P<upstream>[^"]*)" (?P<duration>\S+)$'
-                      # Low-cardinality fields -> stream labels (queryable/cheap)
+                      - json:
+                          expressions:
+                            method: RequestMethod
+                            status: DownstreamStatus
+                            router: RouterName
                       - labels:
                           method:
                           status:
                           router:
-                      # High-cardinality fields -> structured metadata (queryable
-                      # without exploding stream cardinality; needs v13 schema)
-                      - structured_metadata:
-                          remote_addr:
-                          path:
-                          user_agent:
-                          upstream:
-                          duration:
               kubernetes_sd_configs:
                 - role: pod
               relabel_configs:

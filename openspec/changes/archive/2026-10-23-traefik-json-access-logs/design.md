@@ -77,9 +77,10 @@ the same rule. Keeping all headers was ruled out because it would store `Cookie`
 `Authorization`, which are credentials.
 
 Traefik writes kept headers as `request_User-Agent` and `request_Referer`, and writes `Duration` in
-nanoseconds. Both were checked against a v3.7.13 binary with this exact header configuration. The
-logger's own `level`, `msg` and `time` keys may not be governed by `fields.names`; whether they
-survive `defaultMode: drop` is checked at implementation time (task 1.1) and accepted either way.
+nanoseconds. A header the request didn't carry is omitted rather than written empty. The logger's
+own `level`, `msg` and `time` keys aren't governed by `fields.names` and survive
+`defaultMode: drop`, which costs about 50 bytes a line. All of this was checked against a v3.7.13
+binary run with the arguments chart 41.5.0 renders from this block.
 
 Measured on the live cluster: about 230 bytes per CLF line today, about 1.1 KB per JSON line with
 every field, and about 600 bytes per line trimmed as above with both headers.
@@ -89,8 +90,11 @@ every field, and about 600 bytes per line trimmed as above with both headers.
 The `match` stage keeps its selector and adds a line filter so only access lines enter it:
 
 ```
-{namespace="kube-system", container="traefik"} |= "\"RouterName\""
+{namespace="kube-system", container="traefik"} |= "RequestMethod"
 ```
+
+The filter is on `RequestMethod` rather than `RouterName` so that a request no router matched still
+gets `method` and `status` labels.
 
 Inside it, a `json` stage extracts `RequestMethod`, `DownstreamStatus` and `RouterName`, and a
 `labels` stage maps them to `method`, `status` and `router`. Keeping the label names means the
@@ -100,8 +104,9 @@ The structured-metadata stage is dropped for access lines. With JSON lines every
 available to LogQL through `| json`, so duplicating five of them as metadata only costs index
 space.
 
-A request that matched no router has no `RouterName` key, so it neither enters the match nor gets a
-`router` label. Today such lines carry `router="-"`. Nothing selects on that value.
+A request that matched no router has no `RouterName` key. The `labels` stage skips a value the
+`json` stage didn't find, so such a line gets no `router` label. Today such lines carry
+`router="-"`. Nothing selects on that value.
 
 ### D4: The dashboard panel renders a summary line
 
@@ -111,10 +116,13 @@ The panel query becomes:
 {namespace="kube-system", container="traefik", router=~"$deployment-.+", status=~"$status"}
   |~ "(?i)$search"
   | json
-  | line_format "{{.ClientHost}} {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} {{.DownstreamStatus}} {{.Duration}}"
+  | __error__=""
+  | line_format "{{.ClientHost}} {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} {{.DownstreamStatus}} {{printf \"%.1f\" (divf .Duration 1000000)}}ms"
 ```
 
-The search filter stays ahead of `| json` so it still matches raw text, as it does today. The panel
+The search filter stays ahead of `| json` so it still matches raw text, as it does today.
+`__error__=""` drops lines that aren't JSON, which would otherwise render as blank summaries.
+`divf` rather than `div` keeps sub-millisecond requests from showing as `0ms`. The panel
 belongs to the dashboard introduced by change `deployment-dashboards`. Its spec there only requires
 that access lines appear, which this doesn't alter, so no delta is needed against that change.
 
@@ -122,11 +130,11 @@ that access lines appear, which this doesn't alter, so no delta is needed agains
 
 - [Raw ingest grows by about half] → It stays well inside the 3 GiB budget derived in
   `tf/deps/loki/main.tf` at 14-day retention. Re-measure a week after rollout (see tasks).
-- [Mixed formats in the store for up to 14 days] → The dashboard panel's `| json` fails on CLF lines
-  and Grafana shows them with a parse-error label, which is readable enough until retention removes
-  them. The tenant reader skips non-JSON lines, and the feature ships with no history expectation.
+- [Mixed formats in the store for up to 14 days] → The dashboard panel hides CLF lines, so the
+  panel's history starts at the switch. The tenant reader skips non-JSON lines, and the feature
+  ships with no history expectation.
 - [A brief window between the Traefik and Promtail rollouts] → During it, access lines are either
-  CLF passing through the new JSON match unlabeled, or JSON failing the old regex. Both are
+  CLF that the new stage's filter passes over, or JSON the old regex doesn't match. Both are
   collected, just not labeled. Apply both in one `terraform apply` to keep the window short.
 - [Personal data in the store grows] → User-Agent and Referer are added to the client IP already
   stored, under the same retention. The privacy policy already lists access records.

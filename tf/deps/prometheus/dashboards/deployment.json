@@ -2587,7 +2587,7 @@
             "uid": "${loki}"
           },
           "editorMode": "code",
-          "expr": "{namespace=\"kube-system\", container=\"traefik\", router=~\"$deployment-.+\", status=~\"$status\"} |~ \"(?i)$search\"",
+          "expr": "{namespace=\"kube-system\", container=\"traefik\", router=~\"$deployment-.+\", status=~\"$status\"} |~ \"(?i)$search\" | json | __error__=\"\" | line_format \"{{.ClientHost}} {{.RequestMethod}} {{.RequestHost}}{{.RequestPath}} {{.DownstreamStatus}} {{printf \\\"%.1f\\\" (divf .Duration 1000000)}}ms\"",
           "queryType": "range",
           "maxLines": 1000,
           "refId": "A"

@@ -74,9 +74,31 @@ service:
 # chart's view of it on every upgrade -- which would drop every account's certificate at once.
 # See openspec/changes/per-user-tls-certificates, D3.
 
-# Stream access logs to stdout: kubectl -n kube-system logs -f deploy/traefik
+# Access logs go to stdout as JSON lines, which Promtail parses (tf/deps/loki) and tenants read
+# through `freepod log --http`. Fields and headers are allowlists: a field a later Traefik adds
+# stays out of the log store until it is listed here, and so do Cookie and Authorization.
+# kubectl -n kube-system logs -f deploy/traefik | jq
 accessLog:
   enabled: true
+  format: json
+  fields:
+    defaultMode: drop
+    names:
+      StartUTC: keep
+      ClientHost: keep
+      RequestHost: keep
+      RequestMethod: keep
+      RequestPath: keep
+      RequestProtocol: keep
+      DownstreamStatus: keep
+      DownstreamContentSize: keep
+      Duration: keep
+      RouterName: keep
+    headers:
+      defaultMode: drop
+      names:
+        User-Agent: keep
+        Referer: keep
 
 metrics:
   prometheus:
