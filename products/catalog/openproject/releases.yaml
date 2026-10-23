@@ -1,3 +1,8 @@
+- version: "17.9.3"
+  notes: |-
+    A small maintenance release that also fixes a security issue in the PDF export.
+
+    - Pasting an image into a description no longer leaves a broken link
 - version: "17.9.2"
   notes: |-
     Create work packages straight from a document, filter the backlog, and get date alerts.
