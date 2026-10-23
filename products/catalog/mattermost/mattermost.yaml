@@ -95,7 +95,7 @@ template:
   system_values:
     mattermost:
       image:
-        tag: 12.0.0
+        tag: 12.0.1
     smtp:
       host: smtp.mailer.svc.cluster.local
       port: 25
