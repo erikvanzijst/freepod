@@ -182,6 +182,22 @@ resource "keycloak_openid_client_optional_scopes" "freepod_cli_dev" {
   optional_scopes = ["offline_access"]
 }
 
+# oauth2-proxy requests `offline_access` so its cookie_refresh outlives the SSO
+# idle timeout (tf/app/login). Keycloak drops a requested scope the client does
+# not list, so without it oauth2-proxy would get an ordinary refresh token and
+# log idle users out after 30 minutes.
+resource "keycloak_openid_client_optional_scopes" "freepod_prod" {
+  realm_id        = keycloak_realm.freepod.id
+  client_id       = keycloak_openid_client.freepod_prod.id
+  optional_scopes = ["offline_access"]
+}
+
+resource "keycloak_openid_client_optional_scopes" "freepod_dev" {
+  realm_id        = keycloak_realm.freepod.id
+  client_id       = keycloak_openid_client.freepod_dev.id
+  optional_scopes = ["offline_access"]
+}
+
 # The broker needs identity only: who (sub), their verified email and a display
 # name. No groups, no roles, no audiences -- nothing that would describe the user
 # beyond what the consent page lists, and no optional scopes either, so an
