@@ -61,9 +61,10 @@ def _containers(docs: list[dict]) -> dict[str, dict]:
 def _bookstack_tags(docs: list[dict]) -> dict[str, str]:
     tags = {}
     for name, container in _containers(docs).items():
-        repo, _, tag = container["image"].rpartition(":")
+        reference, at, digest = container["image"].partition("@")
+        repo, _, tag = reference.rpartition(":")
         if repo == REPOSITORY:
-            tags[name] = tag
+            tags[name] = tag + at + digest
     return tags
 
 
