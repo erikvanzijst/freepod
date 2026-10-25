@@ -1,3 +1,13 @@
+- version: "0.97.0"
+  notes: |-
+    Present your pages, and exports and search get a round of fixes.
+
+    - Present a page full screen, with a laser pointer to mark things up
+    - Link straight to a single comment in a page
+    - Space admins can now delete attachments on the pages in their space
+    - Word and Markdown exports keep tables in better shape
+    - Search is faster and more reliable on larger wikis
+    - Includes security fixes
 - version: "0.96.0"
   notes: |-
     Compare page versions side by side, add footnotes, and write right-to-left text.
