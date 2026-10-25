@@ -89,14 +89,16 @@ upstream:
     image: docker.io/solidnerd/bookstack
   # The image version mirrors BookStack's own (v26.05.5 -> 26.5.5). Rebuild
   # suffixes such as 26.3.4-1 and the moving 26.5 / latest tags are excluded.
-  match: ^(?P<version>\d+\.\d+\.\d+)$
+  # A tag may carry a digest pin (26.9.2@sha256:...) when upstream rebuilds
+  # it in place, so a moved tag reaches new deployments.
+  match: ^(?P<version>\d+\.\d+\.\d+)(?:@sha256:[0-9a-f]{64})?$
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/bookstack
   chart_version: 0.1.7
   system_values:
     image:
-      tag: 26.9.2
+      tag: 26.9.2@sha256:6fb7869fa642900637429c10057fe89f6c256047aff1010242343686b200d1d5
     smtp:
       host: smtp.mailer.svc.cluster.local
       port: 25
