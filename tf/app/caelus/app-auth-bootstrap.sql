@@ -3,7 +3,7 @@
 -- app-auth sits on an internet-facing authentication path: its broker decides
 -- which hosts may receive a sign-in code, and its verifier redeems those codes.
 -- It connects as this role rather than the platform's own, so a bug in it can
--- read only what the eligibility query names and write only its own two tables.
+-- read only what the eligibility query names and write only its own tables.
 --
 -- Idempotent by construction, because it runs again on every rollout. It runs
 -- *after* `alembic upgrade head`, since a grant needs the table to exist.
@@ -60,5 +60,6 @@ GRANT SELECT (id, system_values_json) ON TABLE product_template_version TO caelu
 -- then deleted on redemption or expiry.
 GRANT SELECT, INSERT, DELETE ON TABLE app_auth_consent TO caelus_app_auth;
 GRANT SELECT, INSERT, DELETE ON TABLE app_auth_code TO caelus_app_auth;
+GRANT SELECT, INSERT, DELETE ON TABLE app_auth_oidc_code TO caelus_app_auth;
 
 COMMIT;

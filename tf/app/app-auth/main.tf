@@ -2,9 +2,11 @@
 #
 #   :8080  the verifier, reached only in-cluster by Traefik's forward-auth from
 #          every auth-enabled custom deployment (chart: app-auth middleware);
-#   :8081  the broker, the only listener exposed, on login.<domain>.
+#   :8081  the broker and OpenID Provider, the only listener exposed, on
+#          login.<domain>.
 #
-# See daemons/app-auth/README.md and the app-authentication design doc.
+# See daemons/app-auth/README.md and the app-authentication and
+# app-oidc-provider design docs.
 
 locals {
   labels = { app = "app-auth" }
@@ -18,6 +20,28 @@ resource "random_bytes" "session_key_k1" {
   length = 32
 }
 
+# The OpenID Provider's client keyring: every SSO-enabled deployment's client
+# secret is derived from it, here and by the reconciler, which gets the same
+# keyring through the oidc_client_keys output. Rotating: add a key in FRONT
+# (id c2), apply, let the reconciler republish every SSO deployment's Secret
+# and the apps restart, then drop c1. Replacing c1 outright breaks every SSO
+# app's sign-in until it restarts with its republished secret.
+resource "random_bytes" "oidc_client_key_c1" {
+  length = 32
+}
+
+# The provider's ID token signing key. Rotating: add a key in FRONT of this
+# one in APP_AUTH_OIDC_SIGNING_KEYS, apply, and drop the old one after five
+# minutes (the ID token lifetime).
+resource "tls_private_key" "oidc_signing_s1" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+locals {
+  oidc_client_keys = "c1:${random_bytes.oidc_client_key_c1.base64}"
+}
+
 resource "kubernetes_secret" "app_auth" {
   metadata {
     name      = "app-auth"
@@ -28,6 +52,8 @@ resource "kubernetes_secret" "app_auth" {
     APP_AUTH_DATABASE_URL       = var.database_url
     APP_AUTH_SESSION_KEYS       = "k1:${random_bytes.session_key_k1.base64}"
     APP_AUTH_OIDC_CLIENT_SECRET = var.oidc_client_secret
+    APP_AUTH_OIDC_CLIENT_KEYS   = local.oidc_client_keys
+    APP_AUTH_OIDC_SIGNING_KEYS  = tls_private_key.oidc_signing_s1.private_key_pem
   }
 }
 

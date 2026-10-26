@@ -114,7 +114,11 @@ def _secrets(provisioner: FakeProvisioner) -> list[dict]:
 
 
 def _reaps(provisioner: FakeProvisioner) -> list[dict]:
-    return [c[1] for c in provisioner.calls if c[0] == "delete_secrets_by_label"]
+    return [
+        c[1]
+        for c in provisioner.calls
+        if c[0] == "delete_secrets_by_label" and "caelus.dev/component=vars" in c[1]["selector"]
+    ]
 
 
 def _second_release(db_session, deployment, entries) -> DeploymentReleaseORM:
