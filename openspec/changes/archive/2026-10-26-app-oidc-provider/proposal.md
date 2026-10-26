@@ -31,9 +31,12 @@ and the platform plumbing only; no chart uses it yet.
   The client ID is the deployment's ID. The client secret is an HMAC of that ID
   under a per-environment key that the reconciler and the broker share. Nothing
   is registered in Keycloak or stored per deployment.
-- **A deployment opts in with `sso.enabled`**, read like `auth.enabled`: the
-  template's system value over the release's user value, from the release the
+- **A deployment opts in with `sso.enabled`**, read as Helm merges it: the
+  release's user value over the template's system value, from the release the
   deployment serves. It is independent of `auth.enabled`.
+- **`auth.enabled` eligibility follows the same precedence.** The broker read
+  the template's value first, on a mistaken reading of the reconciler's merge
+  order; it now agrees with what the chart renders.
 - **Redirect URIs match exactly, and nothing is registered.** A template
   declares its app's callback paths as a system value (`sso.redirectPaths`),
   and the provider accepts exactly `https://<the deployment's hostname><path>`.
@@ -50,8 +53,9 @@ and the platform plumbing only; no chart uses it yet.
   subject, the same value as `X-Freepod-User`), `email`, `email_verified` and
   `name`. Access tokens work only at userinfo, for ten minutes, and userinfo
   re-checks that the deployment is still a client.
-- Nothing changes for header-based authentication, the verifier, existing
-  deployments or any chart.
+- Apart from the corrected `auth.enabled` precedence, which changes the outcome
+  for no current deployment, nothing changes for header-based authentication,
+  the verifier, existing deployments or any chart.
 
 ## Capabilities
 
@@ -66,11 +70,16 @@ and the platform plumbing only; no chart uses it yet.
 
 - `app-auth-data-model`: a table for OIDC authorization codes, and the
   service role's grants on it.
+- `app-auth-broker`: `auth.enabled` is judged with the user value over the
+  template's, as the chart renders it.
+- `app-auth-chart-contract`: a template's `auth.enabled` is a default that a
+  user value overrides; forcing it means leaving it out of the user schema.
 
 ## Impact
 
 - `daemons/app-auth/`: the provider endpoints (a new `provider.go` and tests),
-  the `sso.enabled` eligibility query and the code table in `store.go`, new
+  the `sso.enabled` eligibility query, the corrected `auth.enabled`
+  precedence and the code table in `store.go`, new
   configuration in `main.go`, README. A new `daemons` image version.
 - `api/`: an Alembic migration for `app_auth_oidc_code`; settings for the
   issuer and the client keyring; the reconciler's Secret and `caelus.oidc`

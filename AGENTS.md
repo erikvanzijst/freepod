@@ -226,14 +226,24 @@ This repository is a monorepo with:
   never sees; the per-request path touches no database. Any Freepod account may
   sign in unless the chart lists allowed accounts in the verifier's address
   (App Studio: the owner only); `preview-<label>.<rest>` signs in as the
-  deployment at `<label>.<rest>`. Spec:
+  deployment at `<label>.<rest>`. The broker is also an **OpenID Provider**
+  (issuer `https://login.<domain>`) for apps that speak OIDC rather than read
+  headers: a deployment whose template declares `sso.redirectPaths` and that has
+  `sso.enabled` is a client with no client record, under its deployment ID,
+  with a derived secret the reconciler publishes in a Secret
+  (`caelus.oidc.secretName`). A template's `auth.enabled` and `sso.enabled` are
+  chart defaults a user value overrides; a template forces one by leaving it
+  out of its user schema. Spec:
   [app-auth-verifier](openspec/specs/app-auth-verifier/spec.md),
   [app-auth-broker](openspec/specs/app-auth-broker/spec.md),
   [app-auth-chart-contract](openspec/specs/app-auth-chart-contract/spec.md),
   [app-auth-data-model](openspec/specs/app-auth-data-model/spec.md),
-  [app-studio-access](openspec/specs/app-studio-access/spec.md) ·
+  [app-studio-access](openspec/specs/app-studio-access/spec.md),
+  [app-oidc-provider](openspec/specs/app-oidc-provider/spec.md),
+  [app-oidc-chart-contract](openspec/specs/app-oidc-chart-contract/spec.md) ·
   Rationale: [app-authentication](openspec/changes/archive/2026-09-28-app-authentication/design.md),
   [app-auth-owner-and-preview](openspec/changes/archive/2026-10-16-app-auth-owner-and-preview/design.md),
+  [app-oidc-provider](openspec/changes/archive/2026-10-26-app-oidc-provider/design.md),
   [daemons/app-auth/README.md](daemons/app-auth/README.md)
 - **The platform's Go daemons ship in one image and are pinned per consumer.**
   Each is its own module under `daemons/` and becomes `/<directory>` in

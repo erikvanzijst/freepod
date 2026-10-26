@@ -129,10 +129,21 @@ callback finishes accordingly.
 A deployment is an eligible OIDC client when it is not deleted, the template
 of the release it serves declares at least one valid callback path (D4) in the
 system value `sso.redirectPaths`, and that release has `sso.enabled` true: the
-template's system value when the template sets one, otherwise the release's
-user value, otherwise false. That reuses the existing eligibility rule with a
-different key, so the broker agrees with what the release rendered while a
-rollout is in flight.
+release's user value when it sets one, otherwise the template's system value,
+otherwise false. That is the precedence of the reconciler's Helm merge
+(`merge_values_scoped` takes template system values as defaults, user values
+over them, and only its own `caelus` block last), so the broker agrees with
+what the release rendered, also while a rollout is in flight, and the
+reconciler publishes credentials on the same rule. A template that must force
+the switch leaves it out of its user values schema.
+
+The same correction applies to `auth.enabled`. `app-auth-owner-and-preview`
+D1 read it as "template system value, then user value" on the belief that
+`merge_values_scoped` merges template system values last; it merges them
+first. The two orders disagree only when a template sets `auth.enabled` and
+its schema lets users set it too, which no product does today (App Studio's
+schema is closed and has no `auth`), so correcting the query changes nothing
+that serves now and keeps the broker and the edge from ever disagreeing.
 
 Requiring `sso.redirectPaths` makes SSO something a product declares, not
 something any deployment can switch on. Template meta-validation does not

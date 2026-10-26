@@ -1,6 +1,10 @@
-# Spec Delta
+# app-oidc-provider Specification
 
-## ADDED Requirements
+## Purpose
+
+Defines the OpenID Provider the app authentication broker runs for tenant apps on its login host: which deployments are clients, how they authenticate, which redirect URIs it accepts, the authorization code flow with PKCE, and the tokens, claims and end-session behavior it offers.
+
+## Requirements
 
 ### Requirement: One OpenID Provider per environment
 
@@ -22,7 +26,7 @@ The provider SHALL publish OpenID Connect discovery metadata at `<issuer>/.well-
 
 ### Requirement: Every SSO-enabled deployment is a client
 
-A deployment SHALL be a client of the provider exactly when it is not deleted, the template of the release it serves declares at least one valid path in the system value `sso.redirectPaths`, and that release has SSO enabled: the template's system value for `sso.enabled` when the template sets one, otherwise the release's user value, otherwise disabled.
+A deployment SHALL be a client of the provider exactly when it is not deleted, the template of the release it serves declares at least one valid path in the system value `sso.redirectPaths`, and that release has SSO enabled: the release's user value for `sso.enabled` when it sets one, otherwise the template's system value, otherwise disabled.
 
 #### Scenario: Enabled by the user
 
@@ -34,10 +38,15 @@ A deployment SHALL be a client of the provider exactly when it is not deleted, t
 - **WHEN** a deployment's user values set `sso.enabled: true` but its template declares no `sso.redirectPaths`
 - **THEN** the provider treats the client as unknown
 
-#### Scenario: Template value wins
+#### Scenario: Enabled by the template
 
-- **WHEN** a deployment's template sets `sso.enabled: false` as a system value and its user values set `sso.enabled: true`
-- **THEN** the provider treats the client as unknown
+- **WHEN** a deployment's template sets `sso.enabled: true` and `sso.redirectPaths` as system values and its user values say nothing about `sso`
+- **THEN** the provider proceeds
+
+#### Scenario: User value over the template's default
+
+- **WHEN** a deployment's template sets `sso.enabled: true` as a system value and its user values set `sso.enabled: false`
+- **THEN** the provider treats the client as unknown, as the chart renders SSO off
 
 #### Scenario: Not yet rolled out
 

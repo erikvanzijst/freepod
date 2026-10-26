@@ -4,7 +4,7 @@
 
 ### Requirement: SSO is declared in the deployment's values
 
-A chart that offers Sign in with Freepod over OpenID Connect SHALL read it from `sso.enabled`, which defaults to false. A template MAY set `sso.enabled` as a system value, which then applies to every deployment of that template and overrides the user value. `sso.enabled` SHALL be independent of `auth.enabled`: enabling SSO SHALL NOT put the forward-auth verifier in front of the deployment.
+A chart that offers Sign in with Freepod over OpenID Connect SHALL read it from `sso.enabled`, which defaults to false. `sso.enabled` SHALL be independent of `auth.enabled`: enabling SSO SHALL NOT put the forward-auth verifier in front of the deployment.
 
 #### Scenario: Default off
 
@@ -15,6 +15,15 @@ A chart that offers Sign in with Freepod over OpenID Connect SHALL read it from 
 
 - **WHEN** a deployment enables SSO and not `auth`
 - **THEN** its routes carry no forward-auth middleware
+
+### Requirement: A template's switch is a default
+
+A template MAY set `sso.enabled` as a system value. It SHALL be the default for every deployment of that template, and a user value SHALL override it as it overrides any chart value. A template that must not be overridden SHALL leave `sso.enabled` out of its user values schema.
+
+#### Scenario: Forced on by the template
+
+- **WHEN** a template sets `sso.enabled: true` as a system value and its user values schema has no `sso` property
+- **THEN** every deployment of the template enables SSO, and no tenant can turn it off
 
 ### Requirement: The template declares its callbacks
 
