@@ -10,9 +10,9 @@ Nextcloud, Vaultwarden, Discourse, BookStack, PhotoPrism and tuwunel all accept
 a generic OIDC provider.
 
 Pointing them at Keycloak directly would need a Keycloak client, or at least a
-redirect URI, per deployment. Keycloak's wildcards cannot express
-`<app>.<sub>.freepod.eu` or custom domains, and thousands of per-deployment
-clients are exactly the per-tenant identity-provider configuration the
+redirect URI, per deployment. Keycloak cannot express custom domains, and a
+client shared across tenant hosts would share its audience and secret. Thousands
+of per-deployment clients are exactly the per-tenant identity-provider configuration the
 platform avoids. The broker already stands between tenant apps and Keycloak
 with one client per environment, checks which hosts are deployments, and
 records consent. It can face apps as an OpenID Provider in its own right.
@@ -34,16 +34,22 @@ and the platform plumbing only; no chart uses it yet.
 - **A deployment opts in with `sso.enabled`**, read like `auth.enabled`: the
   template's system value over the release's user value, from the release the
   deployment serves. It is independent of `auth.enabled`.
-- **Redirect URIs are derived, not registered.** Any `https` URI on the
-  deployment's own hostname is accepted, plus the exact URIs the template lists
-  as a system value for native clients (such as `app.immich:///oauth-callback`).
+- **Redirect URIs match exactly, and nothing is registered.** A template
+  declares its app's callback paths as a system value (`sso.redirectPaths`),
+  and the provider accepts exactly `https://<the deployment's hostname><path>`.
+  Templates may also list native-client URIs on private-use schemes only
+  (`sso.nativeRedirectUris`, such as `app.immich:///oauth-callback`). A template
+  that declares no callback path makes no clients.
+- **PKCE (S256) is required**, with a template opt-out reserved for an app that
+  cannot do it, and never for native redirects.
 - **The reconciler publishes the credentials** for an SSO-enabled deployment in
   a Kubernetes Secret in its namespace, and injects only the issuer, client ID
   and Secret name into the chart values.
 - **ID tokens are RS256 JWTs** with `aud` set to the deployment ID, so a token
   issued to one app is useless at another. They carry `sub` (the Keycloak
   subject, the same value as `X-Freepod-User`), `email`, `email_verified` and
-  `name`.
+  `name`. Access tokens work only at userinfo, for ten minutes, and userinfo
+  re-checks that the deployment is still a client.
 - Nothing changes for header-based authentication, the verifier, existing
   deployments or any chart.
 

@@ -22,12 +22,17 @@ The provider SHALL publish OpenID Connect discovery metadata at `<issuer>/.well-
 
 ### Requirement: Every SSO-enabled deployment is a client
 
-A deployment SHALL be a client of the provider exactly when it is not deleted and the release it serves has SSO enabled: the template's system value for `sso.enabled` when the template sets one, otherwise the release's user value, otherwise disabled. Its client ID SHALL be the deployment's ID. No record other than the deployment and its release SHALL be needed for it to be a client, and the identity provider SHALL hold no configuration for it.
+A deployment SHALL be a client of the provider exactly when it is not deleted, the template of the release it serves declares at least one path in the system value `sso.redirectPaths`, and that release has SSO enabled: the template's system value for `sso.enabled` when the template sets one, otherwise the release's user value, otherwise disabled.
 
 #### Scenario: Enabled by the user
 
-- **WHEN** an authorization request names a deployment whose serving release has the user value `sso.enabled: true`
+- **WHEN** an authorization request names a deployment whose template declares `sso.redirectPaths` and whose serving release has the user value `sso.enabled: true`
 - **THEN** the provider proceeds
+
+#### Scenario: Template does not declare SSO
+
+- **WHEN** a deployment's user values set `sso.enabled: true` but its template declares no `sso.redirectPaths`
+- **THEN** the provider treats the client as unknown
 
 #### Scenario: Template value wins
 
@@ -49,6 +54,15 @@ A deployment SHALL be a client of the provider exactly when it is not deleted an
 - **WHEN** a client authenticates at the token endpoint with the credentials of a deployment that has since been deleted
 - **THEN** the provider answers `invalid_client`
 
+### Requirement: Clients need no registration
+
+A client's ID SHALL be its deployment's ID. No record other than the deployment, its release and its template SHALL be needed for it to be a client, and the identity provider SHALL hold no configuration for it.
+
+#### Scenario: New deployment
+
+- **WHEN** a deployment of a template that declares SSO is created with `sso.enabled: true` and its release is applied
+- **THEN** it is a client under its own deployment ID, and nothing changed in the identity provider
+
 ### Requirement: Client secrets are derived
 
 A client's secret SHALL be derived from its client ID with a per-environment keyring that the platform and the provider share, so that no per-client secret is stored. The provider SHALL accept a secret derived with any key in the keyring, and SHALL compare secrets in constant time. The token endpoint SHALL accept the secret by HTTP Basic authentication or in the form body, and SHALL refuse a request that offers it both ways.
@@ -68,38 +82,57 @@ A client's secret SHALL be derived from its client ID with a per-environment key
 - **WHEN** a new key has been added in front of the keyring and a client still presents a secret derived with the previous key
 - **THEN** the client is authenticated
 
-### Requirement: Redirect URIs come from the deployment
+### Requirement: Redirect URIs match exactly
 
-The provider SHALL accept a redirect URI only when it is an absolute `https` URI without userinfo, fragment or explicit port whose host equals the deployment's hostname case-insensitively, or when it exactly equals one of the URIs in the serving release's template system value `sso.redirectUris`. Redirect URIs SHALL NOT be taken from user values. A request with a redirect URI it does not accept SHALL get an error page and no redirect.
+The provider SHALL accept a redirect URI only when it equals exactly `https://<the deployment's hostname><path>` for a path in the serving release's template system value `sso.redirectPaths`, or exactly one of the URIs in the template system value `sso.nativeRedirectUris`. Redirect URIs SHALL NOT be taken from user values, and no other path, query or host SHALL be accepted. A request with a redirect URI the provider does not accept SHALL get an error page and no redirect.
 
-#### Scenario: Own hostname
+#### Scenario: Declared callback path
 
-- **WHEN** the deployment at `photos.alice.freepod.eu` requests `https://photos.alice.freepod.eu/auth/login`
+- **WHEN** the template declares `sso.redirectPaths: ["/oidc/callback"]` and the deployment at `wiki-alice.freepod.app` requests `https://wiki-alice.freepod.app/oidc/callback`
 - **THEN** the provider accepts the redirect URI
 
 #### Scenario: Custom domain
 
-- **WHEN** a deployment whose hostname is `photos.example.com` requests `https://photos.example.com/callback`
+- **WHEN** a deployment whose hostname is `wiki.example.com` requests `https://wiki.example.com/oidc/callback` and the template declares that path
 - **THEN** the provider accepts the redirect URI
+
+#### Scenario: Another path on the same host
+
+- **WHEN** the deployment at `wiki-alice.freepod.app` requests `https://wiki-alice.freepod.app/shared/page`
+- **THEN** the provider shows an error page and does not redirect
+
+#### Scenario: Extra query
+
+- **WHEN** a deployment requests `https://wiki-alice.freepod.app/oidc/callback?code=ATTACKER`
+- **THEN** the provider shows an error page and does not redirect
 
 #### Scenario: Another host
 
-- **WHEN** a deployment requests `https://evil.example/callback`
-- **THEN** the provider shows an error page and does not redirect
-
-#### Scenario: Native client scheme from the template
-
-- **WHEN** a deployment's template lists `app.immich:///oauth-callback` in `sso.redirectUris` and the request names exactly that URI
-- **THEN** the provider accepts the redirect URI
-
-#### Scenario: Native scheme from user values
-
-- **WHEN** only the deployment's user values list `app.evil:///steal` under `sso.redirectUris`
+- **WHEN** a deployment requests `https://evil.example/oidc/callback`
 - **THEN** the provider shows an error page and does not redirect
 
 #### Scenario: Plain HTTP
 
-- **WHEN** a deployment requests `http://photos.alice.freepod.eu/callback`
+- **WHEN** a deployment requests `http://wiki-alice.freepod.app/oidc/callback`
+- **THEN** the provider shows an error page and does not redirect
+
+### Requirement: Native redirect URIs use private-use schemes
+
+The provider SHALL honor an entry of `sso.nativeRedirectUris` only when its scheme is neither `http` nor `https` and is in reverse-domain form containing at least one `.`. It SHALL ignore any other entry and log it.
+
+#### Scenario: Mobile app callback
+
+- **WHEN** a template lists `app.immich:///oauth-callback` and the request names exactly that URI
+- **THEN** the provider accepts the redirect URI
+
+#### Scenario: HTTPS entry in the native list
+
+- **WHEN** a template lists `https://collector.example/cb` in `sso.nativeRedirectUris`
+- **THEN** the provider ignores the entry and refuses requests naming it
+
+#### Scenario: Native scheme from user values
+
+- **WHEN** only the deployment's user values list `app.evil:///steal` under `sso.nativeRedirectUris`
 - **THEN** the provider shows an error page and does not redirect
 
 ### Requirement: Errors before and after validation
@@ -116,9 +149,18 @@ Until both the client and the redirect URI of an authorization request are valid
 - **WHEN** an otherwise valid request asks for `response_type=token`
 - **THEN** the provider redirects back with `error=unsupported_response_type` and the request's `state`
 
+### Requirement: Request parameters are bounded
+
+The provider SHALL refuse an authorization request whose `state` exceeds 512 bytes, whose `nonce` exceeds 256 bytes, whose `redirect_uri` exceeds 2048 bytes, or whose `code_challenge` is not 43 characters. It SHALL do so before setting any cookie.
+
+#### Scenario: Oversized state
+
+- **WHEN** an authorization request with a valid client and redirect URI carries a 4 KB `state`
+- **THEN** the provider answers `invalid_request` and sets no cookie
+
 ### Requirement: Authorization code flow
 
-The provider SHALL support only the authorization code flow and SHALL require the `openid` scope. It SHALL authenticate the user through the identity provider, refusing unverified email addresses as the broker does. It SHALL ask for consent under the same rules, records and claims as header authentication, keyed by the user's subject and the deployment. It SHALL then redirect to the validated redirect URI with a code and the request's `state`.
+The provider SHALL support only the authorization code flow and SHALL require the `openid` scope. It SHALL authenticate the user through the identity provider, refusing unverified email addresses as the broker does, and passing `prompt` and `max_age` through. It SHALL ask for consent under the same rules, records and claims as header authentication, keyed by the user's subject and the deployment. It SHALL then redirect to the validated redirect URI with a code and the request's `state`.
 
 #### Scenario: First sign-in
 
@@ -130,9 +172,48 @@ The provider SHALL support only the authorization code flow and SHALL require th
 - **WHEN** a user already consented to a deployment through header authentication and signs in to it through the provider
 - **THEN** no consent page is shown
 
+#### Scenario: Silent sign-in without consent
+
+- **WHEN** a request with `prompt=none` reaches a user who has a session but has not consented to the deployment
+- **THEN** the provider redirects back with `error=consent_required` and shows no page
+
+#### Scenario: Consent redirect to a native app
+
+- **WHEN** a user consents during a sign-in whose redirect URI is `app.immich:///oauth-callback`
+- **THEN** the consent response's content security policy allows the `app.immich:` scheme as a form action, and the redirect reaches the app
+
+### Requirement: PKCE is required
+
+Every authorization request SHALL carry a `code_challenge` with method `S256`, unless the template sets the system value `sso.pkce: false`. That opt-out SHALL NOT apply to native redirect URIs. Any other method SHALL be refused. A code issued with a challenge SHALL be redeemable only with the matching `code_verifier`, and a token request carrying a `code_verifier` for a code issued without a challenge SHALL be refused.
+
+#### Scenario: Missing challenge
+
+- **WHEN** a request for a template without the opt-out carries no `code_challenge`
+- **THEN** the provider redirects back with `error=invalid_request`
+
+#### Scenario: Plain challenge
+
+- **WHEN** an authorization request carries `code_challenge_method=plain`
+- **THEN** the provider redirects back with `error=invalid_request`
+
+#### Scenario: Missing verifier
+
+- **WHEN** a code was issued with a `code_challenge` and the token request carries no `code_verifier`
+- **THEN** the provider answers `invalid_grant`
+
+#### Scenario: Downgrade
+
+- **WHEN** a code was issued without a challenge under the template's opt-out, and the token request carries a `code_verifier`
+- **THEN** the provider answers `invalid_grant`
+
+#### Scenario: Native redirect without PKCE
+
+- **WHEN** a template sets `sso.pkce: false` and a request without a challenge names one of its native redirect URIs
+- **THEN** the provider redirects back with `error=invalid_request`
+
 ### Requirement: Codes are single-use and bound
 
-A code SHALL be redeemable once, within 60 seconds, by the client it was issued to, with the redirect URI it was issued for. When the authorization request carried a `code_challenge`, its method SHALL be `S256`, any other method SHALL be refused, and redemption SHALL require the matching `code_verifier`.
+A code SHALL be redeemable once, within 60 seconds, by the client it was issued to, with the redirect URI it was issued for.
 
 #### Scenario: Code replay
 
@@ -144,19 +225,9 @@ A code SHALL be redeemable once, within 60 seconds, by the client it was issued 
 - **WHEN** a client redeems a code issued to another deployment
 - **THEN** the provider answers `invalid_grant`
 
-#### Scenario: Missing verifier
-
-- **WHEN** a code was issued with a `code_challenge` and the token request carries no `code_verifier`
-- **THEN** the provider answers `invalid_grant`
-
-#### Scenario: Plain challenge
-
-- **WHEN** an authorization request carries `code_challenge_method=plain`
-- **THEN** the provider redirects back with `error=invalid_request`
-
 ### Requirement: ID tokens
 
-The token endpoint SHALL return an ID token and an access token, and no refresh token. The ID token SHALL be a JWT signed with RS256 under a key published at the JWKS endpoint and named by `kid`. Its claims SHALL be `iss` (the issuer), `aud` and `azp` (the client ID), `sub` (the user's identity-provider subject), `email`, `email_verified: true`, `name`, `iat`, `auth_time`, `exp` at most 300 seconds after `iat`, and `nonce` when the request carried one.
+The ID token SHALL be a JWT with `typ: JWT`, signed with RS256 under a key published at the JWKS endpoint and named by `kid`. Its claims SHALL be `iss` (the issuer), `aud` and `azp` (the client ID), `sub` (the user's identity-provider subject), `email`, `email_verified: true`, `name`, `iat`, `auth_time` (from the identity provider), `exp` at most 300 seconds after `iat`, and `nonce` when the request carried one.
 
 #### Scenario: Audience
 
@@ -173,9 +244,18 @@ The token endpoint SHALL return an ID token and an access token, and no refresh 
 - **WHEN** a new signing key has been added in front of the keyring
 - **THEN** new ID tokens are signed with it, and the JWKS endpoint publishes both public keys
 
+### Requirement: No refresh tokens and no username
+
+The token endpoint SHALL return an ID token and an access token, and no refresh token. No token SHALL carry `preferred_username`.
+
+#### Scenario: Token response
+
+- **WHEN** a client redeems a code
+- **THEN** the response holds an ID token and an access token, and neither a refresh token nor a username
+
 ### Requirement: Access tokens and userinfo
 
-The access token SHALL be usable only at the userinfo endpoint, for at most one hour. The userinfo endpoint SHALL answer the same `sub`, `email`, `email_verified` and `name` as the ID token. The provider SHALL store no issued token.
+The access token SHALL be usable only at the userinfo endpoint, for at most ten minutes. The userinfo endpoint SHALL answer only while the token's client is still an eligible deployment, with the same `sub`, `email`, `email_verified` and `name` as the ID token. The provider SHALL store no issued token.
 
 #### Scenario: Userinfo
 
@@ -184,19 +264,29 @@ The access token SHALL be usable only at the userinfo endpoint, for at most one 
 
 #### Scenario: Expired access token
 
-- **WHEN** a client calls the userinfo endpoint with an access token issued more than an hour ago
+- **WHEN** a client calls the userinfo endpoint with an access token issued more than ten minutes ago
+- **THEN** the provider answers `401` with `error="invalid_token"`
+
+#### Scenario: Deployment turned SSO off
+
+- **WHEN** a client calls the userinfo endpoint with an unexpired access token after its deployment stopped being an eligible client
 - **THEN** the provider answers `401` with `error="invalid_token"`
 
 ### Requirement: Ending the session
 
-The end-session endpoint SHALL end the user's identity-provider session through the broker's existing sign-out round trip, and then redirect to `post_logout_redirect_uri` when that URI passes the redirect URI rules for the named `client_id`, carrying the request's `state`. Otherwise it SHALL end on the broker's signed-out page.
+The end-session endpoint SHALL end the user's identity-provider session through the broker's existing sign-out round trip. It SHALL then redirect to `post_logout_redirect_uri`, carrying the request's `state`, only when `id_token_hint` is an ID token the provider signed whose `aud` equals `client_id`, its expiry aside, and the URI is the deployment's `https://<hostname>/` or passes the redirect URI rules. Otherwise it SHALL end on the broker's signed-out page.
 
 #### Scenario: Return to the app
 
-- **WHEN** an app sends a user to the end-session endpoint with its own `client_id` and `https://photos.alice.freepod.eu/` as the post-logout redirect
-- **THEN** after the identity-provider session ends, the user lands on `https://photos.alice.freepod.eu/`
+- **WHEN** an app sends a user to the end-session endpoint with its own `client_id`, an ID token it received, and `https://wiki-alice.freepod.app/` as the post-logout redirect
+- **THEN** after the identity-provider session ends, the user lands on `https://wiki-alice.freepod.app/`
+
+#### Scenario: Missing or foreign hint
+
+- **WHEN** the request has no `id_token_hint`, or one whose audience is another deployment
+- **THEN** the user lands on the broker's signed-out page
 
 #### Scenario: Foreign post-logout redirect
 
-- **WHEN** the post-logout redirect is not on the deployment's hostname or its template's list
+- **WHEN** the post-logout redirect is neither the deployment's root nor a declared redirect URI
 - **THEN** the user lands on the broker's signed-out page
