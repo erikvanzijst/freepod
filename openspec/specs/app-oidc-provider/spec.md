@@ -198,7 +198,7 @@ The provider SHALL refuse an authorization request whose `state` exceeds 512 byt
 
 ### Requirement: Authorization code flow
 
-The provider SHALL support only the authorization code flow and SHALL require the `openid` scope. It SHALL authenticate the user through the identity provider, refusing unverified email addresses as the broker does, and passing `prompt` and `max_age` through. It SHALL ask for consent under the same rules, records and claims as header authentication, keyed by the user's subject and the deployment. It SHALL then redirect to the validated redirect URI with a code and the request's `state`.
+The provider SHALL support only the authorization code flow and SHALL require the `openid` scope. It SHALL accept the authorization request as an HTTP GET with its parameters in the query, and as an HTTP POST with them in a form body, under the same rules. It SHALL authenticate the user through the identity provider, refusing unverified email addresses as the broker does, and passing `prompt` and `max_age` through. It SHALL ask for consent under the same rules, records and claims as header authentication, keyed by the user's subject and the deployment. It SHALL then redirect to the validated redirect URI with a code and the request's `state`.
 
 #### Scenario: First sign-in
 
@@ -209,6 +209,11 @@ The provider SHALL support only the authorization code flow and SHALL require th
 
 - **WHEN** a user already consented to a deployment through header authentication and signs in to it through the provider
 - **THEN** no consent page is shown
+
+#### Scenario: Authorization request by POST
+
+- **WHEN** an app sends the authorization request as a form POST
+- **THEN** the provider handles it exactly as the same request by GET
 
 #### Scenario: Silent sign-in without consent
 

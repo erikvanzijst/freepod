@@ -55,6 +55,7 @@ func (b *broker) providerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/openid-configuration", b.discovery)
 	mux.HandleFunc("GET /oidc/jwks", b.jwks)
 	mux.HandleFunc("GET /oidc/authorize", b.authorize)
+	mux.HandleFunc("POST /oidc/authorize", b.authorize)
 	mux.HandleFunc("POST /oidc/token", b.token)
 	mux.HandleFunc("GET /oidc/userinfo", b.userinfo)
 	mux.HandleFunc("POST /oidc/userinfo", b.userinfo)
@@ -137,8 +138,18 @@ func redirectError(w http.ResponseWriter, redirectURI, code, description, state 
 
 var keycloakPrompts = map[string]bool{"none": true, "login": true, "select_account": true}
 
+// authorize takes its parameters from the query on GET and from the form body
+// on POST, which OIDC Core §3.1.2.1 requires an OP to accept as well.
 func (b *broker) authorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	if r.Method == http.MethodPost {
+		r.Body = http.MaxBytesReader(w, r.Body, 8192)
+		if err := r.ParseForm(); err != nil {
+			b.errorPage(w, http.StatusBadRequest, "This sign-in link isn't valid", "Go back to the app and sign in again.")
+			return
+		}
+		q = r.PostForm
+	}
 	if len(q["client_id"]) > 1 || len(q["redirect_uri"]) > 1 {
 		b.errorPage(w, http.StatusBadRequest, "This sign-in link isn't valid", "Go back to the app and sign in again.")
 		return

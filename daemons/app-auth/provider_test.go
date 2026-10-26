@@ -346,6 +346,32 @@ func TestAuthorizeErrorsGoBackToTheApp(t *testing.T) {
 	}
 }
 
+func TestAuthorizeByPost(t *testing.T) {
+	g := newProviderRig(t)
+	g.st.recordConsent(context.Background(), "3f2a", depWiki, disclosedClaims)
+	start := g.do("POST", "/oidc/authorize", authorizeQuery(depWiki, wikiCallback))
+	if start.Code != http.StatusFound || !strings.HasPrefix(start.Header().Get("Location"), "https://keycloak.example/") {
+		t.Fatalf("%d %s", start.Code, start.Body)
+	}
+	g.codeFrom(g.returnFromIdP(start), wikiCallback)
+
+	t.Run("the same rules apply", func(t *testing.T) {
+		g := newProviderRig(t)
+		errorPageWithoutRedirect(t, g.do("POST", "/oidc/authorize", authorizeQuery(depWiki, "https://evil.example/cb")))
+		oauthError(t, g.do("POST", "/oidc/authorize", authorizeQuery(depWiki, wikiCallback, "code_challenge", "", "code_challenge_method", "")),
+			wikiCallback, "invalid_request", "app-state")
+	})
+
+	t.Run("an oversized body", func(t *testing.T) {
+		g := newProviderRig(t)
+		w := g.do("POST", "/oidc/authorize", authorizeQuery(depWiki, wikiCallback, "state", strings.Repeat("s", 9000)))
+		errorPageWithoutRedirect(t, w)
+		if len(w.Result().Cookies()) != 0 {
+			t.Fatal("set a cookie")
+		}
+	})
+}
+
 func TestAuthorizationCodeFlow(t *testing.T) {
 	t.Run("first sign-in asks for consent naming the hostname", func(t *testing.T) {
 		g := newProviderRig(t)
