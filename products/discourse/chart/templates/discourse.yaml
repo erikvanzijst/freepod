@@ -41,6 +41,10 @@ spec:
         {{- include "discourse.podLabels" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
+      # Discourse maps every DISCOURSE_* env var to a setting; service links
+      # inject DISCOURSE_<release>_REDIS_PORT etc., which crash boot when the
+      # release suffix starts with a digit.
+      enableServiceLinks: false
       {{- include "discourse.podPlacement" . | nindent 6 }}
       # Not runAsNonRoot here: the SSH sidecar in this pod runs as root.
       securityContext:

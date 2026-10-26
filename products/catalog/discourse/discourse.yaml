@@ -86,7 +86,7 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/discourse
-  chart_version: 0.1.4
+  chart_version: 0.1.5
   system_values:
     image:
       tag: 2026.7.4@sha256:e616b65e123d49d43833f3beccf83ddc4e6046be187fff83af685ca178b75164
