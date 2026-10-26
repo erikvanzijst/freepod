@@ -127,8 +127,8 @@ callback finishes accordingly.
 ### D2: `sso.enabled`, and the template must declare support
 
 A deployment is an eligible OIDC client when it is not deleted, the template
-of the release it serves declares at least one callback path in the system
-value `sso.redirectPaths`, and that release has `sso.enabled` true: the
+of the release it serves declares at least one valid callback path (D4) in the
+system value `sso.redirectPaths`, and that release has `sso.enabled` true: the
 template's system value when the template sets one, otherwise the release's
 user value, otherwise false. That reuses the existing eligibility rule with a
 different key, so the broker agrees with what the release rendered while a
@@ -183,9 +183,15 @@ byte for byte, one of:
 
 1. `https://<deployment hostname, from its row><path>` for each `path` in the
    serving release's template system value `sso.redirectPaths`. A path is
-   absolute, holds no query or fragment, and is fixed per product (BookStack's
-   is `/oidc/callback`). The hostname comes from the deployment row in
-   lowercase, so custom domains work with no configuration; or
+   fixed per product (BookStack's is `/oidc/callback`). The hostname comes
+   from the deployment row in lowercase, so custom domains work with no
+   configuration. The broker honors a path only when it starts with `/` but
+   not `//`, and holds no `?`, `#`, `\` or control character. It then parses
+   the joined URI and requires its host to equal the deployment's hostname,
+   with no userinfo and no port. A path that fails either check is ignored and
+   logged. Without this, the join itself can move the host: `@evil.example/cb`
+   yields host `evil.example`, and `.evil.example/cb` yields
+   `<hostname>.evil.example`; or
 2. one of the URIs in the template system value `sso.nativeRedirectUris`. Each
    must use a private-use scheme, never `http` or `https`, in reverse-domain
    form with at least one `.` (RFC 8252 §7.1), such as
@@ -193,10 +199,10 @@ byte for byte, one of:
    ignored and logged.
 
 Both read only template system values, never user values, so a tenant cannot
-add a redirect. Rule 2 cannot name an `https` collector, which would receive
-codes for every deployment of the template while the consent page names the
-deployment's own host. The upgrader agent edits catalog YAML, so the rule is
-enforced by the broker, not trusted to review. The Immich pilot may not need
+add a redirect. Neither rule can name a collector on another host, which would
+receive codes for every deployment of the template while the consent page
+names the deployment's own host. The upgrader agent edits catalog YAML, so
+both rules are enforced by the broker, not trusted to review. The Immich pilot may not need
 rule 2 at all, since Immich's `https://<host>/api/oauth/mobile-redirect`
 override fits rule 1.
 

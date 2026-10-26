@@ -22,7 +22,7 @@ The provider SHALL publish OpenID Connect discovery metadata at `<issuer>/.well-
 
 ### Requirement: Every SSO-enabled deployment is a client
 
-A deployment SHALL be a client of the provider exactly when it is not deleted, the template of the release it serves declares at least one path in the system value `sso.redirectPaths`, and that release has SSO enabled: the template's system value for `sso.enabled` when the template sets one, otherwise the release's user value, otherwise disabled.
+A deployment SHALL be a client of the provider exactly when it is not deleted, the template of the release it serves declares at least one valid path in the system value `sso.redirectPaths`, and that release has SSO enabled: the template's system value for `sso.enabled` when the template sets one, otherwise the release's user value, otherwise disabled.
 
 #### Scenario: Enabled by the user
 
@@ -115,6 +115,35 @@ The provider SHALL accept a redirect URI only when it equals exactly `https://<t
 
 - **WHEN** a deployment requests `http://wiki-alice.freepod.app/oidc/callback`
 - **THEN** the provider shows an error page and does not redirect
+
+### Requirement: Callback paths cannot leave the deployment's host
+
+The provider SHALL honor an entry of `sso.redirectPaths` only when it starts with `/` but not `//`, contains no `?`, `#`, `\` or control character, and the URI formed by joining `https://`, the deployment's hostname and the entry parses with a host equal to the deployment's hostname and no userinfo or port. It SHALL ignore any other entry and log it. A template whose entries are all ignored SHALL make no clients.
+
+#### Scenario: Userinfo trick
+
+- **WHEN** a template lists `@evil.example/cb` in `sso.redirectPaths`, and a request names `https://wiki-alice.freepod.app@evil.example/cb`
+- **THEN** the provider ignores the entry and shows an error page without redirecting
+
+#### Scenario: Host suffix trick
+
+- **WHEN** a template lists `.evil.example/cb` in `sso.redirectPaths`, and a request names `https://wiki-alice.freepod.app.evil.example/cb`
+- **THEN** the provider ignores the entry and shows an error page without redirecting
+
+#### Scenario: Port trick
+
+- **WHEN** a template lists `:443@evil.example/cb` in `sso.redirectPaths`
+- **THEN** the provider ignores the entry
+
+#### Scenario: Query in a declared path
+
+- **WHEN** a template lists `/oidc/callback?next=/` in `sso.redirectPaths`
+- **THEN** the provider ignores the entry
+
+#### Scenario: No valid path
+
+- **WHEN** every entry of a template's `sso.redirectPaths` is ignored
+- **THEN** the provider treats its deployments as unknown clients
 
 ### Requirement: Native redirect URIs use private-use schemes
 
