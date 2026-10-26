@@ -1,0 +1,140 @@
+# Bespoke Discourse chart values. Flat and explicit: every image, size and env
+# the deployment uses is declared here.
+
+image:
+  repository: docker.io/discourse/discourse
+  # Defaults to the chart appVersion. Upstream rebuilds a version's tag
+  # nightly, so the catalog pins it with a digest.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Public hostname: the ingress rule host and DISCOURSE_HOSTNAME.
+host: "discourse.local"
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+
+# The owner's account, created as an active admin by the setup init container
+# before the web server first starts. Discourse signs in by email or username;
+# the email comes from caelus.owner.email under Caelus and from `email`
+# standalone.
+admin:
+  name: Admin
+  email: admin@example.com
+  # Blank generates one on first install; a tenant-supplied
+  # DISCOURSE_ADMIN_PASSWORD var overrides it.
+  password: ""
+
+smtp:
+  host: ""
+  port: 25
+  from: discourse@example.com
+
+persistence:
+  # /shared: uploads, backups and scratch space.
+  # caelus.plan.storageSize overrides the size.
+  shared:
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    storageClassName: ""
+
+# One Pitchfork worker and one Sidekiq, both forked from the same preloaded
+# application. Upstream defaults to three workers.
+web:
+  workers: 1
+  sidekiqs: 1
+
+# Measured idle: ~900Mi working set and ~10m, one worker and one Sidekiq.
+resources:
+  requests:
+    cpu: 10m
+    memory: 896Mi
+  limits:
+    memory: 4Gi
+
+# Discourse's global per-IP request limits (upstream: 50 and 200). Upstream's
+# nginx serves /assets, /plugins and /images itself; here Rails does, and its
+# limiter counts those files, about 45 on a cold page load.
+rateLimit:
+  perIpPer10Seconds: 150
+  perIpPerMinute: 400
+
+# Migrations and the owner seed, before every start.
+setup:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 256Mi
+    limits:
+      memory: 2Gi
+
+# Uploads are buffered by Traefik before they reach Discourse: a Pitchfork
+# worker serves one request at a time and is killed after 30 seconds, so a slow
+# client must never hold it while the body trickles in.
+uploadBuffering:
+  enabled: true
+  maxRequestBodyBytes: 1073741824
+
+postgres:
+  image:
+    repository: docker.io/discourse/postgres
+    tag: pg18
+    pullPolicy: IfNotPresent
+  auth:
+    # The image creates this role and its database itself, with the
+    # extensions Discourse needs (hstore, pg_trgm, vector).
+    username: discourse
+    database: discourse
+    # Blank generates one on first install and reuses it from the <release>-db
+    # Secret thereafter.
+    password: ""
+  persistence:
+    accessMode: ReadWriteOnce
+    size: 5Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 10m
+      memory: 136Mi
+    limits:
+      memory: 2Gi
+
+redis:
+  image:
+    repository: docker.io/library/redis
+    tag: "8.0"
+    pullPolicy: IfNotPresent
+  persistence:
+    accessMode: ReadWriteOnce
+    size: 1Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 8m
+      memory: 8Mi
+    limits:
+      memory: 1Gi
+
+# The node pool every pod prefers: nodes labeled and tainted
+# `caelus.dev/node-pool=<pool>`. A system value; empty schedules the pods like
+# any other.
+nodePool: ""
+
+# Escape hatch for Discourse settings this chart does not model. A
+# DISCOURSE_<SITE_SETTING> variable pins that site setting and hides it from
+# the admin UI.
+extraEnv: {}
+
+# Injected per deployment by the Caelus reconciler.
+caelus:
+  releaseId: ""
+  plan: {}
+  owner: {}
+  ingress:
+    enabled: false
+    tls: {}
+  vars: {}
+
+sshSidecarImage: ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2

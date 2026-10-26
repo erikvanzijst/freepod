@@ -276,6 +276,7 @@ _XDIST_GROUPS = {
         "test_chart_rollout_strategy",
         "test_custom_chart",
         "test_custom_ssh_sidecar",
+        "test_discourse_chart",
         "test_docmost_chart",
         "test_lemmy_chart",
         "test_mattermost_chart",

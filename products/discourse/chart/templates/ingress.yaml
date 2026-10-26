@@ -1,0 +1,155 @@
+{{- if .Values.ingress.enabled }}
+{{- /*
+Wrapper-owned ingress. When the Caelus reconciler injects a per-deployment TLS
+cert (caelus.ingress.enabled and not a wildcard), add the cert-manager issuer
+annotation and a tls block; otherwise render plain (wildcard TLS is terminated
+upstream).
+
+Two Traefik middlewares stand in for parts of the nginx this chart leaves out:
+
+- `strip-accel` drops a client's X-Accel-Mapping header. Discourse trusts it
+  (Rack 2) and answers a file request with an empty body and an internal
+  X-Accel-Redirect path, which only nginx would resolve.
+- `buffer-uploads`, on a second, more specific Ingress for the upload
+  endpoints only, reads the whole request body before Discourse sees it. A
+  Pitchfork worker serves one request at a time and is killed after 30
+  seconds, so a slow upload must not stream into it. Everything else stays
+  unbuffered: the message bus streams its long-poll responses.
+- `cache-static`, on a third Ingress for the content-hashed static paths,
+  adds the year-long immutable Cache-Control nginx would, so a returning
+  browser does not fetch them again.
+*/}}
+{{- $tlsCustom := and .Values.caelus.ingress.enabled (not .Values.caelus.ingress.tls.wildcard) }}
+{{- $traefik := eq .Values.ingress.className "traefik" }}
+{{- $prefix := printf "%s-%s" .Release.Namespace .Release.Name }}
+{{- $annotations := merge (dict) (.Values.ingress.annotations | default dict) }}
+{{- if $tlsCustom }}{{- $_ := set $annotations "cert-manager.io/cluster-issuer" .Values.caelus.ingress.tls.issuer }}{{- end }}
+{{- if $traefik }}{{- $_ := set $annotations "traefik.ingress.kubernetes.io/router.middlewares" (printf "%s-strip-accel@kubernetescrd" $prefix) }}{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-ingress
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if $tlsCustom }}
+  tls:
+    - hosts:
+        - {{ .Values.caelus.ingress.host | quote }}
+      secretName: {{ .Values.caelus.ingress.tls.secretName | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-discourse
+                port:
+                  number: 3000
+{{- if $traefik }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ .Release.Name }}-strip-accel
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+spec:
+  headers:
+    customRequestHeaders:
+      X-Accel-Mapping: ""
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ .Release.Name }}-cache-static
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+spec:
+  headers:
+    customResponseHeaders:
+      Cache-Control: "public, max-age=31536000, immutable"
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-static
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ printf "%s-strip-accel@kubernetescrd,%s-cache-static@kubernetescrd" $prefix $prefix }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if $tlsCustom }}
+  {{- /* Same host and secret as the main Ingress; see the uploads Ingress. */}}
+  tls:
+    - hosts:
+        - {{ .Values.caelus.ingress.host | quote }}
+      secretName: {{ .Values.caelus.ingress.tls.secretName | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.host | quote }}
+      http:
+        paths:
+          {{- range list "/assets/" "/plugins/" "/images/emoji/" }}
+          - path: {{ . }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $.Release.Name }}-discourse
+                port:
+                  number: 3000
+          {{- end }}
+{{- if .Values.uploadBuffering.enabled }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ .Release.Name }}-buffer-uploads
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+spec:
+  buffering:
+    maxRequestBodyBytes: {{ .Values.uploadBuffering.maxRequestBodyBytes | int64 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-uploads
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ printf "%s-strip-accel@kubernetescrd,%s-buffer-uploads@kubernetescrd" $prefix $prefix }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if $tlsCustom }}
+  {{- /* Same host and secret as the main Ingress, which alone carries the
+         cert-manager annotation: a second annotated Ingress would contend for
+         the same Certificate. */}}
+  tls:
+    - hosts:
+        - {{ .Values.caelus.ingress.host | quote }}
+      secretName: {{ .Values.caelus.ingress.tls.secretName | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.host | quote }}
+      http:
+        paths:
+          {{- range list "/uploads.json" "/admin/backups/upload" }}
+          - path: {{ . }}
+            pathType: Exact
+            backend:
+              service:
+                name: {{ $.Release.Name }}-discourse
+                port:
+                  number: 3000
+          {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

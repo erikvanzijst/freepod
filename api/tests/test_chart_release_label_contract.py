@@ -36,6 +36,7 @@ WORKLOAD_KINDS = {"Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob"}
 # keyed by the `# Source:` path helm prints above each document.
 DATASTORES = {
     "bookstack": {"bookstack/templates/mysql.yaml"},
+    "discourse": {"discourse/templates/postgres.yaml", "discourse/templates/redis.yaml"},
     "docmost": {"docmost/templates/postgres.yaml", "docmost/templates/redis.yaml"},
     "immich": {"immich/templates/postgres.yaml", "immich/templates/valkey.yaml"},
     "lemmy": {"lemmy/templates/postgres.yaml"},

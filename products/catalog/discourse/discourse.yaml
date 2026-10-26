@@ -1,0 +1,137 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: discourse
+  name: Discourse
+  tagline: A home for your community's conversations, from first question to long-running discussion.
+  description: |-
+    Discourse is a discussion forum for communities, customers and teams. Conversations are organized into categories and tags, and a topic stays readable however long it grows, with replies loading as you scroll and the best answers easy to find.
+
+    On Freepod, Discourse runs as your own private instance, hosted in the EU. Members follow what interests them and get notified by email when someone replies. Trust levels let regular members take on moderation as they earn it, and chat channels sit right beside the forum.
+
+    Moving on later? Discourse makes complete backups of the forum and its uploads, which any other Discourse server can restore.
+  category: Forums & communities
+  replaces: Reddit
+  icon: icon.png
+  license: GPL-2.0
+  features:
+  - icon: forum
+    title: Categories and tags
+    body: Organize discussions by topic, each category with its own permissions.
+  - icon: comments
+    title: Readable discussions
+    body: Long topics load as you scroll, with quotes, reactions and solved answers.
+  - icon: moderation
+    title: Moderation and trust
+    body: Flags, review queues and trust levels that grow with your members.
+  - icon: chat
+    title: Chat
+    body: Real-time chat channels next to the forum.
+  - icon: send
+    title: Email notifications
+    body: Replies, mentions and summaries arrive in members' inboxes.
+  - icon: search
+    title: Search
+    body: Find any post, filtered by category, tag, author or date.
+  links:
+  - label: Website
+    href: https://www.discourse.org
+    kind: website
+  - label: Documentation
+    href: https://meta.discourse.org/c/documentation/10
+    kind: docs
+  - label: Source code
+    href: https://github.com/discourse/discourse
+    kind: source
+  - label: Release notes
+    href: https://releases.discourse.org
+    kind: releases
+  - label: Discourse Hub for iOS
+    href: https://apps.apple.com/us/app/discourse-hub/id1173672076
+    kind: ios
+  - label: Discourse Hub for Android
+    href: https://play.google.com/store/apps/details?id=com.discourse
+    kind: android
+  screenshots:
+  - file: screenshots/latest.webp
+    caption: The latest discussions, across every category
+    form: desktop
+  - file: screenshots/topic.webp
+    caption: A discussion with replies and likes
+    form: desktop
+  - file: screenshots/chat.webp
+    caption: Chat channels next to the forum
+    form: desktop
+  - file: screenshots/categories.webp
+    caption: Categories, each with its own topics
+    form: desktop
+  - file: screenshots/latest-mobile.webp
+    caption: The latest discussions on a phone
+    form: mobile
+  - file: screenshots/topic-mobile.webp
+    caption: Read and reply on the go
+    form: mobile
+  - file: screenshots/chat-mobile.webp
+    caption: Chat on a phone
+    form: mobile
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/discourse/discourse
+  # Extended support releases only: upstream tags an ESR's versions plainly
+  # (2026.7.4) and the monthly releases with -latest (2026.10.0-latest.1),
+  # and a site cannot move back from the monthly track. Upstream rebuilds a
+  # version's tag nightly, so it is pinned with a digest.
+  match: ^(?P<version>\d+\.\d+\.\d+)(?:@sha256:[0-9a-f]{64})?$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/discourse
+  chart_version: 0.1.4
+  system_values:
+    image:
+      tag: 2026.7.4@sha256:e616b65e123d49d43833f3beccf83ddc4e6046be187fff83af685ca178b75164
+    smtp:
+      host: smtp.mailer.svc.cluster.local
+      port: 25
+      from: discourse@freepod.eu
+    nodePool: tenant
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      host:
+        type: string
+        title: Hostname
+        minLength: 1
+        maxLength: 253
+        description: The address of your forum, such as forum-alice.freepod.app, or a domain of
+          your own.
+      admin:
+        type: object
+        additionalProperties: false
+        properties:
+          name:
+            type: string
+            title: Your name
+            minLength: 1
+            maxLength: 60
+            pattern: ^[^\u0000-\u001f\u007f]+$
+            description: How you appear to others in Discourse; your username is made from it. You
+              sign in with the email address of your Freepod account.
+        required:
+        - name
+      DISCOURSE_ADMIN_PASSWORD:
+        type: string
+        title: Password
+        minLength: 15
+        maxLength: 200
+        pattern: ^[^\u0000-\u001f\u007f]+$
+        x-caelus-target: runtime
+        x-caelus-sensitive: true
+        description: 'The password for your account, which administers the forum. It is set on first start only; to change it later, use Discourse''s own account
+          settings.'
+    required:
+    - host
+    - admin
+    - DISCOURSE_ADMIN_PASSWORD

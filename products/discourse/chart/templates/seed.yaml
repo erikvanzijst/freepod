@@ -1,0 +1,46 @@
+{{- /*
+Creates the owner as an active, confirmed admin, unless an admin already
+exists. Run by the setup init container after migrations, so the web server
+never starts on an instance without an owner, and Discourse's first-run
+"register admin account" page is never reachable.
+
+The password goes through Discourse's own validation, with the admin rules
+applied (admin is set before the first save): a rejected password fails the
+init container with Discourse's reason in its log.
+
+The same first run turns off Discourse's weekly automatic backup: each one
+copies the database and every upload onto the same volume, five kept, which
+the tenant never asked for. It is set once rather than pinned with
+DISCOURSE_BACKUP_FREQUENCY, so the tenant can schedule backups again.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-seed
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+data:
+  seed_owner.rb: |
+    if User.real.where(admin: true).exists?
+      puts "owner: an admin exists, nothing to do"
+      exit
+    end
+
+    name = ENV.fetch("DISCOURSE_ADMIN_NAME")
+    user =
+      User.new(
+        email: ENV.fetch("DISCOURSE_ADMIN_EMAIL"),
+        username: UserNameSuggester.suggest(name),
+        name: name,
+        password: ENV.fetch("DISCOURSE_ADMIN_PASSWORD"),
+        admin: true,
+        active: true,
+        approved: true,
+        trust_level: TrustLevel[4],
+      )
+    user.save!
+    user.email_tokens.update_all(confirmed: true)
+    user.activate
+    SiteSetting.has_login_hint = false
+    SiteSetting.backup_frequency = 0
+    puts "owner: created admin #{user.username}"
