@@ -14,5 +14,5 @@
 
 - [x] 3.1 Type-check the starter; in production and development mode, same-origin and header-less `POST`s pass, `same-site`/`cross-site` and foreign `Origin` `POST`/`DELETE` get `403`, `GET`s pass, and pages, API responses and Vite modules carry the headers
 - [x] 3.2 In Chrome: the starter renders without console errors, its own `fetch` `POST`s succeed, another origin's `no-cors` and form `POST`s change nothing, and its frame is refused; with the middleware removed, the same test sees both get through
-- [ ] 3.3 Publish image 0.1.28 and chart 0.2.14; in a dev studio, a new app from the starter runs in the preview and the agent's `curl` checks still pass
-- [ ] 3.4 Move the dev studios, then the prod studios, to chart 0.2.14
+- [x] 3.3 Publish image 0.1.28 and chart 0.2.14; in a dev studio, a new app from the starter runs in the preview and the agent's `curl` checks still pass
+- [x] 3.4 Move the dev studios, then the prod studios, to chart 0.2.14

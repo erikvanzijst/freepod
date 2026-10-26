@@ -24,20 +24,6 @@ A studio SHALL always have the app `/workspace/apps/app`. A studio that has none
 - **WHEN** a studio starts for the first time
 - **THEN** `/workspace/apps/app` exists as a git repository on `main` with one commit
 
-### Requirement: The single-app layout moves once
-
-On start, a studio that has `/workspace/app` and no `/workspace/apps/app` SHALL move `/workspace/app` to `/workspace/apps/app`, keeping its files and git history. It SHALL NOT overwrite an existing `/workspace/apps/app`.
-
-#### Scenario: Existing studio upgraded
-
-- **WHEN** a studio holding an app in `/workspace/app` restarts on this release
-- **THEN** that app's files and commits are in `/workspace/apps/app` and `/workspace/app` is gone
-
-#### Scenario: Both exist
-
-- **WHEN** both `/workspace/app` and `/workspace/apps/app` exist on start
-- **THEN** neither is changed and the studio starts
-
 ### Requirement: New project from the studio's bar
 
 The studio's bar SHALL offer a New project action that asks for a name and creates that app under `/workspace/apps`. It SHALL NOT offer a list of apps; switching between apps is opencode's own.
@@ -91,7 +77,7 @@ An app SHALL appear under its name in `/workspace/apps` only once its repository
 
 ### Requirement: opencode's project list includes every app
 
-Each time the studio page loads, before opencode starts in it, the studio SHALL add every app under `/workspace/apps` that the browser's opencode project list lacks, and SHALL remove the entry for `/workspace/app`. Folders whose names start with a dot SHALL NOT be added. Projects the owner opened elsewhere SHALL be kept.
+Each time the studio page loads, before opencode starts in it, the studio SHALL add every app under `/workspace/apps` that the browser's opencode project list lacks. Folders whose names start with a dot SHALL NOT be added. Projects the owner opened elsewhere SHALL be kept.
 
 #### Scenario: New browser
 
