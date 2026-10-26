@@ -1,0 +1,185 @@
+{{- /*
+Upstream's image boots runit as root, which starts nginx, cron and the
+application server and then drops to the discourse user. This chart runs the
+application server alone, as the discourse user throughout: Rails serves the
+static files nginx would, and Traefik buffers uploads in nginx's place (see
+ingress.yaml). Sidekiq is forked from the application server, as in upstream's
+web_only layout.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-discourse
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "discourse.componentSelector" (dict "root" . "name" "discourse") | nindent 4 }}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-discourse
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+    {{- include "discourse.componentSelector" (dict "root" . "name" "discourse") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "discourse.componentSelector" (dict "root" . "name" "discourse") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "discourse.componentSelector" (dict "root" . "name" "discourse") | nindent 8 }}
+        {{- include "discourse.podLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      {{- include "discourse.podPlacement" . | nindent 6 }}
+      # Not runAsNonRoot here: the SSH sidecar in this pod runs as root.
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        # Upstream's MIGRATE_ON_BOOT, moved out of the application container,
+        # and the owner's account, before the web server ever starts.
+        - name: setup
+          image: {{ include "discourse.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          workingDir: /var/www/discourse
+          securityContext:
+            {{- include "discourse.securityContext" . | nindent 12 }}
+          command:
+            - bash
+            - -ec
+            - |
+              until pg_isready -q -h "$DISCOURSE_DB_HOST" -U "$DISCOURSE_DB_USERNAME" -d "$DISCOURSE_DB_NAME"; do sleep 2; done
+              until (exec 3<>"/dev/tcp/$DISCOURSE_REDIS_HOST/6379") 2>/dev/null; do sleep 2; done
+              # The image links public/uploads, public/backups, tmp/backups,
+              # tmp/restores and log/*.log into /shared; upstream's boot
+              # creates the targets and clears the backup staging areas.
+              rm -rf /shared/tmp/backups /shared/tmp/restores
+              mkdir -p /shared/uploads /shared/backups /shared/tmp/backups /shared/tmp/restores /shared/log/rails
+              bundle exec rake db:migrate
+              bundle exec rails runner /seed/seed_owner.rb
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          env:
+            {{- include "discourse.env" . | nindent 12 }}
+            - name: DISCOURSE_ADMIN_EMAIL
+              value: {{ .Values.caelus.owner.email | default .Values.admin.email | quote }}
+            - name: DISCOURSE_ADMIN_NAME
+              value: {{ .Values.admin.name | quote }}
+            - name: DISCOURSE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.caelus.vars.secretName | default (printf "%s-admin" .Release.Name) | quote }}
+                  key: DISCOURSE_ADMIN_PASSWORD
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+            - name: seed
+              mountPath: /seed
+              readOnly: true
+          {{- with .Values.setup.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      containers:
+        # The image ships no compiled assets: upstream's PRECOMPILE_ON_BOOT,
+        # about ten seconds. Pitchfork is exec'd directly rather than through
+        # config/unicorn_launcher, a supervisor script that would ignore
+        # SIGTERM as PID 1.
+        - name: discourse
+          image: {{ include "discourse.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          workingDir: /var/www/discourse
+          securityContext:
+            {{- include "discourse.securityContext" . | nindent 12 }}
+          command:
+            - bash
+            - -ec
+            - |
+              SKIP_EMBER_CLI_COMPILE=1 bundle exec rake assets:precompile
+              exec thpoff bundle exec pitchfork -E production -c config/pitchfork.conf.rb
+          ports:
+            - containerPort: 3000
+              name: http
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          env:
+            {{- include "discourse.env" . | nindent 12 }}
+            - name: UNICORN_WORKERS
+              value: {{ .Values.web.workers | quote }}
+            - name: UNICORN_SIDEKIQS
+              value: {{ .Values.web.sidekiqs | quote }}
+            - name: UNICORN_BIND_ALL
+              value: "1"
+            - name: UNICORN_PORT
+              value: "3000"
+            - name: DISCOURSE_MAX_REQS_PER_IP_PER_10_SECONDS
+              value: {{ .Values.rateLimit.perIpPer10Seconds | quote }}
+            - name: DISCOURSE_MAX_REQS_PER_IP_PER_MINUTE
+              value: {{ .Values.rateLimit.perIpPerMinute | quote }}
+            - name: DISCOURSE_SERVE_STATIC_ASSETS
+              value: "true"
+          startupProbe:
+            httpGet: { path: /srv/status, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 120
+          readinessProbe:
+            httpGet: { path: /srv/status, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /srv/status, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage
+             "sessionRoot" "volume:/shared"
+             "mounts" (list (dict "volume" "shared" "path" "/shared"))) | nindent 8 }}
+      volumes:
+        - name: shared
+          persistentVolumeClaim:
+            claimName: shared
+        - name: seed
+          configMap:
+            name: {{ .Release.Name }}-seed
+---
+{{- /*
+Fixed name (not release-prefixed) so an existing volume in the namespace is
+re-adopted on upgrade rather than replaced by a fresh, empty PVC.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.shared.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.caelus.plan.storageSize | default .Values.persistence.shared.size }}
+  {{- if .Values.persistence.shared.storageClassName }}
+  storageClassName: {{ .Values.persistence.shared.storageClassName }}
+  {{- end }}

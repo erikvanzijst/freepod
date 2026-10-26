@@ -1,0 +1,20 @@
+apiVersion: v2
+name: discourse
+description: >-
+  Self-contained Freepod chart for Discourse. Renders the full deployment
+  (discourse, postgres, redis) directly.
+type: application
+version: 0.1.4
+appVersion: "2026.7.4"
+keywords:
+  - discourse
+  - forum
+  - community
+  - postgres
+maintainers:
+  - name: Caelus Team
+
+dependencies:
+  - name: ssh-sidecar
+    version: "0.5.1"
+    repository: "file://../../_lib/ssh-sidecar-chart"

@@ -72,6 +72,7 @@ SESSION_ROOTS: dict[str, str | None] = {
     "appstudio": "volume:/apps",
     "bookstack": "volume:/uploads",
     "custom": "app-container",
+    "discourse": "volume:/shared",
     "docmost": "volume:/storage",
     "helloworld": "volume:/data",
     "immich": "volume:/library",
