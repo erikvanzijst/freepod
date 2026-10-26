@@ -1,0 +1,54 @@
+---
+title: Discourse
+---
+
+import ProductHeader from '@site/src/components/ProductHeader'
+
+<ProductHeader slug="discourse" />
+
+Discourse is a discussion forum. Conversations are organized into categories and tags, members follow the topics that interest them, and chat channels sit next to the forum.
+
+## Settings
+
+| Setting   | Meaning                                              |
+|-----------|------------------------------------------------------|
+| Hostname  | The app's address                                    |
+| Your name | How you appear to others; your username is made from it |
+| Password  | The password of your Discourse administrator account |
+
+The password is used once, when the app first starts. To change it, or your name, later, use Discourse's own account preferences. Changing them with **Settings** afterwards has no effect.
+
+## First sign-in
+
+1. Select **Open** on the app's row.
+2. Select **Log In** and sign in with the email address of your Freepod account and the password from the settings.
+
+Your account is the forum's administrator. Discourse makes your username from your name; change it, or your name, under **Preferences → Account**. Discourse's **Launch in 3 easy steps** panel on the home page walks through choosing a theme, inviting people and starting the first topics. Set the forum's name and who may join under **Admin → Settings**.
+
+## Changing the address
+
+Discourse writes the forum's address into every post when it is created. If you change **Hostname** later, links and images in existing posts keep pointing at the old address and stop working. Choose the address before your forum fills up.
+
+The app's address and email delivery are managed by Freepod, so Discourse's admin settings don't show them.
+
+## Backups
+
+Discourse makes backups of the whole forum, its database and its uploads, under **Admin → Backups**. Each backup counts toward the app's storage. A backup can be restored into any other Discourse forum.
+
+Discourse makes no automatic backups: create one with **Backup** when you need it. To have Discourse make one on a schedule, set **backup frequency** in the backup settings; it keeps the five most recent.
+
+## File access
+
+[SFTP](../file-access.md) shows Discourse's uploads and backups, read-only: `uploads/` holds uploaded files and images, and `backups/` the backups made in **Admin → Backups**.
+
+## Email
+
+Discourse sends email, such as invitations, notifications and summaries, from `discourse@freepod.eu`. See [Email](../email.md).
+
+## Mobile apps
+
+Discourse Hub for [iOS](https://apps.apple.com/us/app/discourse-hub/id1173672076) and [Android](https://play.google.com/store/apps/details?id=com.discourse) connects to your forum by its address.
+
+## Documentation
+
+[Discourse documentation](https://meta.discourse.org/c/documentation/10)
