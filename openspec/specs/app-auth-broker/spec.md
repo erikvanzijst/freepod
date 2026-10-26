@@ -20,9 +20,9 @@ The broker SHALL be served on `https://login.freepod.eu` in production and `http
 - **WHEN** the production broker is asked to sign a user in to a hostname that belongs only to a development deployment
 - **THEN** it refuses as it would for any unknown host
 
-### Requirement: Only auth-enabled deployments are served
+### Requirement: Only deployments with authentication enabled are served
 
-Before sending a browser to the identity provider, and again before issuing a code, the broker SHALL confirm that the requested host is the hostname of a deployment that is not deleted and has authentication enabled, whatever its product. The comparison SHALL be case-insensitive. Whether authentication is enabled SHALL be judged from the release the deployment is currently serving, not from settings not yet rolled out, so the broker agrees with what the edge enforces: the release's template system value for `auth.enabled` when the template sets one, otherwise the release's user value, otherwise disabled. This SHALL apply to wildcard-domain and custom-domain hostnames alike. For any other host, the broker SHALL show an error page and SHALL NOT redirect anywhere.
+Before sending a browser to the identity provider, and again before issuing a code, the broker SHALL confirm that the requested host is the hostname of a deployment that is not deleted and has authentication enabled, whatever its product. The comparison SHALL be case-insensitive. Whether authentication is enabled SHALL be judged from the release the deployment is currently serving, not from settings not yet rolled out, so the broker agrees with what the edge enforces: the release's user value for `auth.enabled` when it sets one, otherwise the template's system value, otherwise disabled. This SHALL apply to wildcard-domain and custom-domain hostnames alike. For any other host, the broker SHALL show an error page and SHALL NOT redirect anywhere.
 
 #### Scenario: Custom domain
 
@@ -54,10 +54,10 @@ Before sending a browser to the identity provider, and again before issuing a co
 - **WHEN** sign-in starts for a deployment whose template sets `auth.enabled: true` as a system value and whose user values say nothing about `auth`
 - **THEN** the broker proceeds
 
-#### Scenario: Template value wins
+#### Scenario: User value over the template's default
 
 - **WHEN** a deployment's template sets `auth.enabled: true` as a system value and its user values set `auth.enabled: false`
-- **THEN** the broker treats authentication as enabled, as the edge does
+- **THEN** the broker treats authentication as disabled, as the chart renders it
 
 ### Requirement: Authentication against the identity provider
 

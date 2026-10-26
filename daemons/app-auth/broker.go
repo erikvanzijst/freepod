@@ -32,20 +32,25 @@ type flow struct {
 	State     string `json:"state"`
 	OIDCNonce string `json:"nonce"`
 	Verifier  string `json:"pkce"`
+	// OIDC marks a sign-in for an app's OIDC client rather than for its
+	// verifier; /callback finishes the two differently.
+	OIDC *oidcRequest `json:"oidc,omitempty"`
 }
 
 // pendingConsent carries an authenticated identity across the consent page.
 // CSRF is the token the form must echo back; the cookie is SameSite=Lax, so a
 // cross-site POST does not carry it in the first place.
 type pendingConsent struct {
-	Host         string `json:"host"`
-	RD           string `json:"rd"`
-	NonceHash    string `json:"n"`
-	DeploymentID string `json:"d"`
-	Sub          string `json:"sub"`
-	Email        string `json:"email"`
-	Name         string `json:"name"`
-	CSRF         string `json:"csrf"`
+	Host         string       `json:"host"`
+	RD           string       `json:"rd"`
+	NonceHash    string       `json:"n"`
+	DeploymentID string       `json:"d"`
+	Sub          string       `json:"sub"`
+	Email        string       `json:"email"`
+	Name         string       `json:"name"`
+	CSRF         string       `json:"csrf"`
+	OIDC         *oidcRequest `json:"oidc,omitempty"`
+	AuthTime     int64        `json:"at,omitempty"`
 }
 
 // logoutState is where to send the browser once Keycloak has ended its session.
@@ -54,18 +59,28 @@ type pendingConsent struct {
 type logoutState struct {
 	Host string `json:"host"`
 	RD   string `json:"rd"`
+	// URI and State are an OIDC client's validated post-logout redirect.
+	URI   string `json:"uri,omitempty"`
+	State string `json:"state,omitempty"`
 }
 
 type identity struct {
-	Sub   string
-	Email string
-	Name  string
+	Sub      string
+	Email    string
+	Name     string
+	AuthTime time.Time
+}
+
+// authParams are what an OIDC client's request passes through to Keycloak.
+type authParams struct {
+	prompt string
+	maxAge string
 }
 
 // authenticator is the Keycloak leg. Tests substitute a stub provider through
 // the same interface the real one satisfies.
 type authenticator interface {
-	authURL(state, nonce, verifier string) (string, error)
+	authURL(state, nonce, verifier string, p authParams) (string, error)
 	exchange(ctx context.Context, code, verifier, nonce string) (identity, error)
 	endSessionURL(state, postLogoutRedirect string) (string, error)
 }
@@ -80,6 +95,8 @@ type broker struct {
 	auth     authenticator
 	now      func() time.Time
 	log      *slog.Logger
+	// oidc is the OpenID Provider; nil leaves its routes out.
+	oidc *provider
 }
 
 func (b *broker) routes() http.Handler {
@@ -91,6 +108,9 @@ func (b *broker) routes() http.Handler {
 	mux.HandleFunc("GET /signed-out", b.signedOut)
 	mux.Handle("GET /assets/", assetHandler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
+	if b.oidc != nil {
+		b.providerRoutes(mux)
+	}
 	return mux
 }
 
@@ -123,7 +143,7 @@ func (b *broker) start(w http.ResponseWriter, r *http.Request) {
 		b.internal(w, "sealing flow", err)
 		return
 	}
-	target, err := b.auth.authURL(f.State, f.OIDCNonce, f.Verifier)
+	target, err := b.auth.authURL(f.State, f.OIDCNonce, f.Verifier, authParams{})
 	if err != nil {
 		b.log.Error("identity provider unavailable", "err", err)
 		b.errorPage(w, http.StatusServiceUnavailable, "Sign-in is temporarily unavailable", "Something on our side isn't answering. Please try again in a moment.")
@@ -154,6 +174,10 @@ func (b *broker) callback(w http.ResponseWriter, r *http.Request) {
 		b.errorPage(w, http.StatusBadRequest, "This sign-in expired", "It took too long, or it was started in another browser. Go back to the app and try again.")
 		return
 	}
+	if f.OIDC != nil {
+		b.oidcCallback(w, r, f)
+		return
+	}
 	if errCode := q.Get("error"); errCode != "" {
 		b.log.Info("identity provider returned an error", "error", errCode)
 		renderPage(w, http.StatusBadRequest, page{chrome: b.chrome, Kind: "info", Title: "Sign-in canceled", Message: "Nothing was shared. You can close this page, or go back to the app to try again."})
@@ -162,14 +186,8 @@ func (b *broker) callback(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	id, err := b.auth.exchange(ctx, q.Get("code"), f.Verifier, f.OIDCNonce)
-	if errors.Is(err, errEmailUnverified) {
-		renderPage(w, http.StatusForbidden, page{chrome: b.chrome, Kind: "info", Title: "Verify your email first", Message: "Apps can only receive a verified email address. Open the verification email Freepod sent you, then sign in again."})
-		return
-	}
-	if err != nil {
-		b.log.Warn("code exchange failed", "err", err)
-		b.errorPage(w, http.StatusBadRequest, "Sign-in couldn't be completed", "Go back to the app and try again.")
+	id, ok := b.exchange(ctx, w, q.Get("code"), f)
+	if !ok {
 		return
 	}
 
@@ -219,6 +237,10 @@ func (b *broker) consent(w http.ResponseWriter, r *http.Request) {
 		b.errorPage(w, http.StatusBadRequest, "This page expired", "Nothing was shared. Go back to the app and sign in again.")
 		return
 	}
+	if pc.OIDC != nil {
+		b.oidcConsent(w, r, pc)
+		return
+	}
 	if r.PostForm.Get("decision") != "allow" {
 		renderPage(w, http.StatusOK, page{chrome: b.chrome, Kind: "done", Title: "Nothing was shared",
 			Message: pc.Host + " did not receive your name, email address or account identifier. You can close this page."})
@@ -242,6 +264,21 @@ func (b *broker) consent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.issueCode(ctx, w, pc.Host, pc.RD, pc.NonceHash, identity{Sub: pc.Sub, Email: pc.Email, Name: pc.Name})
+}
+
+// exchange redeems Keycloak's code and, when that fails, answers the browser.
+func (b *broker) exchange(ctx context.Context, w http.ResponseWriter, code string, f flow) (identity, bool) {
+	id, err := b.auth.exchange(ctx, code, f.Verifier, f.OIDCNonce)
+	if errors.Is(err, errEmailUnverified) {
+		renderPage(w, http.StatusForbidden, page{chrome: b.chrome, Kind: "info", Title: "Verify your email first", Message: "Apps can only receive a verified email address. Open the verification email Freepod sent you, then sign in again."})
+		return identity{}, false
+	}
+	if err != nil {
+		b.log.Warn("code exchange failed", "err", err)
+		b.errorPage(w, http.StatusBadRequest, "Sign-in couldn't be completed", "Go back to the app and try again.")
+		return identity{}, false
+	}
+	return id, true
 }
 
 // logout ends the user's Keycloak session on the way back to an app that has
@@ -277,9 +314,18 @@ func (b *broker) logout(w http.ResponseWriter, r *http.Request) {
 // could have sealed, there is no host it is safe to send the browser to.
 func (b *broker) signedOut(w http.ResponseWriter, r *http.Request) {
 	var s logoutState
-	if b.keys.open("logout", r.URL.Query().Get("state"), &s, b.now()) == nil && s.Host != "" {
-		redirect(w, "https://"+s.Host+safeReturnPath(s.RD))
-		return
+	if b.keys.open("logout", r.URL.Query().Get("state"), &s, b.now()) == nil {
+		switch {
+		case s.URI != "" && s.State != "":
+			redirect(w, withQuery(s.URI, url.Values{"state": {s.State}}))
+			return
+		case s.URI != "":
+			redirect(w, s.URI)
+			return
+		case s.Host != "":
+			redirect(w, "https://"+s.Host+safeReturnPath(s.RD))
+			return
+		}
 	}
 	renderPage(w, http.StatusOK, page{chrome: b.chrome, Kind: "done", Title: "You're signed out of Freepod",
 		Message: "You can close this page, or go back to the app to sign in again."})
@@ -364,14 +410,21 @@ func (a *oidcAuth) config(ctx context.Context) (*oauth2.Config, *oidc.IDTokenVer
 	return cfg, a.provider.Verifier(&oidc.Config{ClientID: a.clientID}), nil
 }
 
-func (a *oidcAuth) authURL(state, nonce, verifier string) (string, error) {
+func (a *oidcAuth) authURL(state, nonce, verifier string, p authParams) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cfg, _, err := a.config(ctx)
 	if err != nil {
 		return "", err
 	}
-	return cfg.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)), nil
+	opts := []oauth2.AuthCodeOption{oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)}
+	if p.prompt != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("prompt", p.prompt))
+	}
+	if p.maxAge != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("max_age", p.maxAge))
+	}
+	return cfg.AuthCodeURL(state, opts...), nil
 }
 
 // endSessionURL builds Keycloak's RP-initiated logout request from the
@@ -434,6 +487,7 @@ func (a *oidcAuth) exchange(ctx context.Context, code, verifier, nonce string) (
 		EmailVerified     bool   `json:"email_verified"`
 		Name              string `json:"name"`
 		PreferredUsername string `json:"preferred_username"`
+		AuthTime          int64  `json:"auth_time"`
 	}
 	if err := idt.Claims(&claims); err != nil {
 		return identity{}, err
@@ -445,7 +499,11 @@ func (a *oidcAuth) exchange(ctx context.Context, code, verifier, nonce string) (
 	if name == "" {
 		name = claims.PreferredUsername
 	}
-	return identity{Sub: idt.Subject, Email: claims.Email, Name: name}, nil
+	authTime := idt.IssuedAt
+	if claims.AuthTime > 0 {
+		authTime = time.Unix(claims.AuthTime, 0)
+	}
+	return identity{Sub: idt.Subject, Email: claims.Email, Name: name, AuthTime: authTime}, nil
 }
 
 // previewPrefix marks the live preview of an app: `preview-<label>.<rest>` is

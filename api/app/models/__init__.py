@@ -137,4 +137,4 @@ DeploymentRead.model_rebuild()
 # which lives in build.py and is only imported above.
 DeploymentReleaseWithBuildRead.model_rebuild()
 
-from app.models.app_auth import AppAuthCodeORM, AppAuthConsentORM  # noqa: F401,E402
+from app.models.app_auth import AppAuthCodeORM, AppAuthConsentORM, AppAuthOIDCCodeORM  # noqa: F401,E402

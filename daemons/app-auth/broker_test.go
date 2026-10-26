@@ -16,9 +16,11 @@ type fakeAuth struct {
 	id          identity
 	err         error
 	endSessions int
+	params      authParams // of the last authorization request
 }
 
-func (f *fakeAuth) authURL(state, nonce, verifier string) (string, error) {
+func (f *fakeAuth) authURL(state, nonce, verifier string, p authParams) (string, error) {
+	f.params = p
 	return "https://keycloak.example/auth?" + url.Values{"state": {state}}.Encode(), nil
 }
 

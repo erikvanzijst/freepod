@@ -165,9 +165,11 @@ type consentView struct {
 	Initial  string
 	ShortSub string
 	CSRF     string
+	// FormAction is one more form-action source, for a native app's scheme.
+	FormAction string
 }
 
-func securityHeaders(w http.ResponseWriter, c chrome) {
+func securityHeaders(w http.ResponseWriter, c chrome, formAction ...string) {
 	origin := "'self'"
 	if u, err := url.Parse(c.Assets); err == nil && u.Host != "" {
 		origin = u.Scheme + "://" + u.Host
@@ -180,7 +182,8 @@ func securityHeaders(w http.ResponseWriter, c chrome) {
 	// form-action allows https: because the consent POST answers with a
 	// redirect to the app's host, and browsers apply form-action to redirects.
 	h.Set("Content-Security-Policy", "default-src 'none'; style-src "+origin+"; font-src "+origin+
-		"; img-src "+origin+"; form-action 'self' https:; frame-ancestors 'none'; base-uri 'none'")
+		"; img-src "+origin+"; form-action "+strings.Join(append([]string{"'self'", "https:"}, formAction...), " ")+
+		"; frame-ancestors 'none'; base-uri 'none'")
 	h.Set("Referrer-Policy", "no-referrer")
 }
 
@@ -199,7 +202,11 @@ func renderPage(w http.ResponseWriter, status int, p page) {
 func renderConsent(w http.ResponseWriter, v consentView) {
 	v.Title = "Continue to " + v.Host
 	v.Initial = initial(v.Name, v.Email)
-	securityHeaders(w, v.chrome)
+	if v.FormAction != "" {
+		securityHeaders(w, v.chrome, v.FormAction)
+	} else {
+		securityHeaders(w, v.chrome)
+	}
 	w.WriteHeader(http.StatusOK)
 	consentTmpl.Execute(w, v)
 }

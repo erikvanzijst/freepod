@@ -59,6 +59,13 @@ class CaelusSettings(BaseSettings):
     # without it. Empty means the environment does not run app-auth.
     app_auth_verify_url: str = ""
 
+    # app-auth's OpenID Provider (app-oidc-provider D10): its issuer, injected
+    # as caelus.oidc.issuer, and the keyring client secrets are derived with,
+    # shared with app-auth. Either empty means SSO-enabled deployments get no
+    # credentials.
+    app_auth_oidc_issuer: str = ""
+    app_auth_oidc_client_keys: str = ""
+
     # ── Tenant network isolation ──────────────────────────────────────────
     # Cluster-specific inputs to the baseline NetworkPolicy + Pod Security labels
     # the reconciler (and `sync-network-policies`) apply to every tenant namespace.

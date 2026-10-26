@@ -3,8 +3,9 @@
 A deployment whose chart renders the app-auth middlewares and that has
 `auth.enabled` (a user value, or a system value of its template) gets verified
 identity headers (`X-Freepod-User`, `X-Freepod-Email`, `X-Freepod-Name`) on
-every request, with Freepod's Keycloak as the identity provider. This service is
-both halves:
+every request, with Freepod's Keycloak as the identity provider. A deployment
+whose template declares `sso.redirectPaths` and that has `sso.enabled` is
+instead an OpenID Connect client of this service. It has three roles:
 
 - **The verifier** (`:8080/verify`) is Traefik's forward-auth endpoint for
   every auth-enabled app. It checks a host-bound session cookie, strips it and
@@ -21,6 +22,13 @@ both halves:
   and hands the app host a single-use code bound to that host and to the
   browser that started signing in. `preview-<label>.<rest>` signs in as the
   deployment at `<label>.<rest>`.
+- **The provider** (also `:8081`, issuer `https://login.<domain>`) is an OpenID
+  Provider for SSO-enabled deployments, under `/oidc/` plus discovery. It signs
+  users in through the broker's Keycloak leg and consent, and has no client
+  records: a client's ID is its deployment's ID, its secret is derived, and its
+  redirect URIs are the template's declared paths on the deployment's
+  hostname. The reconciler publishes each deployment's credentials in a
+  Secret.
 
 **Logout** (`/.freepod/auth/logout?rd=…`) clears the app host's session, then
 goes through the broker's `/logout` to Keycloak's end-session endpoint, so the
@@ -32,9 +40,12 @@ Spec: [app-auth-verifier](../../openspec/specs/app-auth-verifier/spec.md),
 [app-auth-broker](../../openspec/specs/app-auth-broker/spec.md),
 [app-auth-chart-contract](../../openspec/specs/app-auth-chart-contract/spec.md),
 [app-auth-data-model](../../openspec/specs/app-auth-data-model/spec.md),
-[app-studio-access](../../openspec/specs/app-studio-access/spec.md) ·
+[app-studio-access](../../openspec/specs/app-studio-access/spec.md),
+[app-oidc-provider](../../openspec/specs/app-oidc-provider/spec.md),
+[app-oidc-chart-contract](../../openspec/specs/app-oidc-chart-contract/spec.md) ·
 Rationale: [app-authentication](../../openspec/changes/archive/2026-09-28-app-authentication/design.md),
-[app-auth-owner-and-preview](../../openspec/changes/archive/2026-10-16-app-auth-owner-and-preview/design.md)
+[app-auth-owner-and-preview](../../openspec/changes/archive/2026-10-16-app-auth-owner-and-preview/design.md),
+[app-oidc-provider](../../openspec/changes/archive/2026-10-26-app-oidc-provider/design.md)
 
 ## Coupling
 
@@ -64,7 +75,23 @@ each with a test that fails when one side moves:
 key seals; all keys open. Rotate by adding a new key in front, and drop the old
 one after 7 days (the session lifetime). Replacing a key outright signs every
 user out of every app. Values are sealed with AES-256-GCM, with the key derived
-per purpose, so a broker flow cookie can never open as a session.
+per purpose, so a broker flow cookie can never open as a session. The
+provider's access tokens are sealed with the same keys.
+
+The provider needs two more, and leaves its routes out unless both are set:
+
+- `APP_AUTH_OIDC_CLIENT_KEYS`, the same format, derives every client secret
+  (`api/app/services/app_auth_oidc.py` derives the same values; `client_test.go`
+  and the API's test pin one shared vector). The first key derives; all keys
+  verify. Rotate by adding a new key in front on both app-auth and the API,
+  letting the reconciler republish every SSO deployment's Secret, and dropping
+  the old key once every app has restarted with its new secret.
+- `APP_AUTH_OIDC_SIGNING_KEYS` is PEM RSA private keys, current first. The first
+  signs ID tokens; `/oidc/jwks` publishes them all, named by their RFC 7638
+  thumbprint. Rotate by adding a key in front, and drop the old one after five
+  minutes (the ID token lifetime).
+
+Terraform generates all three (`tf/app/app-auth`).
 
 ## Running the tests
 

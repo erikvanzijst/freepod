@@ -154,7 +154,9 @@ module "caelus" {
   prometheus_base_url   = var.prometheus_base_url
   log_keepalive_seconds = var.log_keepalive_seconds
 
-  app_auth_verify_url = local.app_auth_verify_url
+  app_auth_verify_url       = local.app_auth_verify_url
+  app_auth_oidc_issuer      = module.app_auth.oidc_issuer
+  app_auth_oidc_client_keys = module.app_auth.oidc_client_keys
 
   depends_on = [kubernetes_namespace.caelus, kubernetes_namespace.builds]
 }

@@ -1,6 +1,7 @@
 // Command app-auth is "Sign in with Freepod" for tenant apps: the Traefik
-// forward-auth verifier and the login-host broker, in one process with two
-// listeners. See README.md and the app-authentication design doc.
+// forward-auth verifier, and the login-host broker that is also an OpenID
+// Provider for SSO-enabled deployments, in one process with two listeners. See
+// README.md and the app-authentication and app-oidc-provider design docs.
 package main
 
 import (
@@ -26,6 +27,10 @@ type config struct {
 	issuer       string
 	clientID     string
 	clientSecret string
+	// The OpenID Provider's keys. Optional: without both, its routes are
+	// absent, so an image can roll out ahead of the configuration.
+	providerClientKeys  string
+	providerSigningKeys string
 }
 
 func env(key, fallback string) string {
@@ -45,6 +50,9 @@ func loadConfig() (config, error) {
 		issuer:       os.Getenv("APP_AUTH_OIDC_ISSUER"),
 		clientID:     os.Getenv("APP_AUTH_OIDC_CLIENT_ID"),
 		clientSecret: os.Getenv("APP_AUTH_OIDC_CLIENT_SECRET"),
+
+		providerClientKeys:  os.Getenv("APP_AUTH_OIDC_CLIENT_KEYS"),
+		providerSigningKeys: os.Getenv("APP_AUTH_OIDC_SIGNING_KEYS"),
 	}
 	var missing []string
 	for k, v := range map[string]string{
@@ -109,6 +117,9 @@ func run(log *slog.Logger) error {
 			redirectURL: cfg.loginURL + "/callback",
 		},
 	}
+	if b.oidc, err = loadProvider(cfg, log); err != nil {
+		return err
+	}
 
 	verifyMux := http.NewServeMux()
 	verifyMux.Handle("/verify", v)
@@ -142,6 +153,25 @@ func run(log *slog.Logger) error {
 		s.Shutdown(shutdown)
 	}
 	return err
+}
+
+func loadProvider(cfg config, log *slog.Logger) (*provider, error) {
+	if cfg.providerClientKeys == "" || cfg.providerSigningKeys == "" {
+		if cfg.providerClientKeys != "" || cfg.providerSigningKeys != "" {
+			log.Warn("OpenID Provider disabled: APP_AUTH_OIDC_CLIENT_KEYS and APP_AUTH_OIDC_SIGNING_KEYS must both be set")
+		}
+		return nil, nil
+	}
+	clientKeys, err := parseKeyring(cfg.providerClientKeys)
+	if err != nil {
+		return nil, fmt.Errorf("APP_AUTH_OIDC_CLIENT_KEYS: %w", err)
+	}
+	signer, err := parseSigningKeys(cfg.providerSigningKeys)
+	if err != nil {
+		return nil, fmt.Errorf("APP_AUTH_OIDC_SIGNING_KEYS: %w", err)
+	}
+	log.Info("OpenID Provider enabled", "issuer", cfg.loginURL, "signing_key", signer.keys[0].kid)
+	return &provider{clientKeys: clientKeys, signer: signer}, nil
 }
 
 // purgeLoop removes expired codes. Every replica runs it; the delete is

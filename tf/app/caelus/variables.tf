@@ -270,6 +270,17 @@ variable "registry_cluster_ip" {
   type        = string
 }
 
+variable "app_auth_oidc_issuer" {
+  description = "app-auth's OpenID Provider issuer; the reconciler injects it into SSO-enabled deployments."
+  type        = string
+}
+
+variable "app_auth_oidc_client_keys" {
+  description = "Keyring OIDC client secrets are derived from, shared with app-auth"
+  type        = string
+  sensitive   = true
+}
+
 variable "app_auth_verify_url" {
   description = "The app authentication verifier's forward-auth address; the reconciler injects it into custom deployments as caelus.appAuth.verifyUrl."
   type        = string

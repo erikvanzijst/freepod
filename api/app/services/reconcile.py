@@ -18,6 +18,7 @@ from app.services import (
     template_values,
     var_crypto,
 )
+from app.services import app_auth_oidc
 from app.services import deployments as deployment_service
 from app.services import registry_tokens
 from app.services import vars as vars_service
@@ -61,6 +62,14 @@ def database_secret_name(deployment: DeploymentORM) -> str:
 def registry_pull_secret_name(deployment: DeploymentORM) -> str:
     """Name of the Secret the node pulls the deployment's image with."""
     return f"{deployment.name}-registry-pull"
+
+
+def oidc_secret_name(deployment: DeploymentORM) -> str:
+    """Name of the Secret holding a deployment's OIDC client credentials."""
+    return f"{deployment.name}-oidc"
+
+
+OIDC_SECRET_COMPONENT = "oidc"
 
 
 VARS_SECRET_COMPONENT = "vars"
@@ -327,6 +336,7 @@ class DeploymentReconciler:
         database = self._ensure_database(deployment)
         vars_secret = self._ensure_vars_secret(deployment, release)
         pull_secret = self._ensure_registry_pull_secret(deployment)
+        oidc_secret = self._ensure_oidc_secret(deployment, template)
         merged_values = self._build_merged_values(
             deployment,
             template,
@@ -335,6 +345,7 @@ class DeploymentReconciler:
             database=database,
             vars_secret=vars_secret,
             pull_secret=pull_secret,
+            oidc_secret=oidc_secret,
         )
 
         outcome = self._provisioner.helm_upgrade_install(
@@ -353,6 +364,8 @@ class DeploymentReconciler:
         # After Helm succeeds only: a rollback leaves the previous release's
         # Secret live, and reaping here would delete it.
         self._reap_vars_secrets(deployment, keep=vars_secret)
+        if oidc_secret is None:
+            self._remove_oidc_secret(deployment)
 
         return ReconcileResult(
             status=DEPLOYMENT_STATUS_READY,
@@ -503,6 +516,61 @@ class DeploymentReconciler:
         )
         return name
 
+    def _ensure_oidc_secret(
+        self, deployment: DeploymentORM, template: ProductTemplateVersionORM
+    ) -> str | None:
+        """Publish an SSO-enabled deployment's OIDC client credentials. Returns the Secret's name, or None.
+
+        Derived rather than stored, so rewriting it on every reconcile is what
+        rolls a client keyring rotation out. The secret never enters the Helm
+        values, for the reason spelled out in ``_ensure_object_storage``.
+        """
+        if not app_auth_oidc.sso_enabled(template.system_values_json, deployment.user_values_json):
+            return None
+        settings = get_settings()
+        issuer = settings.app_auth_oidc_issuer.strip()
+        if not (issuer and settings.app_auth_oidc_client_keys):
+            logger.warning(
+                "Deployment_id=%s enables SSO, but this environment has no OIDC provider configured",
+                deployment.id,
+            )
+            return None
+        name = oidc_secret_name(deployment)
+        self._provisioner.upsert_secret(
+            namespace=deployment.namespace,
+            name=name,
+            string_data={
+                "OIDC_ISSUER": issuer,
+                "OIDC_CLIENT_ID": app_auth_oidc.client_id(deployment.id),
+                "OIDC_CLIENT_SECRET": app_auth_oidc.oidc_client_secret(deployment.id),
+            },
+            labels={
+                "app.kubernetes.io/managed-by": "caelus",
+                "app.kubernetes.io/instance": deployment.name,
+                "caelus.dev/component": OIDC_SECRET_COMPONENT,
+            },
+        )
+        return name
+
+    def _remove_oidc_secret(self, deployment: DeploymentORM) -> None:
+        """Drop the OIDC Secret of a deployment that no longer enables SSO.
+
+        After Helm succeeds only, like vars reaping: a rollback leaves the
+        previous release, which may still read it, live.
+        """
+        try:
+            self._provisioner.delete_secrets_by_label(
+                namespace=deployment.namespace,
+                selector=(
+                    f"app.kubernetes.io/instance={deployment.name},"
+                    f"caelus.dev/component={OIDC_SECRET_COMPONENT}"
+                ),
+            )
+        except Exception:  # noqa: BLE001 - never fail a good rollout over cleanup
+            logger.warning(
+                "Failed to remove the OIDC Secret of deployment_id=%s", deployment.id, exc_info=True
+            )
+
     def _ensure_vars_secret(
         self, deployment: DeploymentORM, release: DeploymentReleaseORM
     ) -> str | None:
@@ -559,6 +627,7 @@ class DeploymentReconciler:
         database: relational_storage.DatabaseCredentials | None = None,
         vars_secret: str | None = None,
         pull_secret: str | None = None,
+        oidc_secret: str | None = None,
     ) -> dict:
         template_values.validate_user_values(deployment.user_values_json, template.values_schema_json)
         system_overrides = self._build_system_overrides(
@@ -568,6 +637,7 @@ class DeploymentReconciler:
             database=database,
             vars_secret=vars_secret,
             pull_secret=pull_secret,
+            oidc_secret=oidc_secret,
         )
         return template_values.merge_values_scoped(
             template.system_values_json,
@@ -585,6 +655,7 @@ class DeploymentReconciler:
         database: relational_storage.DatabaseCredentials | None = None,
         vars_secret: str | None = None,
         pull_secret: str | None = None,
+        oidc_secret: str | None = None,
     ) -> dict | None:
         """Combine all system-controlled value overrides under the ``caelus`` namespace.
 
@@ -604,6 +675,7 @@ class DeploymentReconciler:
             cls._build_ssh_overrides(),
             cls._build_app_auth_overrides(),
             cls._build_registry_overrides(pull_secret),
+            cls._build_oidc_overrides(deployment, oidc_secret),
         ):
             if part:
                 overrides = template_values.deep_merge(overrides, part)
@@ -624,6 +696,23 @@ class DeploymentReconciler:
         """
         url = get_settings().app_auth_verify_url.strip()
         return {"caelus": {"appAuth": {"verifyUrl": url}}} if url else None
+
+    @staticmethod
+    def _build_oidc_overrides(deployment: DeploymentORM, oidc_secret: str | None) -> dict | None:
+        """Where an SSO-enabled chart finds its OIDC client: the issuer and client
+        ID in the clear, the secret by Secret name only. No block without a
+        published Secret."""
+        if oidc_secret is None:
+            return None
+        return {
+            "caelus": {
+                "oidc": {
+                    "issuer": get_settings().app_auth_oidc_issuer.strip(),
+                    "clientId": app_auth_oidc.client_id(deployment.id),
+                    "secretName": oidc_secret,
+                }
+            }
+        }
 
     @staticmethod
     def _build_registry_overrides(pull_secret: str | None) -> dict | None:

@@ -1,4 +1,5 @@
-"""App authentication's own records: per-app consent and single-use sign-in codes.
+"""App authentication's own records: per-app consent, single-use sign-in codes,
+and the OpenID Provider's authorization codes.
 
 Written and read only by `daemons/app-auth/` (a Go service connecting as its own
 least-privilege role); the API never touches them. Declared here because every
@@ -54,4 +55,31 @@ class AppAuthCodeORM(SQLModel, table=True):
     name: str = Field(sa_column=Column(Text(), nullable=False))
     return_path: str = Field(sa_column=Column(Text(), nullable=False))
     nonce_hash: bytes = Field(sa_column=Column(LargeBinary(), nullable=False))
+    expires_at: datetime = Field(sa_column=Column(DateTime(), nullable=False))
+
+
+class AppAuthOIDCCodeORM(SQLModel, table=True):
+    """An authorization code the OpenID Provider issued to a deployment's app.
+
+    Hashed and single-use like `app_auth_code`, but redeemed by client and
+    redirect URI rather than by host, so the two never share a table.
+    """
+
+    __tablename__ = "app_auth_oidc_code"
+    __table_args__ = (
+        CheckConstraint("octet_length(code_hash) = 32", name="ck_app_auth_oidc_code_code_hash_len"),
+        Index("ix_app_auth_oidc_code_expires_at", "expires_at"),
+    )
+
+    code_hash: bytes = Field(sa_column=Column(LargeBinary(), primary_key=True))
+    deployment_id: UUID = Field(
+        sa_column=Column(Uuid, ForeignKey("deployment.id", ondelete="CASCADE"), nullable=False)
+    )
+    redirect_uri: str = Field(sa_column=Column(Text(), nullable=False))
+    subject: str = Field(sa_column=Column(Text(), nullable=False))
+    email: str = Field(sa_column=Column(Text(), nullable=False))
+    name: str = Field(sa_column=Column(Text(), nullable=False))
+    nonce: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    code_challenge: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    auth_time: datetime = Field(sa_column=Column(DateTime(), nullable=False))
     expires_at: datetime = Field(sa_column=Column(DateTime(), nullable=False))

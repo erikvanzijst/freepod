@@ -341,6 +341,13 @@ resource "kubernetes_deployment" "worker" {
               name = kubernetes_secret.registry_pull_hmac.metadata[0].name
             }
           }
+
+          # Derives each SSO-enabled deployment's OIDC client secret, likewise.
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.app_auth_oidc_client_keys.metadata[0].name
+            }
+          }
         }
         volume {
           name = "tenant-db-bootstrap"

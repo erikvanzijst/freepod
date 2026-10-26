@@ -240,13 +240,14 @@ func TestEligibility(t *testing.T) {
 	f.desire(rolling, authOn)
 	disabling := f.deployment("disabling-"+u+"-erik.freepod.app", "provisioned", authOn)
 	f.desire(disabling, `{"hostname":"x"}`)
-	// Any product qualifies, and a template may turn authentication on itself;
-	// its system value wins over the user's, as the reconciler merges them.
+	// Any product qualifies, and a template may turn authentication on itself.
+	// Its system value is a default: a user value overrides it, as the
+	// reconciler's Helm merge does.
 	other := f.deploymentOf(f.otherProductID, "other-"+u+"-erik.freepod.app", "provisioned", authOn, "")
 	templated := f.deploymentOf(f.otherProductID, "templated-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x"}`, `{"auth":{"enabled":true}}`)
-	overridden := f.deploymentOf(f.otherProductID, "overridden-"+u+"-erik.freepod.app", "provisioned",
+	f.deploymentOf(f.otherProductID, "overridden-"+u+"-erik.freepod.app", "provisioned",
 		`{"hostname":"x","auth":{"enabled":false}}`, `{"auth":{"enabled":true}}`)
-	f.deploymentOf(f.otherProductID, "templateoff-"+u+"-erik.freepod.app", "provisioned", authOn, `{"auth":{"enabled":false}}`)
+	templateOff := f.deploymentOf(f.otherProductID, "templateoff-"+u+"-erik.freepod.app", "provisioned", authOn, `{"auth":{"enabled":false}}`)
 	f.deploymentOf(f.otherProductID, "nosetting-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x"}`, `{"nodePool":"tenant"}`)
 	// The store matches hostnames exactly; preview hostnames are the broker's.
 	f.deployment("preview-milk-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x"}`)
@@ -268,8 +269,8 @@ func TestEligibility(t *testing.T) {
 		{"disabling-" + u + "-erik.freepod.app", disabling},
 		{"other-" + u + "-erik.freepod.app", other},
 		{"templated-" + u + "-erik.freepod.app", templated},
-		{"overridden-" + u + "-erik.freepod.app", overridden},
-		{"templateoff-" + u + "-erik.freepod.app", ""},
+		{"overridden-" + u + "-erik.freepod.app", ""},
+		{"templateoff-" + u + "-erik.freepod.app", templateOff},
 		{"nosetting-" + u + "-erik.freepod.app", ""},
 		{"preview-milk-" + u + "-erik.freepod.app", ""},
 	}
@@ -398,6 +399,7 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 		"read database passwords":  `SELECT * FROM deployment_database LIMIT 1`,
 		"read accounts":            `SELECT email FROM "user" LIMIT 1`,
 		"update consent":           `UPDATE app_auth_consent SET claims = '{}'`,
+		"update OIDC codes":        `UPDATE app_auth_oidc_code SET subject = subject`,
 		"read release build ids":   `SELECT build_id FROM deployment_release LIMIT 1`,
 		"read template chart refs": `SELECT chart_ref FROM product_template_version LIMIT 1`,
 	}
@@ -409,4 +411,172 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 			}
 		})
 	}
+}
+
+const (
+	ssoOn          = `{"hostname":"x","sso":{"enabled":true}}`
+	declaresSSO    = `{"sso":{"redirectPaths":["/oidc/callback"],"nativeRedirectUris":["app.immich:///oauth-callback"]}}`
+	declaresNoPKCE = `{"sso":{"redirectPaths":["/oidc/callback"],"pkce":false}}`
+)
+
+func TestSSOClient(t *testing.T) {
+	f := newFixture(t)
+	st := f.store(rolePool(t))
+	ctx := context.Background()
+	u := f.unique
+	p := f.otherProductID
+
+	enabled := f.deploymentOf(p, "Wiki-"+u+"-alice.freepod.app", "provisioned", ssoOn, declaresSSO)
+	templated := f.deploymentOf(p, "templated-"+u+"-alice.freepod.app", "provisioned", `{"hostname":"x"}`,
+		`{"sso":{"enabled":true,"redirectPaths":["/cb"]}}`)
+	noPKCE := f.deploymentOf(p, "nopkce-"+u+"-alice.freepod.app", "provisioned", ssoOn, declaresNoPKCE)
+	undeclared := f.deploymentOf(p, "undeclared-"+u+"-alice.freepod.app", "provisioned",
+		`{"hostname":"x","sso":{"enabled":true,"redirectPaths":["/cb"]}}`, "")
+	allInvalid := f.deploymentOf(p, "invalid-"+u+"-alice.freepod.app", "provisioned", ssoOn,
+		`{"sso":{"redirectPaths":["@evil.example/cb",".evil.example/cb","/cb?next=/"]}}`)
+	userOverrides := f.deploymentOf(p, "useron-"+u+"-alice.freepod.app", "provisioned", ssoOn,
+		`{"sso":{"enabled":false,"redirectPaths":["/cb"]}}`)
+	userTurnsOff := f.deploymentOf(p, "useroff-"+u+"-alice.freepod.app", "provisioned",
+		`{"hostname":"x","sso":{"enabled":false}}`, `{"sso":{"enabled":true,"redirectPaths":["/cb"]}}`)
+	headersOnly := f.deploymentOf(p, "headers-"+u+"-alice.freepod.app", "provisioned", authOn, declaresSSO)
+	off := f.deploymentOf(p, "off-"+u+"-alice.freepod.app", "provisioned", `{"hostname":"x"}`, declaresSSO)
+	rolling := f.deploymentOf(p, "rolling-"+u+"-alice.freepod.app", "provisioned", `{"hostname":"x"}`, declaresSSO)
+	f.desire(rolling, ssoOn)
+	deleted := f.deploymentOf(p, "gone-"+u+"-alice.freepod.app", "deleted", ssoOn, declaresSSO)
+
+	for name, c := range map[string]struct {
+		id   string
+		want bool
+	}{
+		"user value":                    {enabled, true},
+		"template enables":              {templated, true},
+		"template opts out of PKCE":     {noPKCE, true},
+		"template declares no paths":    {undeclared, false},
+		"template paths all invalid":    {allInvalid, false},
+		"user value over template's":    {userOverrides, true},
+		"user turns the template's off": {userTurnsOff, false},
+		"header authentication alone":   {headersOnly, false},
+		"not enabled":                   {off, false},
+		"enabled but not yet applied":   {rolling, false},
+		"deleted":                       {deleted, false},
+		"unknown":                       {"00000000-0000-0000-0000-000000000000", false},
+		"not a deployment id":           {"evil'; --", false},
+		"upper-case form of a real id":  {strings.ToUpper(enabled), false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, ok, err := st.ssoClient(ctx, c.id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ok != c.want || (ok && got.ID != c.id) {
+				t.Fatalf("ssoClient(%q) = %+v, %v; want %v", c.id, got, ok, c.want)
+			}
+		})
+	}
+
+	got, _, _ := st.ssoClient(ctx, enabled)
+	host := "wiki-" + u + "-alice.freepod.app"
+	if got.Hostname != host || len(got.RedirectURIs) != 1 || got.RedirectURIs[0] != "https://"+host+"/oidc/callback" ||
+		len(got.NativeURIs) != 1 || got.NativeURIs[0] != "app.immich:///oauth-callback" || !got.PKCE {
+		t.Fatalf("client %+v", got)
+	}
+	if got, _, _ := st.ssoClient(ctx, noPKCE); got.PKCE {
+		t.Fatal("the template's PKCE opt-out was not read")
+	}
+}
+
+func TestOIDCCodes(t *testing.T) {
+	f := newFixture(t)
+	st := f.store(rolePool(t))
+	ctx := context.Background()
+	dep := f.deploymentOf(f.otherProductID, "codes-"+f.unique+"-alice.freepod.app", "provisioned", ssoOn, declaresSSO)
+	authTime := time.Date(2026, 10, 26, 9, 30, 0, 0, time.FixedZone("CET", 3600))
+	rec := oidcCode{DeploymentID: dep, RedirectURI: "https://x/cb", Subject: "3f2a", Email: "a@x", Name: "A",
+		Nonce: "n", CodeChallenge: "c", AuthTime: authTime}
+
+	code := randomToken()
+	if err := st.insertOIDCCode(ctx, sha256Bytes(code), rec); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, found, _ := st.redeemCode(ctx, sha256Bytes(code)); found {
+		t.Fatal("an OIDC code was redeemable as a sign-in code")
+	}
+	got, fresh, found, err := st.redeemOIDCCode(ctx, sha256Bytes(code))
+	if err != nil || !found || !fresh {
+		t.Fatalf("found=%v fresh=%v err=%v", found, fresh, err)
+	}
+	if !got.AuthTime.Equal(authTime) {
+		t.Fatalf("auth_time %v, want %v", got.AuthTime, authTime)
+	}
+	got.AuthTime = rec.AuthTime
+	if got != rec {
+		t.Fatalf("record %+v", got)
+	}
+	if _, _, found, _ := st.redeemOIDCCode(ctx, sha256Bytes(code)); found {
+		t.Fatal("redeemed twice")
+	}
+
+	t.Run("optional fields", func(t *testing.T) {
+		code := randomToken()
+		bare := rec
+		bare.Nonce, bare.CodeChallenge = "", ""
+		st.insertOIDCCode(ctx, sha256Bytes(code), bare)
+		if got, _, _, _ := st.redeemOIDCCode(ctx, sha256Bytes(code)); got.Nonce != "" || got.CodeChallenge != "" {
+			t.Fatalf("record %+v", got)
+		}
+	})
+
+	t.Run("sign-in codes do not redeem as OIDC codes", func(t *testing.T) {
+		code := randomToken()
+		st.insertCode(ctx, sha256Bytes(code), codeRecord{Host: "h", Subject: "s", Email: "e", Name: "n", ReturnPath: "/", NonceHash: sha256Bytes("n")})
+		if _, _, found, _ := st.redeemOIDCCode(ctx, sha256Bytes(code)); found {
+			t.Fatal("a sign-in code was redeemable as an OIDC code")
+		}
+		st.redeemCode(ctx, sha256Bytes(code))
+	})
+
+	t.Run("concurrent redemption succeeds once", func(t *testing.T) {
+		code := randomToken()
+		st.insertOIDCCode(ctx, sha256Bytes(code), rec)
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		wins := 0
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if _, fresh, found, err := st.redeemOIDCCode(ctx, sha256Bytes(code)); err == nil && found && fresh {
+					mu.Lock()
+					wins++
+					mu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+		if wins != 1 {
+			t.Fatalf("%d redemptions succeeded", wins)
+		}
+	})
+
+	t.Run("expiry and purge", func(t *testing.T) {
+		stale, expired, live := randomToken(), randomToken(), randomToken()
+		for _, c := range []string{stale, expired, live} {
+			st.insertOIDCCode(ctx, sha256Bytes(c), rec)
+		}
+		f.exec(`UPDATE app_auth_oidc_code SET expires_at = expires_at - interval '61 seconds' WHERE code_hash = $1`, sha256Bytes(stale))
+		if _, fresh, found, _ := st.redeemOIDCCode(ctx, sha256Bytes(stale)); !found || fresh {
+			t.Fatalf("found=%v fresh=%v", found, fresh)
+		}
+		f.exec(`UPDATE app_auth_oidc_code SET expires_at = expires_at - interval '2 hours' WHERE code_hash = $1`, sha256Bytes(expired))
+		if _, err := st.purgeExpiredCodes(ctx); err != nil {
+			t.Fatal(err)
+		}
+		var n int
+		f.admin.QueryRow(ctx, `SELECT count(*) FROM app_auth_oidc_code WHERE code_hash = ANY($1)`,
+			[][]byte{sha256Bytes(expired), sha256Bytes(live)}).Scan(&n)
+		if n != 1 {
+			t.Fatalf("%d codes left, want only the live one", n)
+		}
+		st.redeemOIDCCode(ctx, sha256Bytes(live))
+	})
 }

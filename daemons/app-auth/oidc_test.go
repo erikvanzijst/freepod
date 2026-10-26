@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -110,23 +111,47 @@ func TestOIDCExchange(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		a := p.auth()
-		u, err := a.authURL("state", "nonce-1", "verifier-1-verifier-1-verifier-1-verifier-1")
+		u, err := a.authURL("state", "nonce-1", "verifier-1-verifier-1-verifier-1-verifier-1", authParams{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		code := p.authorize(t, u, verified)
+		authTime := time.Now().Add(-time.Hour).Truncate(time.Second)
+		code := p.authorize(t, u, map[string]any{"email": "alice@example.com", "email_verified": true, "name": "Alice", "auth_time": authTime.Unix()})
 		id, err := a.exchange(ctx, code, "verifier-1-verifier-1-verifier-1-verifier-1", "nonce-1")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if id != (identity{Sub: "3f2a", Email: "alice@example.com", Name: "Alice"}) {
+		if id.Sub != "3f2a" || id.Email != "alice@example.com" || id.Name != "Alice" || !id.AuthTime.Equal(authTime) {
 			t.Fatalf("identity %+v", id)
+		}
+	})
+
+	t.Run("auth_time falls back to iat", func(t *testing.T) {
+		a := p.auth()
+		u, _ := a.authURL("s", "n", "verifier-6-verifier-6-verifier-6-verifier-6", authParams{})
+		iat := time.Now().Add(-time.Minute).Truncate(time.Second)
+		code := p.authorize(t, u, map[string]any{"email": "a@x", "email_verified": true, "iat": iat.Unix()})
+		id, err := a.exchange(ctx, code, "verifier-6-verifier-6-verifier-6-verifier-6", "n")
+		if err != nil || !id.AuthTime.Equal(iat) {
+			t.Fatalf("auth time %v, err %v", id.AuthTime, err)
+		}
+	})
+
+	t.Run("prompt and max_age reach the identity provider", func(t *testing.T) {
+		u, _ := p.auth().authURL("s", "n", "v", authParams{prompt: "login", maxAge: "0"})
+		q, _ := url.ParseQuery(u[strings.Index(u, "?")+1:])
+		if q.Get("prompt") != "login" || q.Get("max_age") != "0" {
+			t.Fatalf("authorization URL %s", u)
+		}
+		u, _ = p.auth().authURL("s", "n", "v", authParams{})
+		if strings.Contains(u, "prompt=") || strings.Contains(u, "max_age=") {
+			t.Fatalf("authorization URL %s", u)
 		}
 	})
 
 	t.Run("unverified email", func(t *testing.T) {
 		a := p.auth()
-		u, _ := a.authURL("s", "n", "verifier-2-verifier-2-verifier-2-verifier-2")
+		u, _ := a.authURL("s", "n", "verifier-2-verifier-2-verifier-2-verifier-2", authParams{})
 		code := p.authorize(t, u, map[string]any{"email": "a@x", "email_verified": false})
 		if _, err := a.exchange(ctx, code, "verifier-2-verifier-2-verifier-2-verifier-2", "n"); !errors.Is(err, errEmailUnverified) {
 			t.Fatalf("got %v, want errEmailUnverified", err)
@@ -135,7 +160,7 @@ func TestOIDCExchange(t *testing.T) {
 
 	t.Run("nonce mismatch", func(t *testing.T) {
 		a := p.auth()
-		u, _ := a.authURL("s", "real-nonce", "verifier-3-verifier-3-verifier-3-verifier-3")
+		u, _ := a.authURL("s", "real-nonce", "verifier-3-verifier-3-verifier-3-verifier-3", authParams{})
 		code := p.authorize(t, u, verified)
 		if _, err := a.exchange(ctx, code, "verifier-3-verifier-3-verifier-3-verifier-3", "other-nonce"); err == nil {
 			t.Fatal("accepted an ID token minted for another sign-in")
@@ -144,7 +169,7 @@ func TestOIDCExchange(t *testing.T) {
 
 	t.Run("wrong PKCE verifier", func(t *testing.T) {
 		a := p.auth()
-		u, _ := a.authURL("s", "n", "verifier-4-verifier-4-verifier-4-verifier-4")
+		u, _ := a.authURL("s", "n", "verifier-4-verifier-4-verifier-4-verifier-4", authParams{})
 		code := p.authorize(t, u, verified)
 		if _, err := a.exchange(ctx, code, "someone-elses-verifier-someone-elses-verifier", "n"); err == nil {
 			t.Fatal("exchanged a code without its PKCE verifier")
@@ -153,7 +178,7 @@ func TestOIDCExchange(t *testing.T) {
 
 	t.Run("token for another client", func(t *testing.T) {
 		a := p.auth()
-		u, _ := a.authURL("s", "n", "verifier-5-verifier-5-verifier-5-verifier-5")
+		u, _ := a.authURL("s", "n", "verifier-5-verifier-5-verifier-5-verifier-5", authParams{})
 		code := p.authorize(t, u, map[string]any{"aud": "freepod-prod", "email": "a@x", "email_verified": true})
 		if _, err := a.exchange(ctx, code, "verifier-5-verifier-5-verifier-5-verifier-5", "n"); err == nil {
 			t.Fatal("accepted an ID token for another audience")
@@ -178,12 +203,12 @@ func TestOIDCEndSessionURL(t *testing.T) {
 
 func TestOIDCDiscoveryRecovers(t *testing.T) {
 	a := &oidcAuth{issuer: "http://127.0.0.1:1", clientID: "c"}
-	if _, err := a.authURL("s", "n", "v"); err == nil {
+	if _, err := a.authURL("s", "n", "v", authParams{}); err == nil {
 		t.Fatal("expected an error while the provider is unreachable")
 	}
 	p := newStubIdP(t)
 	a.issuer = p.srv.URL
-	if _, err := a.authURL("s", "n", "v"); err != nil {
+	if _, err := a.authURL("s", "n", "v", authParams{}); err != nil {
 		t.Fatalf("did not recover once the provider came back: %v", err)
 	}
 }
