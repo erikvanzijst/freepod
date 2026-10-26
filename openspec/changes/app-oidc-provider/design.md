@@ -24,8 +24,9 @@ See proposal.md for why. The facts this design rests on:
   `tf/app/app-auth/main.tf`), so new key material needs no manual secret.
 - **Tenant egress allows the public internet minus internal ranges**
   (`network_policy.py`), which is how an app pod would reach
-  `https://login.<domain>` for the back-channel token and JWKS calls. Whether
-  that hairpins through the homelab edge correctly is not yet verified.
+  `https://login.<domain>` for the back-channel token and JWKS calls. Hairpin
+  NAT at the edge is reliable, so tenant pods reach the login host on its
+  public address like any other site.
 - **Catalog apps differ in what they accept.** BookStack verifies only RS256 ID
   tokens. Immich's mobile app needs `app.immich:///oauth-callback`. Most apps
   discover endpoints from `/.well-known/openid-configuration` and authenticate
@@ -237,13 +238,6 @@ value because charts often need it in a config file, and it is public.
 
 ## Risks / Trade-offs
 
-- **[Hairpin to the login host from tenant pods]** The token call goes from
-  the app pod to the public address of `login.<domain>`. If the edge does not
-  hairpin, back-channel calls fail. This is verified on dev first (task 6.2).
-  The fallback is an additive egress overlay, like the mailer one, admitting
-  tenant pods to the broker's Service, with the chart pointing its back-channel
-  at it through a host alias. That costs per-chart work, so it is a fallback
-  only.
 - **[One shared client key per environment]** Leaking the key leaks every
   deployment's client secret. It lives in the same places as the session keys
   and the registry pull key, and the client secret alone is not enough to sign

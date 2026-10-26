@@ -33,7 +33,7 @@
 ## 6. Roll out on dev
 
 - [ ] 6.1 Build and push the daemons image, then apply dev with `-var app_auth_image=…` and the API release. Verify an existing auth-enabled `custom` app still signs in, and App Studio still admits only its owner.
-- [ ] 6.2 From a pod in a tenant namespace, `curl https://login.dev.freepod.eu/.well-known/openid-configuration` and the JWKS. Verify they answer. If the hairpin fails, stop and decide the egress fallback (design, Risks) before going on.
+- [ ] 6.2 From a pod in a tenant namespace, `curl https://login.dev.freepod.eu/.well-known/openid-configuration` and the JWKS. Verify they answer.
 - [ ] 6.3 Create a throwaway non-catalog product on dev through `caelus` with `admin` visibility and a minimal chart running an OIDC test client, with `sso.enabled: true`. Sign in with a dev account. Verify the consent page, the ID token's claims and audience, userinfo, logout back to the app, and that a second deployment's credentials are refused.
 - [ ] 6.4 Delete the throwaway deployment and product.
 
