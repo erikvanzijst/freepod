@@ -49,6 +49,12 @@ The pooler's authentication lookup SHALL be pinned to a database on the tenant c
 that no tenant can connect to, so that no tenant can influence how credentials are
 resolved. It SHALL NOT resolve against the control-plane database, so that a
 control-plane outage cannot prevent tenants from authenticating to their databases.
+The lookup SHALL answer for deployment roles only, so that no platform role can be
+logged into through the pooler.
+
+#### Scenario: Platform roles are not reachable through the pooler
+- **WHEN** a client connects to the pooler as a platform role such as the superuser or the admin role
+- **THEN** the pooler finds no credentials for it and refuses the login, whatever password is offered
 
 #### Scenario: Lookup does not occur in a tenant database
 - **WHEN** a tenant connects to their own database through the pooler
