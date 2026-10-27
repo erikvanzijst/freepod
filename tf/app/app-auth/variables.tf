@@ -8,6 +8,11 @@ variable "domain" {
   type        = string
 }
 
+variable "tenant_domain" {
+  description = "Tenant domain; only `preview-` names directly under it sign in as the app they preview."
+  type        = string
+}
+
 variable "image" {
   description = "Daemons image app-auth runs from (/app-auth), pinned to an immutable version."
   type        = string

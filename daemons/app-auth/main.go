@@ -27,6 +27,7 @@ type config struct {
 	issuer       string
 	clientID     string
 	clientSecret string
+	tenantDomain string
 	// The OpenID Provider's keys. Optional: without both, its routes are
 	// absent, so an image can roll out ahead of the configuration.
 	providerClientKeys  string
@@ -50,6 +51,7 @@ func loadConfig() (config, error) {
 		issuer:       os.Getenv("APP_AUTH_OIDC_ISSUER"),
 		clientID:     os.Getenv("APP_AUTH_OIDC_CLIENT_ID"),
 		clientSecret: os.Getenv("APP_AUTH_OIDC_CLIENT_SECRET"),
+		tenantDomain: os.Getenv("APP_AUTH_TENANT_DOMAIN"),
 
 		providerClientKeys:  os.Getenv("APP_AUTH_OIDC_CLIENT_KEYS"),
 		providerSigningKeys: os.Getenv("APP_AUTH_OIDC_SIGNING_KEYS"),
@@ -62,6 +64,7 @@ func loadConfig() (config, error) {
 		"APP_AUTH_OIDC_ISSUER":        c.issuer,
 		"APP_AUTH_OIDC_CLIENT_ID":     c.clientID,
 		"APP_AUTH_OIDC_CLIENT_SECRET": c.clientSecret,
+		"APP_AUTH_TENANT_DOMAIN":      c.tenantDomain,
 	} {
 		if v == "" {
 			missing = append(missing, k)
@@ -112,6 +115,7 @@ func run(log *slog.Logger) error {
 		chrome:   newChrome(cfg.loginURL),
 		loginURL: cfg.loginURL,
 		keys:     keys, store: st, now: time.Now, log: log,
+		tenantDomain: cfg.tenantDomain,
 		auth: &oidcAuth{
 			issuer: cfg.issuer, clientID: cfg.clientID, clientSecret: cfg.clientSecret,
 			redirectURL: cfg.loginURL + "/callback",

@@ -111,6 +111,11 @@ resource "kubernetes_deployment" "app_auth" {
           }
 
           env {
+            name  = "APP_AUTH_TENANT_DOMAIN"
+            value = var.tenant_domain
+          }
+
+          env {
             name  = "APP_AUTH_OIDC_ISSUER"
             value = var.oidc_issuer
           }

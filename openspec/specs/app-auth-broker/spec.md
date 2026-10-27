@@ -182,7 +182,7 @@ Sign-out SHALL work whether or not the user still has a sign-in session at the i
 
 ### Requirement: Preview hostnames sign in as their deployment
 
-When the requested host is not itself a deployment's hostname but its first label begins with `preview-`, as in `preview-<rest>`, the broker SHALL treat it as the deployment at `<rest>` (the host with that prefix removed), provided that deployment qualifies under *Only auth-enabled deployments are served*. The broker SHALL derive this from the hostname and its own records only, never from anything in the request naming an alias.
+When the requested host is not itself a deployment's hostname, sits directly under the tenant domain, and its first label begins with `preview-`, as in `preview-<label>.<tenant domain>`, the broker SHALL treat it as the deployment at `<label>.<tenant domain>` (the host with that prefix removed), provided that deployment qualifies under *Only auth-enabled deployments are served*. Hostname validation reserves the prefix under the tenant domain only, so the broker MUST NOT apply this to any other domain: a custom domain `preview-<rest>` may belong to an unrelated account. The broker SHALL derive this from the hostname and its own records only, never from anything in the request naming an alias.
 
 #### Scenario: Preview of an auth-enabled deployment
 
@@ -198,6 +198,11 @@ When the requested host is not itself a deployment's hostname but its first labe
 
 - **WHEN** sign-in starts for `preview-nothing-alice.freepod.app` and no deployment has `nothing-alice.freepod.app`
 - **THEN** the broker shows an error and does not redirect
+
+#### Scenario: Preview prefix on a custom domain
+
+- **WHEN** sign-in starts for `preview-shop.example.com` and `shop.example.com` is an auth-enabled deployment's custom domain
+- **THEN** the broker shows an error and issues no code
 
 ### Requirement: One consent covers a deployment's hostnames
 

@@ -95,6 +95,9 @@ type broker struct {
 	auth     authenticator
 	now      func() time.Time
 	log      *slog.Logger
+	// tenantDomain is the only domain whose `preview-` names are previews; the
+	// platform reserves that prefix there and nowhere else.
+	tenantDomain string
 	// oidc is the OpenID Provider; nil leaves its routes out.
 	oidc *provider
 }
@@ -340,7 +343,7 @@ func (b *broker) signedOut(w http.ResponseWriter, r *http.Request) {
 func (b *broker) eligible(ctx context.Context, w http.ResponseWriter, host string) (string, bool) {
 	id, ok, err := b.store.eligible(ctx, host)
 	if err == nil && !ok {
-		if base, isPreview := previewBase(host); isPreview {
+		if base, isPreview := previewBase(host, b.tenantDomain); isPreview {
 			id, ok, err = b.store.eligible(ctx, base)
 		}
 	}
@@ -506,15 +509,18 @@ func (a *oidcAuth) exchange(ctx context.Context, code, verifier, nonce string) (
 	return identity{Sub: idt.Subject, Email: claims.Email, Name: name, AuthTime: authTime}, nil
 }
 
-// previewPrefix marks the live preview of an app: `preview-<label>.<rest>` is
-// the preview of the app at `<label>.<rest>`. Hostname validation reserves the
-// prefix, so no deployment can own such a name itself.
+// previewPrefix marks the live preview of an app:
+// `preview-<label>.<tenant domain>` is the preview of the app at
+// `<label>.<tenant domain>`. Hostname validation reserves the prefix under the
+// tenant domain only, so a custom domain such as `preview-acme.example` can
+// belong to anyone and must never stand in for `acme.example`.
 const previewPrefix = "preview-"
 
 // previewBase returns the hostname that a preview hostname previews.
-func previewBase(host string) (string, bool) {
+func previewBase(host, tenantDomain string) (string, bool) {
 	label, rest, found := strings.Cut(strings.ToLower(host), ".")
-	if !found || rest == "" || !strings.HasPrefix(label, previewPrefix) || label == previewPrefix {
+	if !found || tenantDomain == "" || rest != strings.ToLower(tenantDomain) ||
+		!strings.HasPrefix(label, previewPrefix) || label == previewPrefix {
 		return "", false
 	}
 	return strings.TrimPrefix(label, previewPrefix) + "." + rest, true
