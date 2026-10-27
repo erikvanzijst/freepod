@@ -1,3 +1,8 @@
+- version: "17.9.4"
+  notes: |-
+    A maintenance release with a fix for boards.
+
+    - Moving a card to another list no longer reloads the whole list twice
 - version: "17.9.3"
   notes: |-
     A small maintenance release that also fixes a security issue in the PDF export.
