@@ -14,6 +14,7 @@ from sqlmodel import Session
 
 from app.models import SshKeyORM, UserORM
 from app.services import ssh_keys as service
+from app.services import users as user_service
 from app.services.errors import NotFoundException
 
 KEY_TYPES = [
@@ -383,6 +384,21 @@ def test_no_key_outlives_its_owner(db_session, tmp_path):
         text("SELECT count(*) FROM user_ssh_key WHERE user_id = :id"), {"id": user_id}
     ).scalar_one()
     assert remaining == 0
+
+
+def test_deleting_the_account_removes_its_keys(db_session, tmp_path):
+    alice = make_user(db_session, "alice@example.com")
+    bob = make_user(db_session, "bob@example.com")
+    service.add_key(db_session, user_id=alice.id, public_key=pub(tmp_path, "ed25519"))
+    service.add_key(db_session, user_id=bob.id, public_key=pub(tmp_path, "ed25519"))
+
+    user_service.delete_user(db_session, user_id=alice.id)
+
+    remaining = db_session.execute(
+        text("SELECT count(*) FROM user_ssh_key WHERE user_id = :id"), {"id": alice.id}
+    ).scalar_one()
+    assert remaining == 0
+    assert len(service.list_keys(db_session, user_id=bob.id)) == 1
 
 
 def test_a_very_large_rsa_key_can_be_stored(db_session):
