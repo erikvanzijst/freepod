@@ -1,0 +1,117 @@
+{{- if .Values.postgresql.enabled }}
+{{- /*
+Bundled PostgreSQL using Immich's own vectorchord/pgvecto.rs image (stock
+postgres will NOT work -- Immich needs the vector extension). One Secret feeds
+both the DB container (POSTGRES_*) and the app (DB_*) via envFrom.
+
+POSTGRES_PASSWORD only seeds the superuser when the data directory is first
+initialised; on an existing volume it is ignored. The credential is therefore a
+fixed, well-known value (postgresql.auth.password) rather than a generated one,
+so the Secret always matches whatever the DB was initialised with.
+*/}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-postgresql-auth
+  labels:
+    {{- include "immich.labels" . | nindent 4 }}
+type: Opaque
+data:
+  DB_USERNAME: {{ .Values.postgresql.auth.username | b64enc | quote }}
+  DB_PASSWORD: {{ .Values.postgresql.auth.password | b64enc | quote }}
+  DB_DATABASE_NAME: {{ .Values.postgresql.auth.database | b64enc | quote }}
+  POSTGRES_USER: {{ .Values.postgresql.auth.username | b64enc | quote }}
+  POSTGRES_PASSWORD: {{ .Values.postgresql.auth.password | b64enc | quote }}
+  POSTGRES_DB: {{ .Values.postgresql.auth.database | b64enc | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  # Fixed name (not release-prefixed) so an existing volume in the namespace is
+  # re-adopted on upgrade rather than replaced by a fresh, empty PVC.
+  name: postgresql-data
+  labels:
+    {{- include "immich.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.postgresql.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.postgresql.persistence.size }}
+  {{- if .Values.postgresql.persistence.storageClassName }}
+  storageClassName: {{ .Values.postgresql.persistence.storageClassName }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-postgresql
+  labels:
+    {{- include "immich.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "immich.componentSelector" (dict "root" . "name" "postgresql") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-postgresql
+  labels:
+    {{- include "immich.labels" . | nindent 4 }}
+    {{- include "immich.componentSelector" (dict "root" . "name" "postgresql") | nindent 4 }}
+spec:
+  replicas: 1
+  # DB owns a single RWO volume: never run two pods at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "immich.componentSelector" (dict "root" . "name" "postgresql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "immich.componentSelector" (dict "root" . "name" "postgresql") | nindent 8 }}
+    spec:
+      containers:
+        - name: postgresql
+          image: {{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          ports:
+            - containerPort: 5432
+              name: postgres
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-postgresql-auth
+          env:
+            - name: POSTGRES_INITDB_ARGS
+              value: "--data-checksums"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          {{- with .Values.postgresql.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgresql-data
+{{- end }}

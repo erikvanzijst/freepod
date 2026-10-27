@@ -39,6 +39,7 @@ DATASTORES = {
     "discourse": {"discourse/templates/postgres.yaml", "discourse/templates/redis.yaml"},
     "docmost": {"docmost/templates/postgres.yaml", "docmost/templates/redis.yaml"},
     "immich": {"immich/templates/postgres.yaml", "immich/templates/valkey.yaml"},
+    "immich-sso": {"immich-sso/templates/postgres.yaml", "immich-sso/templates/valkey.yaml"},
     "lemmy": {"lemmy/templates/postgres.yaml"},
     "mattermost": {"mattermost/templates/postgresql.yaml"},
     "nextcloud": {"nextcloud/templates/postgres.yaml"},

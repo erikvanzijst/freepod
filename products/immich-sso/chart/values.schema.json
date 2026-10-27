@@ -1,0 +1,415 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "immich bespoke chart values",
+  "type": "object",
+  "properties": {
+    "host": {
+      "type": "string",
+      "title": "hostname",
+      "minLength": 1,
+      "maxLength": 253
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "machineLearning": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "tag": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "className": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "enabled",
+        "className"
+      ],
+      "additionalProperties": false
+    },
+    "smtp": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "from": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "storage": {
+      "type": "object",
+      "properties": {
+        "library": {
+          "type": "object",
+          "properties": {
+            "accessMode": {
+              "type": "string",
+              "enum": [
+                "ReadWriteOnce",
+                "ReadOnlyMany",
+                "ReadWriteMany",
+                "ReadWriteOncePod"
+              ]
+            },
+            "size": {
+              "type": "string",
+              "minLength": 1
+            },
+            "storageClassName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "accessMode",
+            "size",
+            "storageClassName"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "library"
+      ],
+      "additionalProperties": false
+    },
+    "server": {
+      "type": "object",
+      "properties": {
+        "resources": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "machineLearning": {
+      "type": "object",
+      "properties": {
+        "resources": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "postgresql": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tag": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          },
+          "required": [
+            "repository",
+            "tag",
+            "pullPolicy"
+          ],
+          "additionalProperties": false
+        },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "username": {
+              "type": "string",
+              "minLength": 1
+            },
+            "password": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Fixed superuser password; must match what the database was initialised with"
+            },
+            "database": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "username",
+            "password",
+            "database"
+          ],
+          "additionalProperties": false
+        },
+        "persistence": {
+          "type": "object",
+          "properties": {
+            "accessMode": {
+              "type": "string",
+              "enum": [
+                "ReadWriteOnce",
+                "ReadOnlyMany",
+                "ReadWriteMany",
+                "ReadWriteOncePod"
+              ]
+            },
+            "size": {
+              "type": "string",
+              "minLength": 1
+            },
+            "storageClassName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "accessMode",
+            "size",
+            "storageClassName"
+          ],
+          "additionalProperties": false
+        },
+        "resources": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "enabled",
+        "image",
+        "auth",
+        "persistence"
+      ],
+      "additionalProperties": false
+    },
+    "valkey": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tag": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          },
+          "required": [
+            "repository",
+            "tag",
+            "pullPolicy"
+          ],
+          "additionalProperties": false
+        },
+        "persistence": {
+          "type": "object",
+          "properties": {
+            "accessMode": {
+              "type": "string",
+              "enum": [
+                "ReadWriteOnce",
+                "ReadOnlyMany",
+                "ReadWriteMany",
+                "ReadWriteOncePod"
+              ]
+            },
+            "size": {
+              "type": "string",
+              "minLength": 1
+            },
+            "storageClassName": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "accessMode",
+            "size",
+            "storageClassName"
+          ],
+          "additionalProperties": false
+        },
+        "resources": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "image",
+        "persistence"
+      ],
+      "additionalProperties": false
+    },
+    "sso": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "redirectPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nativeRedirectUris": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pkce": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "caelus": {
+      "type": "object",
+      "description": "Reconciler-injected values. Open by design (additionalProperties: true throughout): this namespace is written by the platform, never by a tenant, so new reconciler fields can land without a schema bump in every chart.",
+      "properties": {
+        "plan": {
+          "type": "object",
+          "properties": {
+            "storageBytes": {
+              "type": "integer"
+            },
+            "storageSize": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "owner": {
+          "type": "object",
+          "description": "Deployment owner, injected by the Caelus reconciler",
+          "properties": {
+            "email": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "ingress": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "host": {
+              "type": "string"
+            },
+            "tls": {
+              "type": "object",
+              "properties": {
+                "wildcard": {
+                  "type": "boolean"
+                },
+                "issuer": {
+                  "type": "string"
+                },
+                "secretName": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "oidc": {
+          "type": "object",
+          "description": "OpenID Provider client, injected by the Caelus reconciler for an SSO-enabled deployment",
+          "properties": {
+            "issuer": {
+              "type": "string"
+            },
+            "clientId": {
+              "type": "string"
+            },
+            "secretName": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "ssh-sidecar": {
+      "type": "object",
+      "description": "Values namespace reserved by the ssh-sidecar library dependency (unused)."
+    },
+    "sshSidecarImage": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The platform's SSH sidecar image, pinned to an exact version. Matched against products/_lib/ssh-sidecar-image/VERSION by api/tests/test_ssh_chart_contract.py."
+    }
+  },
+  "required": [
+    "host",
+    "ingress",
+    "storage",
+    "postgresql",
+    "valkey"
+  ],
+  "additionalProperties": false
+}

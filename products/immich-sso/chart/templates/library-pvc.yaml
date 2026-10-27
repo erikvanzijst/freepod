@@ -1,0 +1,22 @@
+{{- /*
+The Immich library (originals + thumbnails). RWO: shared in-pod with the SFTP
+sidecar (read-only), never across pods. caelus.plan.storageSize (reconciler)
+overrides the default size.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  # Fixed name (not release-prefixed) so an existing volume in the namespace is
+  # re-adopted on upgrade rather than replaced by a fresh, empty PVC.
+  name: library
+  labels:
+    {{- include "immich.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.storage.library.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.caelus.plan.storageSize | default .Values.storage.library.size }}
+  {{- if .Values.storage.library.storageClassName }}
+  storageClassName: {{ .Values.storage.library.storageClassName }}
+  {{- end }}

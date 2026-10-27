@@ -1,0 +1,24 @@
+apiVersion: v2
+name: immich-sso
+description: >-
+  SSO sandbox copy of the Freepod Immich chart, for trying Sign in with
+  Freepod without touching the catalog chart. Renders the full deployment
+  (server, machine-learning, valkey, postgres) directly.
+type: application
+version: 0.1.1
+appVersion: "v2.7.0"
+keywords:
+  - immich
+  - photos
+  - media
+  - postgres
+  - valkey
+maintainers:
+  - name: Caelus Team
+
+# Only dependency is Freepod's own SFTP library chart (renders no resources on
+# its own; provides the sidecar + Pipe/Service/Secret helpers).
+dependencies:
+  - name: ssh-sidecar
+    version: "0.5.1"
+    repository: "file://../../_lib/ssh-sidecar-chart"

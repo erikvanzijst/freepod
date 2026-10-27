@@ -1,0 +1,201 @@
+{{- /*
+Immich server: the web/API front end and the only pod that mounts the library.
+The read-only SFTP sidecar rides here (RWO volumes can only be shared inside one
+pod). We OWN this pod, so the sidecar comes straight from the ssh-sidecar
+helpers -- no upstream extraContainers hook, no fixed internal-user workaround.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-server
+  labels:
+    {{- include "immich.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "immich.componentSelector" (dict "root" . "name" "server") | nindent 4 }}
+  ports:
+    - name: http
+      port: 2283
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-server
+  labels:
+    {{- include "immich.labels" . | nindent 4 }}
+    {{- include "immich.componentSelector" (dict "root" . "name" "server") | nindent 4 }}
+spec:
+  replicas: 1
+  # Single RWO library volume: never two server pods at once. maxSurge=0 is
+  # not enough: it starts the new pod while the old one is still terminating.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "immich.componentSelector" (dict "root" . "name" "server") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "immich.componentSelector" (dict "root" . "name" "server") | nindent 8 }}
+        {{- include "immich.podLabels" . | nindent 8 }}
+    spec:
+      {{- if or .Values.postgresql.enabled .Values.sso.enabled }}
+      initContainers:
+      {{- end }}
+        {{- if .Values.postgresql.enabled }}
+        # Immich exits when the database refuses connections, which on a first
+        # install it does until Postgres has initialized, and takes the owner
+        # hook down with it.
+        - name: wait-for-postgres
+          image: {{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - until pg_isready -h {{ .Release.Name }}-postgresql -U {{ .Values.postgresql.auth.username | quote }}; do sleep 1; done
+        {{- end }}
+        {{- if .Values.sso.enabled }}
+        # Writes the config file Immich reads, with the OIDC client secret
+        # merged in from the published Secret. Only this container sees the
+        # Secret, and the result lives only in this pod's memory.
+        - name: config
+          image: {{ .Values.image.server.repository }}:{{ include "immich.appTag" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - node
+            - -e
+            - |
+              const fs = require("fs");
+              const [source, target] = process.argv.slice(1);
+              const secret = process.env.OIDC_CLIENT_SECRET;
+              if (!secret) {
+                console.error("OIDC_CLIENT_SECRET is not set");
+                process.exit(1);
+              }
+              const config = JSON.parse(fs.readFileSync(source, "utf8"));
+              config.oauth.clientSecret = secret;
+              fs.writeFileSync(target, JSON.stringify(config, null, 2), { mode: 0o600 });
+            - /config-source/immich-config.yaml
+            - /config/immich-config.yaml
+          env:
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.caelus.oidc.secretName | quote }}
+                  key: OIDC_CLIENT_SECRET
+          volumeMounts:
+            - name: config-source
+              mountPath: /config-source
+              readOnly: true
+            - name: config
+              mountPath: /config
+        {{- end }}
+      containers:
+        - name: main
+          image: {{ .Values.image.server.repository }}:{{ include "immich.appTag" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 2283
+              name: http
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-postgresql-auth
+          env:
+            - name: DB_HOSTNAME
+              value: {{ .Release.Name }}-postgresql
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_VECTOR_EXTENSION
+              value: vectorchord
+            - name: REDIS_HOSTNAME
+              value: {{ .Release.Name }}-valkey
+            - name: IMMICH_MACHINE_LEARNING_URL
+              value: http://{{ .Release.Name }}-machine-learning:3003
+            - name: IMMICH_CONFIG_FILE
+              value: /config/immich-config.yaml
+          {{- if .Values.sso.enabled }}
+          # Creates the owner's admin account, which Immich allows only while
+          # the instance has no admin and answers 400 once it has one. Probes
+          # wait for the hook, so the pod is not Ready and the ingress has no
+          # endpoint until the admin exists: nobody else can claim a fresh
+          # instance. The password is thrown away; password login is off. A
+          # hook that fails restarts the container, which retries it.
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - node
+                  - -e
+                  - |
+                    const api = "http://127.0.0.1:2283/api";
+                    const email = {{ .Values.caelus.owner.email | toJson }};
+                    const deadline = Date.now() + 600_000;
+                    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+                    (async () => {
+                      while (!(await fetch(`${api}/server/ping`).then((r) => r.ok, () => false))) {
+                        if (Date.now() > deadline) throw new Error("Immich did not start");
+                        await sleep(1000);
+                      }
+                      const res = await fetch(`${api}/auth/admin-sign-up`, {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({
+                          email,
+                          name: email.split("@")[0],
+                          password: require("crypto").randomBytes(32).toString("base64url"),
+                        }),
+                      });
+                      const body = await res.text();
+                      if (!res.ok && !(res.status === 400 && body.includes("Admin setup is not available"))) {
+                        throw new Error(`admin-sign-up answered ${res.status}: ${body}`);
+                      }
+                    })().catch((e) => { console.error(e.message); process.exit(1); });
+          {{- end }}
+          livenessProbe:
+            httpGet: { path: /api/server/ping, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /api/server/ping, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+          startupProbe:
+            httpGet: { path: /api/server/ping, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 30
+          volumeMounts:
+            - name: library
+              mountPath: /data
+            - name: config
+              mountPath: /config
+              readOnly: true
+          {{- with .Values.server.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        # The SSH sidecar, rooted at a read-only mount of the photo library,
+        # which the session sees as /library.
+        {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage
+             "sessionRoot" "volume:/library"
+             "mounts" (list (dict "volume" "library" "path" "/library"))) | nindent 8 }}
+      volumes:
+        - name: library
+          persistentVolumeClaim:
+            claimName: library
+        {{- if .Values.sso.enabled }}
+        - name: config
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: config-source
+          configMap:
+            name: {{ .Release.Name }}-config
+        {{- else }}
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-config
+        {{- end }}

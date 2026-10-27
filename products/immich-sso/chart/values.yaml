@@ -1,0 +1,118 @@
+# Bespoke Immich chart values. Flat and explicit: every image, size and env the
+# deployment uses is declared here, not buried under an upstream chart's values.
+
+# Immich application images. server and machine-learning share a tag (they are
+# released together upstream).
+image:
+  server:
+    repository: ghcr.io/immich-app/immich-server
+  machineLearning:
+    repository: ghcr.io/immich-app/immich-machine-learning
+  # Shared tag for server + machine-learning; defaults to the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Public hostname. Used as the ingress rule host and the server externalDomain
+# (so generated links/emails are correct behind the TLS proxy). This is the one
+# value a tenant sets in the deployment dialog.
+host: "immich.local"
+
+# Wrapper ingress. TLS is injected per-deployment by the Caelus reconciler via
+# the caelus.ingress.* block below.
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+
+# Cluster-internal SMTP relay for notifications. Leave host empty to disable.
+smtp:
+  host: ""
+  port: 25
+  from: ""
+
+# Immich library PVC (photos/videos). caelus.plan.storageSize overrides size.
+storage:
+  library:
+    accessMode: ReadWriteOnce
+    size: 100Gi
+    storageClassName: ""
+
+server:
+  resources:
+    requests:
+      cpu: 5m
+      memory: 672Mi
+    limits:
+      memory: 6Gi
+
+machineLearning:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 256Mi
+    limits:
+      memory: 6Gi
+
+# Bundled PostgreSQL (immich's pgvecto.rs/vectorchord image -- NOT stock postgres).
+postgresql:
+  enabled: true
+  image:
+    repository: ghcr.io/immich-app/postgres
+    tag: 14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    pullPolicy: IfNotPresent
+  auth:
+    username: postgres
+    # Fixed, well-known password. POSTGRES_PASSWORD only seeds the superuser when
+    # the data directory is first initialised, so this must match whatever the
+    # database was created with; a generated value would not.
+    password: postgres
+    database: immich
+  persistence:
+    accessMode: ReadWriteOnce
+    size: 20Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 25m
+      memory: 256Mi
+    limits:
+      memory: 2Gi
+
+# Bundled Valkey (Redis-compatible) for the job queue.
+valkey:
+  image:
+    repository: docker.io/valkey/valkey
+    tag: 9.0-alpine
+    pullPolicy: IfNotPresent
+  persistence:
+    accessMode: ReadWriteOnce
+    size: 5Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 2Gi
+
+# Sign in with Freepod. With it on, Immich signs in only through the platform's
+# OpenID Provider (caelus.oidc) and the owner (caelus.owner.email) is created as
+# its first admin. redirectPaths and nativeRedirectUris are read by the
+# reconciler, not by this chart.
+sso:
+  enabled: false
+
+# TLS is injected per-deployment by the Caelus reconciler (caelus.ingress.tls).
+# These defaults let the chart render standalone (helm template / tests).
+caelus:
+  releaseId: ""
+  plan: {}
+  ingress:
+    enabled: false
+    tls: {}
+  # Injected only for an SSO-enabled deployment: issuer, clientId and the name
+  # of the Secret holding OIDC_CLIENT_SECRET.
+  oidc: {}
+  owner: {}
+
+sshSidecarImage: ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2

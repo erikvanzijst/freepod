@@ -1,0 +1,10 @@
+{{- /*
+`selector` targets the server pod specifically: the library's default
+instance-only selector would also match the postgres, valkey and ML pods in
+this namespace, and the Service would round-robin onto a pod with no sshd.
+*/}}
+{{ include "ssh-sidecar.resources" (dict
+     "root" .
+     "selector" (dict
+       "app.kubernetes.io/name" "server"
+       "app.kubernetes.io/instance" .Release.Name)) }}

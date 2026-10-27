@@ -278,6 +278,7 @@ _XDIST_GROUPS = {
         "test_custom_ssh_sidecar",
         "test_discourse_chart",
         "test_docmost_chart",
+        "test_immich_sso_chart",
         "test_lemmy_chart",
         "test_mattermost_chart",
         "test_nextcloud_chart",

@@ -1,0 +1,85 @@
+{{- /*
+Bundled Valkey (Redis-compatible) for Immich's job queue. Persistent RWO
+volume; Recreate so the single volume is never double-attached.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-valkey
+  labels:
+    {{- include "immich.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.valkey.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.valkey.persistence.size }}
+  {{- if .Values.valkey.persistence.storageClassName }}
+  storageClassName: {{ .Values.valkey.persistence.storageClassName }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-valkey
+  labels:
+    {{- include "immich.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "immich.componentSelector" (dict "root" . "name" "valkey") | nindent 4 }}
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-valkey
+  labels:
+    {{- include "immich.labels" . | nindent 4 }}
+    {{- include "immich.componentSelector" (dict "root" . "name" "valkey") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "immich.componentSelector" (dict "root" . "name" "valkey") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "immich.componentSelector" (dict "root" . "name" "valkey") | nindent 8 }}
+    spec:
+      containers:
+        - name: valkey
+          image: {{ .Values.valkey.image.repository }}:{{ .Values.valkey.image.tag }}
+          imagePullPolicy: {{ .Values.valkey.image.pullPolicy }}
+          ports:
+            - containerPort: 6379
+              name: redis
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "valkey-cli ping | grep PONG"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "valkey-cli ping | grep PONG"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- with .Values.valkey.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-valkey
