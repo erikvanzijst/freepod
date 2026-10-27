@@ -1,0 +1,7 @@
+- version: "0.19.21"
+  notes: |-
+    A maintenance release that fixes a number of security problems, some of them severe.
+
+    - Several security issues are fixed, some of them severe
+    - Link previews in posts are shown correctly again
+    - YouTube links and .avif image embeds now work
