@@ -40,7 +40,7 @@ All edits are in `products/immich-sso/chart`.
 
 ## 7. Product on prod
 
-- [ ] 7.1 Create the same product, template and plan on prod with `caelus` in the prod API pod, still `admin` visibility. Verify one prod deployment signs in on the web and in the mobile app, then keep or delete it.
+- [x] 7.1 Create the same product, template and plan on prod with `caelus` in the prod API pod, still `admin` visibility. Verify one prod deployment signs in on the web and in the mobile app, then keep or delete it.
 
 ## Workflow follow-up
 
