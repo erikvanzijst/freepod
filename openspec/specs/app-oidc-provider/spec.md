@@ -189,7 +189,7 @@ Until both the client and the redirect URI of an authorization request are valid
 
 ### Requirement: Request parameters are bounded
 
-The provider SHALL refuse an authorization request whose `state` exceeds 512 bytes, whose `nonce` exceeds 256 bytes, whose `redirect_uri` exceeds 2048 bytes, or whose `code_challenge` is not 43 characters. It SHALL do so before setting any cookie.
+The provider SHALL refuse an authorization request whose `state` exceeds 512 bytes, whose `nonce` exceeds 256 bytes, whose `redirect_uri` exceeds 2048 bytes, or whose `code_challenge`, when present, is not 43 characters. It SHALL do so before setting any cookie.
 
 #### Scenario: Oversized state
 
