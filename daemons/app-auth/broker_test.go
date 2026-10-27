@@ -51,7 +51,7 @@ func newBrokerRig(t *testing.T) *brokerRig {
 	auth := &fakeAuth{id: identity{Sub: "3f2a", Email: "alice@example.com", Name: "Alice"}}
 	return &brokerRig{
 		t: t, st: st, auth: auth, clock: c, jar: map[string]string{}, nonce: "app-host-nonce",
-		b: &broker{loginURL: login, keys: mustKeyring(t, "k1:"+testKey('a')), store: st, auth: auth, now: c.now, log: quiet},
+		b: &broker{loginURL: login, keys: mustKeyring(t, "k1:"+testKey('a')), store: st, auth: auth, now: c.now, log: quiet, tenantDomain: "freepod.app"},
 	}
 }
 
@@ -246,6 +246,15 @@ func TestBrokerEligibility(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("preview prefix on a custom domain", func(t *testing.T) {
+		g := newBrokerRig(t)
+		g.st.hosts["shop.example.com"] = "dep-shop"
+		g.st.recordConsent(context.Background(), "3f2a", "dep-shop", disclosedClaims)
+		if w := g.start("preview-shop.example.com"); w.Code != http.StatusNotFound || w.Header().Get("Location") != "" {
+			t.Fatalf("%d Location=%q", w.Code, w.Header().Get("Location"))
+		}
+	})
 
 	t.Run("authentication disabled mid-flow", func(t *testing.T) {
 		g := newBrokerRig(t)
@@ -447,14 +456,17 @@ func TestBrokerPreviewSharesConsent(t *testing.T) {
 
 func TestPreviewBase(t *testing.T) {
 	for host, want := range map[string]string{
-		"preview-studio-alice.freepod.app":   "studio-alice.freepod.app",
-		"Preview-Studio-alice.freepod.app":   "studio-alice.freepod.app",
-		"studio-alice.freepod.app":           "",
-		"mypreview-studio-alice.freepod.app": "",
-		"preview-.freepod.app":               "",
-		"preview-studio":                     "",
+		"preview-studio-alice.freepod.app":     "studio-alice.freepod.app",
+		"Preview-Studio-alice.freepod.app":     "studio-alice.freepod.app",
+		"studio-alice.freepod.app":             "",
+		"mypreview-studio-alice.freepod.app":   "",
+		"preview-.freepod.app":                 "",
+		"preview-studio":                       "",
+		"preview-acme.example":                 "",
+		"preview-photos.acme.example":          "",
+		"preview-studio-alice.dev.freepod.app": "",
 	} {
-		got, ok := previewBase(host)
+		got, ok := previewBase(host, "freepod.app")
 		if got != want || ok != (want != "") {
 			t.Errorf("previewBase(%q) = %q, %v; want %q", host, got, ok, want)
 		}

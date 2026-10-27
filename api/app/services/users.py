@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func
+from sqlalchemy import delete, func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.config import get_settings
 from app.models import (
     HandleRead,
+    SshKeyORM,
     TosAcceptanceRead,
     UserRead,
     UserORM,
@@ -176,8 +177,9 @@ def delete_user(session: Session, *, user_id: int) -> UserRead:
     user = session.exec(select(UserORM).where(UserORM.id == user_id, UserORM.deleted_at == None)).one_or_none()
     if not user:
         raise NotFoundException("User not found")
-    user.deleted_at = user.created_at
+    user.deleted_at = datetime.now(UTC)
     session.add(user)
+    session.exec(delete(SshKeyORM).where(SshKeyORM.user_id == user.id))
     session.commit()
     session.refresh(user)
     return UserRead.model_validate(user)

@@ -87,10 +87,11 @@ CREATE OR REPLACE FUNCTION pgbouncer.user_lookup(
 BEGIN
     SELECT usename, passwd FROM pg_catalog.pg_shadow
      WHERE usename = i_username
+       AND usename LIKE 'dpl\_%'
       INTO uname, phash;
     RETURN;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog;
 
 REVOKE ALL ON FUNCTION pgbouncer.user_lookup(TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION pgbouncer.user_lookup(TEXT) TO pgbouncer_auth;

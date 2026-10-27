@@ -68,10 +68,11 @@ locals {
 }
 
 module "app_auth" {
-  source    = "./app-auth"
-  namespace = kubernetes_namespace.login.metadata[0].name
-  domain    = local.domain
-  image     = var.app_auth_image
+  source        = "./app-auth"
+  namespace     = kubernetes_namespace.login.metadata[0].name
+  domain        = local.domain
+  tenant_domain = local.tenant_domain
+  image         = var.app_auth_image
 
   oidc_issuer        = "https://keycloak.freepod.eu/realms/freepod"
   oidc_client_id     = var.app_auth_client_ids[terraform.workspace]
