@@ -138,11 +138,35 @@ def test_the_session_environment(deps, monkeypatch, tmp_path):
     assert env["PI_CODING_AGENT_DIR"] == str(workspace / "agent")
     assert env["TMPDIR"] == str(workspace / "tmp")
     assert env["UPGRADER_TOKEN_FILE"] == str(deps.state_dir / "tokens" / "immich")
-    assert env["HOME"] == deps.agent.home
+    assert env["HOME"] == str(workspace / "home")
     assert env["INFERENCE_API_KEY"] == "sk-inference-secret"
     for private in ("GITHUB_APP_PRIVATE_KEY", "SMTP_PASS", "DATABASE_URL", "AWS_SECRET_ACCESS_KEY", "GH_TOKEN"):
         assert private not in env
     assert KEY_B64 not in json.dumps(env)
+
+
+def test_a_session_cannot_redirect_the_next_sessions_clone(deps, monkeypatch, tmp_path):
+    """Each session gets a fresh HOME, so a git config one leaves there never reaches the next."""
+    attacker = tmp_path / "attacker"
+    (attacker / "products" / "UPGRADING").mkdir(parents=True)
+    (attacker / "products" / "UPGRADING" / "SKILL.md").write_text("ATTACKER SKILL")
+    git = lambda *a: subprocess.run([GIT, *a], cwd=attacker, check=True, capture_output=True)  # noqa: E731
+    git("init", "-q", "-b", "master")
+    git("add", ".")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "attacker")
+    seen = tmp_path / "seen.jsonl"
+    monkeypatch.setenv("FAKE_PI", "poison-home")
+    monkeypatch.setenv("FAKE_PI_SEEN", str(seen))
+    monkeypatch.setenv("FAKE_PI_ATTACKER", f"file://{attacker}")
+    monkeypatch.setenv("FAKE_PI_ORIGIN", deps.env["REPO_URL"])
+    runner.execute_run(deps, "scheduled", None)
+    sessions = [json.loads(line) for line in seen.read_text().splitlines()]
+    assert len(sessions) == len(ELIGIBLE) > 1
+    assert len({s["home"] for s in sessions}) == len(sessions)
+    assert all(s["inherited"] == [] for s in sessions)
+    assert not any(s["skill"].startswith("ATTACKER") for s in sessions)
+    with deps.Session() as s:
+        assert {p.outcome for p in s.scalars(select(db.ProductResult))} == {"up_to_date"}
 
 
 def test_a_deployment_with_no_public_url_names_no_run(deps, monkeypatch, tmp_path):

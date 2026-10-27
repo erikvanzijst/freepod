@@ -113,6 +113,15 @@ def test_clean_removes_what_the_session_locked(tmp_path):
     assert list(directory.iterdir()) == []
 
 
+def test_clean_leftovers_removes_what_the_session_left_outside_its_workspace():
+    marker = f"leftover-{os.getpid()}"
+    targets = [Path(AGENT.home) / marker, Path("/tmp") / marker, Path("/dev/shm") / marker]
+    for target in targets:
+        assert as_agent("sh", "-c", f"mkdir -p {target} && touch {target}/f && chmod 500 {target}").returncode == 0
+    AGENT.clean_leftovers()
+    assert [t for t in targets if t.exists()] == []
+
+
 def test_untrusted_reads_only_what_the_session_owns(tmp_path):
     directory = shared(tmp_path)
     secret = tmp_path / "secret"
@@ -192,19 +201,23 @@ def test_a_real_run_through_the_session_user(Session, tmp_path, monkeypatch):
     # The stand-in origin is the service's; GitHub, which the image clones from, has no owner.
     (tmp_path / "gitconfig").write_text("[safe]\n\tdirectory = *\n")
     (tmp_path / "gitconfig").chmod(0o644)
+    # What the session reports back lands under /tmp, which the sweep after each product would
+    # empty; test_clean_leftovers_removes_what_the_session_left_outside_its_workspace covers it.
+    monkeypatch.setattr("upgrader.agent.LEFTOVERS", ())
     runner.execute_run(deps, "manual", "vaultwarden")
     with Session() as s:
         [p] = s.scalars(select(db.ProductResult)).all()
         assert (p.outcome, p.error) == ("opened", None)
     seen = __import__("json").loads((shared_out / "env.json").read_text())
-    assert seen["USER"] == "agent" and seen["HOME"] == "/home/agent"
+    assert seen["USER"] == "agent"
+    assert Path(seen["HOME"]).name == "home" and Path(seen["HOME"]).parent.parent == tmp_path / "work"
     assert "GITHUB_APP_PRIVATE_KEY" not in seen
     node, agent = os.getuid(), AGENT.uid
     owners = __import__("json").loads((shared_out / "stat.json").read_text())
     assert owners["."] == [node, AGENT.gid, "0o1770"]
     assert owners["runner"][0] == node and owners["runner"][2] == "0o700"
     assert owners["runner_listed"] is False
-    for name in ("agent", "session", "out"):
+    for name in ("agent", "session", "out", "home"):
         assert owners[name] == [node, AGENT.gid, "0o2770"], name
     assert owners["freepod"][0] == agent
     [pull] = github.opened

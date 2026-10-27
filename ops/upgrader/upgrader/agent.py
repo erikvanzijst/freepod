@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 USER = "agent"
+# Where a session can write outside its workspace. Swept after every product, so that nothing one
+# session leaves behind is there for the next.
+LEFTOVERS = ("/tmp", "/var/tmp", "/dev/shm")
 _CLEAN = (
     'find "$1" -user "$(id -u)" -type d -exec chmod u+rwx {} + 2>/dev/null;'
     ' find "$1" -mindepth 1 -depth -user "$(id -u)" -delete 2>/dev/null; exit 0'
@@ -112,6 +115,15 @@ class Agent:
         unwritable, which the service could not remove itself."""
         self.run(["sh", "-c", _CLEAN, "sh", str(directory)], env=_minimal_env(), capture_output=True,
                  timeout=600)
+
+    def clean_leftovers(self) -> None:
+        """Delete what the session user left in its own home and the shared temporary directories.
+        Sharing a user, those files are the service's own, so nothing is touched."""
+        if not self.isolated:
+            return
+        for directory in (self.home, *LEFTOVERS):
+            if Path(directory).is_dir():
+                self.clean(Path(directory))
 
 
 def _minimal_env() -> dict[str, str]:

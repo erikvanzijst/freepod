@@ -42,7 +42,7 @@ print(f"prompt: {args[-1]}", flush=True)
 Path(os.environ["FAKE_PI_ENV"]).write_text(json.dumps(dict(os.environ))) if "FAKE_PI_ENV" in os.environ else None
 if "FAKE_PI_STAT" in os.environ:
     seen = {name: [os.stat(name).st_uid, os.stat(name).st_gid, oct(os.stat(name).st_mode & 0o7777)]
-            for name in (".", "runner", "agent", "session", "out", "freepod")}
+            for name in (".", "runner", "agent", "session", "out", "home", "freepod")}
     try:
         os.listdir("runner")
         seen["runner_listed"] = True
@@ -54,6 +54,17 @@ if mode == "sleep":
     child = subprocess.Popen(["sleep", "600"])
     Path(os.environ["FAKE_PI_CHILD"]).write_text(str(child.pid))
     time.sleep(600)
+if mode == "poison-home":
+    # Record what this session was handed, then leave a git config that would send the next
+    # session's clone to another repository -- but only into a HOME inside the workspace.
+    home = Path(os.environ["HOME"])
+    with Path(os.environ["FAKE_PI_SEEN"]).open("a") as f:
+        f.write(json.dumps({"home": str(home), "inherited": sorted(p.name for p in home.iterdir()),
+                            "skill": Path("freepod/products/UPGRADING/SKILL.md").read_text()[:20]}) + "\n")
+    if home.resolve().is_relative_to(Path.cwd().resolve()):
+        (home / ".gitconfig").write_text(
+            f'[url "{os.environ["FAKE_PI_ATTACKER"]}"]\n\tinsteadOf = {os.environ["FAKE_PI_ORIGIN"]}\n')
+    mode = "result:up_to_date"
 if mode == "unwritable":
     locked = Path("out") / "locked"
     locked.mkdir()

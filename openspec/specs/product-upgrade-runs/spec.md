@@ -140,22 +140,31 @@ workspace, holding a new clone of `master` that the session user owns, with:
 - `UPGRADE_DRY_RUN` set to `1` in dry-run mode and `0` otherwise;
 - `UPGRADE_OUT_DIR` pointing into that workspace;
 - `TMPDIR` pointing into that workspace, so the session's temporary files are deleted with it;
+- `HOME` pointing into that workspace, so nothing a session writes there reaches a later one;
 - `UPGRADE_RUN_URL` naming the product's place on its run's page, so that the session can
   send a reviewer back to it (`product-upgrade-skill`), and empty when the deployment has
   no public URL configured;
 - the skill loaded from `products/UPGRADING/SKILL.md` in that clone.
 
 The service MUST also keep its own clone of the same commit, which the session cannot
-write.
+write. The session's clone MUST be made without any user-level git configuration, and the
+product MUST fail if that clone is not at the commit the service cloned.
 
 The workspace and both clones MUST be deleted when the product finishes, whatever its
-outcome, including every file the session user created. A product that fails MUST NOT
+outcome, including every file the session user created. Every file the session user left in
+its own home directory or the shared temporary directories MUST be deleted then too. A product that fails MUST NOT
 stop the run's remaining products.
 
 #### Scenario: Products do not share context
 - **WHEN** a run covers `immich` and then `nextcloud`
 - **THEN** the `nextcloud` session starts with none of the `immich` session's messages
 - **AND** no file from the `immich` workspace exists when the `nextcloud` session starts
+
+#### Scenario: A session cannot steer the next session's clone
+- **WHEN** the `immich` session writes a git configuration into its `HOME` that would redirect
+  the repository URL elsewhere
+- **THEN** the `nextcloud` session's clone is still the service's commit, and its skill is
+  `master`'s
 
 #### Scenario: One product fails
 - **WHEN** the first product of a run ends as `failed`

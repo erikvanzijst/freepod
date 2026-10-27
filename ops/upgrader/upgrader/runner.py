@@ -45,7 +45,7 @@ MAX_TRANSCRIPT = 64 * 1024 * 1024
 # The workspace (D2). The service's own directory is closed to the session; the shared ones
 # belong to the service, so the session can fill them but not swap them for links, and the
 # sticky root keeps it from replacing anything the service put there.
-RUNNER, SHARED, CLONE = "runner", ("agent", "session", "out", "tmp"), "freepod"
+RUNNER, SHARED, CLONE = "runner", ("agent", "session", "out", "tmp", "home"), "freepod"
 
 
 @dataclass
@@ -91,14 +91,18 @@ def _clone(deps: Deps, settings: Settings, into: Path) -> str:
     return _git(deps, "rev-parse", "HEAD", cwd=into)
 
 
-def _agent_clone(deps: Deps, settings: Settings, workspace: Path) -> None:
-    env = {"PATH": os.environ.get("PATH", os.defpath), "HOME": deps.agent.home,
-           "GIT_CONFIG_SYSTEM": str(deps.git_config)}
+def _agent_clone(deps: Deps, settings: Settings, workspace: Path, commit: str) -> None:
+    env = {"PATH": os.environ.get("PATH", os.defpath), "HOME": str(workspace / "home"),
+           "GIT_CONFIG_SYSTEM": str(deps.git_config), "GIT_CONFIG_GLOBAL": os.devnull}
     out = deps.agent.run([deps.git, "clone", "-q", "--depth", "1", "--branch", "master",
                           settings.repo_url, str(workspace / CLONE)], env=env, cwd=workspace,
                          capture_output=True, text=True, timeout=600)
     if out.returncode:
         raise RuntimeError(f"the session's clone failed: {out.stderr.strip()[-500:]}")
+    head = deps.agent.run([deps.git, "rev-parse", "HEAD"], env=env, cwd=workspace / CLONE,
+                          capture_output=True, text=True, timeout=60)
+    if head.returncode or head.stdout.strip() != commit:
+        raise RuntimeError("the session's clone is not the commit the service cloned")
 
 
 def _update(deps: Deps, row_id: int, **values) -> None:
@@ -125,7 +129,7 @@ def session_env(deps: Deps, settings: Settings, slug: str, workspace: Path, toke
     env.update(deps.extra_env)
     env.update(
         PATH=f"{deps.guards}{os.pathsep}{os.environ.get('PATH', os.defpath)}",
-        HOME=deps.agent.home,
+        HOME=str(workspace / "home"),
         PI_CODING_AGENT_DIR=str(agent_dir),
         PI_TELEMETRY="0",
         INFERENCE_API_KEY=settings.inference_api_key or "",
@@ -297,8 +301,9 @@ def execute_product(deps: Deps, settings: Settings, run: Run, slug: str, app: Ap
             _prepare(deps, settings, workspace)
             clone = Clone(workspace / RUNNER / CLONE, deps.git,
                           {**os.environ, "GIT_CONFIG_SYSTEM": str(deps.git_config)})
-            _update(deps, row.id, commit=_clone(deps, settings, clone.path))
-            _agent_clone(deps, settings, workspace)
+            commit = _clone(deps, settings, clone.path)
+            _update(deps, row.id, commit=commit)
+            _agent_clone(deps, settings, workspace, commit)
             tokens.refresh()
             env = session_env(deps, settings, slug, workspace, tokens.path, workspace / "agent",
                               url=run_url(settings, run.id, slug))
@@ -344,6 +349,7 @@ def execute_product(deps: Deps, settings: Settings, run: Run, slug: str, app: Ap
     finally:
         tokens.remove()
         deps.agent.clean(workspace)
+        deps.agent.clean_leftovers()
         shutil.rmtree(workspace, ignore_errors=True)
         _update(deps, row.id, finished_at=now(), **fields)
 
