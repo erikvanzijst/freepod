@@ -1,5 +1,5 @@
 [![CI](https://github.com/erikvanzijst/freepod/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/erikvanzijst/freepod/actions/workflows/ci.yml)
-![](ui/public/og-image.png)
+![](ui/public/og-image-v2.png)
 
 # Freepod
 
