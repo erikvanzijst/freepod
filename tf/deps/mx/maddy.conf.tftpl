@@ -1,0 +1,51 @@
+# Inbound-only MX for ${domain}: accepts mail for the domain over SMTP, files
+# every recipient into one mailbox, and serves that mailbox over IMAPS. There is
+# no submission endpoint and no outbound queue; outbound mail uses the mailer relay.
+
+hostname ${hostname}
+
+tls file /etc/maddy/tls/tls.crt /etc/maddy/tls/tls.key
+
+auth.pass_table local_authdb {
+    table file /etc/maddy/secret/passwd
+}
+
+storage.imapsql local_mailboxes {
+    driver sqlite3
+    dsn imapsql.db
+}
+
+# The container runs unprivileged, so it listens on high ports; the Service
+# maps 25 and 993 onto them.
+smtp tcp://0.0.0.0:2525 {
+    limits {
+        all rate 20 1s
+        all concurrency 10
+    }
+
+    dmarc yes
+    check {
+        require_mx_record
+        dkim
+        spf
+    }
+
+    default_source {
+        destination ${domain} {
+            modify {
+                replace_rcpt regexp ".*" "${account}"
+            }
+            deliver_to &local_mailboxes
+        }
+        default_destination {
+            reject 550 5.1.1 "User doesn't exist"
+        }
+    }
+}
+
+imap tls://0.0.0.0:9993 {
+    auth &local_authdb
+    storage &local_mailboxes
+}
+
+openmetrics tcp://0.0.0.0:9749 { }

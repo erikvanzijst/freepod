@@ -10,6 +10,12 @@ resource "kubernetes_namespace" "mailer" {
   }
 }
 
+resource "kubernetes_namespace" "mx" {
+  metadata {
+    name = "mx"
+  }
+}
+
 resource "kubernetes_namespace" "monitoring" {
   metadata {
     name = "monitoring"
@@ -72,6 +78,19 @@ module "mailer" {
   smtp_port     = var.smtp_port
   smtp_username = var.smtp_username
   smtp_password = var.smtp_password
+}
+
+# Inbound mail for freepod.eu. Outbound mail still leaves through module.mailer.
+module "mx" {
+  source               = "./mx"
+  namespace            = kubernetes_namespace.mx.metadata[0].name
+  hostname             = "mx.freepod.eu"
+  domain               = "freepod.eu"
+  account              = var.mx_account
+  password_hash        = var.mx_password_hash
+  monitoring_namespace = kubernetes_namespace.monitoring.metadata[0].name
+
+  depends_on = [module.certmanager]
 }
 
 # --- Monitoring stack (cluster-wide observability) ---

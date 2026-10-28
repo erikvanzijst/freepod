@@ -188,6 +188,12 @@ resource "helm_release" "grafana" {
           "deployment" = {
             json = file("${path.module}/dashboards/deployment.json")
           }
+          # Ours: the freepod.eu MX (tf/deps/mx). Maddy's counters cover started,
+          # aborted and refused transactions; accepted and Junk-filed messages
+          # only appear in its log, so those panels read Loki.
+          "mx" = {
+            json = file("${path.module}/dashboards/mx.json")
+          }
         }
       }
     })

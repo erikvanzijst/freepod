@@ -13,6 +13,11 @@ independent state and does not use Terraform workspaces.
   declared as Terraform in `keycloak-config/` — see
   [Keycloak configuration](#keycloak-configuration).
 - `echo` namespace, deployment, service, ingress
+- `mx` namespace (`mx/`): a [Maddy](https://maddy.email) inbound MX for
+  `freepod.eu` at `mx.freepod.eu`. Every address in the domain is delivered to
+  one mailbox (`mx_account`), served over IMAPS on :993. It accepts SMTP on :25
+  for `freepod.eu` only and has no submission port; outbound mail leaves through
+  the `mailer` relay.
 - `monitoring` namespace with the cluster-wide observability stack (Loki +
   Promtail, Prometheus + node-exporter + kube-state-metrics + Alertmanager,
   Grafana) — see [Monitoring stack](#monitoring-stack).
@@ -52,6 +57,11 @@ smtp_host     = "smtp.example.com"
 smtp_port     = "587"
 smtp_username = "relay@example.com"
 smtp_password = "replace-with-actual-password"
+
+# Inbound mail: the catch-all mailbox and its IMAP password hash
+# (docker run --rm -i foxcpp/maddy:0.9.6 hash, then type the password)
+mx_account       = "someone@freepod.eu"
+mx_password_hash = "bcrypt:$2a$10$..."
 
 # TLS: DNS-01 issuance through Cloudflare (freepod.eu) and deSEC (freepod.app,
 # a token whose policies allow TXT RRsets in that zone only)

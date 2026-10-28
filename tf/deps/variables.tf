@@ -48,6 +48,19 @@ variable "smtp_password" {
   sensitive   = true
 }
 
+# --- Inbound mail (mx) ---
+
+variable "mx_account" {
+  description = "The freepod.eu mailbox that receives mail for every address in the domain, and its IMAP username."
+  type        = string
+}
+
+variable "mx_password_hash" {
+  description = "IMAP password hash for mx_account, from `docker run --rm -i foxcpp/maddy:0.9.6 hash`. Use secrets.auto.tfvars."
+  type        = string
+  sensitive   = true
+}
+
 # --- TLS / cert-manager (app-tls-termination) ---
 
 variable "cloudflare_api_token" {
