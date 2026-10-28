@@ -342,6 +342,12 @@ class CaelusSettings(BaseSettings):
     registry_signing_private_key: str = ""
     registry_pull_hmac_key: str = ""
 
+    # Image retention (tenant-image-retention spec). Earlier distinct images
+    # kept per deployment beside its desired and applied ones, and how long a
+    # successful build's image is kept before any release carries it.
+    registry_retained_past_images: int = 2
+    registry_prune_grace_hours: float = 24
+
     # ── Deployment var encryption ─────────────────────────────────────────
     # Fernet keys, newest first. Only the first key encrypts; every key in the
     # list can decrypt, and each stored row names the key that produced it by

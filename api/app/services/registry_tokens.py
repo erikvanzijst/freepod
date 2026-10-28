@@ -38,8 +38,12 @@ _COORDINATE_BYTES = 32
 PULL_CREDENTIAL_VERSION = "v1"
 PULL_TOKEN_TTL_SECONDS = 300
 OPERATOR_TOKEN_MAX_TTL_SECONDS = 3600
+PRUNE_TOKEN_MAX_TTL_SECONDS = 3600
 _NOT_BEFORE_SKEW_SECONDS = 60
 _PULL_USERNAME = re.compile(r"pull-([1-9][0-9]*)")
+# One path component of the repository name grammar, with no separators: a
+# numeric id today, an opaque lowercase one tomorrow.
+_OWNER_ID = re.compile(r"[a-z0-9]+")
 
 # Distribution's repository name grammar: lowercase path components joined by
 # `/`. Anything else -- a wildcard in particular -- is not an exact name.
@@ -298,6 +302,34 @@ def operator_token(
         issuer=settings.registry_token_issuer,
         audience=settings.registry_host,
         subject="operator",
+        access=access,
+        ttl_seconds=ttl_seconds,
+    )
+
+
+def prune_token(settings: CaelusSettings, owners: Iterable[int | str], *, ttl_seconds: int) -> IssuedToken:
+    """Read and delete on exactly the named owners' image repositories.
+
+    The only grant of deletion anywhere: the prune untags images retention no
+    longer keeps (tenant-image-retention design D7). Read accompanies it
+    because listing a repository's tags and resolving one to its digest are
+    reads. Never push, never a cache or mirrored repository, never the
+    catalog.
+    """
+    owners = list(dict.fromkeys(owners))
+    if not owners:
+        raise ValidationException("name at least one owner")
+    names = [image_repository(o) for o in owners]
+    if not all(_OWNER_ID.fullmatch(str(o)) for o in owners):
+        raise ValidationException("owners are user ids")
+    if not 0 < ttl_seconds <= PRUNE_TOKEN_MAX_TTL_SECONDS:
+        raise ValidationException(f"a token may live at most {PRUNE_TOKEN_MAX_TTL_SECONDS} seconds")
+    access = [{"type": "repository", "name": n, "actions": ["pull", "delete"]} for n in names]
+    return mint(
+        signer(settings),
+        issuer=settings.registry_token_issuer,
+        audience=settings.registry_host,
+        subject="prune",
         access=access,
         ttl_seconds=ttl_seconds,
     )

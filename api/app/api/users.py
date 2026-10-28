@@ -311,7 +311,7 @@ def get_user(
         "`checkout_url` the client must redirect the user to."
     ),
     responses={
-        400: {"description": "`user_values_json` fails validation against the template schema, or the plan template is invalid."},
+        400: {"description": "`user_values_json` fails validation against the template schema, the plan template is invalid, or (code `image_not_retained`) the values carry an image that is no longer retained."},
         403: {"description": "Caller may only create deployments for their own account."},
         404: {"description": "The user or desired template does not exist."},
         409: {"description": "The desired template is not the product's current version, the chosen hostname is already in use, an operation is already in progress, or a duplicate deployment exists."},
@@ -358,7 +358,9 @@ def create_deployment(
 
     ## Errors
     - **400 Bad Request** — `user_values_json` fails schema validation, or the
-      plan template is invalid.
+      plan template is invalid. Code `image_not_retained` — the values carry
+      one of the owner's images that is no longer retained; rebuild to deploy
+      it.
     - **403 Forbidden** — creating a deployment for another account without
       administrator privileges.
     - **404 Not Found** — the user or desired template does not exist.
@@ -651,7 +653,7 @@ def get_deployment_bucket(
     summary="Update (upgrade) a deployment",
     response_description="The updated deployment, now re-entering provisioning.",
     responses={
-        400: {"description": "`user_values_json` fails validation against the target template schema."},
+        400: {"description": "`user_values_json` fails validation against the target template schema, `build_id` does not belong to the deployment, or (code `image_not_retained`) a referenced image is no longer retained."},
         403: {"description": "Caller may only update their own deployments."},
         404: {"description": "No such deployment exists for this user, or the target template does not exist."},
         409: {"description": "Downgrade attempt, cross-product template, an operation is already in progress, or the deployment is not in a ready/error state."},
@@ -692,7 +694,11 @@ def update_deployment(
 
     ## Errors
     - **400 Bad Request** — the effective `user_values_json` fails schema
-      validation.
+      validation, or `build_id` names another deployment's build or none at
+      all. Code `image_not_retained` — the named build's image, or one of the
+      owner's images in the values, is no longer retained: only the running
+      image, the one being rolled out, the two images before them and recent
+      builds are kept. Rebuild to deploy it.
     - **403 Forbidden** — updating another account's deployment without
       administrator privileges.
     - **404 Not Found** — no such deployment exists for this user, or the target

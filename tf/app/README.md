@@ -291,6 +291,10 @@ build pods, and from nowhere outside the cluster.
   reads it only at startup. A daily CronJob restarts it, which loads a renewed
   certificate and — through an init container, because collection must not
   run beside a push — garbage-collects unreferenced blobs.
+- **Old images are untagged nightly.** `caelus-registry-prune`
+  (`caelus/registry-prune.tf`) removes the tags of images retention no longer
+  keeps, an hour before the restart collects what they reached. Spec:
+  [tenant-image-retention](../../openspec/specs/tenant-image-retention/spec.md).
 - **Seeding the mirrored Railpack images** is
   `scripts/mirror-railpack-images.sh dev|prod`, run from inside the cluster.
 

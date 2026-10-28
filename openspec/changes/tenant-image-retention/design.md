@@ -50,24 +50,9 @@ D is retained for owner O when the string `O@D` appears, as a value anywhere in 
 values, in a retained release of one of O's live deployments (spec: "Retained images are
 derived from the release ledger"). No chart value key becomes a platform concept.
 
-The images are read with one SQL query per owner rather than by walking values in Python.
-It selects every string leaf of each release's `values_json` that matches the digest
-reference shape, then filters for the owner's prefix:
-
-```sql
-select r.deployment_id, r.number, img #>> '{}' as image
-from deployment_release r
-join deployment d on d.id = r.deployment_id
-cross join lateral jsonb_path_query(r.values_json::jsonb,
-  'strict $.** ? (@.type() == "string" && @ like_regex "^[0-9]+@sha256:[a-f0-9]{64}$")') img
-where d.user_id = :owner and d.deleted_at is null
-  and img #>> '{}' like :owner_prefix   -- '{owner}@%'
-order by r.deployment_id, r.number desc
-```
-
-`values_json` is a `json` column, hence the cast. The jsonpath `like_regex` operand must be
-a literal, so the pattern is fixed and the owner is matched outside the path expression.
-D2's walk then runs over these rows.
+SQL selects only the owner's live releases, through the indexes; the owner's image
+references are matched in Python on the decoded values, by the owner's literal prefix.
+A jsonpath walk over every leaf costs far more than the documents are worth matching.
 
 Alternative considered: retain by `release.build_id`. Rejected because it misses images
 carried without a build, and because one digest can come from several builds. Deciding by
@@ -98,8 +83,9 @@ points at. The same grace makes the build's image retained for the write-time ch
 
 ### D4: Read the registry first, then the database
 
-Per owner, the prune lists tags and resolves each tag's digest (`HEAD` on the manifest),
-**then** computes retention, **then** deletes. Leaving retention is permanent (spec), and
+The prune lists every owner's tags **first**, **then** reads the ledger and builds, **then**
+deletes. A tag named after a build is judged by that build's recorded image, since a build
+tag never moves; only a tag naming no known image costs a `HEAD` for its digest. Leaving retention is permanent (spec), and
 a write that would re-admit an image is rejected. So a database read taken after the
 registry read can only see the same or more retained images than were real when the tags
 were listed:
@@ -141,9 +127,8 @@ exit status, and makes its order against collection explicit in Terraform.
 ### D7: The prune's capability
 
 `registry_tokens.prune_token(settings, owners)` mints `pull`+`delete` on `u/{owner}`
-for exactly the owners in this run, validated against the same exact-name grammar as
-`operator_token`, with a TTL of at most an hour. It is minted per batch of owners so a
-token never names more than one run needs. Owners come from the database: every user
+for exactly the owners named, validated against the same exact-name grammar as
+`operator_token`, with a TTL of at most an hour. The prune mints one per owner. Owners come from the database: every user
 who owns a build. The prune never uses the catalog, which stays refused for every
 principal.
 
@@ -169,8 +154,7 @@ the two cannot drift.
 ### D9: Dry run first
 
 `caelus registry-prune --dry-run` reports, per owner, tags to remove, tags kept and why
-(desired / applied / earlier / fresh), and the bytes reachable only through the removed
-tags. The CronJob ships enabled, but the first apply is preceded by a dry run in each
+(desired / applied / earlier / fresh). The CronJob ships enabled, but the first apply is preceded by a dry run in each
 environment (Migration Plan).
 
 ## Risks / Trade-offs
@@ -205,5 +189,5 @@ already removed are not restored; affected builds must be rebuilt.
 
 ## Open Questions
 
-- Whether the prune should also export a metric (tags removed, bytes released) for the
+- Whether the prune should also export a metric (tags removed) for the
   registry dashboard, or whether the Job log is enough for now.

@@ -105,7 +105,7 @@ The build worker sets all of these on the Job.
 |------------------------------|----------|----------------------------------------------------------------------------------------------------------------------------|
 | `CAELUS_ARTIFACT_URL`        | yes      | Presigned GET for the project archive. Expiring, single-object.                                                            |
 | `CAELUS_USER_ID`             | yes      | The build's owner. Becomes the repository name, the frontend cache key, and the layer cache repository.                    |
-| `CAELUS_BUILD_ID`            | yes      | The build's id. Becomes the anchor tag.                                                                                    |
+| `CAELUS_BUILD_ID`            | yes      | The build's id. Becomes the anchor tag, removed nightly once [retention](../../../openspec/specs/tenant-image-retention/spec.md) no longer keeps the image. |
 | `CAELUS_REGISTRY`            | yes      | The environment's registry host, e.g. `cr.freepod.eu`. The worker sets it from `registry_host`.                            |
 | `CAELUS_REGISTRY_TOKEN`      | yes      | The build's registry capability, minted by the worker and expiring shortly after the build's deadline. Never logged.       |
 | `CAELUS_WORKDIR`             | no       | Working tree. Default `/home/user/work`; the Job mounts an emptyDir here.                                                  |
@@ -160,7 +160,7 @@ Some consequences worth knowing:
   and it grows per owner with every distinct dependency set. There is no
   eviction policy yet: `mode=max` under one moving tag means each export
   unreferences the previous one's blobs, which the registry's garbage
-  collection reclaims at its weekly restart, but nothing bounds a single
+  collection reclaims at its nightly restart, but nothing bounds a single
   owner's working set. Worth watching before the owner count grows.
 - **Emptying `cache/{user_id}` is always safe** — it forces the next build cold
   and nothing needs recreating.

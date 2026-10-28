@@ -54,7 +54,8 @@ because deciding which images are still live is database knowledge.
   the prune and its dry run; a delete-capable token in `app/services/registry_tokens.py`.
 - **Infrastructure**: `tf/app` gains a daily CronJob running the prune with the registry
   signing key, scheduled ahead of the registry's restart-and-collect CronJob.
-- **Clients**: a redeploy naming a build outside the window gets a 422 telling the caller to
-  rebuild. The CLI's `--no-build` redeploys the applied image, which is always retained.
+- **Clients**: a redeploy naming a build outside the window gets a 400
+  (`image_not_retained`) telling the caller to rebuild. The CLI's `--no-build` redeploys
+  the applied image, which is always retained.
 - **Storage**: superseded images stop accumulating; most of a busy owner's repository is
   reclaimed on the first night.

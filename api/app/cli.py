@@ -1237,6 +1237,45 @@ def registry_token(
     typer.echo(issued.token)
 
 
+@app.command("registry-prune")
+def registry_prune(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Report what would be removed and remove nothing"
+    ),
+    owner: list[int] | None = typer.Option(
+        None, "--owner", help="Limit to this owner's image repository. Repeatable."
+    ),
+) -> None:
+    """Untag every tenant image retention no longer keeps.
+
+    Runs nightly ahead of the registry's garbage collection, which reclaims
+    what the removed tags reached (tenant-image-retention spec). Needs the
+    registry signing key: run it where the build worker's Secrets are.
+    Prints one YAML document per owner and exits non-zero if anything failed.
+    """
+    from app.services import registry_prune as prune_service
+
+    # One line per registry request otherwise; failures are logged by the prune.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    settings = get_settings()
+    removed = failed = 0
+    with session_scope() as session:
+        for report in prune_service.prune(
+            session,
+            prune_service.HttpRegistry(settings),
+            settings,
+            dry_run=dry_run,
+            owners=owner or None,
+        ):
+            typer.echo(yaml.safe_dump(report.as_dict(), sort_keys=False, explicit_start=True), nl=False)
+            removed += len(report.removed)
+            failed += len(report.failed)
+    verb = "would remove" if dry_run else "removed"
+    typer.echo(f"# {verb} {removed} tags, {failed} failed", err=True)
+    if failed:
+        raise typer.Exit(1)
+
+
 @app.command("sync-network-policies")
 def sync_network_policies(
     concurrency: int = typer.Option(16, "--concurrency", "-c", help="Parallel kubectl applies"),

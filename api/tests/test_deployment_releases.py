@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import event
 from sqlmodel import select
 
 from app.models import (
@@ -105,6 +106,8 @@ def _build(db_session, *, deployment_id, image="7@sha256:" + "a" * 64):
         artifact_id=f"artifact-{uuid4().hex[:8]}",
         status="succeeded",
         image=image,
+        # Recent, so the image is within retention's grace period.
+        finished_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db_session.add(build)
     db_session.commit()
@@ -631,3 +634,165 @@ def test_deployment_reads_expose_the_applied_release_without_deriving_it(client,
 
     # Intent is deliberately not exposed as what is running.
     assert "desired_release" not in applied
+
+
+# ---------------------------------------------------------------------------
+# A deployment write may reference only retained images
+# ---------------------------------------------------------------------------
+
+
+def _owner_image(user_id, n):
+    return f"{user_id}@sha256:{n:064x}"
+
+
+def _shipped(client, db_session, email, host, count):
+    """A deployment that has shipped `count` builds in turn, each applied,
+    every one finished long enough ago to be outside the grace period."""
+    user_id, template_id, plan_id = _setup(client, db_session, email)
+    deployment_id = _deployed(client, db_session, user_id, template_id, plan_id, host)
+    builds = []
+    for n in range(1, count + 1):
+        build = _build(db_session, deployment_id=deployment_id, image=_owner_image(user_id, n))
+        _update(
+            client, user_id, deployment_id, template_id,
+            user_values_json={"host": host, "image": build.image}, build_id=str(build.id),
+        )
+        _apply(db_session, deployment_id)
+        builds.append(build)
+    for build in builds:
+        build.finished_at = (datetime.now(UTC) - timedelta(days=2)).replace(tzinfo=None)
+        db_session.add(build)
+    db_session.commit()
+    return user_id, template_id, plan_id, deployment_id, builds
+
+
+def test_rolling_back_within_the_window_is_accepted(client, db_session):
+    user_id, template_id, plan_id, deployment_id, builds = _shipped(
+        client, db_session, "within@example.com", "within.example.com", 4
+    )
+    _update(
+        client, user_id, deployment_id, template_id,
+        user_values_json={"host": "within.example.com", "image": builds[1].image},
+        build_id=str(builds[1].id),
+    )
+
+
+def test_rolling_back_past_the_window_is_rejected(client, db_session):
+    user_id, template_id, plan_id, deployment_id, builds = _shipped(
+        client, db_session, "past@example.com", "past.example.com", 4
+    )
+    before = len(_releases(db_session, deployment_id))
+
+    resp = client.put(
+        f"/api/users/{user_id}/deployments/{deployment_id}",
+        json={
+            "desired_template_id": template_id,
+            "user_values_json": {"host": "past.example.com", "image": builds[0].image},
+            "build_id": str(builds[0].id),
+        },
+    )
+
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["code"] == "image_not_retained"
+    assert "rebuild" in resp.json()["detail"]
+    assert len(_releases(db_session, deployment_id)) == before
+
+
+def test_an_old_image_submitted_without_its_build_is_rejected(client, db_session):
+    user_id, template_id, plan_id, deployment_id, builds = _shipped(
+        client, db_session, "oldimg@example.com", "oldimg.example.com", 4
+    )
+    resp = client.put(
+        f"/api/users/{user_id}/deployments/{deployment_id}",
+        json={
+            "desired_template_id": template_id,
+            "user_values_json": {"host": "oldimg.example.com", "workers": [builds[0].image]},
+        },
+    )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["code"] == "image_not_retained"
+
+
+def test_a_change_that_keeps_the_applied_image_is_accepted(client, db_session):
+    user_id, template_id, plan_id, deployment_id, builds = _shipped(
+        client, db_session, "keepimg@example.com", "keepimg.example.com", 4
+    )
+    _update(client, user_id, deployment_id, template_id)
+    assert _releases(db_session, deployment_id)[-1].build_id == builds[-1].id
+
+
+def test_a_retained_image_reused_by_another_deployment_is_accepted(client, db_session):
+    user_id, template_id, plan_id, deployment_id, builds = _shipped(
+        client, db_session, "reuseret@example.com", "reuseret.example.com", 2
+    )
+    resp = _create(
+        client, user_id, template_id, plan_id,
+        {"host": "reuseret2.example.com", "image": builds[-1].image},
+    )
+    assert resp.status_code == 201, resp.text
+
+
+def test_another_owners_image_reference_is_not_judged(client, db_session):
+    user_id, template_id, plan_id, deployment_id, builds = _shipped(
+        client, db_session, "stranger@example.com", "stranger.example.com", 1
+    )
+    _update(
+        client, user_id, deployment_id, template_id,
+        user_values_json={"host": "stranger.example.com", "image": _owner_image(user_id + 1000, 1)},
+    )
+
+
+@pytest.fixture
+def retention_queries(db_session):
+    seen = []
+
+    def record(conn, cursor, statement, *args):
+        if "union all" in statement:
+            seen.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", record)
+    yield seen
+    event.remove(engine, "before_cursor_execute", record)
+
+
+def test_keeping_the_running_image_runs_no_retention_query(client, db_session, retention_queries):
+    user_id, template_id, plan_id, deployment_id, builds = _shipped(
+        client, db_session, "noq@example.com", "noq.example.com", 4
+    )
+    retention_queries.clear()
+    _update(client, user_id, deployment_id, template_id)
+    _apply(db_session, deployment_id)
+    _update(
+        client, user_id, deployment_id, template_id,
+        user_values_json={"host": "noq.example.com", "image": builds[-1].image},
+        build_id=str(builds[-1].id),
+    )
+    assert retention_queries == []
+
+
+def test_deploying_a_fresh_build_runs_no_retention_query(client, db_session, retention_queries):
+    user_id, template_id, plan_id, deployment_id, builds = _shipped(
+        client, db_session, "freshq@example.com", "freshq.example.com", 2
+    )
+    fresh = _build(db_session, deployment_id=deployment_id, image=_owner_image(user_id, 99))
+    retention_queries.clear()
+    _update(
+        client, user_id, deployment_id, template_id,
+        user_values_json={"host": "freshq.example.com", "image": fresh.image},
+        build_id=str(fresh.id),
+    )
+    assert retention_queries == []
+
+
+def test_rolling_back_runs_one_retention_query(client, db_session, retention_queries):
+    user_id, template_id, plan_id, deployment_id, builds = _shipped(
+        client, db_session, "oneq@example.com", "oneq.example.com", 4
+    )
+    retention_queries.clear()
+    _update(
+        client, user_id, deployment_id, template_id,
+        user_values_json={"host": "oneq.example.com", "image": builds[1].image},
+        build_id=str(builds[1].id),
+    )
+    assert len(retention_queries) == 1

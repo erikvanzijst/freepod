@@ -735,7 +735,8 @@ class DeploymentORM(DeploymentBase, table=True):
 
 _BUILD_ID_FIELD_DESCRIPTION = (
     "Build this rollout deploys, recorded on the release for provenance. "
-    "Optional; validated only for existence and ownership. Omitted on an "
+    "Optional; it must be this deployment's own, and its image still "
+    "retained (code `image_not_retained` otherwise: rebuild). Omitted on an "
     "update, the applied release's build carries over while its image is "
     "still among the user values; an explicit null records no build."
 )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import shutil
 import subprocess
@@ -15,6 +16,7 @@ import yaml
 from app.config import CaelusSettings
 from app.models import UserORM
 from app.services import registry_tokens
+from app.services.errors import ValidationException
 from tests.conftest import create_user
 
 HOST = "cr.test.example"
@@ -275,7 +277,10 @@ def registry_url(signing_key):
         {
             "version": "0.1",
             "log": {"level": "warn"},
-            "storage": {"filesystem": {"rootdirectory": "/var/lib/registry"}},
+            "storage": {
+                "filesystem": {"rootdirectory": "/var/lib/registry"},
+                "delete": {"enabled": True},
+            },
             "http": {"addr": ":5000"},
             "auth": {
                 "token": {
@@ -330,4 +335,111 @@ def test_the_registry_refuses_a_token_signed_by_another_key(client, owner, regis
     monkeypatch.setattr("app.api.registry.get_settings", lambda: _settings(stranger))
     token = _token(_form(client, owner, scope=f"repository:u/{owner}:pull"))
     resp = httpx.get(f"{registry_url}/v2/", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401
+
+
+
+# ── The prune's capability: read and delete, on exact image repositories ─────
+
+
+def _claims(token: str, key) -> dict:
+    return jwt.decode(token, key.public_key(), algorithms=["ES256"], audience=HOST)
+
+
+def test_the_prune_token_grants_read_and_delete_on_exactly_the_owners_named(signing_key):
+    issued = registry_tokens.prune_token(_settings(signing_key), [3, 5, 3], ttl_seconds=600)
+    claims = _claims(issued.token, signing_key)
+    assert claims["sub"] == "prune"
+    assert claims["access"] == [
+        {"type": "repository", "name": "u/3", "actions": ["pull", "delete"]},
+        {"type": "repository", "name": "u/5", "actions": ["pull", "delete"]},
+    ]
+
+
+@pytest.mark.parametrize("owners", [[], [-1], ["u/*"], ["a/b"], ["Upper"], [True]])
+def test_the_prune_token_names_only_real_owners(signing_key, owners):
+    with pytest.raises(ValidationException):
+        registry_tokens.prune_token(_settings(signing_key), owners, ttl_seconds=600)
+
+
+@pytest.mark.parametrize("ttl", [0, registry_tokens.PRUNE_TOKEN_MAX_TTL_SECONDS + 1])
+def test_the_prune_token_lives_at_most_an_hour(signing_key, ttl):
+    with pytest.raises(ValidationException):
+        registry_tokens.prune_token(_settings(signing_key), [3], ttl_seconds=ttl)
+
+
+def _push(registry_url, token, repository, tag) -> str:
+    """Push a config-only image under `tag`; returns its digest."""
+    auth = {"Authorization": f"Bearer {token}"}
+    config = json.dumps({"architecture": "amd64", "os": "linux", "rootfs": {"type": "layers", "diff_ids": []}}).encode()
+    config_digest = "sha256:" + hashlib.sha256(config).hexdigest()
+    started = httpx.post(f"{registry_url}/v2/{repository}/blobs/uploads/", headers=auth)
+    assert started.status_code == 202, started.text
+    location = started.headers["location"]
+    if location.startswith("/"):
+        location = registry_url + location
+    # Appended, not `params=`: that would replace the signed `_state` query.
+    separator = "&" if "?" in location else "?"
+    put = httpx.put(
+        f"{location}{separator}digest={config_digest}", content=config,
+        headers={**auth, "Content-Type": "application/octet-stream"},
+    )
+    assert put.status_code == 201, put.text
+    manifest = json.dumps({
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "config": {"mediaType": "application/vnd.oci.image.config.v1+json", "digest": config_digest, "size": len(config)},
+        "layers": [],
+    }).encode()
+    resp = httpx.put(
+        f"{registry_url}/v2/{repository}/manifests/{tag}", content=manifest,
+        headers={**auth, "Content-Type": "application/vnd.oci.image.manifest.v1+json"},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.headers["docker-content-digest"]
+
+
+def _tags(registry_url, token, repository):
+    resp = httpx.get(f"{registry_url}/v2/{repository}/tags/list", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200, resp.text
+    return sorted(resp.json()["tags"] or [])
+
+
+@needs_docker
+def test_the_registry_honors_the_prune_capability(signing_key, registry_url):
+    settings = _settings(signing_key)
+    push = registry_tokens.operator_token(settings, push=["u/901", "u/902", "cache/901"], pull=[], ttl_seconds=600).token
+    for repository in ("u/901", "u/902", "cache/901"):
+        _push(registry_url, push, repository, "a")
+        _push(registry_url, push, repository, "b")
+    prune = registry_tokens.prune_token(settings, [901], ttl_seconds=600).token
+    auth = {"Authorization": f"Bearer {prune}"}
+
+    from app.services.registry_prune import TAGS_PAGE_SIZE
+
+    page = httpx.get(f"{registry_url}/v2/u/901/tags/list?n={TAGS_PAGE_SIZE}", headers=auth)
+    assert page.status_code == 200, page.text
+    assert sorted(page.json()["tags"]) == ["a", "b"]
+
+    deleted = httpx.delete(f"{registry_url}/v2/u/901/manifests/a", headers=auth)
+    assert deleted.status_code == 202, deleted.text
+    # One tag goes; the other tag on the same image stays and still resolves.
+    assert _tags(registry_url, prune, "u/901") == ["b"]
+
+    assert httpx.delete(f"{registry_url}/v2/u/902/manifests/a", headers=auth).status_code == 401
+    assert httpx.delete(f"{registry_url}/v2/cache/901/manifests/a", headers=auth).status_code == 401
+    assert httpx.get(f"{registry_url}/v2/_catalog", headers=auth).status_code == 401
+    started = httpx.post(f"{registry_url}/v2/u/901/blobs/uploads/", headers=auth)
+    assert started.status_code == 401
+
+
+@needs_docker
+def test_a_build_capability_cannot_delete(signing_key, registry_url):
+    settings = _settings(signing_key)
+    push = registry_tokens.operator_token(settings, push=["u/903"], pull=[], ttl_seconds=600).token
+    _push(registry_url, push, "u/903", "a")
+    from app.services import build_jobs
+
+    build = build_jobs.build_capability(build_id="b-1", user_id=903, settings=settings)
+    resp = httpx.delete(f"{registry_url}/v2/u/903/manifests/a", headers={"Authorization": f"Bearer {build}"})
     assert resp.status_code == 401
