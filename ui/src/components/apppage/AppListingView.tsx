@@ -5,6 +5,7 @@ import { formatEuro } from '../landing/usePricing'
 import { AppIcon } from './AppIcon'
 import { AppFacts } from './AppFacts'
 import { AppLinks } from './AppLinks'
+import { AppDocsLink } from './AppDocsLink'
 import { CatalogBar } from './CatalogBar'
 import { FeatureList } from './FeatureList'
 import { InstallButton } from './InstallButton'
@@ -112,6 +113,10 @@ export function AppListingView({
       <Box>
         <Typography component="h2" sx={{ ...h2Sx, fontSize: 22 }}>Details</Typography>
         <AppFacts listing={listing} />
+        {/* Phones have no plan card; the docs link moves here. */}
+        <Box sx={{ display: { md: 'none' } }}>
+          <AppDocsLink slug={listing.slug} name={listing.name} />
+        </Box>
       </Box>
       {listing.links.length > 0 && (
         <Box>
@@ -223,6 +228,7 @@ export function AppListingView({
             <Typography sx={{ mt: 1.5, textAlign: 'center', fontSize: 13, color: fg.faint }}>
               Automatic updates · cancel anytime
             </Typography>
+            <AppDocsLink slug={listing.slug} name={listing.name} />
           </Box>
         </Box>
       </Container>

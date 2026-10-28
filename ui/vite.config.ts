@@ -1,5 +1,5 @@
 /// <reference types="vitest" />
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { LEGAL_FILES } from './src/content/legal/files'
@@ -61,8 +61,16 @@ function pageMeta(): Plugin {
   }
 }
 
+/** Slugs of the apps with a page in the docs site, so app pages link only to docs that exist. */
+const appDocs = readdirSync(new URL('./docs/apps/products', import.meta.url))
+  .filter((file) => file.endsWith('.mdx'))
+  .map((file) => file.slice(0, -'.mdx'.length))
+
 export default defineConfig({
   plugins: [react(), legalMarkdown(), pageMeta()],
+  define: {
+    __APP_DOCS__: JSON.stringify(appDocs),
+  },
   server: {
     host: '0.0.0.0',
     proxy: {

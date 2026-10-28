@@ -114,4 +114,14 @@ describe('AppListingView', () => {
     expect(screen.queryByText('Version')).toBeNull()
     expect(screen.queryByText('Mobile apps')).toBeNull()
   })
+
+  it('links to the docs only for apps they cover', () => {
+    renderListing(full)
+    for (const link of screen.getAllByRole('link', { name: /Immich docs/ })) {
+      expect(link).toHaveAttribute('href', '/docs/apps/products/immich')
+    }
+
+    renderListing({ ...bare, slug: 'no-such-app', name: 'Nameless' })
+    expect(screen.queryByRole('link', { name: /Nameless docs/ })).toBeNull()
+  })
 })
