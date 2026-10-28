@@ -32,6 +32,7 @@ from app.models import (
 from app.network_policy import deployment_namespace_labels
 from app.services.jobs import JobService
 from app.services import object_storage, relational_storage
+from app.services import image_retention
 from app.services import ssh_keys as ssh_keys_service
 from app.services import subscriptions as subscription_service
 from app.services import template_values
@@ -103,9 +104,11 @@ def _validate_build_reference(
 ) -> None:
     """Reject a build that is not the deployment's own, at the write.
 
-    Belonging is the *only* condition, and it is stricter than ownership: a
-    build made for another of the same user's deployments is refused too. An
-    image may still be released anywhere by submitting it without a build.
+    Belonging is checked here, and it is stricter than ownership: a build made
+    for another of the same user's deployments is refused too. An image may
+    still be released anywhere by submitting it without a build. The only
+    other condition, that the build's image is still retained, is
+    `_validate_retained_images`.
     On creation there is no deployment yet, so no build can belong to it and
     naming one is refused.
 
@@ -124,6 +127,54 @@ def _validate_build_reference(
     build = session.get(BuildORM, build_id)
     if build is None or deployment_id is None or build.deployment_id != deployment_id:
         raise ValidationException("Unknown build")
+
+
+class ImageNotRetained(ValidationException):
+    code = "image_not_retained"
+
+
+def _validate_retained_images(
+    session: Session,
+    *,
+    owner_id: int,
+    build_id: UUID | None,
+    user_values: Any,
+    deployment: DeploymentORM | None = None,
+) -> None:
+    """Reject a write that references an image retention no longer keeps.
+
+    Judged before the write, from the ledger as it stands, which is what
+    makes leaving retention permanent: the prune may already have removed
+    the image, and accepting it here would mint a release that cannot pull
+    (tenant-image-retention spec, design D8). Only the owner's own image
+    references are judged; another owner's cannot be pulled by this
+    deployment anyway.
+    """
+    settings = get_settings()
+    referenced = image_retention.owner_images(owner_id, user_values)
+    current: set[str] = set()
+    if deployment is not None:
+        for release in (deployment.desired_release, deployment.applied_release):
+            if release is not None:
+                current |= image_retention.owner_images(owner_id, release.values_json)
+    build = session.get(BuildORM, build_id) if build_id is not None else None
+    if build is not None and build.image:
+        if image_retention.is_fresh(build, settings):
+            current.add(build.image)
+        else:
+            referenced.add(build.image)
+    unknown = referenced - current
+    if not unknown:
+        return
+    retention = image_retention.owner_retention(session, owner_id, settings)
+    if build is not None and build.image in unknown and not retention.retains(build.image):
+        raise ImageNotRetained(
+            "That build's image is no longer kept; rebuild the project to deploy it"
+        )
+    if any(not retention.retains(image) for image in unknown):
+        raise ImageNotRetained(
+            "An image in these values is no longer kept; rebuild the project to deploy it"
+        )
 
 
 def _release_build_id(
@@ -338,6 +389,9 @@ def create_deployment(
     # No deployment exists yet, so any named build is refused -- see
     # `_validate_build_reference`.
     _validate_build_reference(session, deployment_id=None, build_id=payload.build_id)
+    _validate_retained_images(
+        session, owner_id=payload.user_id, build_id=None, user_values=payload.user_values_json
+    )
 
     # Determine if this is a paid plan requiring payment.
     is_paid = payment_provider is not None and plan_template.price_cents > 0
@@ -716,6 +770,13 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
     # A named build must be this deployment's own -- see
     # `_validate_build_reference`.
     _validate_build_reference(session, deployment_id=deployment.id, build_id=update.build_id)
+    _validate_retained_images(
+        session,
+        owner_id=deployment.user_id,
+        build_id=update.build_id,
+        user_values=new_user_values,
+        deployment=deployment,
+    )
     build_id = _release_build_id(session, deployment, update, new_user_values)
 
     # Minted before the guarded UPDATE so the pointer can move in the same

@@ -124,7 +124,7 @@ it runs is never removed by a stale view.
 
 ### Requirement: The prune can be previewed
 An operator SHALL be able to run the prune as a dry run that reports, per owner, the tags it
-would remove and the storage reached only through them, and removes nothing.
+would remove and why the others are kept, and removes nothing.
 
 #### Scenario: A dry run
 - **WHEN** an operator runs the prune as a dry run
