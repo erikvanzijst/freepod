@@ -288,7 +288,7 @@ build pods, and from nowhere outside the cluster.
   `registry_jwks`, and names the API's `/api/registry/token` as its realm,
   which oauth2-proxy lets through (`login/main.tf`).
 - **It serves its own certificate**, issued by cert-manager over DNS-01, and
-  reads it only at startup. A weekly CronJob restarts it, which loads a renewed
+  reads it only at startup. A daily CronJob restarts it, which loads a renewed
   certificate and — through an init container, because collection must not
   run beside a push — garbage-collects unreferenced blobs.
 - **Seeding the mirrored Railpack images** is

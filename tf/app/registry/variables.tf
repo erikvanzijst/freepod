@@ -55,5 +55,5 @@ variable "storage_size" {
 variable "restart_schedule" {
   description = "When the registry restarts, which loads a renewed certificate and collects garbage"
   type        = string
-  default     = "0 4 * * 1"
+  default     = "0 4 * * *"
 }
