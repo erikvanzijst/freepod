@@ -32,4 +32,4 @@
 - [x] 6.1 Run the full `api/` test suite — verify green
 - [x] 6.2 Deploy the API to dev, run `caelus registry-prune --dry-run` in the API pod, and confirm every deployment's applied and desired image is listed as kept
 - [x] 6.3 Apply the CronJob to dev, trigger it once by hand, then restart the registry to collect — verify the registry volume shrinks and every dev custom deployment still pulls (restart one pod)
-- [ ] 6.4 Repeat 6.2–6.3 for prod
+- [x] 6.4 Repeat 6.2–6.3 for prod
