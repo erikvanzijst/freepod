@@ -182,10 +182,8 @@ resource "keycloak_openid_client_optional_scopes" "freepod_cli_dev" {
   optional_scopes = ["offline_access"]
 }
 
-# oauth2-proxy requests `offline_access` so its cookie_refresh outlives the SSO
-# idle timeout (tf/app/login). Keycloak drops a requested scope the client does
-# not list, so without it oauth2-proxy would get an ordinary refresh token and
-# log idle users out after 30 minutes.
+# oauth2-proxy does not request `offline_access` (tf/app/login): its session
+# follows the SSO session, so signing out anywhere signs out the dashboard.
 resource "keycloak_openid_client_optional_scopes" "freepod_prod" {
   realm_id        = keycloak_realm.freepod.id
   client_id       = keycloak_openid_client.freepod_prod.id

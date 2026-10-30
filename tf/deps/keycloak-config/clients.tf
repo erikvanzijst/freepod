@@ -60,6 +60,11 @@ resource "keycloak_openid_client" "freepod_dev" {
 
   frontchannel_logout_enabled = true
 
+  # Matches oauth2-proxy's cookie_refresh (tf/app/login): a refresh fails once
+  # the SSO session has ended, and the dashboard then lasts only until this
+  # token expires.
+  access_token_lifespan = "60"
+
   # Secret goes into tf/app/secrets.auto.tfvars under the "default" key — the
   # dev workspace is named `default`, not `dev`.
 }
