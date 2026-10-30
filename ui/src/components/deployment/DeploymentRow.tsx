@@ -6,17 +6,21 @@ import FolderOutlined from '@mui/icons-material/FolderOutlined'
 import StorageOutlined from '@mui/icons-material/StorageOutlined'
 import MenuBookRounded from '@mui/icons-material/MenuBookRounded'
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
+import PeopleOutlineRounded from '@mui/icons-material/PeopleOutlineRounded'
+import LockOutlined from '@mui/icons-material/LockOutlined'
 import { fg, line } from '../landing/landingTokens'
 import AppIcon from '../apppage/AppIcon'
 import { CopyButton } from '../CopyButton'
 import { deploymentView, toneColor } from './deploymentView'
 import { ProblemNotice, StatusLine, OpenButton, type DeploymentCardProps } from './DeploymentParts'
 import { useDeploymentAccess } from './useDeploymentAccess'
+import { AccessDialog } from '../access/AccessDialog'
 
 /** A deployment as a row like the catalog's; it expands in place to everything else about the app. */
 export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDelete }: DeploymentCardProps) {
   const view = deploymentView(deployment)
   const [open, setOpen] = useState(Boolean(view.problem))
+  const [accessOpen, setAccessOpen] = useState(false)
   const access = useDeploymentAccess(userId, deployment, open)
 
   const facts = [
@@ -44,6 +48,12 @@ export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDel
             >
               <Typography noWrap sx={{ fontWeight: 600, fontSize: 17 }}>{view.appName}</Typography>
               <StatusLine view={view} size={13.5} />
+              {view.listed && view.signIn && (
+                <Stack direction="row" alignItems="center" spacing={0.5} sx={{ color: fg.faint }} data-testid="sign-in-summary">
+                  <LockOutlined sx={{ fontSize: 14 }} />
+                  <Typography noWrap sx={{ fontSize: 13.5 }}>{view.signIn}</Typography>
+                </Stack>
+              )}
             </Stack>
             <Typography noWrap sx={{ fontSize: 14, color: fg.faint }}>{view.address}</Typography>
           </Box>
@@ -62,7 +72,7 @@ export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDel
           {view.status.hint && <Typography sx={{ fontSize: 14, color: fg.muted }}>{view.status.hint}</Typography>}
           {view.problem && <ProblemNotice problem={view.problem} />}
 
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, auto)' }, justifyContent: 'start', columnGap: 5, rowGap: 2 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(5, auto)' }, justifyContent: 'start', columnGap: 5, rowGap: 2 }}>
             {view.address && (
               <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}>
                 <Typography sx={{ fontSize: 12.5, color: fg.faint }}>Address</Typography>
@@ -78,11 +88,23 @@ export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDel
                 <Typography sx={{ fontSize: 14.5, lineHeight: '34px' }}>{f.value}</Typography>
               </Box>
             ))}
+            {view.signIn && (
+              <Box>
+                <Typography sx={{ fontSize: 12.5, color: fg.faint }}>Who can sign in</Typography>
+                <Stack direction="row" alignItems="center" spacing={0.75} sx={{ lineHeight: '34px' }}>
+                  {view.listed && <LockOutlined sx={{ fontSize: 16, color: fg.muted }} />}
+                  <Typography sx={{ fontSize: 14.5, lineHeight: '34px' }}>{view.signIn}</Typography>
+                </Stack>
+              </Box>
+            )}
           </Box>
 
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             {view.canEdit && (
               <Button variant="outlined" size="small" startIcon={<TuneRounded />} onClick={() => onEdit(deployment)}>Settings</Button>
+            )}
+            {view.listed && (
+              <Button variant="outlined" size="small" startIcon={<PeopleOutlineRounded />} onClick={() => setAccessOpen(true)}>Access</Button>
             )}
             {access.files && <Button variant="outlined" size="small" startIcon={<FolderOutlined />} onClick={access.files} title="Browse and download (read-only)">Files</Button>}
             {access.database && <Button variant="outlined" size="small" startIcon={<StorageOutlined />} onClick={access.database}>Database</Button>}
@@ -99,6 +121,9 @@ export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDel
         </Stack>
       </Collapse>
       {access.dialogs}
+      {accessOpen && (
+        <AccessDialog userId={userId} deploymentId={deployment.id} hostname={deployment.hostname} appName={view.appName} onClose={() => setAccessOpen(false)} />
+      )}
     </Box>
   )
 }

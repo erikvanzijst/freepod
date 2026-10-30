@@ -73,7 +73,7 @@ If the verifier cannot read a deployment's access list, it SHALL keep using the 
 
 ### Requirement: The no-access page
 
-A refused navigation SHALL receive `403` with a page in the look of the platform's placeholder page for a deployment without an app. It SHALL name the application and its address (`https://<host>`), say that it is open only to the people its owner has added and that the signed-in account (by email) is not among them, suggest asking whoever shared the link to add that address, and offer signing out to switch accounts. The application's name SHALL come from the edge configuration when present, and otherwise be the host.
+A refused navigation SHALL receive `403` with a page in the look of the platform's placeholder page for a deployment without an app. It SHALL name the application and its address (`https://<host>`), say that it is open only to the people its owner has added and that the signed-in account (by email) is not among them, suggest asking whoever shared the link to add that address, and offer signing out to switch accounts. The application's name SHALL come from the edge configuration when present, and otherwise be the host. The broker SHALL show the same page, with the application named by its host, when it refuses someone at sign-in; there its sign-out link SHALL end the identity provider's session.
 
 #### Scenario: Named application
 

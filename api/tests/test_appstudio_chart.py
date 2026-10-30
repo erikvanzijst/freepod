@@ -1,4 +1,5 @@
-"""Render the `appstudio` chart and assert its owner-only access (app-studio-access).
+"""Render the `appstudio` chart and assert its access (app-studio-access): the
+owner and the people they list.
 
 Shells out to a real `helm template`. Skipped when helm is unavailable; CI runs
 inside the dev container, which has it.
@@ -34,6 +35,7 @@ def _resolved_dependencies():
 # What the template's system values and the reconciler give every deployment.
 BASE = {
     "auth.enabled": "true",
+    "auth.access": "listed",
     "caelus.owner.email": OWNER,
     "caelus.owner.id": "1",
     "caelus.appAuth.verifyUrl": VERIFY_URL,
@@ -89,15 +91,12 @@ def test_every_route_passes_the_verifier_first():
     assert [r["host"] for r in ingresses["t-preview"]["spec"]["rules"]] == ["preview-studio.alice.freepod.test"]
 
 
-def test_only_the_owner_is_allowed():
+def test_the_access_list_applies_and_names_no_account():
     docs = _render()
     base, query = _verifier_query(docs)
     assert base == VERIFY_URL
-    a = query["a"]
-    assert "=" not in a and "+" not in a and "/" not in a
-    assert json.loads(base64.urlsafe_b64decode(a + "=" * (-len(a) % 4))) == [OWNER]
-    assert query["n"] == "App Studio"
-    assert "p" not in query
+    assert query == {"l": "1", "n": "App Studio"}
+    assert OWNER not in _middleware(docs, "app-auth")["spec"]["forwardAuth"]["address"]
 
 
 def test_verifier_sets_exactly_the_identity_headers():
@@ -238,11 +237,13 @@ def test_refuses_apps_outside_the_workspace(apps_dir):
     [
         ({"auth.enabled": "false"}, "auth.enabled must be true"),
         ({"auth.enabled": "null"}, "auth.enabled must be true"),
+        ({"auth.access": "anyone"}, "auth.access listed"),
+        ({"auth.access": "null"}, "auth.access listed"),
+        ({"auth.protocol": "oidc"}, "header authentication"),
         ({"caelus.appAuth.verifyUrl": ""}, "caelus.appAuth.verifyUrl"),
-        ({"caelus.owner.email": ""}, "caelus.owner.email"),
     ],
 )
-def test_refuses_to_render_without_owner_only_sign_in(overrides, message):
+def test_refuses_to_render_without_listed_sign_in(overrides, message):
     result = _helm({**BASE, **overrides})
     assert result.returncode != 0
     assert message in result.stderr
@@ -255,3 +256,14 @@ def test_only_this_origin_may_frame_the_studio():
     chain = lambda name: ingresses[name]["metadata"]["annotations"]["traefik.ingress.kubernetes.io/router.middlewares"].split(",")
     assert "tenant-ns-t-frame-self@kubernetescrd" in chain("t-ingress")
     assert "tenant-ns-t-frame-self@kubernetescrd" not in chain("t-preview")
+
+
+def test_user_values_cannot_widen_access():
+    from app.services.errors import CaelusException
+    from app.services.template_values import validate_user_values
+
+    catalog = ROOT / "products" / "catalog" / "appstudio" / "appstudio.yaml"
+    template = yaml.safe_load(catalog.read_text())["template"]
+    assert template["system_values"]["auth"] == {"enabled": True, "access": "listed"}
+    with pytest.raises(CaelusException):
+        validate_user_values({"hostname": "studio-alice.freepod.app", "auth": {"access": "anyone"}}, template["values_schema"])

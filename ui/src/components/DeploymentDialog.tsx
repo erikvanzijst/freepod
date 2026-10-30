@@ -12,6 +12,7 @@ import { validateUserValues } from './UserValuesForm'
 import type { VarSubmission } from './UserValuesForm'
 import { DatabasePanel } from './DatabasePanel'
 import { SftpAccessPanel } from './SftpAccessPanel'
+import { AccessPanel } from './AccessPanel'
 
 interface DeploymentDialogProps {
   deployment: Deployment | null
@@ -222,6 +223,7 @@ export function DeploymentDialog({ deployment: initialDeployment, onClose }: Dep
           <MetadataRow label="Current template" value={deployment.applied_template ? `#${deployment.applied_template.id}` : '—'} />
           <MetadataRow label="Status" value={deployment.status ?? '—'} />
         </Box>
+        <AccessPanel deployment={deployment} />
         <SftpAccessPanel userId={deployment.user_id} deploymentId={deployment.id} />
         <DatabasePanel userId={deployment.user_id} deploymentId={deployment.id} />
       </DialogContent>

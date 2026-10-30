@@ -33,6 +33,9 @@ image: ""
 # is one). See templates/app-auth.yaml.
 auth:
   enabled: false
+  # anyone: every Freepod account may sign in. listed: only the owner and the
+  # deployment's access list, which the platform keeps and the verifier reads.
+  access: anyone
   public: []
 
 # --- System values ------------------------------------------------------------

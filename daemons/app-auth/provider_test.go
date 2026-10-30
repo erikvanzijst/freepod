@@ -263,6 +263,8 @@ func TestDiscovery(t *testing.T) {
 		"id_token_signing_alg_values_supported": `["RS256"]`,
 		"token_endpoint_auth_methods_supported": `["client_secret_basic","client_secret_post"]`,
 		"code_challenge_methods_supported":      `["S256"]`,
+		"backchannel_logout_supported":          `true`,
+		"backchannel_logout_session_supported":  `false`,
 	} {
 		if got, _ := json.Marshal(meta[k]); string(got) != want {
 			t.Errorf("%s = %s, want %s", k, got, want)
@@ -974,4 +976,116 @@ func TestEndSession(t *testing.T) {
 			}
 		})
 	}
+}
+
+// listedProvider is a provider rig whose wiki client is `listed`, owned by
+// owner@example.com, with Alice signing in.
+func listedProvider(t *testing.T) *providerRig {
+	g := newProviderRig(t)
+	c := g.st.clients[depWiki]
+	c.listed = true
+	g.st.clients[depWiki] = c
+	g.st.owners[depWiki] = "owner@example.com"
+	return g
+}
+
+func TestProviderListed(t *testing.T) {
+	cb := wikiCallback
+
+	t.Run("stranger sees the no-access page and gets no code", func(t *testing.T) {
+		g := listedProvider(t)
+		w := g.returnFromIdP(g.authorize(authorizeQuery(depWiki, cb)))
+		refusedWith(t, w, wiki, "alice@example.com", login+"/oidc/logout")
+		if len(g.st.oidcCodes) != 0 || len(g.st.consents) != 0 {
+			t.Fatal("a stranger got a code or recorded consent")
+		}
+	})
+
+	t.Run("stranger with consent from an open release", func(t *testing.T) {
+		g := listedProvider(t)
+		g.st.recordConsent(context.Background(), "3f2a", depWiki, disclosedClaims)
+		refusedWith(t, g.returnFromIdP(g.authorize(authorizeQuery(depWiki, cb))), wiki, "alice@example.com", login+"/oidc/logout")
+		if len(g.st.oidcCodes) != 0 {
+			t.Fatal("a code was issued")
+		}
+	})
+
+	t.Run("silent sign-in of a stranger", func(t *testing.T) {
+		g := listedProvider(t)
+		g.st.recordConsent(context.Background(), "3f2a", depWiki, disclosedClaims)
+		w := g.returnFromIdP(g.authorize(authorizeQuery(depWiki, cb, "prompt", "none")))
+		oauthError(t, w, cb, "access_denied", "app-state")
+	})
+
+	t.Run("listed person consents, gets a code, and is bound", func(t *testing.T) {
+		g := listedProvider(t)
+		g.st.list(depWiki, "e-alice", "alice@example.com", "")
+		w := g.returnFromIdP(g.authorize(authorizeQuery(depWiki, cb)))
+		if !strings.Contains(w.Body.String(), "Continue to") {
+			t.Fatalf("no consent page: %d", w.Code)
+		}
+		if g.st.entry(depWiki, "e-alice").Subject != "" {
+			t.Fatal("bound before a code was issued")
+		}
+		w = g.do("POST", "/consent", url.Values{"csrf": {formValue(t, w.Body.String(), "csrf")}, "decision": {"allow"}})
+		g.codeFrom(w, cb)
+		if e := g.st.entry(depWiki, "e-alice"); e.Subject != "3f2a" {
+			t.Fatalf("entry %+v", e)
+		}
+	})
+
+	t.Run("consented person is bound without a consent page", func(t *testing.T) {
+		g := listedProvider(t)
+		g.st.list(depWiki, "e-alice", "alice@example.com", "")
+		g.codeFor(depWiki, cb)
+		if e := g.st.entry(depWiki, "e-alice"); e.Subject != "3f2a" {
+			t.Fatalf("entry %+v", e)
+		}
+	})
+
+	t.Run("owner with an empty list", func(t *testing.T) {
+		g := listedProvider(t)
+		g.auth.id.Email = "OWNER@example.com"
+		g.codeFor(depWiki, cb)
+	})
+
+	t.Run("removed while deciding", func(t *testing.T) {
+		g := listedProvider(t)
+		g.st.list(depWiki, "e-alice", "alice@example.com", "")
+		w := g.returnFromIdP(g.authorize(authorizeQuery(depWiki, cb)))
+		g.st.unlist(depWiki, "e-alice")
+		w = g.do("POST", "/consent", url.Values{"csrf": {formValue(t, w.Body.String(), "csrf")}, "decision": {"allow"}})
+		refusedWith(t, w, wiki, "alice@example.com", login+"/oidc/logout")
+		if len(g.st.oidcCodes) != 0 || len(g.st.consents) != 0 {
+			t.Fatal("a removed person got a code or recorded consent")
+		}
+	})
+
+	t.Run("removed between code and token", func(t *testing.T) {
+		g := listedProvider(t)
+		g.st.list(depWiki, "e-alice", "alice@example.com", "")
+		code := g.codeFor(depWiki, cb)
+		g.st.unlist(depWiki, "e-alice")
+		tokenErrorIs(t, g.tokenRequest(redeemForm(depWiki, code, cb, g.secret(depWiki)), ""), http.StatusBadRequest, "invalid_grant")
+	})
+
+	t.Run("removed while holding an access token", func(t *testing.T) {
+		g := listedProvider(t)
+		g.st.list(depWiki, "e-alice", "alice@example.com", "")
+		tb := g.redeem(depWiki, cb)
+		if w := g.userinfo("Bearer", tb.AccessToken); w.Code != 200 {
+			t.Fatalf("userinfo before removal: %d", w.Code)
+		}
+		g.st.unlist(depWiki, "e-alice")
+		w := g.userinfo("Bearer", tb.AccessToken)
+		if w.Code != http.StatusUnauthorized || w.Header().Get("WWW-Authenticate") != `Bearer error="invalid_token"` {
+			t.Fatalf("%d %q", w.Code, w.Header().Get("WWW-Authenticate"))
+		}
+	})
+
+	t.Run("an open client ignores its list", func(t *testing.T) {
+		g := newProviderRig(t)
+		g.st.owners[depWiki] = "owner@example.com"
+		g.codeFor(depWiki, cb)
+	})
 }

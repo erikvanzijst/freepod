@@ -30,16 +30,18 @@ resource "random_bytes" "oidc_client_key_c1" {
   length = 32
 }
 
-# The provider's ID token signing key. Rotating: add a key in FRONT of this
-# one in APP_AUTH_OIDC_SIGNING_KEYS, apply, and drop the old one after five
-# minutes (the ID token lifetime).
+# The provider's ID token signing key, which the API also signs back-channel
+# logout tokens with, through the oidc_signing_keys output. Rotating: add a key
+# in FRONT of this one in local.oidc_signing_keys, apply, and drop the old one
+# after five minutes (the ID token lifetime).
 resource "tls_private_key" "oidc_signing_s1" {
   algorithm = "RSA"
   rsa_bits  = 2048
 }
 
 locals {
-  oidc_client_keys = "c1:${random_bytes.oidc_client_key_c1.base64}"
+  oidc_client_keys  = "c1:${random_bytes.oidc_client_key_c1.base64}"
+  oidc_signing_keys = tls_private_key.oidc_signing_s1.private_key_pem
 }
 
 resource "kubernetes_secret" "app_auth" {
@@ -53,7 +55,7 @@ resource "kubernetes_secret" "app_auth" {
     APP_AUTH_SESSION_KEYS       = "k1:${random_bytes.session_key_k1.base64}"
     APP_AUTH_OIDC_CLIENT_SECRET = var.oidc_client_secret
     APP_AUTH_OIDC_CLIENT_KEYS   = local.oidc_client_keys
-    APP_AUTH_OIDC_SIGNING_KEYS  = tls_private_key.oidc_signing_s1.private_key_pem
+    APP_AUTH_OIDC_SIGNING_KEYS  = local.oidc_signing_keys
   }
 }
 

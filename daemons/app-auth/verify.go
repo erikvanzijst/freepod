@@ -37,6 +37,7 @@ type verifier struct {
 	log      *slog.Logger
 	patterns *patternCache
 	allowed  *allowCache
+	access   *accessCache
 }
 
 // ServeHTTP answers Traefik's forward-auth request. Traefik describes the
@@ -70,9 +71,14 @@ func (v *verifier) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if ok && foreignInitiated(method, r.Header, host) {
 		ok = false
 	}
-	// `a` restricts the app to the accounts it lists. It is checked before the
-	// public paths, so a signed-in account that is not listed sees nothing.
+	// `l` applies the deployment's access list, and `a` restricts the app to
+	// the accounts it names. Both are checked before the public paths, so a
+	// signed-in account that is not admitted sees nothing.
 	edge := r.URL.Query()
+	if ok && edge.Has("l") && (edge.Get("l") != "1" || !v.access.admits(r.Context(), host, sess)) {
+		v.refuse(w, method, r.Header, host, edge.Get("n"), sess.Email)
+		return
+	}
 	if ok && edge.Has("a") && !v.allowed.admits(edge.Get("a"), sess.Email) {
 		v.refuse(w, method, r.Header, host, edge.Get("n"), sess.Email)
 		return

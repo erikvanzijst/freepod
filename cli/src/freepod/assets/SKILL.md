@@ -334,9 +334,13 @@ X-Freepod-Name    display name, percent-encoded UTF-8 (decode before showing)
 `Remote-User` and `X-Forwarded-User` carry the account id too, and
 `X-Forwarded-Email` the email, for frameworks that already read those.
 
-> **This is authentication only.** Every Freepod account can sign in to every
-> auth-enabled app. Whether a signed-in user may see a given list, document or
-> admin page is the app's decision, made from `X-Freepod-User`.
+> **This is authentication, plus at most a list of who may sign in.** By
+> default every Freepod account can sign in to an auth-enabled app. With
+> `"auth": {"enabled": true, "access": "listed"}`, only the owner and the people
+> the owner adds under **Access** on the dashboard can; the list changes without
+> a redeploy, and the app never sees it. Either way, whether a signed-in user
+> may see a given list, document or admin page is the app's decision, made from
+> `X-Freepod-User`.
 
 What to know when writing the app:
 

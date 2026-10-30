@@ -20,6 +20,7 @@ type ssoClient struct {
 	RedirectURIs []string // https://<hostname><path>, one per valid declared path
 	NativeURIs   []string
 	PKCE         bool
+	Listed       bool     // `auth.access` is not `anyone` (D2)
 	Ignored      []string // declared entries that broke the rules, for the log
 }
 
@@ -27,7 +28,7 @@ type ssoClient struct {
 // client, and is never sent to the database as a uuid it would fail to cast.
 var clientIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-// newSSOClient applies D4 to a template's raw `sso` system values. ok is false
+// newSSOClient applies D4 to a template's raw `auth.oidc` system values. ok is false
 // when no declared path survives, which makes the deployment no client at all.
 func newSSOClient(id, hostname string, redirectPaths, nativeURIs json.RawMessage, pkce bool) (ssoClient, bool) {
 	c := ssoClient{ID: id, Hostname: strings.ToLower(hostname), PKCE: pkce}
@@ -35,14 +36,14 @@ func newSSOClient(id, hostname string, redirectPaths, nativeURIs json.RawMessage
 		if uri, ok := redirectURIFor(c.Hostname, p); ok {
 			c.RedirectURIs = append(c.RedirectURIs, uri)
 		} else {
-			c.Ignored = append(c.Ignored, "sso.redirectPaths: "+p)
+			c.Ignored = append(c.Ignored, "auth.oidc.redirectPaths: "+p)
 		}
 	}
 	for _, u := range jsonStrings(nativeURIs, &c.Ignored) {
 		if validNativeURI(u) {
 			c.NativeURIs = append(c.NativeURIs, u)
 		} else {
-			c.Ignored = append(c.Ignored, "sso.nativeRedirectUris: "+u)
+			c.Ignored = append(c.Ignored, "auth.oidc.nativeRedirectUris: "+u)
 		}
 	}
 	return c, len(c.RedirectURIs) > 0

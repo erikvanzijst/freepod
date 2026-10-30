@@ -42,20 +42,3 @@ def test_the_client_id_is_the_canonical_uuid():
 def test_keyrings_app_auth_would_refuse_are_refused(spec):
     with pytest.raises(ValueError):
         app_auth_oidc.parse_keyring(spec)
-
-
-@pytest.mark.parametrize(
-    ("system", "user", "enabled"),
-    [
-        (None, None, False),
-        ({}, {"sso": {"enabled": True}}, True),
-        ({"sso": {"enabled": True}}, {}, True),
-        ({"sso": {"enabled": False}}, {"sso": {"enabled": True}}, True),
-        ({"sso": {"enabled": True}}, {"sso": {"enabled": False}}, False),
-        ({"sso": {"redirectPaths": ["/cb"]}}, {"sso": {"enabled": True}}, True),
-        ({}, {"sso": {"enabled": "true"}}, False),
-        ({}, {"auth": {"enabled": True}}, False),
-    ],
-)
-def test_sso_enabled_reads_the_merged_values(system, user, enabled):
-    assert app_auth_oidc.sso_enabled(system, user) is enabled

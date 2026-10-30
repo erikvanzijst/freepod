@@ -65,6 +65,13 @@ class CaelusSettings(BaseSettings):
     # credentials.
     app_auth_oidc_issuer: str = ""
     app_auth_oidc_client_keys: str = ""
+    # The provider's PEM signing keys, current first, which back-channel logout
+    # tokens are signed with (app-access-list D9). Empty means a removal that
+    # owes an app a logout token fails.
+    app_auth_oidc_signing_keys: str = ""
+    # Invitation emails an owner may send in 24 hours, across all their
+    # deployments (app-access-list D6).
+    access_invitations_per_day: int = 100
 
     # ── Tenant network isolation ──────────────────────────────────────────
     # Cluster-specific inputs to the baseline NetworkPolicy + Pod Security labels

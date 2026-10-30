@@ -16,15 +16,6 @@ The platform SHALL store each access list entry with its deployment, the email i
 - **WHEN** a second entry of a deployment is bound to a subject another entry already holds
 - **THEN** the database refuses it
 
-### Requirement: Logout outbox records
-
-Removing a bound entry SHALL record, in the same transaction, the deployment and subject a logout token is owed for, with the time it was recorded and its delivery attempts. A record SHALL be removed once its token is delivered, refused by the app, or no longer deliverable, and in any case within 24 hours. Records SHALL be deleted with their deployment.
-
-#### Scenario: Removal and record together
-
-- **WHEN** the removal of a bound entry fails to commit
-- **THEN** no logout record exists for it, and the entry is still on the list
-
 ### Requirement: Invitation records
 
 The platform SHALL record each invitation it sends, with the inviting owner and the time it was sent, independently of the entry, so that removing an entry does not erase it. Records older than seven days SHALL be removed. They SHALL be deleted with the owner's account.
@@ -38,7 +29,7 @@ The platform SHALL record each invitation it sends, with the inviting owner and 
 
 ### Requirement: Least-privilege database role
 
-The app authentication service SHALL connect to the platform database as its own role. The role SHALL be able to read only the columns it needs to decide eligibility and access: the deployment's identifier, hostname, status, owner and applied release; that release's template and values; the template's system values; and the owning user's identifier and email. It SHALL read and write only the consent table, the sign-in code table and the OIDC authorization code table. It SHALL read access list entries and update only their subject, display name and binding time, and SHALL read, update and delete logout outbox records. It SHALL NOT be able to write any other table or read any other column. The role SHALL be created and its grants re-applied idempotently on every rollout.
+The app authentication service SHALL connect to the platform database as its own role. The role SHALL be able to read only the columns it needs to decide eligibility and access: the deployment's identifier, hostname, status, owner and applied release; that release's template and values; the template's system values; and the owning user's identifier and email. It SHALL read and write only the consent table, the sign-in code table and the OIDC authorization code table. It SHALL read access list entries and update only their subject, display name and binding time. It SHALL NOT be able to write any other table or read any other column. The role SHALL be created and its grants re-applied idempotently on every rollout.
 
 #### Scenario: Service bug cannot write deployments
 

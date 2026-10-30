@@ -119,3 +119,65 @@ describe('DeploymentRow docs', () => {
     await waitFor(() => expect(getDeploymentDatabaseMock).toHaveBeenCalled())
   })
 })
+
+describe('DeploymentRow sign-in', () => {
+  function renderAuth(auth: Deployment['auth'], product = { id: 1, name: 'Immich', slug: 'immich' }) {
+    getDeploymentDatabaseMock.mockRejectedValue(new ApiError('no database', 404))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const dep = { ...deployment('ready'), auth, desired_template: { id: 1, product } as Deployment['desired_template'] }
+    render(
+      <QueryClientProvider client={client}>
+        <DeploymentRow deployment={dep} userId={1} deletePending={false} onEdit={vi.fn()} onDelete={vi.fn()} />
+      </QueryClientProvider>,
+    )
+  }
+  const expand = () => fireEvent.click(screen.getByRole('button', { expanded: false }))
+
+  it('offers Access and counts the list when listed', async () => {
+    renderAuth({ enabled: true, protocol: 'header', access: 'listed', listed_count: 3 })
+    expect(screen.getByTestId('sign-in-summary')).toHaveTextContent('You and 3 people')
+    expand()
+    expect(screen.getByText('Who can sign in')).toBeInTheDocument()
+    expect(screen.getAllByText('You and 3 people')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Access' })).toBeInTheDocument()
+    await waitFor(() => expect(getDeploymentDatabaseMock).toHaveBeenCalled())
+  })
+
+  it('says only you with an empty list, and one person in the singular', async () => {
+    renderAuth({ enabled: true, protocol: 'header', access: 'listed', listed_count: 0 })
+    expect(screen.getByTestId('sign-in-summary')).toHaveTextContent('Only you')
+    await act(async () => {})
+  })
+
+  it('names the app that manages it when anyone may sign in', async () => {
+    renderAuth({ enabled: true, protocol: 'oidc', access: 'anyone', listed_count: null })
+    expect(screen.queryByTestId('sign-in-summary')).not.toBeInTheDocument()
+    expand()
+    expect(screen.getByText('Managed in Immich')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Managed in Immich' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Access' })).not.toBeInTheDocument()
+    await waitFor(() => expect(getDeploymentDatabaseMock).toHaveBeenCalled())
+  })
+
+  it.each([null, { enabled: false, protocol: 'header', access: 'listed' as const, listed_count: 2 }])(
+    'shows neither without Sign in with Freepod (%o)',
+    async (auth) => {
+      renderAuth(auth)
+      expand()
+      expect(screen.queryByText('Who can sign in')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Access' })).not.toBeInTheDocument()
+      await waitFor(() => expect(getDeploymentDatabaseMock).toHaveBeenCalled())
+    },
+  )
+
+  it.each([
+    { id: 2, name: 'App Studio', slug: 'appstudio' },
+    { id: 3, name: 'Custom user app', slug: 'custom' },
+  ])('offers the same Access action for $name', async (product) => {
+    renderAuth({ enabled: true, protocol: 'header', access: 'listed', listed_count: 1 }, product)
+    expect(screen.getByTestId('sign-in-summary')).toHaveTextContent('You and 1 person')
+    expand()
+    expect(screen.getByRole('button', { name: 'Access' })).toBeInTheDocument()
+    await waitFor(() => expect(getDeploymentDatabaseMock).toHaveBeenCalled())
+  })
+})

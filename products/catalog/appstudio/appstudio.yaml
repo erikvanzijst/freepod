@@ -79,11 +79,12 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/appstudio
-  chart_version: 0.2.18
+  chart_version: 0.2.19
   system_values:
     nodePool: tenant
     auth:
       enabled: true
+      access: listed
   values_schema:
     $schema: https://json-schema.org/draft/2020-12/schema
     type: object

@@ -27,7 +27,7 @@ from sqlmodel import Session, select
 from app.config import CaelusSettings, get_settings
 from app.db import session_scope
 from app.models import DeploymentDatabaseORM, DeploymentORM
-from app.services import relational_storage
+from app.services import app_access, relational_storage
 from app.services.postgres_admin import PostgresAdminClient
 
 logger = logging.getLogger(__name__)
@@ -173,6 +173,18 @@ def orphan_tick(
     return result
 
 
+def invitation_tick(
+    session: Session,
+    *,
+    tenant_db: PostgresAdminClient | None = None,
+    settings: CaelusSettings | None = None,
+) -> TickResult:
+    """Forget access list invitations too old to count against any limit."""
+    result = TickResult(name="invitations", swept=app_access.sweep_invitations(session))
+    logger.info("Invitation sweep complete: forgot=%s", result.swept)
+    return result
+
+
 def run_ticks(ticks: list[Callable[[], TickResult]], *, emit: Any = None) -> list[TickResult]:
     """Run each tick, letting a failure in one stop only that one."""
     results: list[TickResult] = []
@@ -223,9 +235,10 @@ def run_db_worker(
         (quota_tick, settings.db_worker_quota_interval_seconds),
         (purge_tick, settings.db_worker_purge_interval_seconds),
         (orphan_tick, settings.db_worker_orphan_interval_seconds),
+        (invitation_tick, settings.db_worker_purge_interval_seconds),
     ]
     logger.info(
-        "Database worker started: quota=%ss purge=%ss orphan=%ss",
+        "Database worker started: quota=%ss purge=%ss orphan=%ss invitations=%ss",
         *(interval for _, interval in schedule),
     )
 

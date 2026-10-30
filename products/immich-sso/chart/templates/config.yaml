@@ -13,7 +13,7 @@ applies the file on every start and locks its settings in the admin screens.
       "from" .Values.smtp.from
       "transport" (dict "host" .Values.smtp.host "port" (int .Values.smtp.port)))) }}
 {{- end }}
-{{- if .Values.sso.enabled }}
+{{- if include "immich.sso" . }}
 {{- $oidc := .Values.caelus.oidc }}
 {{- $issuer := trimSuffix "/" $oidc.issuer }}
 {{- /* clientSecret is merged in at pod start (server.yaml), never rendered. */}}
@@ -24,7 +24,7 @@ applies the file on every start and locks its settings in the admin screens.
       "scope" "openid email profile"
       "signingAlgorithm" "RS256"
       "tokenEndpointAuthMethod" "client_secret_post"
-      "autoRegister" false
+      "autoRegister" true
       "autoLaunch" true
       "buttonText" "Sign in with Freepod"
       "mobileOverrideEnabled" false

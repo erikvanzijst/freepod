@@ -18,7 +18,7 @@ from app.services import (
     template_values,
     var_crypto,
 )
-from app.services import app_auth_oidc
+from app.services import app_access, app_auth_oidc
 from app.services import deployments as deployment_service
 from app.services import registry_tokens
 from app.services import vars as vars_service
@@ -525,7 +525,7 @@ class DeploymentReconciler:
         rolls a client keyring rotation out. The secret never enters the Helm
         values, for the reason spelled out in ``_ensure_object_storage``.
         """
-        if not app_auth_oidc.sso_enabled(template.system_values_json, deployment.user_values_json):
+        if not app_access.auth_settings(template.system_values_json, deployment.user_values_json).oidc:
             return None
         settings = get_settings()
         issuer = settings.app_auth_oidc_issuer.strip()

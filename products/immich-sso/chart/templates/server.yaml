@@ -40,7 +40,7 @@ spec:
         {{- include "immich.componentSelector" (dict "root" . "name" "server") | nindent 8 }}
         {{- include "immich.podLabels" . | nindent 8 }}
     spec:
-      {{- if or .Values.postgresql.enabled .Values.sso.enabled }}
+      {{- if or .Values.postgresql.enabled (include "immich.sso" .) }}
       initContainers:
       {{- end }}
         {{- if .Values.postgresql.enabled }}
@@ -55,7 +55,7 @@ spec:
             - -c
             - until pg_isready -h {{ .Release.Name }}-postgresql -U {{ .Values.postgresql.auth.username | quote }}; do sleep 1; done
         {{- end }}
-        {{- if .Values.sso.enabled }}
+        {{- if include "immich.sso" . }}
         # Writes the config file Immich reads, with the OIDC client secret
         # merged in from the published Secret. Only this container sees the
         # Secret, and the result lives only in this pod's memory.
@@ -114,7 +114,7 @@ spec:
               value: http://{{ .Release.Name }}-machine-learning:3003
             - name: IMMICH_CONFIG_FILE
               value: /config/immich-config.yaml
-          {{- if .Values.sso.enabled }}
+          {{- if include "immich.sso" . }}
           # Creates the owner's admin account, which Immich allows only while
           # the instance has no admin and answers 400 once it has one. Probes
           # wait for the hook, so the pod is not Ready and the ingress has no
@@ -186,7 +186,7 @@ spec:
         - name: library
           persistentVolumeClaim:
             claimName: library
-        {{- if .Values.sso.enabled }}
+        {{- if include "immich.sso" . }}
         - name: config
           emptyDir:
             medium: Memory

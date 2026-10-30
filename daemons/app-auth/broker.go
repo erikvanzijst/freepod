@@ -194,22 +194,22 @@ func (b *broker) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deploymentID, ok := b.eligible(ctx, w, f.Host)
-	if !ok {
+	app, ok := b.eligible(ctx, w, f.Host)
+	if !ok || !b.admits(ctx, w, app, f.Host, id) {
 		return
 	}
-	consented, err := b.store.hasConsent(ctx, id.Sub, deploymentID, disclosedClaims)
+	consented, err := b.store.hasConsent(ctx, id.Sub, app.ID, disclosedClaims)
 	if err != nil {
 		b.internal(w, "reading consent", err)
 		return
 	}
 	if consented {
-		b.issueCode(ctx, w, f.Host, f.RD, f.NonceHash, id)
+		b.issueCode(ctx, w, app, f.Host, f.RD, f.NonceHash, id)
 		return
 	}
 
 	pc := pendingConsent{
-		Host: f.Host, RD: f.RD, NonceHash: f.NonceHash, DeploymentID: deploymentID,
+		Host: f.Host, RD: f.RD, NonceHash: f.NonceHash, DeploymentID: app.ID,
 		Sub: id.Sub, Email: id.Email, Name: id.Name, CSRF: randomToken(),
 	}
 	sealed, err := b.keys.seal("consent", pc, consentTTL, b.now())
@@ -252,21 +252,25 @@ func (b *broker) consent(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	deploymentID, ok := b.eligible(ctx, w, pc.Host)
+	app, ok := b.eligible(ctx, w, pc.Host)
 	if !ok {
 		return
 	}
 	// The app at this hostname may have been replaced while the page was open;
 	// consent given to one deployment is never recorded against another.
-	if deploymentID != pc.DeploymentID {
+	if app.ID != pc.DeploymentID {
 		b.errorPage(w, http.StatusConflict, "This app changed", "It was replaced while you were deciding, and nothing was shared. Go back to it and sign in again.")
 		return
 	}
-	if err := b.store.recordConsent(ctx, pc.Sub, deploymentID, disclosedClaims); err != nil {
+	id := identity{Sub: pc.Sub, Email: pc.Email, Name: pc.Name}
+	if !b.admits(ctx, w, app, pc.Host, id) {
+		return
+	}
+	if err := b.store.recordConsent(ctx, pc.Sub, app.ID, disclosedClaims); err != nil {
 		b.internal(w, "recording consent", err)
 		return
 	}
-	b.issueCode(ctx, w, pc.Host, pc.RD, pc.NonceHash, identity{Sub: pc.Sub, Email: pc.Email, Name: pc.Name})
+	b.issueCode(ctx, w, app, pc.Host, pc.RD, pc.NonceHash, id)
 }
 
 // exchange redeems Keycloak's code and, when that fails, answers the browser.
@@ -337,32 +341,80 @@ func (b *broker) signedOut(w http.ResponseWriter, r *http.Request) {
 // eligible checks the host against the platform's records and, when it is not
 // an auth-enabled deployment, answers the browser itself -- never with a
 // redirect, so the broker cannot be used to bounce anyone anywhere.
-//
-// A preview hostname with no deployment of its own signs in as the deployment
-// it previews (see previewBase), so the two share that deployment's consent.
-func (b *broker) eligible(ctx context.Context, w http.ResponseWriter, host string) (string, bool) {
-	id, ok, err := b.store.eligible(ctx, host)
-	if err == nil && !ok {
-		if base, isPreview := previewBase(host, b.tenantDomain); isPreview {
-			id, ok, err = b.store.eligible(ctx, base)
-		}
-	}
+func (b *broker) eligible(ctx context.Context, w http.ResponseWriter, host string) (headerApp, bool) {
+	app, ok, err := resolveHeaderApp(ctx, b.store, host, b.tenantDomain)
 	if err != nil {
 		b.internal(w, "checking eligibility", err)
-		return "", false
+		return headerApp{}, false
 	}
 	if !ok {
 		b.errorPage(w, http.StatusNotFound, "Sign-in isn't available here", host+" does not offer Sign in with Freepod.")
-		return "", false
+		return headerApp{}, false
 	}
-	return id, true
+	return app, true
 }
 
-func (b *broker) issueCode(ctx context.Context, w http.ResponseWriter, host, rd, nonceHash string, id identity) {
+// resolveHeaderApp finds the header app at host. A preview hostname with no
+// deployment of its own is the deployment it previews (see previewBase), so
+// the two share that deployment's consent and access list.
+func resolveHeaderApp(ctx context.Context, st store, host, tenantDomain string) (headerApp, bool, error) {
+	app, ok, err := st.eligible(ctx, host)
+	if err == nil && !ok {
+		if base, isPreview := previewBase(host, tenantDomain); isPreview {
+			app, ok, err = st.eligible(ctx, base)
+		}
+	}
+	return app, ok, err
+}
+
+// admits applies a listed app's access list to someone who just authenticated
+// for host, and shows the no-access page when it refuses them.
+func (b *broker) admits(ctx context.Context, w http.ResponseWriter, app headerApp, host string, id identity) bool {
+	if !app.Listed {
+		return true
+	}
+	ok, err := admitted(ctx, b.store, app.ID, id, false)
+	if err != nil {
+		b.internal(w, "reading the access list", err)
+		return false
+	}
+	if !ok {
+		b.refuseHeader(w, host, id.Email)
+	}
+	return ok
+}
+
+// noAccess is the verifier's no-access page, on the login host. It names the
+// app by its host: the app's name reaches only the verifier (D10). Signing out
+// ends the identity provider's session, which would otherwise sign the same
+// account straight back in.
+func (b *broker) noAccess(w http.ResponseWriter, host, email, signOut string) {
+	renderNoAccess(w, noAccessView{App: host, URL: "https://" + host, Email: email, SignOut: signOut})
+}
+
+// refuseHeader signs out through /logout, which returns to the app's sign-in.
+func (b *broker) refuseHeader(w http.ResponseWriter, host, email string) {
+	b.noAccess(w, host, email, b.loginURL+"/logout?"+url.Values{"host": {host}, "rd": {"/"}}.Encode())
+}
+
+// issueCode binds the entry that admitted id, if it is not yet bound, then
+// hands the app host its code.
+func (b *broker) issueCode(ctx context.Context, w http.ResponseWriter, app headerApp, host, rd, nonceHash string, id identity) {
 	nonceDigest, err := decodeNonceHash(nonceHash)
 	if err != nil {
 		b.errorPage(w, http.StatusBadRequest, "This sign-in link is incomplete", "Part of the link is missing. Go back to the app and sign in again.")
 		return
+	}
+	if app.Listed {
+		ok, err := admitted(ctx, b.store, app.ID, id, true)
+		if err != nil {
+			b.internal(w, "binding the access list", err)
+			return
+		}
+		if !ok {
+			b.refuseHeader(w, host, id.Email)
+			return
+		}
 	}
 	code := randomToken()
 	if err := b.store.insertCode(ctx, sha256Bytes(code), codeRecord{

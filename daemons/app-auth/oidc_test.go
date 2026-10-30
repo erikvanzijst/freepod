@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -210,5 +211,21 @@ func TestOIDCDiscoveryRecovers(t *testing.T) {
 	a.issuer = p.srv.URL
 	if _, err := a.authURL("s", "n", "v", authParams{}); err != nil {
 		t.Fatalf("did not recover once the provider came back: %v", err)
+	}
+}
+
+// signingVectorKid is the RFC 7638 thumbprint of testdata/signing-vector.pem,
+// shared with api/tests/test_app_access_logout.py: the API signs logout tokens
+// with this service's key, and apps find it in the JWKS by this kid.
+const signingVectorKid = "DJzcmmKmm4e0t9MCNr3DAProsJzIcYZIsPIOvC76tl0"
+
+func TestSigningKeyIDVector(t *testing.T) {
+	pem, err := os.ReadFile("testdata/signing-vector.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := mustSigner(t, string(pem))
+	if s.keys[0].kid != signingVectorKid || s.jwks.Keys[0].KeyID != signingVectorKid {
+		t.Fatalf("kid %q, want the shared vector", s.keys[0].kid)
 	}
 }

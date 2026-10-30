@@ -12,11 +12,9 @@ import base64
 import binascii
 import hashlib
 import hmac
-from typing import Any
 from uuid import UUID
 
 from app.config import get_settings
-from app.services import template_values
 
 CLIENT_SECRET_PREFIX = "app-oidc-client:v1:"
 
@@ -59,12 +57,3 @@ def oidc_client_secret(deployment_id: UUID) -> str:
         parse_keyring(get_settings().app_auth_oidc_client_keys)[0], client_id(deployment_id)
     )
 
-
-def sso_enabled(system_values: dict[str, Any] | None, user_values: dict[str, Any] | None) -> bool:
-    """Whether a deployment enables SSO, as the chart sees it: from the merged
-    values, where a user value overrides the template's default. app-auth's
-    eligibility reads it the same way, so credentials go exactly where the
-    chart renders SSO and the provider accepts the client.
-    """
-    sso = template_values.merge_values_scoped(system_values, user_values, None).get("sso")
-    return isinstance(sso, dict) and sso.get("enabled") is True
