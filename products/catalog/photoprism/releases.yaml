@@ -1,3 +1,13 @@
+- version: "261029"
+  notes: |-
+    A new export dialog, better maps, and security updates.
+
+    - Choose the size and format when downloading a photo
+    - Updated world map and a more detailed 3D Earth view
+    - AI assistants can now search and browse your library
+    - Files with unusual characters in their names are skipped until renamed
+    - Several fixes for time zones and camera metadata
+    - Maintenance and security fixes
 - version: "261007"
   notes: |-
     Smarter AI features: more accurate labels and NSFW detection, and easier face recognition. Your existing labels are kept.
