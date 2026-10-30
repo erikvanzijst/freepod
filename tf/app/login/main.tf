@@ -30,14 +30,14 @@ resource "helm_release" "oauth2_proxy" {
           whitelist_domains = ["${var.domain}"]
           provider = "keycloak-oidc"
           # Re-check every session with Keycloak once it is older than
-          # cookie_refresh, so a user disabled there loses access within
-          # minutes instead of when the cookie expires. A failed refresh ends
-          # the session. offline_access ties the refresh token to the offline
-          # session (30-day idle) rather than the 30-minute SSO session, so an
-          # idle browser is not logged out by the refresh itself. Keycloak
-          # still refuses an offline refresh for a disabled user.
-          scope = "openid email profile offline_access"
-          cookie_refresh = "5m"
+          # cookie_refresh. A failed refresh keeps the session only until its
+          # access token expires, so a user disabled there, or signed out of an
+          # app, loses the dashboard within the token's lifespan. The refresh
+          # token is tied to Keycloak's SSO session, the one app sign-ins reuse,
+          # so a dashboard session always means an app sign-in needs no
+          # password.
+          scope = "openid email profile"
+          cookie_refresh = "1m"
           # Routes allowed through WITHOUT a session. forward-auth returns 202
           # for these so the request reaches the (already-public) API/UI.
           #
