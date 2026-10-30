@@ -17,20 +17,25 @@ This capability SHALL be delivered only through its own chart, `immich-sso`, and
 
 ### Requirement: The immich-sso chart is off unless enabled
 
-The `immich-sso` chart SHALL offer Sign in with Freepod only when its values enable `sso.enabled`, which SHALL default to false. With it off, the chart SHALL configure Immich as the catalog Immich chart it was copied from does.
+The `immich-sso` chart SHALL offer Sign in with Freepod only when its values set `auth.enabled: true` with `auth.protocol: oidc`, and `auth.enabled` SHALL default to false. With it off, the chart SHALL configure Immich as the catalog Immich chart it was copied from does.
 
 #### Scenario: Rendered without SSO
 
-- **WHEN** the `immich-sso` chart is rendered with values that do not mention `sso`
+- **WHEN** the `immich-sso` chart is rendered with values that do not mention `auth`
 - **THEN** Immich is configured without Freepod sign-in, with password login, as the catalog chart configures it
+
+#### Scenario: SSO without an access list
+
+- **WHEN** the chart is rendered with `auth.enabled: true` and `auth.protocol: oidc`, and `auth.access` is not `listed`
+- **THEN** the render fails
 
 ### Requirement: The sandbox product always uses SSO
 
-The `immich-sso` product SHALL be visible only to administrators, SHALL enable SSO for every deployment as a template system value, and SHALL offer tenants no value that turns it off. It SHALL declare the web callback path `/auth/login` and the native redirect `app.immich:///oauth-callback`, and nothing else.
+The `immich-sso` product SHALL be visible only to administrators, SHALL set `auth.enabled: true`, `auth.protocol: oidc` and `auth.access: listed` for every deployment as template system values, and SHALL offer tenants no value that changes them. It SHALL declare the web callback path `/auth/login`, the native redirect `app.immich:///oauth-callback` and the back-channel logout path `/api/oauth/backchannel-logout`, and nothing else.
 
 #### Scenario: Tenant cannot turn SSO off
 
-- **WHEN** a deployment of `immich-sso` is created with user values that try to set `sso.enabled: false`
+- **WHEN** a deployment of `immich-sso` is created with user values that try to set `auth.enabled: false`
 - **THEN** the values are refused as invalid
 
 #### Scenario: Hidden from end users
@@ -60,34 +65,6 @@ With SSO enabled, the Immich mobile app SHALL be able to sign in with Freepod, i
 
 - **WHEN** a person who never consented to the instance signs in from the mobile app and allows sharing on the consent page
 - **THEN** the browser returns to the app and the app is signed in
-
-### Requirement: Only accounts the admin created may sign in
-
-With SSO enabled, Immich SHALL NOT create an account for a Freepod user it does not know. It SHALL link a Freepod account to the Immich user with the same email on that account's first sign-in, and from then on SHALL admit only the Freepod account it linked to that user.
-
-#### Scenario: Uninvited Freepod account
-
-- **WHEN** a verified Freepod account with no matching Immich user signs in
-- **THEN** Immich refuses it and creates no account
-
-#### Scenario: Invited by the admin
-
-- **WHEN** the admin creates an Immich user with a person's Freepod email, and that person signs in with Freepod
-- **THEN** they are signed in as that user
-
-#### Scenario: Another account with a linked email
-
-- **WHEN** an Immich user is linked to one Freepod subject, and a sign-in arrives with the same email but a different subject
-- **THEN** Immich refuses it
-
-### Requirement: Access settings cannot be changed in the app
-
-With SSO enabled, the instance's sign-in settings SHALL be fixed by the deployment. An Immich admin SHALL NOT be able to turn on auto-registration or password login, or change the identity provider, from Immich's own screens.
-
-#### Scenario: Admin tries to turn on auto-registration
-
-- **WHEN** an Immich admin opens the authentication settings
-- **THEN** the settings are read-only
 
 ### Requirement: Admin rights stay inside Immich
 
@@ -139,3 +116,31 @@ Signing out of Immich on the web SHALL end the user's Freepod session and then r
 
 - **WHEN** a signed-in user signs out of Immich in the browser and confirms on Freepod's sign-out prompt
 - **THEN** their Freepod session ends and they land on the instance's root, which asks them to sign in again
+
+### Requirement: The people the owner admits are registered on first sign-in
+
+With SSO enabled, Freepod's access list SHALL decide who may sign in, and Immich SHALL create an account for an admitted person the first time they sign in, named from their Freepod profile and with no password. A person who already has an Immich user with the same email SHALL be signed in as that user. From then on Immich SHALL admit only the Freepod account it linked to that user.
+
+#### Scenario: Listed person signs in for the first time
+
+- **WHEN** a person on the deployment's access list signs in with Freepod and Immich has no user with their email
+- **THEN** Immich creates a non-admin user with their Freepod name and email, and signs them in
+
+#### Scenario: Person not on the list
+
+- **WHEN** a Freepod account that is neither the owner nor on the access list signs in
+- **THEN** the provider refuses it and Immich creates no account
+
+#### Scenario: Another account with a linked email
+
+- **WHEN** an Immich user is linked to one Freepod subject, and a sign-in arrives with the same email but a different subject
+- **THEN** Immich refuses it
+
+### Requirement: Sign-in settings are fixed by the deployment
+
+With SSO enabled, the instance's sign-in settings SHALL be fixed by the deployment. An Immich admin SHALL NOT be able to turn off auto-registration, turn on password login, or change the identity provider, from Immich's own screens.
+
+#### Scenario: Admin opens the authentication settings
+
+- **WHEN** an Immich admin opens the authentication settings
+- **THEN** the settings are read-only

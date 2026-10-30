@@ -240,40 +240,60 @@ After logout, the next sign-in on any app SHALL ask the user to authenticate at 
 
 ### Requirement: Allowed accounts
 
-A deployment's edge configuration MAY restrict which signed-in accounts reach the app, by listing allowed email addresses alongside its public paths. When a list is present, a request carrying a valid session whose email is not on it SHALL NOT reach the app, on any path, public paths included. Emails SHALL match case-insensitively. Without a list, every signed-in account is allowed, as before.
+A deployment's edge configuration MAY say that the deployment's access list applies. When it does, a request carrying a valid session SHALL reach the app only when the session belongs to the deployment's owner or to an account the access list admits, on any path, public paths included. The owner SHALL be recognized by email, case-insensitively. Without that setting, every signed-in account is allowed, as before.
 
 #### Scenario: Allowed account
 
-- **WHEN** the list is `["alice@example.com"]` and a request carries Alice's valid session, signed in as `Alice@Example.com`
+- **WHEN** the access list applies, Alice is on it, and a request carries Alice's valid session
 - **THEN** the request reaches the app with Alice's identity headers
+
+#### Scenario: Owner
+
+- **WHEN** the access list applies and is empty, and a request carries the owner's valid session
+- **THEN** the request reaches the app with the owner's identity headers
 
 #### Scenario: Other account
 
-- **WHEN** the list is `["alice@example.com"]` and a request carries Bob's valid session
+- **WHEN** the access list applies and a request carries the valid session of Bob, who is neither the owner nor listed
 - **THEN** the request does not reach the app; a navigation receives the no-access page (see *The no-access page*), and any other request receives `403`
 
 #### Scenario: Public path under an allow list
 
-- **WHEN** the list is `["alice@example.com"]`, `/` is public, and Bob's valid session asks for `/`
+- **WHEN** the access list applies, `/` is public, and Bob's valid session asks for `/`
 - **THEN** the request does not reach the app
 
 #### Scenario: Anonymous request under an allow list
 
-- **WHEN** the list is `["alice@example.com"]` and a request without a session asks for a public path
+- **WHEN** the access list applies and a request without a session asks for a public path
 - **THEN** the request reaches the app with no identity headers
+
+#### Scenario: Preview hostname
+
+- **WHEN** the access list of `studio-alice.freepod.app` applies and Bob's valid session asks for `preview-studio-alice.freepod.app`
+- **THEN** the request does not reach the preview
 
 ### Requirement: An unreadable allow list admits no one
 
-If the allowed-accounts list is present but cannot be read, the verifier SHALL treat it as allowing no account, so a signed-in request never reaches the app through it.
+If the verifier cannot read a deployment's access list, it SHALL keep using the last copy it read, however old. If it has never read one since it started, it SHALL admit no signed-in account to that deployment until it can.
+
+#### Scenario: Database outage
+
+- **WHEN** the database becomes unreachable while the verifier holds a copy of a deployment's list
+- **THEN** it keeps admitting and refusing by that copy
 
 #### Scenario: Corrupt list
 
-- **WHEN** the edge configuration carries an allowed-accounts value that is not a valid list
+- **WHEN** the edge configuration's setting for the access list has a value the verifier does not recognize
 - **THEN** signed-in requests are refused as for an account not on the list
+
+#### Scenario: Started during an outage
+
+- **WHEN** the verifier starts while the database is unreachable, and a signed-in request arrives for a deployment whose access list applies
+- **THEN** the request is refused as for an account not on the list
 
 ### Requirement: The no-access page
 
-A refused navigation SHALL receive `403` with a page in the look of the platform's placeholder page for a deployment without an app. It SHALL name the application and its address (`https://<host>`), say that the signed-in account (by email) has no access, and offer signing out to switch accounts. The application's name SHALL come from the edge configuration when present, and otherwise be the host.
+A refused navigation SHALL receive `403` with a page in the look of the platform's placeholder page for a deployment without an app. It SHALL name the application and its address (`https://<host>`), say that it is open only to the people its owner has added and that the signed-in account (by email) is not among them, suggest asking whoever shared the link to add that address, and offer signing out to switch accounts. The application's name SHALL come from the edge configuration when present, and otherwise be the host. The broker SHALL show the same page, with the application named by its host, when it refuses someone at sign-in; there its sign-out link SHALL end the identity provider's session.
 
 #### Scenario: Named application
 
@@ -320,3 +340,17 @@ session alone.
 #### Scenario: Reads are unaffected
 - **WHEN** a `GET` that is not a WebSocket handshake carries `Sec-Fetch-Site: same-site`
 - **THEN** the session is honored as for any other request
+
+### Requirement: List changes reach the verifier within 30 seconds
+
+The verifier SHALL apply an access list no older than 30 seconds. When it is about to refuse a signed-in request and its copy of the list is more than 5 seconds old, it SHALL read the list again before deciding. Neither SHALL need a reconcile or a restart.
+
+#### Scenario: Removal
+
+- **WHEN** the owner removes Ana from a `listed` header app while Ana has a valid session
+- **THEN** within 30 seconds Ana's requests are refused
+
+#### Scenario: Addition just before signing in
+
+- **WHEN** the owner adds Noor, and Noor signs in and opens the app within the next few seconds
+- **THEN** Noor's requests reach the app
