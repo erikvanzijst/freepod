@@ -41,7 +41,7 @@ resource "kubernetes_config_map" "api" {
     # credential to carry.
     CAELUS_SMTP_HOST = "smtp.${var.mailer_namespace}.svc.cluster.local"
     CAELUS_SMTP_PORT = "25"
-    CAELUS_SMTP_FROM = "no-reply@${var.domain}"
+    CAELUS_SMTP_FROM = "no-reply@freepod.eu"
 
     CAELUS_ARTIFACT_MAX_BYTES  = 200 * 1024 * 1024
     CAELUS_BUILDER_IMAGE       = var.builder_image
