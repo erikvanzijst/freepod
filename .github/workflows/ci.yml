@@ -121,7 +121,7 @@ jobs:
     env:
       CAELUS_SND_DEVICE: /dev/null
       CAELUS_AUDIO_GROUP: root
-      COMPOSE_BAKE: "false"
+      BUILDX_BAKE_ENTITLEMENTS_FS: "0"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -195,9 +195,11 @@ jobs:
     env:
       CAELUS_SND_DEVICE: /dev/null
       CAELUS_AUDIO_GROUP: root
-      # Compose's bake builder refuses to read the Dockerfile devcontainers/ci
-      # generates outside the build context (docker/compose#14285).
-      COMPOSE_BAKE: "false"
+      # Compose always builds through bake, which refuses to read the
+      # Dockerfile devcontainers/ci generates outside the build context
+      # (docker/compose#14285). COMPOSE_BAKE=false no longer opts out, so turn
+      # off bake's filesystem entitlement check instead.
+      BUILDX_BAKE_ENTITLEMENTS_FS: "0"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -220,7 +222,7 @@ jobs:
     env:
       CAELUS_SND_DEVICE: /dev/null
       CAELUS_AUDIO_GROUP: root
-      COMPOSE_BAKE: "false"
+      BUILDX_BAKE_ENTITLEMENTS_FS: "0"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
