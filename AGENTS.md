@@ -223,24 +223,30 @@ This repository is a monorepo with:
   (`appstudio`); its chart then routes every request through the verifier,
   whose address the reconciler injects (`caelus.appAuth.verifyUrl`), and strips
   client-supplied identity headers. Sessions are host-bound cookies the app
-  never sees; the per-request path touches no database. Any Freepod account may
-  sign in unless the chart lists allowed accounts in the verifier's address
-  (App Studio: the owner only); `preview-<label>.<rest>` signs in as the
-  deployment at `<label>.<rest>`. The broker is also an **OpenID Provider**
-  (issuer `https://login.<domain>`) for apps that speak OIDC rather than read
-  headers: a deployment whose template declares `sso.redirectPaths` and that has
-  `sso.enabled` is a client with no client record, under its deployment ID,
-  with a derived secret the reconciler publishes in a Secret
-  (`caelus.oidc.secretName`). A template's `auth.enabled` and `sso.enabled` are
-  chart defaults a user value overrides; a template forces one by leaving it
-  out of its user schema. Spec:
+  never sees. Any Freepod account may sign in unless the serving release has
+  `auth.access: listed` (App Studio always does): then only the owner and the
+  deployment's access list, kept in the platform database and edited through
+  the API without a redeploy; the verifier re-reads it at most every 30
+  seconds. `preview-<label>.<rest>` signs in as the deployment at
+  `<label>.<rest>`. The broker is also an **OpenID Provider** (issuer
+  `https://login.<domain>`) for apps that speak OIDC rather than read headers:
+  a deployment whose template declares `auth.oidc.redirectPaths` and that has
+  `auth.protocol: oidc` is a client with no client record, under its
+  deployment ID, with a derived secret the reconciler publishes in a Secret
+  (`caelus.oidc.secretName`); removing someone from such an app's list sends it
+  a back-channel logout token, signed by the API. A template's `auth.*` values
+  are chart defaults a user value overrides, except `auth.oidc`, read from
+  system values only; a template forces one by leaving it out of its user
+  schema. Spec:
   [app-auth-verifier](openspec/specs/app-auth-verifier/spec.md),
   [app-auth-broker](openspec/specs/app-auth-broker/spec.md),
   [app-auth-chart-contract](openspec/specs/app-auth-chart-contract/spec.md),
   [app-auth-data-model](openspec/specs/app-auth-data-model/spec.md),
   [app-studio-access](openspec/specs/app-studio-access/spec.md),
   [app-oidc-provider](openspec/specs/app-oidc-provider/spec.md),
-  [app-oidc-chart-contract](openspec/specs/app-oidc-chart-contract/spec.md) ·
+  [app-oidc-chart-contract](openspec/specs/app-oidc-chart-contract/spec.md),
+  [app-access-list](openspec/specs/app-access-list/spec.md),
+  [app-access-dialog](openspec/specs/app-access-dialog/spec.md) ·
   Rationale: [app-authentication](openspec/changes/archive/2026-09-28-app-authentication/design.md),
   [app-auth-owner-and-preview](openspec/changes/archive/2026-10-16-app-auth-owner-and-preview/design.md),
   [app-oidc-provider](openspec/changes/archive/2026-10-26-app-oidc-provider/design.md),

@@ -1,5 +1,5 @@
 import { requestBlob, requestJson, requestMultipart } from './client'
-import type { Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductListing, ProductRelease, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Handle, TosAcceptance, UsageQuery, UsageReport, User, VarWrite } from './types'
+import type { AccessEntry, AccessList, Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductListing, ProductRelease, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Handle, TosAcceptance, UsageQuery, UsageReport, User, VarWrite } from './types'
 
 export function getMe() {
   return requestJson<User>('/me')
@@ -182,6 +182,23 @@ export function getDeploymentDatabase(userId: number, deploymentId: string) {
   return requestJson<DeploymentDatabase>(
     `/users/${userId}/deployments/${deploymentId}/database`,
   )
+}
+
+export function getDeploymentAccess(userId: number, deploymentId: string) {
+  return requestJson<AccessList>(`/users/${userId}/deployments/${deploymentId}/access`)
+}
+
+export function addDeploymentAccess(userId: number, deploymentId: string, email: string) {
+  return requestJson<AccessEntry>(`/users/${userId}/deployments/${deploymentId}/access`, {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export function removeDeploymentAccess(userId: number, deploymentId: string, entryId: string) {
+  return requestJson<null>(`/users/${userId}/deployments/${deploymentId}/access/${entryId}`, {
+    method: 'DELETE',
+  })
 }
 
 export function listDeployments(userId: number) {

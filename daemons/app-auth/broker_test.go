@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -470,5 +471,107 @@ func TestPreviewBase(t *testing.T) {
 		if got != want || ok != (want != "") {
 			t.Errorf("previewBase(%q) = %q, %v; want %q", host, got, ok, want)
 		}
+	}
+}
+
+// listedRig is a broker rig whose milk deployment is `listed`, owned by
+// owner@example.com, with Alice signing in.
+func listedRig(t *testing.T) *brokerRig {
+	g := newBrokerRig(t)
+	g.st.listed["dep-milk"] = true
+	g.st.owners["dep-milk"] = "owner@example.com"
+	return g
+}
+
+func refusedWith(t *testing.T, w *httptest.ResponseRecorder, host, email, signOut string) {
+	t.Helper()
+	body := w.Body.String()
+	if w.Code != http.StatusForbidden || w.Header().Get("Location") != "" {
+		t.Fatalf("%d Location=%q", w.Code, w.Header().Get("Location"))
+	}
+	for _, want := range []string{"https://" + host, email, "ask whoever shared the link", `href="` + strings.ReplaceAll(signOut, "&", "&amp;") + `"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("no-access page lacks %q", want)
+		}
+	}
+	if strings.Contains(body, "Continue to") {
+		t.Error("a consent page was shown")
+	}
+}
+
+func TestBrokerListedStranger(t *testing.T) {
+	g := listedRig(t)
+	g.st.list("dep-milk", "e-bob", "bob@example.com", "")
+	w := g.returnFromIdP(g.start(milk))
+	refusedWith(t, w, milk, "alice@example.com", login+"/logout?host="+milk+"&rd=%2F")
+	if len(g.st.codes) != 0 || len(g.st.consents) != 0 {
+		t.Fatal("a stranger got a code or recorded consent")
+	}
+
+	t.Run("even with consent from an earlier, open release", func(t *testing.T) {
+		g := listedRig(t)
+		g.st.recordConsent(context.Background(), "3f2a", "dep-milk", disclosedClaims)
+		refusedWith(t, g.returnFromIdP(g.start(milk)), milk, "alice@example.com", login+"/logout?host="+milk+"&rd=%2F")
+		if len(g.st.codes) != 0 {
+			t.Fatal("a code was issued")
+		}
+	})
+}
+
+func TestBrokerListedOwnerWithEmptyList(t *testing.T) {
+	g := listedRig(t)
+	g.auth.id.Email = "Owner@Example.com"
+	body := g.returnFromIdP(g.start(milk)).Body.String()
+	w := g.do("POST", "/consent", url.Values{"csrf": {formValue(t, body, "csrf")}, "decision": {"allow"}})
+	g.redeemable(w, milk)
+}
+
+func TestBrokerListedFirstSignInBinds(t *testing.T) {
+	g := listedRig(t)
+	g.st.list("dep-milk", "e-alice", "alice@example.com", "")
+	body := g.returnFromIdP(g.start(milk)).Body.String()
+	if e := g.st.entry("dep-milk", "e-alice"); e.Subject != "" {
+		t.Fatal("bound before a code was issued")
+	}
+	w := g.do("POST", "/consent", url.Values{"csrf": {formValue(t, body, "csrf")}, "decision": {"allow"}})
+	g.redeemable(w, milk)
+	if e := g.st.entry("dep-milk", "e-alice"); e.Subject != "3f2a" || g.st.names["e-alice"] != "Alice" {
+		t.Fatalf("entry %+v", e)
+	}
+
+	t.Run("without a consent page", func(t *testing.T) {
+		g := listedRig(t)
+		g.st.list("dep-milk", "e-alice", "alice@example.com", "")
+		g.st.recordConsent(context.Background(), "3f2a", "dep-milk", disclosedClaims)
+		g.redeemable(g.returnFromIdP(g.start(milk)), milk)
+		if e := g.st.entry("dep-milk", "e-alice"); e.Subject != "3f2a" {
+			t.Fatalf("entry %+v", e)
+		}
+	})
+}
+
+func TestBrokerListedRemovedWhileDeciding(t *testing.T) {
+	g := listedRig(t)
+	g.st.list("dep-milk", "e-alice", "alice@example.com", "")
+	body := g.returnFromIdP(g.start(milk)).Body.String()
+	g.st.unlist("dep-milk", "e-alice")
+	w := g.do("POST", "/consent", url.Values{"csrf": {formValue(t, body, "csrf")}, "decision": {"allow"}})
+	refusedWith(t, w, milk, "alice@example.com", login+"/logout?host="+milk+"&rd=%2F")
+	if len(g.st.codes) != 0 || len(g.st.consents) != 0 {
+		t.Fatal("a removed person got a code or recorded consent")
+	}
+}
+
+func TestBrokerListedPreviewUsesTheList(t *testing.T) {
+	g := listedRig(t)
+	preview := "preview-" + milk
+	refusedWith(t, g.returnFromIdP(g.start(preview)), preview, "alice@example.com", login+"/logout?host="+preview+"&rd=%2F")
+}
+
+func TestBrokerListedListUnreadable(t *testing.T) {
+	g := listedRig(t)
+	g.st.accessErr = errors.New("database down")
+	if w := g.returnFromIdP(g.start(milk)); w.Code != http.StatusServiceUnavailable || len(g.st.codes) != 0 {
+		t.Fatalf("%d codes=%d", w.Code, len(g.st.codes))
 	}
 }

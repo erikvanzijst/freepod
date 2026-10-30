@@ -37,22 +37,21 @@ The token endpoint and the userinfo endpoint SHALL refuse a user who is no longe
 
 ### Requirement: Back-channel logout tokens
 
-When access for a subject is revoked on a client that declares `auth.oidc.backchannelLogoutPath`, the provider SHALL POST a logout token as `logout_token` in a form body to `https://<hostname><path>`, reaching the app through the platform's own ingress. The token SHALL be signed like ID tokens, with `typ: logout+jwt`, and carry `iss`, `aud` (the client ID), `iat`, `exp` at most 120 seconds later, a unique `jti`, `sub`, and the back-channel logout event, and no `nonce` or `sid`.
-
-#### Scenario: Token contents
-
-- **WHEN** the provider sends a logout token for Ana's subject to a client
-- **THEN** the token verifies against the JWKS endpoint, its `aud` is the client ID, its `sub` is Ana's subject, and it has the `http://schemas.openid.net/event/backchannel-logout` event and no `nonce`
-
-#### Scenario: Failed delivery
-
-- **WHEN** the app answers a logout token with a `5xx` status or cannot be reached
-- **THEN** the provider sends a freshly signed token again later, for at least an hour
+When access for a subject is revoked on a client that declares `auth.oidc.backchannelLogoutPath`, the platform SHALL POST a logout token as `logout_token` in a form body to `https://<hostname><path>`, reaching the app through the platform's own ingress, without following redirects.
 
 #### Scenario: App refuses the token
 
-- **WHEN** the app answers a logout token with `400`
-- **THEN** the provider logs it and sends no further token for that revocation
+- **WHEN** the app answers a logout token with any status other than `2xx`, or cannot be reached
+- **THEN** the revocation fails and is not retried
+
+### Requirement: Logout token contents
+
+A logout token SHALL be signed with the provider's current ID token key, with `typ: logout+jwt`. It SHALL carry the provider's issuer as `iss`, the client ID as `aud`, `iat`, `exp` at most 120 seconds later, a unique `jti`, `sub` and the back-channel logout event, and no `nonce` or `sid`.
+
+#### Scenario: Token contents
+
+- **WHEN** the platform sends a logout token for Ana's subject to a client
+- **THEN** the token verifies against the JWKS endpoint, its `aud` is the client ID, its `sub` is Ana's subject, and it has the `http://schemas.openid.net/event/backchannel-logout` event and no `nonce`
 
 ## MODIFIED Requirements
 

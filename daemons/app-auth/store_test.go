@@ -205,6 +205,7 @@ func (f *fixture) cleanup() {
 	ctx := context.Background()
 	for _, sql := range []string{
 		`DELETE FROM app_auth_consent WHERE deployment_id IN (SELECT id FROM deployment WHERE user_id = $1)`,
+		`DELETE FROM app_access_entry WHERE deployment_id IN (SELECT id FROM deployment WHERE user_id = $1)`,
 		`UPDATE deployment SET applied_release_id = NULL WHERE user_id = $1`,
 		`DELETE FROM deployment_release WHERE deployment_id IN (SELECT id FROM deployment WHERE user_id = $1)`,
 		`DELETE FROM deployment WHERE user_id = $1`,
@@ -251,6 +252,12 @@ func TestEligibility(t *testing.T) {
 	f.deploymentOf(f.otherProductID, "nosetting-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x"}`, `{"nodePool":"tenant"}`)
 	// The store matches hostnames exactly; preview hostnames are the broker's.
 	f.deployment("preview-milk-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x"}`)
+	f.deployment("oidc-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x","auth":{"enabled":true,"protocol":"oidc"}}`)
+	f.deployment("saml-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x","auth":{"enabled":true,"protocol":"saml"}}`)
+	explicit := f.deployment("explicit-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x","auth":{"enabled":true,"protocol":"header"}}`)
+	f.deploymentOf(f.otherProductID, "templateoidc-"+u+"-erik.freepod.app", "provisioned", authOn, `{"auth":{"protocol":"oidc"}}`)
+	userHeader := f.deploymentOf(f.otherProductID, "userheader-"+u+"-erik.freepod.app", "provisioned",
+		`{"hostname":"x","auth":{"enabled":true,"protocol":"header"}}`, `{"auth":{"protocol":"oidc"}}`)
 
 	cases := []struct {
 		host string
@@ -273,16 +280,119 @@ func TestEligibility(t *testing.T) {
 		{"templateoff-" + u + "-erik.freepod.app", templateOff},
 		{"nosetting-" + u + "-erik.freepod.app", ""},
 		{"preview-milk-" + u + "-erik.freepod.app", ""},
+		// Header authentication needs `auth.protocol: header`, its default.
+		{"oidc-" + u + "-erik.freepod.app", ""},
+		{"saml-" + u + "-erik.freepod.app", ""},
+		{"explicit-" + u + "-erik.freepod.app", explicit},
+		{"templateoidc-" + u + "-erik.freepod.app", ""},
+		{"userheader-" + u + "-erik.freepod.app", userHeader},
 	}
 	for _, c := range cases {
-		id, ok, err := st.eligible(ctx, c.host)
+		app, ok, err := st.eligible(ctx, c.host)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if ok != (c.want != "") || id != c.want {
-			t.Errorf("eligible(%q) = %q, %v; want %q", c.host, id, ok, c.want)
+		if ok != (c.want != "") || app.ID != c.want {
+			t.Errorf("eligible(%q) = %q, %v; want %q", c.host, app.ID, ok, c.want)
 		}
 	}
+}
+
+func TestEligibleAccess(t *testing.T) {
+	f := newFixture(t)
+	st := f.store(rolePool(t))
+	ctx := context.Background()
+	u := f.unique
+	p := f.otherProductID
+
+	for i, c := range []struct {
+		name, values, system string
+		listed               bool
+	}{
+		{"default", authOn, "", false},
+		{"user lists", `{"hostname":"x","auth":{"enabled":true,"access":"listed"}}`, "", true},
+		{"template lists", `{"hostname":"x"}`, `{"auth":{"enabled":true,"access":"listed"}}`, true},
+		{"user value over template's", `{"hostname":"x","auth":{"access":"anyone"}}`, `{"auth":{"enabled":true,"access":"listed"}}`, false},
+		{"unknown access fails closed", `{"hostname":"x","auth":{"enabled":true,"access":"friends"}}`, "", true},
+		{"anyone, stated", `{"hostname":"x","auth":{"enabled":true,"access":"anyone"}}`, "", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			host := fmt.Sprintf("access%d-%s.example.com", i, u)
+			id := f.deploymentOf(p, host, "provisioned", c.values, c.system)
+			app, ok, err := st.eligible(ctx, host)
+			if err != nil || !ok || app.ID != id {
+				t.Fatalf("eligible = %+v, %v, %v", app, ok, err)
+			}
+			if app.Listed != c.listed {
+				t.Fatalf("listed = %v, want %v", app.Listed, c.listed)
+			}
+		})
+	}
+}
+
+func TestAccessList(t *testing.T) {
+	f := newFixture(t)
+	st := f.store(rolePool(t))
+	ctx := context.Background()
+	dep := f.deployment("list-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
+	other := f.deployment("list2-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
+	entry := func(dep, email string) string {
+		var id string
+		if err := f.admin.QueryRow(ctx, `INSERT INTO app_access_entry (id, deployment_id, email, created_at)
+			VALUES (gen_random_uuid(), $1::uuid, $2, now()) RETURNING id::text`, dep, email).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	jules := entry(dep, "jules@example.org")
+	noor := entry(dep, "noor@example.org")
+	entry(other, "sam@example.org")
+
+	l, err := st.accessList(ctx, dep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.OwnerEmail != "owner-"+f.unique+"@app-auth.test" || len(l.Entries) != 2 {
+		t.Fatalf("list %+v", l)
+	}
+
+	if bound, err := st.bindEntry(ctx, jules, "s-jules", "Jules"); err != nil || !bound {
+		t.Fatalf("bind = %v, %v", bound, err)
+	}
+	if bound, err := st.bindEntry(ctx, jules, "s-other", "Other"); err != nil || bound {
+		t.Fatalf("rebinding a bound entry = %v, %v", bound, err)
+	}
+	if bound, err := st.bindEntry(ctx, noor, "s-jules", "Jules"); err != nil || bound {
+		t.Fatalf("binding a second entry to one subject = %v, %v", bound, err)
+	}
+	var sub, name string
+	var boundAt *time.Time
+	f.admin.QueryRow(ctx, `SELECT subject, name, bound_at FROM app_access_entry WHERE id = $1::uuid`, jules).Scan(&sub, &name, &boundAt)
+	if sub != "s-jules" || name != "Jules" || boundAt == nil {
+		t.Fatalf("entry holds %q %q %v", sub, name, boundAt)
+	}
+
+	t.Run("concurrent binds by one subject", func(t *testing.T) {
+		id := entry(dep, "concurrent@example.org")
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		wins := 0
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if bound, err := st.bindEntry(ctx, id, "s-concurrent", "C"); err == nil && bound {
+					mu.Lock()
+					wins++
+					mu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+		if wins != 1 {
+			t.Fatalf("%d binds succeeded", wins)
+		}
+	})
 }
 
 func TestConsent(t *testing.T) {
@@ -393,15 +503,19 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 	dep := f.deployment("r-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
 
 	denied := map[string]string{
-		"write deployments":        `UPDATE deployment SET hostname = hostname WHERE id = '` + dep + `'`,
-		"read the owner":           `SELECT user_id FROM deployment LIMIT 1`,
-		"read var values":          `SELECT * FROM deployment_var LIMIT 1`,
-		"read database passwords":  `SELECT * FROM deployment_database LIMIT 1`,
-		"read accounts":            `SELECT email FROM "user" LIMIT 1`,
-		"update consent":           `UPDATE app_auth_consent SET claims = '{}'`,
-		"update OIDC codes":        `UPDATE app_auth_oidc_code SET subject = subject`,
-		"read release build ids":   `SELECT build_id FROM deployment_release LIMIT 1`,
-		"read template chart refs": `SELECT chart_ref FROM product_template_version LIMIT 1`,
+		"write deployments":          `UPDATE deployment SET hostname = hostname WHERE id = '` + dep + `'`,
+		"read var values":            `SELECT * FROM deployment_var LIMIT 1`,
+		"read database passwords":    `SELECT * FROM deployment_database LIMIT 1`,
+		"read other account columns": `SELECT handle FROM "user" LIMIT 1`,
+		"update consent":             `UPDATE app_auth_consent SET claims = '{}'`,
+		"update OIDC codes":          `UPDATE app_auth_oidc_code SET subject = subject`,
+		"read release build ids":     `SELECT build_id FROM deployment_release LIMIT 1`,
+		"read template chart refs":   `SELECT chart_ref FROM product_template_version LIMIT 1`,
+		"read products":              `SELECT name FROM product LIMIT 1`,
+		"insert access entries":      `INSERT INTO app_access_entry (id, deployment_id, email, created_at) VALUES (gen_random_uuid(), '` + dep + `', 'x@example.com', now())`,
+		"change an entry's email":    `UPDATE app_access_entry SET email = email`,
+		"delete access entries":      `DELETE FROM app_access_entry`,
+		"read invitations":           `SELECT * FROM app_access_invitation LIMIT 1`,
 	}
 	for name, sql := range denied {
 		t.Run(name, func(t *testing.T) {
@@ -411,12 +525,25 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 			}
 		})
 	}
+
+	allowed := map[string]string{
+		"read the owner":       `SELECT d.user_id, u.email FROM deployment d JOIN "user" u ON u.id = d.user_id LIMIT 1`,
+		"read access entries":  `SELECT id, email, subject, name, created_at, bound_at FROM app_access_entry LIMIT 1`,
+		"bind an access entry": `UPDATE app_access_entry SET subject = subject, name = name, bound_at = bound_at WHERE false`,
+	}
+	for name, sql := range allowed {
+		t.Run(name, func(t *testing.T) {
+			if _, err := pool.Exec(ctx, sql); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
 
 const (
-	ssoOn          = `{"hostname":"x","sso":{"enabled":true}}`
-	declaresSSO    = `{"sso":{"redirectPaths":["/oidc/callback"],"nativeRedirectUris":["app.immich:///oauth-callback"]}}`
-	declaresNoPKCE = `{"sso":{"redirectPaths":["/oidc/callback"],"pkce":false}}`
+	ssoOn          = `{"hostname":"x","auth":{"enabled":true,"protocol":"oidc"}}`
+	declaresSSO    = `{"auth":{"oidc":{"redirectPaths":["/oidc/callback"],"nativeRedirectUris":["app.immich:///oauth-callback"]}}}`
+	declaresNoPKCE = `{"auth":{"oidc":{"redirectPaths":["/oidc/callback"],"pkce":false}}}`
 )
 
 func TestSSOClient(t *testing.T) {
@@ -428,17 +555,25 @@ func TestSSOClient(t *testing.T) {
 
 	enabled := f.deploymentOf(p, "Wiki-"+u+"-alice.freepod.app", "provisioned", ssoOn, declaresSSO)
 	templated := f.deploymentOf(p, "templated-"+u+"-alice.freepod.app", "provisioned", `{"hostname":"x"}`,
-		`{"sso":{"enabled":true,"redirectPaths":["/cb"]}}`)
+		`{"auth":{"enabled":true,"protocol":"oidc","oidc":{"redirectPaths":["/cb"]}}}`)
 	noPKCE := f.deploymentOf(p, "nopkce-"+u+"-alice.freepod.app", "provisioned", ssoOn, declaresNoPKCE)
 	undeclared := f.deploymentOf(p, "undeclared-"+u+"-alice.freepod.app", "provisioned",
-		`{"hostname":"x","sso":{"enabled":true,"redirectPaths":["/cb"]}}`, "")
+		`{"hostname":"x","auth":{"enabled":true,"protocol":"oidc","oidc":{"redirectPaths":["/cb"]}}}`, "")
 	allInvalid := f.deploymentOf(p, "invalid-"+u+"-alice.freepod.app", "provisioned", ssoOn,
-		`{"sso":{"redirectPaths":["@evil.example/cb",".evil.example/cb","/cb?next=/"]}}`)
+		`{"auth":{"oidc":{"redirectPaths":["@evil.example/cb",".evil.example/cb","/cb?next=/"]}}}`)
 	userOverrides := f.deploymentOf(p, "useron-"+u+"-alice.freepod.app", "provisioned", ssoOn,
-		`{"sso":{"enabled":false,"redirectPaths":["/cb"]}}`)
+		`{"auth":{"enabled":false,"oidc":{"redirectPaths":["/cb"]}}}`)
 	userTurnsOff := f.deploymentOf(p, "useroff-"+u+"-alice.freepod.app", "provisioned",
-		`{"hostname":"x","sso":{"enabled":false}}`, `{"sso":{"enabled":true,"redirectPaths":["/cb"]}}`)
+		`{"hostname":"x","auth":{"enabled":false}}`, `{"auth":{"enabled":true,"protocol":"oidc","oidc":{"redirectPaths":["/cb"]}}}`)
 	headersOnly := f.deploymentOf(p, "headers-"+u+"-alice.freepod.app", "provisioned", authOn, declaresSSO)
+	templateProtocol := f.deploymentOf(p, "tproto-"+u+"-alice.freepod.app", "provisioned", authOn,
+		`{"auth":{"protocol":"oidc","oidc":{"redirectPaths":["/cb"]}}}`)
+	unknownProtocol := f.deploymentOf(p, "saml-"+u+"-alice.freepod.app", "provisioned",
+		`{"hostname":"x","auth":{"enabled":true,"protocol":"saml"}}`, declaresSSO)
+	userNative := f.deploymentOf(p, "usernative-"+u+"-alice.freepod.app", "provisioned",
+		`{"hostname":"x","auth":{"enabled":true,"protocol":"oidc","oidc":{"nativeRedirectUris":["app.evil:///steal"],"pkce":false}}}`, declaresSSO)
+	listed := f.deploymentOf(p, "listed-"+u+"-alice.freepod.app", "provisioned",
+		`{"hostname":"x","auth":{"enabled":true,"protocol":"oidc","access":"listed"}}`, declaresSSO)
 	off := f.deploymentOf(p, "off-"+u+"-alice.freepod.app", "provisioned", `{"hostname":"x"}`, declaresSSO)
 	rolling := f.deploymentOf(p, "rolling-"+u+"-alice.freepod.app", "provisioned", `{"hostname":"x"}`, declaresSSO)
 	f.desire(rolling, ssoOn)
@@ -456,6 +591,8 @@ func TestSSOClient(t *testing.T) {
 		"user value over template's":    {userOverrides, true},
 		"user turns the template's off": {userTurnsOff, false},
 		"header authentication alone":   {headersOnly, false},
+		"template sets the protocol":    {templateProtocol, true},
+		"unknown protocol":              {unknownProtocol, false},
 		"not enabled":                   {off, false},
 		"enabled but not yet applied":   {rolling, false},
 		"deleted":                       {deleted, false},
@@ -482,6 +619,16 @@ func TestSSOClient(t *testing.T) {
 	}
 	if got, _, _ := st.ssoClient(ctx, noPKCE); got.PKCE {
 		t.Fatal("the template's PKCE opt-out was not read")
+	}
+	if got.Listed {
+		t.Fatal("a client listed by default")
+	}
+	if got, _, _ := st.ssoClient(ctx, listed); !got.Listed {
+		t.Fatal("auth.access: listed was not read")
+	}
+	// auth.oidc is read from the template alone.
+	if got, _, _ := st.ssoClient(ctx, userNative); len(got.NativeURIs) != 1 || got.NativeURIs[0] != "app.immich:///oauth-callback" || !got.PKCE {
+		t.Fatalf("user values reached the client: %+v", got)
 	}
 }
 

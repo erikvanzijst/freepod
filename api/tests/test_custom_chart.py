@@ -597,6 +597,38 @@ def test_public_patterns_travel_in_the_verifier_address():
     assert json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4))) == ["^/$", "^/static/"]
 
 
+def test_listed_asks_the_verifier_for_the_list_and_names_no_account():
+    docs = _render_ns(
+        "auth.public={^/$}",
+        **BASE, **INGRESS, auth__enabled="true", auth__access="listed", caelus__appAuth__verifyUrl=VERIFY_URL,
+    )
+    address = _middleware(docs, "-app-auth")["spec"]["forwardAuth"]["address"]
+    base, _, query = address.partition("?")
+    params = dict(part.split("=", 1) for part in query.split("&"))
+    assert base == VERIFY_URL and params["l"] == "1" and set(params) == {"p", "l"}
+    rendered = json.dumps(docs)
+    assert "@" not in address and "owner" not in rendered.lower()
+
+
+def test_listed_without_public_paths():
+    docs = _render_ns(**BASE, **INGRESS, auth__enabled="true", auth__access="listed", caelus__appAuth__verifyUrl=VERIFY_URL)
+    assert _middleware(docs, "-app-auth")["spec"]["forwardAuth"]["address"] == VERIFY_URL + "?l=1"
+
+
+def test_anyone_renders_no_list_flag():
+    for access in ({}, {"auth__access": "anyone"}):
+        docs = _render_ns(**BASE, **INGRESS, auth__enabled="true", caelus__appAuth__verifyUrl=VERIFY_URL, **access)
+        assert _middleware(docs, "-app-auth")["spec"]["forwardAuth"]["address"] == VERIFY_URL
+
+
+@pytest.mark.parametrize("bad", ["auth.protocol=oidc", "auth.protocol=header", "auth.oidc.pkce=false", "auth.access=friends"])
+def test_the_chart_schema_refuses_what_custom_does_not_offer(bad):
+    args = ["helm", "template", "t", str(CHART), "--set", "auth.enabled=true", "--set", bad]
+    for key, value in {**BASE, **INGRESS, "caelus__appAuth__verifyUrl": VERIFY_URL}.items():
+        args += ["--set", f"{key.replace('__', '.')}={value}"]
+    assert subprocess.run(args, capture_output=True, text=True).returncode != 0
+
+
 def test_auth_without_the_injected_verifier_fails_loudly():
     args = ["helm", "template", "t", str(CHART), "--set", "auth.enabled=true"]
     for key, value in {**BASE, **INGRESS}.items():
@@ -622,7 +654,13 @@ def _tenant_schema() -> dict:
 
 @pytest.mark.parametrize(
     "auth",
-    [{"enabled": True}, {"enabled": True, "public": ["^/$", "^/static/"]}, {"enabled": False}],
+    [
+        {"enabled": True},
+        {"enabled": True, "public": ["^/$", "^/static/"]},
+        {"enabled": False},
+        {"enabled": True, "access": "listed"},
+        {"enabled": True, "access": "anyone"},
+    ],
 )
 def test_the_tenant_schema_accepts_auth(auth):
     from app.services.template_values import validate_user_values
@@ -637,6 +675,10 @@ def test_the_tenant_schema_accepts_auth(auth):
         {"enabled": "yes"},
         {"enabled": True, "public": ["x"] * 33},
         {"enabled": True, "public": [""]},
+        {"enabled": True, "protocol": "oidc"},
+        {"enabled": True, "protocol": "header"},
+        {"enabled": True, "oidc": {"redirectPaths": ["/steal"]}},
+        {"enabled": True, "access": "friends"},
     ],
 )
 def test_the_tenant_schema_rejects_malformed_auth(auth):

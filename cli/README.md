@@ -186,7 +186,8 @@ A var marked `--secret` is **write-only**: the platform never returns it, so
 Need to know who your users are? Opt in with `"auth": {"enabled": true}`
 under `user_values` in `.freepod.json`, and visitors sign in with their Freepod
 account before reaching your app, which receives their identity in request
-headers. There's no login code to write.
+headers. There's no login code to write. Add `"access": "listed"` to admit only
+you and the people you add on the dashboard.
 
 ## .freepod.json
 

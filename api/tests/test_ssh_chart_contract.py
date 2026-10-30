@@ -54,7 +54,7 @@ PLATFORM_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIV5/SURDe/M7JtAheJuxURSGgpF
 # Values a real deployment always has and a bare `helm template` does not.
 # Unrelated to SSH.
 EXTRA_VALUES: dict[str, dict[str, str]] = {
-    "appstudio": {"auth.enabled": "true"},
+    "appstudio": {"auth.enabled": "true", "auth.access": "listed"},
     "mattermost": {"caelus.plan.storageSize": "1Gi"},
     "vaultwarden": {"host": "v.example.test", "caelus.owner.email": "owner@example.test"},
     "custom": {"hostname": "app.example.test", "caelus.owner.id": "1"},

@@ -126,17 +126,17 @@ Adding or removing an entry SHALL NOT start a reconcile or change any chart valu
 
 ### Requirement: Removal signs the person out of an OIDC app
 
-When the owner removes an entry tied to a subject from an `oidc` deployment that declares `auth.oidc.backchannelLogoutPath`, the platform SHALL send the app a back-channel logout token for that subject. Delivery SHALL survive restarts of the platform's services and SHALL be retried for at least an hour. Removing an unbound entry SHALL send nothing.
+When the owner removes an entry tied to a subject from an `oidc` deployment that declares `auth.oidc.backchannelLogoutPath`, the platform SHALL send the app a back-channel logout token for that subject as part of the removal. The entry SHALL be removed only when the app accepts the token; otherwise the removal SHALL fail, naming the app, and the entry SHALL stay. Removing an unbound entry SHALL send nothing.
 
 #### Scenario: Removing a signed-in person
 
 - **WHEN** the owner removes Ana, whose entry is tied to their subject, from a `listed` OIDC app that declares a back-channel logout path
-- **THEN** the app receives a logout token for Ana's subject and ends their sessions
+- **THEN** the app receives a logout token for Ana's subject and ends their sessions, and the entry is removed
 
 #### Scenario: App unreachable
 
-- **WHEN** the app cannot be reached when Ana is removed and comes back 20 minutes later
-- **THEN** it receives the logout token after it comes back
+- **WHEN** the app cannot be reached, or does not accept the token, when the owner removes Ana
+- **THEN** the API answers `502`, and Ana's entry is still on the list
 
 #### Scenario: Unbound entry
 
@@ -173,7 +173,7 @@ The API SHALL refuse an addition that would send an owner more than 100 invitati
 
 ### Requirement: Deleting a deployment deletes its list
 
-When a deployment is deleted, its access list and any undelivered logout tokens for it SHALL be deleted with it.
+When a deployment is deleted, its access list SHALL be deleted with it.
 
 #### Scenario: Deleted deployment
 

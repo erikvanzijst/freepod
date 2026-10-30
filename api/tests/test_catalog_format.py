@@ -621,3 +621,23 @@ def test_overlong_release_notes_are_rejected(tmp_path):
 
     with pytest.raises(CatalogError, match="entry 0: notes"):
         load_catalog(catalog_dir)
+
+
+def test_enabling_auth_without_stating_access_is_rejected(tmp_path):
+    _expect_error(
+        tmp_path,
+        document(**{"template.system_values": {"auth": {"enabled": True}}}),
+        "must also set auth.access",
+    )
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [{"enabled": True, "access": "listed"}, {"enabled": True, "access": "anyone"}, {"enabled": False}, {"public": ["^/$"]}],
+)
+def test_auth_that_states_its_access_or_stays_off_loads(tmp_path, auth):
+    load_catalog(write_catalog(tmp_path, {"immich.yaml": document(**{"template.system_values": {"auth": auth}})}))
+
+
+def test_the_shipped_catalog_loads():
+    assert load_catalog(Path(__file__).resolve().parents[2] / "products" / "catalog")

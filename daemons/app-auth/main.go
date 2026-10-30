@@ -110,6 +110,7 @@ func run(log *slog.Logger) error {
 	v := &verifier{
 		keys: keys, store: st, loginURL: cfg.loginURL, now: time.Now, log: log,
 		patterns: newPatternCache(log), allowed: newAllowCache(log),
+		access: newAccessCache(st, cfg.tenantDomain, time.Now, log),
 	}
 	b := &broker{
 		chrome:   newChrome(cfg.loginURL),
@@ -128,8 +129,8 @@ func run(log *slog.Logger) error {
 	verifyMux := http.NewServeMux()
 	verifyMux.Handle("/verify", v)
 	// Readiness is the process alone, deliberately not the database: checking a
-	// session never touches it, so a database outage must cost only new
-	// sign-ins, not every signed-in user's access.
+	// session touches it only to refresh an access list, whose last copy holds
+	// through an outage, so an outage must cost only new sign-ins.
 	verifyMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 
 	servers := []*http.Server{

@@ -5,7 +5,11 @@ from starlette.responses import JSONResponse
 
 from app.services.errors import (
     CaelusException,
+    ConflictException,
     DeploymentInProgressException,
+    InvalidInputException,
+    RateLimitedException,
+    UpstreamException,
     HostnameException,
     IntegrityException,
     NotFoundException,
@@ -18,6 +22,10 @@ ERROR_STATUS = {
     DeploymentInProgressException: 409,
     NotFoundException: 404,
     ValidationException: 400,
+    ConflictException: 409,
+    InvalidInputException: 422,
+    RateLimitedException: 429,
+    UpstreamException: 502,
 }
 
 logger = logging.getLogger(__name__)

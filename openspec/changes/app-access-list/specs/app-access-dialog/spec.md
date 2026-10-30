@@ -36,8 +36,8 @@ When a deployment's read model reports `auth.enabled`, its expanded row SHALL st
 
 #### Scenario: Managed by the app
 
-- **WHEN** an Immich deployment reports enabled and `anyone`
-- **THEN** its expanded row reads "Managed in Immich", with no link
+- **WHEN** a deployment of a product named "Gallery" reports enabled and `anyone`
+- **THEN** its expanded row reads "Managed in Gallery", with no link
 
 ### Requirement: The Access dialog shows the owner and every entry
 

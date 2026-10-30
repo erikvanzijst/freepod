@@ -298,26 +298,49 @@
       ],
       "additionalProperties": false
     },
-    "sso": {
+    "auth": {
       "type": "object",
       "properties": {
         "enabled": {
           "type": "boolean"
         },
-        "redirectPaths": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+        "protocol": {
+          "type": "string",
+          "enum": [
+            "header",
+            "oidc"
+          ]
         },
-        "nativeRedirectUris": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+        "access": {
+          "type": "string",
+          "enum": [
+            "anyone",
+            "listed"
+          ]
         },
-        "pkce": {
-          "type": "boolean"
+        "oidc": {
+          "type": "object",
+          "properties": {
+            "redirectPaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nativeRedirectUris": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "pkce": {
+              "type": "boolean"
+            },
+            "backchannelLogoutPath": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

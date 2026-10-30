@@ -48,13 +48,19 @@ GRANT USAGE ON SCHEMA public TO caelus_app_auth;
 
 -- Eligibility: is this host a live deployment whose *applied* release enabled
 -- authentication, in its user values or its template's system values? Column
--- grants, not table grants: `deployment` also carries the owner, and
--- `deployment_release` build and error detail, none of which the broker has any
--- use for. Vars and database passwords live in tables this role is never
+-- grants, not table grants: `deployment_release` also carries build and error
+-- detail the broker has no use for. Vars and database passwords live in tables this role is never
 -- granted.
-GRANT SELECT (id, hostname, status, applied_release_id) ON TABLE deployment TO caelus_app_auth;
+GRANT SELECT (id, hostname, status, applied_release_id, user_id) ON TABLE deployment TO caelus_app_auth;
 GRANT SELECT (id, template_id, values_json) ON TABLE deployment_release TO caelus_app_auth;
 GRANT SELECT (id, system_values_json) ON TABLE product_template_version TO caelus_app_auth;
+
+-- Access: a `listed` deployment admits its owner, recognized by email, and
+-- its access list. The list is the owner's, written through the API; this role
+-- only ties an entry to the subject that first signs in with it.
+GRANT SELECT (id, email) ON TABLE "user" TO caelus_app_auth;
+GRANT SELECT ON TABLE app_access_entry TO caelus_app_auth;
+GRANT UPDATE (subject, name, bound_at) ON TABLE app_access_entry TO caelus_app_auth;
 
 -- Its own records. No UPDATE: consent is inserted once, codes are inserted and
 -- then deleted on redemption or expiry.

@@ -4,31 +4,39 @@ A deployment whose chart renders the app-auth middlewares and that has
 `auth.enabled` (a user value, or a system value of its template) gets verified
 identity headers (`X-Freepod-User`, `X-Freepod-Email`, `X-Freepod-Name`) on
 every request, with Freepod's Keycloak as the identity provider. A deployment
-whose template declares `sso.redirectPaths` and that has `sso.enabled` is
-instead an OpenID Connect client of this service. It has three roles:
+whose template declares `auth.oidc.redirectPaths` and that has `auth.protocol:
+oidc` is instead an OpenID Connect client of this service. Either way,
+`auth.access: listed` admits only the owner and the deployment's access list,
+which the API edits. It has three roles:
 
 - **The verifier** (`:8080/verify`) is Traefik's forward-auth endpoint for
   every auth-enabled app. It checks a host-bound session cookie, strips it and
   every platform cookie from the request, and sets the identity headers, or
   answers with a redirect to sign in (navigations) or `401` (everything else).
-  Its address carries the deployment's public paths (`p`) and, optionally, the
-  accounts allowed in (`a`) and the app's name for the no-access page (`n`).
-  It also serves `/.freepod/auth/{login,callback,logout}` on each app host,
-  from inside forward-auth. The per-request path touches no database.
+  Its address carries the deployment's public paths (`p`) and, optionally,
+  whether the access list applies (`l=1`), the accounts allowed in (`a`) and
+  the app's name for the no-access page (`n`). It also serves
+  `/.freepod/auth/{login,callback,logout}` on each app host, from inside
+  forward-auth. The per-request path reads the database only to refresh a
+  listed host's access list, at most every 30 seconds, and keeps its last
+  copy through an outage.
 - **The broker** (`:8081`, public at `login.<domain>`) is the only party that
   talks OIDC to Keycloak, through one client per environment
   (`freepod-apps-{prod,dev}`) with one redirect URI. It checks that the host is
-  an auth-enabled deployment, asks for consent once per user and deployment,
-  and hands the app host a single-use code bound to that host and to the
-  browser that started signing in. `preview-<label>.<rest>` signs in as the
-  deployment at `<label>.<rest>`.
+  an auth-enabled deployment, applies its access list when it is `listed`,
+  asks for consent once per user and deployment, and hands the app host a
+  single-use code bound to that host and to the browser that started signing
+  in. Issuing a code ties an access list entry to the subject that first signs
+  in with it. `preview-<label>.<rest>` signs in as the deployment at
+  `<label>.<rest>`.
 - **The provider** (also `:8081`, issuer `https://login.<domain>`) is an OpenID
   Provider for SSO-enabled deployments, under `/oidc/` plus discovery. It signs
   users in through the broker's Keycloak leg and consent, and has no client
   records: a client's ID is its deployment's ID, its secret is derived, and its
   redirect URIs are the template's declared paths on the deployment's
   hostname. The reconciler publishes each deployment's credentials in a
-  Secret.
+  Secret. The API, not this service, sends back-channel logout tokens when an
+  owner removes someone, signed with the provider's key.
 
 **Logout** (`/.freepod/auth/logout?rd=…`) clears the app host's session, then
 goes through the broker's `/logout` to Keycloak's end-session endpoint, so the
@@ -40,6 +48,7 @@ Spec: [app-auth-verifier](../../openspec/specs/app-auth-verifier/spec.md),
 [app-auth-broker](../../openspec/specs/app-auth-broker/spec.md),
 [app-auth-chart-contract](../../openspec/specs/app-auth-chart-contract/spec.md),
 [app-auth-data-model](../../openspec/specs/app-auth-data-model/spec.md),
+[app-access-list](../../openspec/specs/app-access-list/spec.md),
 [app-studio-access](../../openspec/specs/app-studio-access/spec.md),
 [app-oidc-provider](../../openspec/specs/app-oidc-provider/spec.md),
 [app-oidc-chart-contract](../../openspec/specs/app-oidc-chart-contract/spec.md) ·
@@ -87,9 +96,11 @@ The provider needs two more, and leaves its routes out unless both are set:
   letting the reconciler republish every SSO deployment's Secret, and dropping
   the old key once every app has restarted with its new secret.
 - `APP_AUTH_OIDC_SIGNING_KEYS` is PEM RSA private keys, current first. The first
-  signs ID tokens; `/oidc/jwks` publishes them all, named by their RFC 7638
-  thumbprint. Rotate by adding a key in front, and drop the old one after five
-  minutes (the ID token lifetime).
+  signs ID tokens, and the API signs logout tokens with it too;
+  `/oidc/jwks` publishes them all, named by their RFC 7638 thumbprint
+  (`oidc_test.go` and the API's test pin one shared vector). Rotate by adding
+  a key in front on both, and drop the old one after five minutes (the ID
+  token lifetime).
 
 Terraform generates all three (`tf/app/app-auth`).
 

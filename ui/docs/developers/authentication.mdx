@@ -9,7 +9,7 @@ import TabItem from '@theme/TabItem'
 
 **Sign in with Freepod** puts a sign-in in front of a deployment. Visitors sign in with a Freepod account before their requests reach the application, and the application receives their identity in request headers. The application does not handle passwords, sessions or sign-in pages.
 
-It provides authentication only. Every Freepod account can sign in to every deployment that enables it, and registration is open. Deciding what a signed-in user may do is the application's responsibility.
+By default every Freepod account can sign in to a deployment that enables it, and registration is open. A deployment can instead admit only its owner and the people the owner lists (see [Who can sign in](#who-can-sign-in)). Either way, deciding what a signed-in user may do is the application's responsibility.
 
 ## Enabling
 
@@ -32,7 +32,32 @@ freepod deploy --no-build
 | Field | Meaning |
 | --- | --- |
 | `enabled` | Require sign-in |
+| `access` | `anyone` (the default): any Freepod account can sign in. `listed`: only you and the people on the deployment's access list. |
 | `public` | Paths that do not require sign-in, as [RE2](https://github.com/google/re2/wiki/Syntax) regular expressions matched against the path without the query string. Up to 32 patterns. |
+
+## Who can sign in
+
+With `"access": "listed"`, only you and the people you add can sign in:
+
+```json title=".freepod.json"
+"user_values": {
+  "hostname": "myapp",
+  "auth": {
+    "enabled": true,
+    "access": "listed"
+  }
+}
+```
+
+You manage the list on the dashboard: expand the deployment and choose **Access**. Changes take effect without a release.
+
+- You, the owner, can always sign in, and are not on the list.
+- You add people by email address, up to 500. Each one receives an email inviting them to sign in at the deployment's address with a Freepod account that uses that address.
+- The first account that signs in with an address is tied to it. From then on only that account is admitted, even if its email address changes.
+- Removing someone refuses their requests within 30 seconds, on every path, public paths included.
+- Anyone else who signs in sees a page saying the deployment is open only to the people its owner has added, with a link to sign out and use another account.
+
+The list decides who can sign in, not what they can do. The application still receives the same identity headers and makes every other decision itself.
 
 ## Identity headers
 

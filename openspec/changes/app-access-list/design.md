@@ -13,8 +13,9 @@ See proposal.md for why. The facts this design rests on:
   - Immich deletes every session of the user whose `oauthId` is `sub` (`session.repository.ts`, `invalidateOAuth`), at `POST /api/oauth/backchannel-logout`. It verifies the token with `maxTokenAge: '2m'` and rejects a `nonce`.
   - So the provider needs no record of sessions or `sid`s.
 - **Keycloak enforces unique, verified emails, and email is the username.** At any moment one account holds a given verified email. Over time it can pass to someone else: an account is deleted and the address re-registered, or a Google-brokered domain changes hands, since the Google IdP trusts its emails.
+- **The API already holds app-auth key material.** It receives the provider's client keyring to derive client secrets (`app_auth_oidc.py`), and anything with write access to the platform database can already mint sign-in codes. Holding the ID token signing key too adds no new power over tenant apps.
 - **The API already sends mail** through the in-cluster relay (`app/services/mailer.py`). It never raises, and it no-ops where no relay is set.
-- **Tenant hosts are reachable from the platform on their public addresses.** The provider design already relies on hairpin NAT for tenant pods reaching the login host, and the same path serves the other direction.
+- **Tenant hosts are reachable from the platform on their public addresses.** The provider design already relies on hairpin NAT for tenant pods reaching the login host, and the same path serves the other direction. The API pod's network policy restricts ingress only.
 
 ## Goals / Non-Goals
 
@@ -23,7 +24,7 @@ See proposal.md for why. The facts this design rests on:
 - One way to compute a deployment's effective `auth` settings, used by the chart, the daemon and the API, with the same defaults.
 - One admission rule (owner, then bound subject, then unbound email) implemented once in the daemon and applied by the broker, the provider and the verifier.
 - List edits never touch Helm.
-- Revocation that reaches header apps within 30 seconds and OIDC apps through their own logout endpoint.
+- Revocation that reaches header apps within 30 seconds and OIDC apps through their own logout endpoint, in the removal request itself.
 
 **Non-Goals:**
 
@@ -84,11 +85,9 @@ The verifier calls the same function against its cached copy and never binds. Ev
 ### D4. Data model
 
 - **`app_access_entry`:** `id uuid pk`, `deployment_id → deployment ON DELETE CASCADE`, `email text` (lower case, `CHECK (email = lower(email))`), `subject text NULL`, `name text NULL`, `created_at`, `bound_at NULL`. Unique `(deployment_id, email)`; partial unique `(deployment_id, subject)`.
-- **`app_access_logout`:** `id`, `deployment_id → CASCADE`, `subject`, `created_at`, `attempts int`, `next_attempt_at`. The outbox described in D8.
 - **`app_access_invitation`:** `id`, `user_id → user ON DELETE CASCADE`, `sent_at`, with an index on `(user_id, sent_at)`. It doesn't reference the entry, so removing an entry keeps the record.
 - **Grants to `caelus_app_auth`:**
   - `SELECT` on `app_access_entry`, plus `UPDATE (subject, name, bound_at)`;
-  - `SELECT, UPDATE, DELETE` on `app_access_logout`;
   - `SELECT (user_id)` on `deployment` and `SELECT (id, email)` on `"user"`;
   - nothing on `app_access_invitation`.
 
@@ -105,7 +104,7 @@ Under the existing per-deployment router (`/users/{user_id}/deployments/{deploym
   - otherwise `201` with the entry.
   
   It locks the deployment row (`SELECT … FOR UPDATE`) so the 500 bound holds under concurrency, and records the invitation in the same transaction.
-- `DELETE /{entry_id}`, owner only, returns `204`. In the same transaction, if the entry is bound and the serving release is `oidc`, it inserts an `app_access_logout` row.
+- `DELETE /{entry_id}`, owner only, returns `204`. If the entry is bound, the serving release is `oidc` and its template declares a valid `backchannelLogoutPath`, it first signs the person out of the app (D8) and answers `502`, keeping the entry, when that fails.
 
 Administrators read through the same `GET`. Their writes are refused by an explicit owner check, not by the general admin bypass.
 
@@ -120,10 +119,10 @@ The limit is a setting, `access_invitations_per_day`, default 100. It counts `ap
 A chart rendering `header` with `listed` adds `l=1` to the forward-auth address, which carries no account. For such requests, the verifier:
 
 1. resolves the host to its deployment, including the `preview-` alias, with the broker's logic;
-2. takes `{deploymentID, ownerEmail, entries}` from an in-memory cache, refreshed when older than 30 seconds;
+2. takes `{deploymentID, ownerEmail, entries}` from an in-memory cache keyed by the request host, refreshed when older than 30 seconds;
 3. runs D3's `admit` against that copy.
 
-Before refusing, it reloads if the copy is more than 5 seconds old. If a reload fails, it keeps the old copy and logs a warning. With no copy at all, it refuses. Entries are cached per deployment, the cache is bounded like `patternCache`, and an `l` value other than `1` refuses every signed-in request.
+Before refusing, it reloads if the copy is more than 5 seconds old. If a reload fails, it keeps the old copy and logs a warning. With no copy at all, it refuses. Keying by host lets one load resolve the host and read the list, so a preview and its app each hold their own copy. The cache is bounded like `patternCache`, and an `l` value other than `1` refuses every signed-in request.
 
 **Why a flag, rather than reading the mode from the database:** `anyone` apps, the common case, keep a request path that never touches the database, exactly as today. The flag can't widen access: the broker checks the database at sign-in, so a chart that forgot the flag would only lose the per-request revocation, never admit a stranger. A flag that disagrees in the strict direction just applies the list.
 
@@ -131,33 +130,34 @@ Before refusing, it reloads if the copy is more than 5 seconds old. If a reload 
 - The `a=` email list injected by the reconciler. Every list edit would redeploy.
 - `LISTEN/NOTIFY` invalidation. With a 30-second bound acceptable, it adds a connection to manage for no visible gain, and refresh-on-refuse covers additions.
 
-### D8. Back-channel logout through an outbox
+### D8. Back-channel logout, synchronously from the API
 
-The API writes the `app_access_logout` row in the removal's transaction, since only the daemon holds the signing key. A broker goroutine polls every 5 seconds, claiming due rows with `FOR UPDATE SKIP LOCKED`, so it stays correct with two replicas. For each row it:
+The API sends the logout token itself, in the `DELETE` request, before it deletes the entry:
 
-1. re-reads the client;
-2. drops the row if the client is no longer `oidc` or has no valid `backchannelLogoutPath`;
-3. otherwise signs a fresh token (D9) and POSTs `logout_token=<jwt>` to `https://<hostname><path>`, with a 10-second timeout, TLS verified, and no redirects followed.
+1. it signs a token (D9) with the provider's current ID token key;
+2. it POSTs `logout_token=<jwt>` to `https://<hostname><path>`, with a 10-second timeout, TLS verified, and no redirects followed;
+3. only a `2xx` answer lets the deletion commit. Anything else, a network error included, answers `502` naming the app, and the entry stays.
 
-On the response:
-- **`2xx`:** delete the row.
-- **`400`:** delete the row and log it.
-- **Anything else, or a network error:** retry with backoff (30 s, 1 m, 2 m, 5 m, then every 10 m) until 60 minutes after `created_at`, then delete the row and log it.
+The entry row is locked for the duration, so two removals of one entry send one token.
 
-Delivery is best effort by design. The token and userinfo checks (`app-oidc-provider`) already refuse the person, so a lost token leaves only the app's existing session alive.
+**Why synchronous:** an owner who removes someone learns at once whether the app signed them out, and nothing needs to remember a delivery that is still owed. The cost is that a person cannot be removed from an OIDC app while that app is down. Header apps and unbound entries send nothing, so they never fail this way.
+
+**Alternatives rejected:**
+- A transactional outbox delivered by app-auth. It survives the app being down, but needs a table, grants, a worker, claiming across replicas and a retry schedule, all to deliver a token whose loss only leaves an existing session alive.
+- An internal app-auth endpoint that signs tokens for the API. It keeps the key in one place, but adds a listener, a shared secret and a second hop that can fail, to protect against an API compromise that already owns the database.
 
 ### D9. Logout tokens
 
-The token is signed with the current ID-token key, header `typ: logout+jwt` with `kid`. Its claims are `iss`, `aud` (the client ID), `iat`, `exp = iat + 120`, `jti` (random), `sub`, and `events: {"http://schemas.openid.net/event/backchannel-logout": {}}`, with no `sid` and no `nonce`. Each attempt signs afresh, so Immich's two-minute age limit holds on retries. Discovery adds `backchannel_logout_supported: true` and `backchannel_logout_session_supported: false`.
+The API signs with the first key of the provider's signing keyring, which tf passes to the API pod as it passes the client keyring. The header is `typ: logout+jwt` with `kid`, the key's RFC 7638 thumbprint as app-auth computes it for the JWKS; a test on each side pins one vector. Its claims are `iss` (the provider's issuer), `aud` (the client ID), `iat`, `exp = iat + 120`, `jti` (random), `sub`, and `events: {"http://schemas.openid.net/event/backchannel-logout": {}}`, with no `sid` and no `nonce`. Discovery, served by app-auth, adds `backchannel_logout_supported: true` and `backchannel_logout_session_supported: false`.
 
 ### D10. Where each flow checks access
 
 - **Header broker:** checks after the identity provider's callback, before the consent page; again before the code is issued, where it binds; and the verifier then checks every request.
-- **OIDC provider:** checks after the identity provider's callback, before consent, and on the consent POST, where it binds.
+- **OIDC provider:** checks after the identity provider's callback, before consent, and again where the code is issued, where it binds. A code is issued from the consent POST, or straight from the callback when consent already exists.
   - A refusal renders the no-access page on the login host.
   - With `prompt=none`, a refusal redirects back with `error=access_denied`.
   - The token endpoint and userinfo check again.
-- **Pages:** the no-access page gains the listed wording and stays one template for both hosts. On the login host it uses the broker's page chrome.
+- **Pages:** the no-access page gains the listed wording and stays one template, in the placeholder look, on both hosts. On the login host it names the app by its host, since the broker never sees the chart's `n=`, and accepting a name in the sign-in URL would let anyone put any name on the login host. Its sign-out link ends the identity provider's session: the broker's `/logout?host=` for a header app, which returns to the app's sign-in, and `/oidc/logout` for an OIDC app.
 
 ### D11. App Studio
 
@@ -188,21 +188,23 @@ The token is signed with the current ID-token key, header `typ: logout+jwt` with
 - **[Invitations as a spam channel]** → Fixed text with no owner-written content, the owner's own address in the message, a daily cap, and a recipient who can only ever get the same short message.
 - **[Verifier load]** One query per listed deployment every 30 seconds, plus rare refusal reloads. → Bounded cache. `anyone` apps are unaffected.
 - **[The app ignores or mishandles logout tokens]** → The token and userinfo checks keep the person from getting new tokens. Nextcloud and Immich were read to confirm `sub`-only handling.
+- **[An OIDC app that is down blocks removals]** → The owner sees which app could not be reached and retries when it runs. Only bound entries of `oidc` apps with a logout path are affected.
+- **[The API holds the ID token signing key]** → An API compromise could mint ID tokens for tenant apps. It could already mint sign-in codes through the database, so the boundary was not there to keep.
 - **[Removing an entry of a header app leaves its session cookie valid for its lifetime]** → The verifier refuses it on every request after the cache refresh, so the cookie is useless.
 - **[A stale cache during a database outage keeps a removed person in]** → That's the stated trade-off: the verifier keeps a known list rather than locking everyone out. Once the database is reachable again, the next refresh applies the removal.
 
 ## Migration Plan
 
-1. **Alembic migration** for the three tables, then the bootstrap SQL grants. They are additive, so the running daemon is unaffected.
+1. **Alembic migration** for the two tables, then the bootstrap SQL grants. They are additive, so the running daemon is unaffected.
 2. **Daemon release** that:
    - reads `auth.*` everywhere and adds `auth.protocol` to header eligibility;
    - reads the provider's keys from `auth.oidc`;
-   - adds the access checks, the `l=1` handling and the outbox worker;
+   - adds the access checks, the `l=1` handling and the discovery flags;
    - **keeps `a=`** until step 5.
 
    Its `ssoClient` stops reading `sso.*`, so the immich-sso deployments must move in step 3 straight after this rollout. They are admin-only sandboxes, so a few minutes of broken sign-in is acceptable.
 3. **immich-sso chart 0.1.2 and a new template version** on `auth.*`; upgrade the dev and prod sandbox deployments.
-4. **API and UI:** the read-model summary, the access endpoints, invitations, and the dialog.
+4. **API and UI:** the read-model summary, the access endpoints, invitations, logout tokens with the signing keys on the API pod, and the dialog.
 5. **Custom chart and App Studio chart versions with the catalog templates; upgrade App Studio deployments.** Once none renders `a=`, remove `allowCache` and `a=` from the daemon and release it.
 
 **Rollback:**

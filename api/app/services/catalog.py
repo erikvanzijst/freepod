@@ -235,6 +235,17 @@ class TemplateBlock(CatalogModel):
     system_values: dict[str, Any] = Field(default_factory=dict)
     values_schema: dict[str, Any] | None = None
 
+    @field_validator("system_values")
+    @classmethod
+    def _validate_auth_access(cls, v: dict[str, Any]) -> dict[str, Any]:
+        # A template that turns Sign in with Freepod on says who may sign in,
+        # so no product admits every Freepod account by omission
+        # (app-auth-chart-contract).
+        auth = v.get("auth")
+        if isinstance(auth, dict) and auth.get("enabled") is True and "access" not in auth:
+            raise ValueError("system_values.auth enables Sign in with Freepod, so it must also set auth.access")
+        return v
+
     @field_validator("values_schema")
     @classmethod
     def _validate_values_schema(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:

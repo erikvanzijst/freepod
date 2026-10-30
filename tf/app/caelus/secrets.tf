@@ -97,6 +97,19 @@ resource "kubernetes_secret" "app_auth_oidc_client_keys" {
   }
 }
 
+resource "kubernetes_secret" "app_auth_oidc_signing_keys" {
+  metadata {
+    name      = "caelus-app-auth-oidc-signing"
+    namespace = var.namespace
+  }
+
+  type = "Opaque"
+
+  data = {
+    CAELUS_APP_AUTH_OIDC_SIGNING_KEYS = var.app_auth_oidc_signing_keys
+  }
+}
+
 resource "kubernetes_secret" "registry_pull_hmac" {
   metadata {
     name      = "caelus-registry-pull-hmac"

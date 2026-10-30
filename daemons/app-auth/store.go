@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -41,10 +42,38 @@ type oidcCode struct {
 	AuthTime      time.Time
 }
 
+// headerApp is a deployment whose serving release enables header
+// authentication, as eligible finds it.
+type headerApp struct {
+	ID string
+	// Listed is `auth.access: listed`, or any access the platform does not
+	// recognize (D2).
+	Listed bool
+}
+
+// accessEntry is one person on a deployment's access list. Subject is empty
+// until someone signs in with the entry (D3).
+type accessEntry struct {
+	ID      string
+	Email   string
+	Subject string
+}
+
+// accessList is everything admit needs: the owner, then the list.
+type accessList struct {
+	OwnerEmail string
+	Entries    []accessEntry
+}
+
 type store interface {
 	// eligible returns the deployment whose hostname is exactly host and whose
-	// applied release has authentication enabled, or ok=false.
-	eligible(ctx context.Context, host string) (deploymentID string, ok bool, err error)
+	// applied release has header authentication enabled, or ok=false.
+	eligible(ctx context.Context, host string) (app headerApp, ok bool, err error)
+	// accessList returns a deployment's owner email and access list entries.
+	accessList(ctx context.Context, deploymentID string) (accessList, error)
+	// bindEntry ties an unbound entry to subject, and reports whether this
+	// call did.
+	bindEntry(ctx context.Context, entryID, subject, name string) (bool, error)
 	hasConsent(ctx context.Context, subject, deploymentID string, claims []string) (bool, error)
 	recordConsent(ctx context.Context, subject, deploymentID string, claims []string) error
 	insertCode(ctx context.Context, codeHash []byte, c codeRecord) error
@@ -83,31 +112,75 @@ func openPool(ctx context.Context, dsn string, maxConns int32) (*pgxpool.Pool, e
 // so every time is computed in SQL rather than sent from here.
 const nowUTC = `(now() AT TIME ZONE 'utc')`
 
-// Whether authentication is enabled is read as the reconciler merges it for
-// Helm: the release's user value over the template's system value, which is
-// only a default. That is what the applied release rendered, so it is what the
-// edge enforces, for any product. A template that must not be overridden
-// leaves the key out of its user schema.
-func (s *pgStore) eligible(ctx context.Context, host string) (string, bool, error) {
-	var id string
+// effective reads one `auth` key as the reconciler merges it for Helm: the
+// release's user value over the template's system value, which is only a
+// default, over the contract's default (D2). That is what the applied release
+// rendered, so it is what the edge enforces, for any product. A template that
+// must not be overridden leaves the key out of its user schema.
+func effective(key, fallback string) string {
+	return `coalesce(r.values_json::jsonb #>> '{auth,` + key + `}',
+	                 t.system_values_json::jsonb #>> '{auth,` + key + `}', '` + fallback + `')`
+}
+
+var (
+	authEnabled  = `(` + effective("enabled", "false") + `)::boolean`
+	authProtocol = effective("protocol", "header")
+	authAccess   = effective("access", "anyone")
+)
+
+func (s *pgStore) eligible(ctx context.Context, host string) (headerApp, bool, error) {
+	var app headerApp
+	var access string
 	err := s.pool.QueryRow(ctx, `
-		SELECT d.id::text
+		SELECT d.id::text, `+authAccess+`
 		  FROM deployment d
 		  JOIN deployment_release r        ON r.id = d.applied_release_id
 		  JOIN product_template_version t  ON t.id = r.template_id
 		 WHERE lower(d.hostname) = lower($1)
 		   AND d.status <> 'deleted'
-		   AND coalesce((r.values_json::jsonb #>> '{auth,enabled}')::boolean,
-		                (t.system_values_json::jsonb #>> '{auth,enabled}')::boolean,
-		                false)
-		 LIMIT 1`, host).Scan(&id)
+		   AND `+authEnabled+`
+		   AND `+authProtocol+` = 'header'
+		 LIMIT 1`, host).Scan(&app.ID, &access)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
+		return headerApp{}, false, nil
 	}
 	if err != nil {
-		return "", false, err
+		return headerApp{}, false, err
 	}
-	return id, true, nil
+	app.Listed = access != "anyone"
+	return app, true, nil
+}
+
+func (s *pgStore) accessList(ctx context.Context, deploymentID string) (accessList, error) {
+	var l accessList
+	if err := s.pool.QueryRow(ctx, `
+		SELECT u.email FROM deployment d JOIN "user" u ON u.id = d.user_id WHERE d.id = $1::uuid`,
+		deploymentID).Scan(&l.OwnerEmail); err != nil {
+		return accessList{}, err
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id::text, email, coalesce(subject, '') FROM app_access_entry WHERE deployment_id = $1::uuid`,
+		deploymentID)
+	if err != nil {
+		return accessList{}, err
+	}
+	l.Entries, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (accessEntry, error) {
+		var e accessEntry
+		return e, row.Scan(&e.ID, &e.Email, &e.Subject)
+	})
+	return l, err
+}
+
+func (s *pgStore) bindEntry(ctx context.Context, entryID, subject, name string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE app_access_entry SET subject = $2, name = $3, bound_at = `+nowUTC+`
+		 WHERE id = $1::uuid AND subject IS NULL`, entryID, subject, nullable(name))
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		// Another entry of the deployment holds this subject already.
+		return false, nil
+	}
+	return err == nil && tag.RowsAffected() == 1, err
 }
 
 func (s *pgStore) hasConsent(ctx context.Context, subject, deploymentID string, claims []string) (bool, error) {
@@ -174,31 +247,30 @@ func (s *pgStore) purgeExpiredCodes(ctx context.Context) (int64, error) {
 	return n, nil
 }
 
-// ssoClient reads `sso.enabled` as eligible reads `auth.enabled`, but keyed by
-// deployment ID, and only from a template that declares its callback paths.
-// Unlike the switch, the paths and native URIs are never read from user values
-// (D2, D4).
+// ssoClient reads the switch as eligible does, but keyed by deployment ID, for
+// `auth.protocol: oidc`, and only from a template that declares its callback
+// paths. Everything under `auth.oidc` is read from system values alone (D1).
 func (s *pgStore) ssoClient(ctx context.Context, deploymentID string) (ssoClient, bool, error) {
 	if !clientIDPattern.MatchString(deploymentID) {
 		return ssoClient{}, false, nil
 	}
-	var hostname string
+	var hostname, access string
 	var paths, natives []byte
 	var pkce bool
 	err := s.pool.QueryRow(ctx, `
 		SELECT d.hostname,
-		       t.system_values_json::jsonb #> '{sso,redirectPaths}',
-		       t.system_values_json::jsonb #> '{sso,nativeRedirectUris}',
-		       coalesce(t.system_values_json::jsonb #>> '{sso,pkce}', '') <> 'false'
+		       t.system_values_json::jsonb #> '{auth,oidc,redirectPaths}',
+		       t.system_values_json::jsonb #> '{auth,oidc,nativeRedirectUris}',
+		       coalesce(t.system_values_json::jsonb #>> '{auth,oidc,pkce}', '') <> 'false',
+		       `+authAccess+`
 		  FROM deployment d
 		  JOIN deployment_release r        ON r.id = d.applied_release_id
 		  JOIN product_template_version t  ON t.id = r.template_id
 		 WHERE d.id = $1::uuid
 		   AND d.status <> 'deleted'
 		   AND d.hostname IS NOT NULL
-		   AND coalesce((r.values_json::jsonb #>> '{sso,enabled}')::boolean,
-		                (t.system_values_json::jsonb #>> '{sso,enabled}')::boolean,
-		                false)`, deploymentID).Scan(&hostname, &paths, &natives, &pkce)
+		   AND `+authEnabled+`
+		   AND `+authProtocol+` = 'oidc'`, deploymentID).Scan(&hostname, &paths, &natives, &pkce, &access)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ssoClient{}, false, nil
 	}
@@ -206,6 +278,7 @@ func (s *pgStore) ssoClient(ctx context.Context, deploymentID string) (ssoClient
 		return ssoClient{}, false, err
 	}
 	c, ok := newSSOClient(deploymentID, hostname, json.RawMessage(paths), json.RawMessage(natives), pkce)
+	c.Listed = access != "anyone"
 	return c, ok, nil
 }
 

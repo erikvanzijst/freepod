@@ -224,6 +224,34 @@ export interface Deployment {
   /** Whether a rollout would change the running pod's environment. */
   pending?: boolean | null
   applied_release?: DeploymentRelease | null
+  /** Sign in with Freepod as the serving release has it; null before anything serves. */
+  auth?: DeploymentAuth | null
+}
+
+export interface DeploymentAuth {
+  enabled: boolean
+  protocol: string
+  access: 'anyone' | 'listed'
+  /** People on the access list; null unless `access` is `listed`. */
+  listed_count?: number | null
+}
+
+export interface AccessEntry {
+  id: string
+  email: string
+  /** Set once someone has signed in with the entry. */
+  name?: string | null
+  created_at: IsoDate
+  bound_at?: IsoDate | null
+}
+
+export interface AccessList {
+  enabled: boolean
+  protocol: string
+  access: 'anyone' | 'listed'
+  owner_email: string
+  limit: number
+  entries: AccessEntry[]
 }
 
 /** The subset of a release this UI reads. */
