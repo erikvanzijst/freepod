@@ -1,3 +1,11 @@
+- version: "17.9.6"
+  notes: |-
+    Workflows and activity behave as expected again, with a security fix on top.
+
+    - Editing a workflow's rules saves the changes
+    - Increase or decrease a work package's activity again
+    - Copying a project no longer blocks creating work packages in it
+    - A security fix stops budget details leaking to users who cannot view budgets
 - version: "17.9.4"
   notes: |-
     A maintenance release with a fix for boards.

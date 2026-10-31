@@ -37,6 +37,9 @@ spec:
         {{- include "openproject.componentSelector" (dict "root" . "name" "openproject") | nindent 8 }}
         {{- include "openproject.podLabels" . | nindent 8 }}
     spec:
+      # Upstream's worker chart: the grace period is the GoodJob shutdown timeout
+      # plus 30, so a running job can finish or be requeued before SIGKILL.
+      terminationGracePeriodSeconds: 90
       automountServiceAccountToken: false
       # Not runAsNonRoot here: the SSH sidecar in this pod runs as root.
       securityContext:
@@ -149,6 +152,10 @@ spec:
             {{- include "openproject.env" . | nindent 12 }}
             - name: GOOD_JOB_PROBE_PORT
               value: "7001"
+            # Upstream's worker chart default; stays under the pod's 90-second
+            # grace period.
+            - name: OPENPROJECT_GOOD_JOB_SHUTDOWN_TIMEOUT
+              value: "60"
           ports:
             - containerPort: 7001
               name: worker-probe
