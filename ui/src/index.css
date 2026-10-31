@@ -22,12 +22,12 @@ a {
   text-decoration: none;
 }
 
-/* The delay keeps this content from flashing before React replaces it. */
+/* Shown only by the <noscript> rule in index.html, so a browser waiting on the bundle never paints it. */
 .static-page {
+  display: none;
   max-width: 42rem;
   margin: 0 auto;
   padding: 2rem 1rem;
-  animation: lp-fade-up 0.3s ease-out 2s both;
 }
 
 .static-page a {
