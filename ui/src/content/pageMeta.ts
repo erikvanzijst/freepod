@@ -33,7 +33,7 @@ export const PAGE_META: Record<'home' | 'dev', PageMeta> = {
     file: 'index.html',
     title: 'Freepod — Your digital life, in a cloud you control.',
     description:
-      'Private alternatives to the cloud services you use every day, for your photos, files, passwords and chats. Each app runs in a pod of its own, hosted in the EU, with no ads or tracking.',
+      'Private alternatives to the cloud services you use every day, hosted in the EU with no ads or tracking. Developers: deploy your own apps with the freepod CLI.',
     summary:
       'Private alternatives for your photos, files, passwords and chats, each in a pod of your own. Hosted in the EU.',
     image: 'og-image-v2.png',

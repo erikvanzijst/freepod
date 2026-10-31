@@ -22,6 +22,22 @@ a {
   text-decoration: none;
 }
 
+/* The delay keeps this content from flashing before React replaces it. */
+.static-page {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  animation: lp-fade-up 0.3s ease-out 2s both;
+}
+
+.static-page a {
+  text-decoration: underline;
+}
+
+.static-page pre {
+  overflow-x: auto;
+}
+
 /* ── Landing page animation primitives ──────────────────────────────────── */
 @keyframes lp-fade-up {
   from {

@@ -11,7 +11,24 @@
     <meta name="theme-color" content="#0B1020" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- For clients that don't run JavaScript; React replaces it on mount. Keep in step with public/llms.txt -->
+      <main class="static-page">
+        <h1>Freepod</h1>
+        <p>Private alternatives to the cloud services you use every day, for your photos, files, passwords and chats. Each app runs in a pod of its own, hosted in the EU.</p>
+        <h2>Deploying your own project to Freepod</h2>
+        <p>Deployments use the <code>freepod</code> command-line client. Install it with any one of:</p>
+        <pre>uv tool install freepod
+pip install freepod
+brew install erikvanzijst/tap/freepod</pre>
+        <p>Then add the skill that teaches your coding agent how to build and deploy for Freepod, sign in, which needs a person at a browser, and deploy from the project directory:</p>
+        <pre>freepod skill install
+freepod login
+freepod init
+freepod deploy</pre>
+        <p>Read more in <a href="https://freepod.eu/dev">Freepod for developers</a> and the <a href="https://freepod.eu/docs/developers/coding-agents">coding agents guide</a>.</p>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

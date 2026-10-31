@@ -1,0 +1,33 @@
+# Freepod
+
+> Private, EU-hosted apps for your photos, files, passwords and chats, and hosting for your own apps, deployed from source with the `freepod` command-line client.
+
+## Deploying your own project
+
+Install the client with any one of:
+
+```bash
+uv tool install freepod
+pip install freepod
+brew install erikvanzijst/tap/freepod
+```
+
+Add the skill that teaches your coding agent how to build and deploy for Freepod:
+
+```bash
+freepod skill install
+```
+
+`freepod login` needs a person at a browser. Then deploy from the project directory:
+
+```bash
+freepod login
+freepod init
+freepod deploy
+```
+
+## Docs
+
+- [Freepod for developers](https://freepod.eu/dev)
+- [Coding agents](https://freepod.eu/docs/developers/coding-agents)
+- [Documentation](https://freepod.eu/docs/)
