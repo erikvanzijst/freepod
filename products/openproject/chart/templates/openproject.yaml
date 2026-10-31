@@ -28,6 +28,9 @@ spec:
   replicas: 1
   strategy:
     type: Recreate
+  # Upstream's worker chart: the grace period is the GoodJob shutdown timeout
+  # plus 30, so a running job can finish or be requeued before SIGKILL.
+  terminationGracePeriodSeconds: 90
   selector:
     matchLabels:
       {{- include "openproject.componentSelector" (dict "root" . "name" "openproject") | nindent 6 }}
@@ -149,6 +152,10 @@ spec:
             {{- include "openproject.env" . | nindent 12 }}
             - name: GOOD_JOB_PROBE_PORT
               value: "7001"
+            # Upstream's worker chart default; stays under the pod's 90-second
+            # grace period.
+            - name: OPENPROJECT_GOOD_JOB_SHUTDOWN_TIMEOUT
+              value: "60"
           ports:
             - containerPort: 7001
               name: worker-probe

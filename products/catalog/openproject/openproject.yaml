@@ -94,10 +94,10 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/openproject
-  chart_version: 0.1.2
+  chart_version: 0.2.0
   system_values:
     image:
-      tag: 17.9.4-slim
+      tag: 17.9.6-slim
     smtp:
       host: smtp.mailer.svc.cluster.local
       port: 25
