@@ -81,8 +81,8 @@ func (b *broker) discovery(w http.ResponseWriter, r *http.Request) {
 		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post"},
 		"code_challenge_methods_supported":      []string{"S256"},
 		"backchannel_logout_supported":          true,
-		"backchannel_logout_session_supported":  false,
-		"claims_supported":                      []string{"iss", "aud", "azp", "sub", "email", "email_verified", "name", "iat", "exp", "auth_time", "nonce"},
+		"backchannel_logout_session_supported":  true,
+		"claims_supported":                      []string{"iss", "aud", "azp", "sub", "sid", "email", "email_verified", "name", "iat", "exp", "auth_time", "nonce"},
 		"prompt_values_supported":               []string{"none", "login", "consent", "select_account"},
 		"claims_parameter_supported":            false,
 		"request_parameter_supported":           false,
@@ -324,7 +324,7 @@ func (b *broker) oidcCallback(w http.ResponseWriter, r *http.Request, f flow) {
 	pc := pendingConsent{
 		Host: client.Hostname, DeploymentID: client.ID,
 		Sub: id.Sub, Email: id.Email, Name: id.Name, CSRF: randomToken(),
-		OIDC: req, AuthTime: id.AuthTime.Unix(),
+		OIDC: req, AuthTime: id.AuthTime.Unix(), KeycloakSID: id.KeycloakSID,
 	}
 	sealed, err := b.keys.seal("consent", pc, consentTTL, b.now())
 	if err != nil {
@@ -355,7 +355,7 @@ func (b *broker) oidcConsent(w http.ResponseWriter, r *http.Request, pc pendingC
 		redirectError(w, req.RedirectURI, "access_denied", "", req.State)
 		return
 	}
-	id := identity{Sub: pc.Sub, Email: pc.Email, Name: pc.Name, AuthTime: time.Unix(pc.AuthTime, 0)}
+	id := identity{Sub: pc.Sub, Email: pc.Email, Name: pc.Name, AuthTime: time.Unix(pc.AuthTime, 0), KeycloakSID: pc.KeycloakSID}
 	if !b.oidcAdmits(ctx, w, client, req, id, false) {
 		return
 	}
@@ -397,8 +397,11 @@ func (b *broker) issueOIDCCode(ctx context.Context, w http.ResponseWriter, clien
 		DeploymentID: req.ClientID, RedirectURI: req.RedirectURI,
 		Subject: id.Sub, Email: id.Email, Name: id.Name,
 		Nonce: req.Nonce, CodeChallenge: req.Challenge, AuthTime: id.AuthTime,
-	}); err != nil {
-		b.internal(w, "storing OIDC code", err)
+		SID: b.keys.appSID(req.ClientID, id.KeycloakSID),
+	}, id.KeycloakSID); err != nil {
+		// A sign-in no sign-out could find is no sign-in (app-sign-out).
+		b.log.Error("storing OIDC code", "err", err)
+		redirectError(w, req.RedirectURI, "server_error", "", req.State)
 		return
 	}
 	v := url.Values{"code": {code}}

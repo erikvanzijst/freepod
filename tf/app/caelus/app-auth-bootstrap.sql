@@ -68,4 +68,9 @@ GRANT SELECT, INSERT, DELETE ON TABLE app_auth_consent TO caelus_app_auth;
 GRANT SELECT, INSERT, DELETE ON TABLE app_auth_code TO caelus_app_auth;
 GRANT SELECT, INSERT, DELETE ON TABLE app_auth_oidc_code TO caelus_app_auth;
 
+-- Signing browsers out of apps. A sign-in is upserted on every OIDC sign-in,
+-- hence UPDATE; an ended session is inserted once. app-auth purges both.
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE app_auth_sign_in TO caelus_app_auth;
+GRANT SELECT, INSERT, DELETE ON TABLE app_auth_ended_session TO caelus_app_auth;
+
 COMMIT;

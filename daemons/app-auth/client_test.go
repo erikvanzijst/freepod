@@ -11,7 +11,22 @@ const wiki = "wiki-alice.freepod.app"
 
 func clientFor(t *testing.T, host, paths, natives string) (ssoClient, bool) {
 	t.Helper()
-	return newSSOClient("d0c5a1e2-0000-4000-8000-000000000001", host, json.RawMessage(paths), json.RawMessage(natives), true)
+	return newSSOClient("d0c5a1e2-0000-4000-8000-000000000001", host, json.RawMessage(paths), json.RawMessage(natives), "", true)
+}
+
+func TestLogoutURI(t *testing.T) {
+	for path, want := range map[string]string{
+		"":                       "",
+		"/api/oauth/backchannel": "https://" + wiki + "/api/oauth/backchannel",
+		".example/cb":            "",
+		"//evil.example/cb":      "",
+		"/cb?next=/":             "",
+	} {
+		c, _ := newSSOClient("d0c5a1e2-0000-4000-8000-000000000001", wiki, json.RawMessage(`["/cb"]`), nil, path, true)
+		if c.LogoutURI != want {
+			t.Errorf("logout path %q: URI %q, want %q", path, c.LogoutURI, want)
+		}
+	}
 }
 
 func TestRedirectURIsMatchExactly(t *testing.T) {

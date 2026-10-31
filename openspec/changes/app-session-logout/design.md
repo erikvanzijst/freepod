@@ -32,7 +32,7 @@ See proposal.md for why. The facts this design rests on:
 
 ### D1. Keycloak posts to the broker inside the cluster
 
-Each `freepod-apps-*` client gets `backchannel_logout_url = http://app-auth.<namespace>.svc.cluster.local:8081/backchannel-logout`, `backchannel_logout_session_required = true` and `backchannel_logout_revoke_offline_sessions = false`. The handler lives on the broker's mux, so it is also reachable as `https://login.<domain>/backchannel-logout`; that is harmless, because only Keycloak can sign an acceptable token.
+Each `freepod-apps-*` client gets `backchannel_logout_url = http://app-auth.<namespace>.svc.cluster.local:8081/backchannel-logout`, `backchannel_logout_session_required = true` and `backchannel_logout_revoke_offline_sessions = false`. It also sets `frontchannel_logout_enabled = false` explicitly: Keycloak 24 skips the back channel for any client with front-channel logout enabled (`AuthenticationManager.browserLogoutAllClients`). The handler lives on the broker's mux, so it is also reachable as `https://login.<domain>/backchannel-logout`; that is harmless, because only Keycloak can sign an acceptable token.
 
 Alternative: the public URL. Rejected because it hairpins through the edge for no benefit.
 
@@ -42,7 +42,7 @@ app-auth verifies with the go-oidc verifier it already builds for Keycloak's ID 
 
 ### D3. The `sid` given to an app
 
-`sid = base64url(HMAC-SHA256(k, client_id ‖ 0x00 ‖ keycloak_sid))`, where `k` is derived from the first key of app-auth's sealing keyring under a dedicated purpose label. The value is computed once, when the provider issues a code, and stored in both the OIDC code record and the sign-in record, so rotating the keyring never changes a `sid` already issued.
+`sid = base64url(HMAC-SHA256(k, client_id ‖ 0x00 ‖ keycloak_sid))`, where `k` is derived from the first key of app-auth's sealing keyring under a dedicated purpose label. The value is computed when the provider issues a code, and stored in both the OIDC code record and the sign-in record. When a sign-in record for that Keycloak session and deployment already exists, its `sid` wins over the freshly derived one, so a keyring rotation never changes the `sid` of a session already signed in, nor splits one browser's app sessions across two values.
 
 Alternatives:
 - Keycloak's own `sid`. Rejected: apps would learn the identity provider's session ID, and two tenants' apps could tie their sessions to one browser.
@@ -50,14 +50,14 @@ Alternatives:
 
 ### D4. Carrying the Keycloak session ID
 
-- The exchange keeps `sid` in `identity` and refuses an ID token without one (fail closed: a sign-in nothing could sign out). Keycloak 24 includes `sid` in every ID token; task 1.1 confirms it on dev.
-- Pending consent already seals the whole `identity`, so it carries `sid` unchanged.
+- The exchange keeps `sid` in `identity` and refuses an ID token without one (fail closed: a sign-in nothing could sign out). Keycloak 24.0.5 includes `sid` in every ID token: `IDToken.getSessionId()` serializes as `sid` beside the deprecated `session_state`, and `TokenManager.generateIDToken` copies it from the access token, where it is the user session's ID, so it is per browser and stable across silent sign-ins.
+- Pending consent gains the Keycloak session ID. A consent page sealed before the rollout has none and is treated as expired.
 - Header apps: `app_auth_code` gains `keycloak_sid`, and the session cookie gains a `ksid` field. Cookies issued before this change have none and stay valid until they expire.
 - OIDC apps: `app_auth_oidc_code` gains `sid` (the app's value, D3). The ID token issued at redemption carries it.
 
 ### D5. Recording OIDC sign-ins at code issue
 
-When `issueOIDCCode` issues a code, it inserts the code record and upserts the sign-in record (`keycloak_sid`, `deployment_id`, `subject`, `sid`, `signed_in_at`) in one transaction. The primary key is (`keycloak_sid`, `deployment_id`), with a cascade from `deployment`. A failed write issues no code.
+When `issueOIDCCode` issues a code, it upserts the sign-in record (`keycloak_sid`, `deployment_id`, `subject`, `sid`, `signed_in_at`) and inserts the code record, carrying the record's `sid` (D3), in one transaction. The primary key is (`keycloak_sid`, `deployment_id`), with a cascade from `deployment`. A failed write issues no code.
 
 Recording at issue rather than at redemption keeps the write where app-auth already writes. A code that is never redeemed leaves a record whose logout reaches an app with no matching session, which Immich answers with `200`.
 
@@ -92,7 +92,7 @@ The token format is shared with the API's revocation token. Both sides pin it wi
 The verifier keeps a set of ended Keycloak session IDs:
 
 - **First load:** every row, which the purge bounds to 7 days.
-- **Refresh:** every 5 seconds, reading rows with `ended_at` at or after the latest it has seen. The comparison is inclusive and the set deduplicates, so rows committed with the same timestamp are not missed.
+- **Refresh:** every 5 seconds, reading rows with `ended_at` at or after the latest it has seen, less one minute. `ended_at` is the time its transaction began, so a slow commit can land behind a row already read; the lookback catches it, and the set absorbs the repeats.
 - **On database errors:** it keeps its copy.
 - **Before the first successful load:** it answers signed-in requests with an error, as it does when the verifier is down.
 - **Pruning:** entries older than 7 days are dropped.

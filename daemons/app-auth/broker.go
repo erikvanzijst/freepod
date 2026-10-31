@@ -51,6 +51,7 @@ type pendingConsent struct {
 	CSRF         string       `json:"csrf"`
 	OIDC         *oidcRequest `json:"oidc,omitempty"`
 	AuthTime     int64        `json:"at,omitempty"`
+	KeycloakSID  string       `json:"ksid,omitempty"`
 }
 
 // logoutState is where to send the browser once Keycloak has ended its session.
@@ -69,6 +70,9 @@ type identity struct {
 	Email    string
 	Name     string
 	AuthTime time.Time
+	// KeycloakSID is the Keycloak session the user signed in with, which
+	// every app session issued from this sign-in names (app-sign-out).
+	KeycloakSID string
 }
 
 // authParams are what an OIDC client's request passes through to Keycloak.
@@ -83,9 +87,17 @@ type authenticator interface {
 	authURL(state, nonce, verifier string, p authParams) (string, error)
 	exchange(ctx context.Context, code, verifier, nonce string) (identity, error)
 	endSessionURL(state, postLogoutRedirect string) (string, error)
+	// verifyLogout checks a back-channel logout token and returns the
+	// session it ends.
+	verifyLogout(ctx context.Context, raw string, now time.Time) (string, error)
 }
 
-var errEmailUnverified = errors.New("email not verified")
+var (
+	errEmailUnverified = errors.New("email not verified")
+	// errNoSession is an ID token without `sid`: nothing could ever sign the
+	// resulting app sessions out, so the sign-in fails closed.
+	errNoSession = errors.New("id_token names no session")
+)
 
 type broker struct {
 	chrome   chrome
@@ -100,6 +112,10 @@ type broker struct {
 	tenantDomain string
 	// oidc is the OpenID Provider; nil leaves its routes out.
 	oidc *provider
+	// logoutClient sends apps their logout tokens; signOuts tracks the
+	// deliveries in flight.
+	logoutClient *http.Client
+	signOuts     sync.WaitGroup
 }
 
 func (b *broker) routes() http.Handler {
@@ -109,6 +125,7 @@ func (b *broker) routes() http.Handler {
 	mux.HandleFunc("POST /consent", b.consent)
 	mux.HandleFunc("GET /logout", b.logout)
 	mux.HandleFunc("GET /signed-out", b.signedOut)
+	mux.HandleFunc("POST /backchannel-logout", b.backchannelLogout)
 	mux.Handle("GET /assets/", assetHandler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	if b.oidc != nil {
@@ -210,7 +227,7 @@ func (b *broker) callback(w http.ResponseWriter, r *http.Request) {
 
 	pc := pendingConsent{
 		Host: f.Host, RD: f.RD, NonceHash: f.NonceHash, DeploymentID: app.ID,
-		Sub: id.Sub, Email: id.Email, Name: id.Name, CSRF: randomToken(),
+		Sub: id.Sub, Email: id.Email, Name: id.Name, CSRF: randomToken(), KeycloakSID: id.KeycloakSID,
 	}
 	sealed, err := b.keys.seal("consent", pc, consentTTL, b.now())
 	if err != nil {
@@ -236,7 +253,9 @@ func (b *broker) consent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	clearCookie(w, consentCookie)
-	if !opened || subtle.ConstantTimeCompare([]byte(pc.CSRF), []byte(r.PostForm.Get("csrf"))) != 1 {
+	// A consent page from before sign-ins named their Keycloak session has
+	// none, and is as good as expired.
+	if !opened || subtle.ConstantTimeCompare([]byte(pc.CSRF), []byte(r.PostForm.Get("csrf"))) != 1 || pc.KeycloakSID == "" {
 		b.errorPage(w, http.StatusBadRequest, "This page expired", "Nothing was shared. Go back to the app and sign in again.")
 		return
 	}
@@ -262,7 +281,7 @@ func (b *broker) consent(w http.ResponseWriter, r *http.Request) {
 		b.errorPage(w, http.StatusConflict, "This app changed", "It was replaced while you were deciding, and nothing was shared. Go back to it and sign in again.")
 		return
 	}
-	id := identity{Sub: pc.Sub, Email: pc.Email, Name: pc.Name}
+	id := identity{Sub: pc.Sub, Email: pc.Email, Name: pc.Name, KeycloakSID: pc.KeycloakSID}
 	if !b.admits(ctx, w, app, pc.Host, id) {
 		return
 	}
@@ -278,6 +297,11 @@ func (b *broker) exchange(ctx context.Context, w http.ResponseWriter, code strin
 	id, err := b.auth.exchange(ctx, code, f.Verifier, f.OIDCNonce)
 	if errors.Is(err, errEmailUnverified) {
 		renderPage(w, http.StatusForbidden, page{chrome: b.chrome, Kind: "info", Title: "Verify your email first", Message: "Apps can only receive a verified email address. Open the verification email Freepod sent you, then sign in again."})
+		return identity{}, false
+	}
+	if errors.Is(err, errNoSession) {
+		b.log.Error("identity provider sent an ID token without sid")
+		b.errorPage(w, http.StatusServiceUnavailable, "Sign-in is temporarily unavailable", "Something on our side isn't working as it should. Please try again later.")
 		return identity{}, false
 	}
 	if err != nil {
@@ -419,6 +443,7 @@ func (b *broker) issueCode(ctx context.Context, w http.ResponseWriter, app heade
 	code := randomToken()
 	if err := b.store.insertCode(ctx, sha256Bytes(code), codeRecord{
 		Host: host, Subject: id.Sub, Email: id.Email, Name: id.Name, ReturnPath: rd, NonceHash: nonceDigest,
+		KeycloakSID: id.KeycloakSID,
 	}); err != nil {
 		b.internal(w, "storing code", err)
 		return
@@ -515,8 +540,9 @@ func (a *oidcAuth) endSessionURL(state, postLogoutRedirect string) (string, erro
 }
 
 // exchange trades the code for tokens, verifies the ID token, and keeps only
-// the three claims the consent page names. The tokens themselves go out of
-// scope here: nothing stores them, and nothing sends them anywhere.
+// the three claims the consent page names, and the session they came from.
+// The tokens themselves go out of scope here: nothing stores them, and nothing
+// sends them anywhere.
 func (a *oidcAuth) exchange(ctx context.Context, code, verifier, nonce string) (identity, error) {
 	cfg, idVerifier, err := a.config(ctx)
 	if err != nil {
@@ -543,12 +569,16 @@ func (a *oidcAuth) exchange(ctx context.Context, code, verifier, nonce string) (
 		Name              string `json:"name"`
 		PreferredUsername string `json:"preferred_username"`
 		AuthTime          int64  `json:"auth_time"`
+		SID               string `json:"sid"`
 	}
 	if err := idt.Claims(&claims); err != nil {
 		return identity{}, err
 	}
 	if !claims.EmailVerified || claims.Email == "" {
 		return identity{}, errEmailUnverified
+	}
+	if claims.SID == "" {
+		return identity{}, errNoSession
 	}
 	name := strings.TrimSpace(claims.Name)
 	if name == "" {
@@ -558,7 +588,7 @@ func (a *oidcAuth) exchange(ctx context.Context, code, verifier, nonce string) (
 	if claims.AuthTime > 0 {
 		authTime = time.Unix(claims.AuthTime, 0)
 	}
-	return identity{Sub: idt.Subject, Email: claims.Email, Name: name, AuthTime: authTime}, nil
+	return identity{Sub: idt.Subject, Email: claims.Email, Name: name, AuthTime: authTime, KeycloakSID: claims.SID}, nil
 }
 
 // previewPrefix marks the live preview of an app:

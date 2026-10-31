@@ -111,12 +111,14 @@ func run(log *slog.Logger) error {
 		keys: keys, store: st, loginURL: cfg.loginURL, now: time.Now, log: log,
 		patterns: newPatternCache(log), allowed: newAllowCache(log),
 		access: newAccessCache(st, cfg.tenantDomain, time.Now, log),
+		ended:  newEndedCache(st, time.Now, log),
 	}
 	b := &broker{
 		chrome:   newChrome(cfg.loginURL),
 		loginURL: cfg.loginURL,
 		keys:     keys, store: st, now: time.Now, log: log,
 		tenantDomain: cfg.tenantDomain,
+		logoutClient: newLogoutClient(),
 		auth: &oidcAuth{
 			issuer: cfg.issuer, clientID: cfg.clientID, clientSecret: cfg.clientSecret,
 			redirectURL: cfg.loginURL + "/callback",
@@ -129,8 +131,9 @@ func run(log *slog.Logger) error {
 	verifyMux := http.NewServeMux()
 	verifyMux.Handle("/verify", v)
 	// Readiness is the process alone, deliberately not the database: checking a
-	// session touches it only to refresh an access list, whose last copy holds
-	// through an outage, so an outage must cost only new sign-ins.
+	// session touches it only to refresh an access list or the ended sessions,
+	// whose last copies hold through an outage, so an outage must cost only new
+	// sign-ins.
 	verifyMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 
 	servers := []*http.Server{
@@ -147,6 +150,7 @@ func run(log *slog.Logger) error {
 		}(s)
 	}
 	go purgeLoop(ctx, st, log)
+	go v.ended.run(ctx)
 
 	select {
 	case err = <-errs:
@@ -179,10 +183,11 @@ func loadProvider(cfg config, log *slog.Logger) (*provider, error) {
 	return &provider{clientKeys: clientKeys, signer: signer}, nil
 }
 
-// purgeLoop removes expired codes. Every replica runs it; the delete is
-// idempotent, so running it twice costs nothing but a query. The first run
-// waits a minute: on a rollout this pod can start before the worker's init
-// container has (re)created its database role.
+// purgeLoop removes expired codes, and sign-out records past their retention.
+// Every replica runs it; the deletes are idempotent, so running them twice
+// costs nothing but a query. The first run waits a minute: on a rollout this
+// pod can start before the worker's init container has (re)created its
+// database role.
 func purgeLoop(ctx context.Context, st store, log *slog.Logger) {
 	t := time.NewTicker(10 * time.Minute)
 	defer t.Stop()
@@ -197,6 +202,11 @@ func purgeLoop(ctx context.Context, st store, log *slog.Logger) {
 			log.Warn("purging expired codes", "err", err)
 		} else if n > 0 {
 			log.Info("purged expired codes", "count", n)
+		}
+		if n, err := st.purgeSignOuts(c); err != nil {
+			log.Warn("purging sign-out records", "err", err)
+		} else if n > 0 {
+			log.Info("purged sign-out records", "count", n)
 		}
 		cancel()
 		select {

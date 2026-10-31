@@ -1,8 +1,8 @@
 """App authentication's own records: per-app consent, single-use sign-in codes,
-the OpenID Provider's authorization codes, and the access lists of `listed`
-deployments.
+the OpenID Provider's authorization codes, sign-ins and ended Keycloak sessions
+for signing browsers out, and the access lists of `listed` deployments.
 
-The consent and code tables are written and read only by `daemons/app-auth/` (a
+The consent, code and sign-out tables are written and read only by `daemons/app-auth/` (a
 Go service connecting as its own least-privilege role); the API never touches
 them. The access tables are the API's, which app-auth reads and binds.
 Declared here because every table's schema is owned by this package's Alembic
@@ -70,6 +70,9 @@ class AppAuthCodeORM(SQLModel, table=True):
     name: str = Field(sa_column=Column(Text(), nullable=False))
     return_path: str = Field(sa_column=Column(Text(), nullable=False))
     nonce_hash: bytes = Field(sa_column=Column(LargeBinary(), nullable=False))
+    # The Keycloak session the user signed in with, which the app session
+    # names so that ending it ends the app session too.
+    keycloak_sid: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
     expires_at: datetime = Field(sa_column=Column(DateTime(), nullable=False))
 
 
@@ -96,8 +99,42 @@ class AppAuthOIDCCodeORM(SQLModel, table=True):
     name: str = Field(sa_column=Column(Text(), nullable=False))
     nonce: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
     code_challenge: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    # The `sid` the ID token carries: the user's session at this client.
+    sid: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
     auth_time: datetime = Field(sa_column=Column(DateTime(), nullable=False))
     expires_at: datetime = Field(sa_column=Column(DateTime(), nullable=False))
+
+
+class AppAuthSignInORM(SQLModel, table=True):
+    """The latest OIDC sign-in to a deployment from one Keycloak session.
+
+    When that session ends, app-auth sends the deployment a logout token for
+    `sid`, the session ID it gave the deployment, and deletes the record.
+    """
+
+    __tablename__ = "app_auth_sign_in"
+    __table_args__ = (Index("ix_app_auth_sign_in_signed_in_at", "signed_in_at"),)
+
+    keycloak_sid: str = Field(sa_column=Column(Text(), primary_key=True))
+    deployment_id: UUID = Field(
+        sa_column=Column(Uuid, ForeignKey("deployment.id", ondelete="CASCADE"), primary_key=True)
+    )
+    subject: str = Field(sa_column=Column(Text(), nullable=False))
+    sid: str = Field(sa_column=Column(Text(), nullable=False))
+    signed_in_at: datetime = Field(sa_column=Column(DateTime(), nullable=False))
+
+
+class AppAuthEndedSessionORM(SQLModel, table=True):
+    """A Keycloak session that has ended, as Keycloak reported it.
+
+    The verifier refuses header-app sessions that name it.
+    """
+
+    __tablename__ = "app_auth_ended_session"
+    __table_args__ = (Index("ix_app_auth_ended_session_ended_at", "ended_at"),)
+
+    keycloak_sid: str = Field(sa_column=Column(Text(), primary_key=True))
+    ended_at: datetime = Field(sa_column=Column(DateTime(), nullable=False))
 
 
 class AppAccessEntryORM(SQLModel, table=True):

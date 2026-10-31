@@ -27,11 +27,25 @@ type memStore struct {
 	// clients are SSO-enabled deployments by ID, as their template declares them.
 	clients   map[string]memClient
 	oidcCodes map[string]memOIDCCode
+	// signIns are keyed by Keycloak session and deployment, ended holds when
+	// each Keycloak session ended.
+	signIns map[[2]string]memSignIn
+	ended   map[string]time.Time
+	// signOutErr fails sign-in records and endSession; endedErr fails
+	// endedSessions, whose every since endedReads records.
+	signOutErr, endedErr error
+	endedReads           []time.Time
+}
+
+type memSignIn struct {
+	signIn
+	at time.Time
 }
 
 type memClient struct {
 	host           string
 	paths, natives string // JSON, as the template's system values hold them
+	logout         string // auth.oidc.backchannelLogoutPath
 	pkceOptOut     bool
 	listed         bool
 }
@@ -49,6 +63,7 @@ type memCode struct {
 func newMemStore(now func() time.Time) *memStore {
 	return &memStore{now: now, hosts: map[string]string{}, consents: map[[2]string][]string{}, codes: map[string]memCode{},
 		clients: map[string]memClient{}, oidcCodes: map[string]memOIDCCode{},
+		signIns: map[[2]string]memSignIn{}, ended: map[string]time.Time{},
 		listed: map[string]bool{}, owners: map[string]string{}, entries: map[string][]accessEntry{}, names: map[string]string{}}
 }
 
@@ -162,17 +177,62 @@ func (m *memStore) ssoClient(_ context.Context, id string) (ssoClient, bool, err
 	if !ok {
 		return ssoClient{}, false, nil
 	}
-	c, ok := newSSOClient(id, mc.host, json.RawMessage(mc.paths), json.RawMessage(mc.natives), !mc.pkceOptOut)
+	c, ok := newSSOClient(id, mc.host, json.RawMessage(mc.paths), json.RawMessage(mc.natives), mc.logout, !mc.pkceOptOut)
 	c.Listed = mc.listed
 	return c, ok, nil
 }
 
-func (m *memStore) insertOIDCCode(_ context.Context, h []byte, c oidcCode) error {
+func (m *memStore) insertOIDCCode(_ context.Context, h []byte, c oidcCode, keycloakSID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.signOutErr != nil {
+		return m.signOutErr
+	}
+	key := [2]string{keycloakSID, c.DeploymentID}
+	if held, ok := m.signIns[key]; ok {
+		c.SID = held.SID
+	}
+	m.signIns[key] = memSignIn{signIn{DeploymentID: c.DeploymentID, Subject: c.Subject, SID: c.SID}, m.now()}
 	m.oidcCodes[string(h)] = memOIDCCode{rec: c, expires: m.now().Add(codeTTL)}
 	return nil
 }
+
+func (m *memStore) endSession(_ context.Context, keycloakSID string) ([]signIn, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.signOutErr != nil {
+		return nil, m.signOutErr
+	}
+	if _, ok := m.ended[keycloakSID]; !ok {
+		m.ended[keycloakSID] = m.now()
+	}
+	var out []signIn
+	for k, s := range m.signIns {
+		if k[0] == keycloakSID {
+			out = append(out, s.signIn)
+			delete(m.signIns, k)
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) endedSessions(_ context.Context, since time.Time) ([]endedSession, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.endedReads = append(m.endedReads, since)
+	if m.endedErr != nil {
+		return nil, m.endedErr
+	}
+	var out []endedSession
+	for id, at := range m.ended {
+		if !at.Before(since) {
+			out = append(out, endedSession{ID: id, At: at})
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) purgeSignOuts(context.Context) (int64, error) { return 0, nil }
 
 func (m *memStore) redeemOIDCCode(_ context.Context, h []byte) (oidcCode, bool, bool, error) {
 	m.mu.Lock()

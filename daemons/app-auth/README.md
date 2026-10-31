@@ -17,9 +17,12 @@ which the API edits. It has three roles:
   whether the access list applies (`l=1`), the accounts allowed in (`a`) and
   the app's name for the no-access page (`n`). It also serves
   `/.freepod/auth/{login,callback,logout}` on each app host, from inside
-  forward-auth. The per-request path reads the database only to refresh a
-  listed host's access list, at most every 30 seconds, and keeps its last
-  copy through an outage.
+  forward-auth. A session names the Keycloak session it came from, and counts
+  as none once that has ended. The per-request path reads the database only
+  to refresh a listed host's access list, at most every 30 seconds; ended
+  Keycloak sessions are read every 5 seconds in the background. Both keep
+  their last copy through an outage, and signed-in requests fail until the
+  ended sessions have been read once.
 - **The broker** (`:8081`, public at `login.<domain>`) is the only party that
   talks OIDC to Keycloak, through one client per environment
   (`freepod-apps-{prod,dev}`) with one redirect URI. It checks that the host is
@@ -28,21 +31,27 @@ which the API edits. It has three roles:
   single-use code bound to that host and to the browser that started signing
   in. Issuing a code ties an access list entry to the subject that first signs
   in with it. `preview-<label>.<rest>` signs in as the deployment at
-  `<label>.<rest>`.
+  `<label>.<rest>`. Keycloak posts its back-channel logouts to
+  `POST /backchannel-logout`, inside the cluster.
 - **The provider** (also `:8081`, issuer `https://login.<domain>`) is an OpenID
   Provider for SSO-enabled deployments, under `/oidc/` plus discovery. It signs
   users in through the broker's Keycloak leg and consent, and has no client
   records: a client's ID is its deployment's ID, its secret is derived, and its
   redirect URIs are the template's declared paths on the deployment's
   hostname. The reconciler publishes each deployment's credentials in a
-  Secret. The API, not this service, sends back-channel logout tokens when an
-  owner removes someone, signed with the provider's key.
+  Secret. ID tokens carry a `sid` per Keycloak session and client, and each
+  sign-in is recorded against the Keycloak session, so that ending it sends
+  the app a logout token for that `sid`. The API sends the logout tokens
+  that end every session of someone an owner removes.
 
 **Logout** (`/.freepod/auth/logout?rd=…`) clears the app host's session, then
 goes through the broker's `/logout` to Keycloak's end-session endpoint, so the
 next sign-in asks for credentials and can pick another account. Keycloak
 returns to the broker's `/signed-out` (the client's only post-logout redirect
-URI), which forwards to the app host. Other hosts' sessions are untouched.
+URI), which forwards to the app host. Ending the Keycloak session, from an app
+or the dashboard, signs the browser out of every app it used: header apps
+within seconds, and OIDC apps that declare `auth.oidc.backchannelLogoutPath`
+through one logout token each, sent in the background and never retried.
 
 Spec: [app-auth-verifier](../../openspec/specs/app-auth-verifier/spec.md),
 [app-auth-broker](../../openspec/specs/app-auth-broker/spec.md),
@@ -51,7 +60,8 @@ Spec: [app-auth-verifier](../../openspec/specs/app-auth-verifier/spec.md),
 [app-access-list](../../openspec/specs/app-access-list/spec.md),
 [app-studio-access](../../openspec/specs/app-studio-access/spec.md),
 [app-oidc-provider](../../openspec/specs/app-oidc-provider/spec.md),
-[app-oidc-chart-contract](../../openspec/specs/app-oidc-chart-contract/spec.md) ·
+[app-oidc-chart-contract](../../openspec/specs/app-oidc-chart-contract/spec.md),
+[app-sign-out](../../openspec/specs/app-sign-out/spec.md) ·
 Rationale: [app-authentication](../../openspec/changes/archive/2026-09-28-app-authentication/design.md),
 [app-auth-owner-and-preview](../../openspec/changes/archive/2026-10-16-app-auth-owner-and-preview/design.md),
 [app-oidc-provider](../../openspec/changes/archive/2026-10-26-app-oidc-provider/design.md)
@@ -85,7 +95,9 @@ key seals; all keys open. Rotate by adding a new key in front, and drop the old
 one after 7 days (the session lifetime). Replacing a key outright signs every
 user out of every app. Values are sealed with AES-256-GCM, with the key derived
 per purpose, so a broker flow cookie can never open as a session. The
-provider's access tokens are sealed with the same keys.
+provider's access tokens are sealed with the same keys, and the first key also
+derives the `sid` apps see; a rotation leaves the `sid`s already given out as
+they are.
 
 The provider needs two more, and leaves its routes out unless both are set:
 

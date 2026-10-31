@@ -88,11 +88,15 @@ func (p *stubIdP) authorize(t *testing.T, authURL string, claims map[string]any)
 		t.Fatalf("authorization URL without S256 PKCE: %s", authURL)
 	}
 	full := map[string]any{
-		"iss": p.srv.URL, "aud": "freepod-apps-dev", "sub": "3f2a",
+		"iss": p.srv.URL, "aud": "freepod-apps-dev", "sub": "3f2a", "sid": "kc-session-1",
 		"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix(), "nonce": q.Get("nonce"),
 	}
 	for k, v := range claims {
-		full[k] = v
+		if v == nil {
+			delete(full, k)
+		} else {
+			full[k] = v
+		}
 	}
 	code := randomToken()
 	p.mu.Lock()
@@ -122,7 +126,7 @@ func TestOIDCExchange(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if id.Sub != "3f2a" || id.Email != "alice@example.com" || id.Name != "Alice" || !id.AuthTime.Equal(authTime) {
+		if id.Sub != "3f2a" || id.Email != "alice@example.com" || id.Name != "Alice" || !id.AuthTime.Equal(authTime) || id.KeycloakSID != "kc-session-1" {
 			t.Fatalf("identity %+v", id)
 		}
 	})
@@ -156,6 +160,15 @@ func TestOIDCExchange(t *testing.T) {
 		code := p.authorize(t, u, map[string]any{"email": "a@x", "email_verified": false})
 		if _, err := a.exchange(ctx, code, "verifier-2-verifier-2-verifier-2-verifier-2", "n"); !errors.Is(err, errEmailUnverified) {
 			t.Fatalf("got %v, want errEmailUnverified", err)
+		}
+	})
+
+	t.Run("no session", func(t *testing.T) {
+		a := p.auth()
+		u, _ := a.authURL("s", "n", "verifier-7-verifier-7-verifier-7-verifier-7", authParams{})
+		code := p.authorize(t, u, map[string]any{"email": "a@x", "email_verified": true, "sid": nil})
+		if _, err := a.exchange(ctx, code, "verifier-7-verifier-7-verifier-7-verifier-7", "n"); !errors.Is(err, errNoSession) {
+			t.Fatalf("got %v, want errNoSession", err)
 		}
 	})
 

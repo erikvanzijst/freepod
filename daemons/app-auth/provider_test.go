@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 )
 
 const (
@@ -178,7 +180,7 @@ func TestSigningKeys(t *testing.T) {
 		if len(s.jwks.Keys) != 2 || s.jwks.Keys[0].KeyID != s.keys[0].kid {
 			t.Fatalf("%+v", s.jwks.Keys)
 		}
-		tok, err := s.sign(map[string]any{"x": "y"})
+		tok, err := s.sign("JWT", map[string]any{"x": "y"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -264,7 +266,7 @@ func TestDiscovery(t *testing.T) {
 		"token_endpoint_auth_methods_supported": `["client_secret_basic","client_secret_post"]`,
 		"code_challenge_methods_supported":      `["S256"]`,
 		"backchannel_logout_supported":          `true`,
-		"backchannel_logout_session_supported":  `false`,
+		"backchannel_logout_session_supported":  `true`,
 	} {
 		if got, _ := json.Marshal(meta[k]); string(got) != want {
 			t.Errorf("%s = %s, want %s", k, got, want)
@@ -394,7 +396,8 @@ func TestAuthorizationCodeFlow(t *testing.T) {
 		}
 		rec, fresh, found, _ := g.st.redeemOIDCCode(context.Background(), sha256Bytes(code))
 		want := oidcCode{DeploymentID: depWiki, RedirectURI: wikiCallback, Subject: "3f2a", Email: "alice@example.com",
-			Name: "Alice", Nonce: "app-nonce", CodeChallenge: pkceChallenge, AuthTime: t0.Add(-time.Hour)}
+			Name: "Alice", Nonce: "app-nonce", CodeChallenge: pkceChallenge, AuthTime: t0.Add(-time.Hour),
+			SID: g.b.keys.appSID(depWiki, "kc-session-1")}
 		if !found || !fresh || !rec.AuthTime.Equal(want.AuthTime) {
 			t.Fatalf("code %+v found=%v fresh=%v", rec, found, fresh)
 		}
@@ -768,7 +771,7 @@ func TestIDToken(t *testing.T) {
 	idt.Claims(&claims)
 	want := map[string]any{
 		"iss": srv.URL, "aud": depWiki, "azp": depWiki, "sub": "3f2a", "email": "alice@example.com",
-		"email_verified": true, "name": "Alice", "nonce": "app-nonce",
+		"email_verified": true, "name": "Alice", "nonce": "app-nonce", "sid": g.b.keys.appSID(depWiki, "kc-session-1"),
 		"iat": float64(t0.Unix()), "exp": float64(t0.Add(300 * time.Second).Unix()), "auth_time": float64(t0.Add(-time.Hour).Unix()),
 	}
 	if len(claims) != len(want) {
@@ -1087,5 +1090,69 @@ func TestProviderListed(t *testing.T) {
 		g := newProviderRig(t)
 		g.st.owners[depWiki] = "owner@example.com"
 		g.codeFor(depWiki, cb)
+	})
+}
+
+// idTokenSID redeems a code and returns the sid of the ID token it yields.
+func (g *providerRig) idTokenSID(clientID, redirectURI string) string {
+	g.t.Helper()
+	tok, err := jwt.ParseSigned(g.redeem(clientID, redirectURI).IDToken, []jose.SignatureAlgorithm{jose.RS256})
+	if err != nil {
+		g.t.Fatal(err)
+	}
+	var c idTokenClaims
+	if err := tok.UnsafeClaimsWithoutVerification(&c); err != nil || c.SID == "" {
+		g.t.Fatalf("ID token claims %+v, %v", c, err)
+	}
+	return c.SID
+}
+
+func TestSessionIDs(t *testing.T) {
+	g := newProviderRig(t)
+	otherCallback := "https://" + other + "/oidc/callback"
+	first := g.idTokenSID(depWiki, wikiCallback)
+
+	if again := g.idTokenSID(depWiki, wikiCallback); again != first {
+		t.Errorf("a second sign-in in one Keycloak session got sid %q, then %q", first, again)
+	}
+	if first == "kc-session-1" || strings.Contains(first, "kc-session") {
+		t.Errorf("the app was given Keycloak's session ID: %q", first)
+	}
+	if o := g.idTokenSID(depOther, otherCallback); o == first || o == "kc-session-1" {
+		t.Errorf("another client got sid %q", o)
+	}
+	if s := g.st.signIns[[2]string{"kc-session-1", depWiki}]; s.SID != first || s.Subject != "3f2a" {
+		t.Errorf("sign-in record %+v", s)
+	}
+
+	t.Run("another browser", func(t *testing.T) {
+		g.auth.id.KeycloakSID = "kc-session-2"
+		defer func() { g.auth.id.KeycloakSID = "kc-session-1" }()
+		if s := g.idTokenSID(depWiki, wikiCallback); s == first {
+			t.Error("two Keycloak sessions got the same sid")
+		}
+	})
+
+	t.Run("survives a key rotation", func(t *testing.T) {
+		old := g.b.keys
+		g.b.keys = mustKeyring(t, "k2:"+testKey('b')+",k1:"+testKey('a'))
+		defer func() { g.b.keys = old }()
+		if g.b.keys.appSID(depWiki, "kc-session-1") == first {
+			t.Fatal("the rotated key derives the same sid")
+		}
+		if s := g.idTokenSID(depWiki, wikiCallback); s != first {
+			t.Errorf("after a rotation, the session's sid changed from %q to %q", first, s)
+		}
+	})
+
+	t.Run("a sign-in that cannot be recorded issues no code", func(t *testing.T) {
+		g.st.signOutErr = errors.New("database down")
+		defer func() { g.st.signOutErr = nil }()
+		codes := len(g.st.oidcCodes)
+		g.st.recordConsent(context.Background(), "3f2a", depWiki, disclosedClaims)
+		oauthError(t, g.signIn(authorizeQuery(depWiki, wikiCallback)), wikiCallback, "server_error", "app-state")
+		if len(g.st.oidcCodes) != codes {
+			t.Fatal("a code was issued")
+		}
 	})
 }

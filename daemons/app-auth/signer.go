@@ -17,7 +17,10 @@ import (
 const (
 	idTokenTTL     = 300 * time.Second
 	accessTokenTTL = 10 * time.Minute
+	logoutTokenTTL = 120 * time.Second
 )
+
+const backchannelLogoutEvent = "http://schemas.openid.net/event/backchannel-logout"
 
 // signer holds the provider's ID token keys, current first (D6). The first
 // signs; the JWKS publishes every key, so tokens signed just before a rotation
@@ -82,10 +85,10 @@ func parseSigningKeys(spec string) (*signer, error) {
 	return s, nil
 }
 
-func (s *signer) sign(claims any) (string, error) {
+func (s *signer) sign(typ jose.ContentType, claims any) (string, error) {
 	k := s.keys[0]
 	sig, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: k.priv},
-		(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", k.kid))
+		(&jose.SignerOptions{}).WithType(typ).WithHeader("kid", k.kid))
 	if err != nil {
 		return "", err
 	}
@@ -97,6 +100,7 @@ type idTokenClaims struct {
 	Audience      string `json:"aud"`
 	AZP           string `json:"azp"`
 	Subject       string `json:"sub"`
+	SID           string `json:"sid,omitempty"`
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
 	Name          string `json:"name"`
@@ -107,11 +111,32 @@ type idTokenClaims struct {
 }
 
 func (s *signer) idToken(issuer string, c oidcCode, now time.Time) (string, error) {
-	return s.sign(idTokenClaims{
+	return s.sign("JWT", idTokenClaims{
 		Issuer: issuer, Audience: c.DeploymentID, AZP: c.DeploymentID,
-		Subject: c.Subject, Email: c.Email, EmailVerified: true, Name: c.Name,
+		Subject: c.Subject, SID: c.SID, Email: c.Email, EmailVerified: true, Name: c.Name,
 		IssuedAt: now.Unix(), Expiry: now.Add(idTokenTTL).Unix(), AuthTime: c.AuthTime.Unix(),
 		Nonce: c.Nonce,
+	})
+}
+
+// logoutClaims are a back-channel logout token's. The API signs the same
+// format for a revocation, without sid (api/app/services/app_access.py).
+type logoutClaims struct {
+	Issuer   string              `json:"iss"`
+	Audience string              `json:"aud"`
+	IssuedAt int64               `json:"iat"`
+	Expiry   int64               `json:"exp"`
+	ID       string              `json:"jti"`
+	Subject  string              `json:"sub"`
+	SID      string              `json:"sid"`
+	Events   map[string]struct{} `json:"events"`
+}
+
+// logoutToken ends the session sid of subject at a client (app-sign-out).
+func (s *signer) logoutToken(issuer, clientID, subject, sid string, now time.Time) (string, error) {
+	return s.sign("logout+jwt", logoutClaims{
+		Issuer: issuer, Audience: clientID, IssuedAt: now.Unix(), Expiry: now.Add(logoutTokenTTL).Unix(),
+		ID: randomToken(), Subject: subject, SID: sid, Events: map[string]struct{}{backchannelLogoutEvent: {}},
 	})
 }
 

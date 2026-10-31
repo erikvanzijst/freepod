@@ -27,6 +27,9 @@ type session struct {
 	Email string `json:"email"`
 	Name  string `json:"name"`
 	Host  string `json:"host"`
+	// KeycloakSID is the Keycloak session this one was issued from. Ending
+	// that ends this one; a session that names none lasts until it expires.
+	KeycloakSID string `json:"ksid,omitempty"`
 }
 
 type verifier struct {
@@ -38,6 +41,7 @@ type verifier struct {
 	patterns *patternCache
 	allowed  *allowCache
 	access   *accessCache
+	ended    *endedCache
 }
 
 // ServeHTTP answers Traefik's forward-auth request. Traefik describes the
@@ -68,6 +72,14 @@ func (v *verifier) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess, ok := v.session(r.Header, host)
+	if ok {
+		ended, ready := v.ended.status(sess.KeycloakSID)
+		if !ready {
+			http.Error(w, "sign-in is temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		ok = !ended
+	}
 	if ok && foreignInitiated(method, r.Header, host) {
 		ok = false
 	}
@@ -186,7 +198,7 @@ func (v *verifier) callback(w http.ResponseWriter, r *http.Request, host, code s
 		return
 	}
 	value, err := v.keys.seal("session", session{
-		Sub: rec.Subject, Email: rec.Email, Name: rec.Name, Host: host,
+		Sub: rec.Subject, Email: rec.Email, Name: rec.Name, Host: host, KeycloakSID: rec.KeycloakSID,
 	}, sessionTTL, v.now())
 	if err != nil {
 		v.log.Error("sealing session", "err", err)

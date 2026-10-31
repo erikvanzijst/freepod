@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -34,7 +35,17 @@ func newTestVerifier(t *testing.T) (*verifier, *memStore, *clock) {
 		keys: mustKeyring(t, "k1:"+testKey('a')), store: st, loginURL: login,
 		now: c.now, log: quiet, patterns: newPatternCache(quiet), allowed: newAllowCache(quiet),
 		access: newAccessCache(st, "freepod.app", c.now, quiet),
+		ended:  readyEnded(st, c.now),
 	}, st, c
+}
+
+// readyEnded is an ended-session cache that has read st once.
+func readyEnded(st store, now func() time.Time) *endedCache {
+	c := newEndedCache(st, now, quiet)
+	if err := c.refresh(context.Background()); err != nil {
+		panic(err)
+	}
+	return c
 }
 
 var alice = session{Sub: "3f2a", Email: "alice@example.com", Name: "Alice Ångström"}
@@ -728,5 +739,82 @@ func TestRequestsFromOtherOriginsAreNotIdentified(t *testing.T) {
 				t.Fatalf("X-Freepod-User = %q, want %q", got, c.wantUser)
 			}
 		})
+	}
+}
+
+func TestEndedSessions(t *testing.T) {
+	v, st, c := newTestVerifier(t)
+	ctx := context.Background()
+	request := func(s session) int {
+		t.Helper()
+		return v.do(fwd{host: milk, uri: "/lists", header: cookieHeader(sessionCookie + "=" + v.sessionFor(t, s, milk))}).Code
+	}
+	laptop, phone, before := alice, alice, alice
+	laptop.KeycloakSID, phone.KeycloakSID = "kc-laptop", "kc-phone"
+
+	if endedRefresh*2 > 10*time.Second {
+		t.Fatalf("a refresh every %v misses the 10-second bound", endedRefresh)
+	}
+	st.ended["kc-laptop"] = c.now()
+	if err := v.ended.refresh(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if code := request(laptop); code != http.StatusUnauthorized {
+		t.Fatalf("a session from an ended Keycloak session: %d", code)
+	}
+	if code := request(phone); code != http.StatusOK {
+		t.Fatalf("another browser's session: %d", code)
+	}
+	if code := request(before); code != http.StatusOK {
+		t.Fatalf("a session that names no Keycloak session: %d", code)
+	}
+
+	t.Run("an outage keeps the copy", func(t *testing.T) {
+		st.endedErr = errors.New("database down")
+		defer func() { st.endedErr = nil }()
+		if err := v.ended.refresh(ctx); err == nil {
+			t.Fatal("no error")
+		}
+		if request(laptop) != http.StatusUnauthorized || request(phone) != http.StatusOK {
+			t.Fatal("the copy was not kept")
+		}
+	})
+
+	t.Run("reads back from the latest it holds, less the lookback", func(t *testing.T) {
+		c.t = t0.Add(time.Hour)
+		defer func() { c.t = t0 }()
+		st.ended["kc-phone"] = t0.Add(-30 * time.Second) // committed late, behind kc-laptop
+		v.ended.refresh(ctx)
+		if since := st.endedReads[len(st.endedReads)-1]; !since.Equal(t0.Add(-endedLookback)) {
+			t.Fatalf("read from %v, want %v", since, t0.Add(-endedLookback))
+		}
+		if request(phone) != http.StatusUnauthorized {
+			t.Fatal("a session ended just behind the latest was missed")
+		}
+		delete(st.ended, "kc-phone")
+	})
+
+	t.Run("forgets sessions past every cookie", func(t *testing.T) {
+		c.t = t0.Add(endedRetention + time.Minute)
+		defer func() { c.t = t0 }()
+		v.ended.refresh(ctx)
+		if ended, _ := v.ended.status("kc-laptop"); ended {
+			t.Fatal("kept a session ended over seven days ago")
+		}
+	})
+}
+
+func TestEndedSessionsNeverRead(t *testing.T) {
+	v, st, _ := newTestVerifier(t)
+	st.endedErr = errors.New("database down")
+	v.ended = newEndedCache(st, v.now, quiet)
+	if err := v.ended.refresh(context.Background()); err == nil {
+		t.Fatal("no error")
+	}
+	if w := v.do(fwd{host: milk, uri: "/lists", header: cookieHeader(sessionCookie + "=" + v.sessionFor(t, alice, milk))}); w.Code != http.StatusServiceUnavailable || w.Header().Get("X-Freepod-User") != "" {
+		t.Fatalf("a signed-in request before the first read: %d", w.Code)
+	}
+	if w := v.do(fwd{host: milk, uri: "/lists", header: navigate(nil)}); w.Code != http.StatusFound {
+		t.Fatalf("an anonymous navigation: %d", w.Code)
 	}
 }

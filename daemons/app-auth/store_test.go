@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -509,6 +511,7 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 		"read other account columns": `SELECT handle FROM "user" LIMIT 1`,
 		"update consent":             `UPDATE app_auth_consent SET claims = '{}'`,
 		"update OIDC codes":          `UPDATE app_auth_oidc_code SET subject = subject`,
+		"update ended sessions":      `UPDATE app_auth_ended_session SET ended_at = ended_at`,
 		"read release build ids":     `SELECT build_id FROM deployment_release LIMIT 1`,
 		"read template chart refs":   `SELECT chart_ref FROM product_template_version LIMIT 1`,
 		"read products":              `SELECT name FROM product LIMIT 1`,
@@ -530,7 +533,16 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 		"read the owner":       `SELECT d.user_id, u.email FROM deployment d JOIN "user" u ON u.id = d.user_id LIMIT 1`,
 		"read access entries":  `SELECT id, email, subject, name, created_at, bound_at FROM app_access_entry LIMIT 1`,
 		"bind an access entry": `UPDATE app_access_entry SET subject = subject, name = name, bound_at = bound_at WHERE false`,
+		"write sign-ins": `INSERT INTO app_auth_sign_in (keycloak_sid, deployment_id, subject, sid, signed_in_at)
+			VALUES ('kc-` + f.unique + `', '` + dep + `', 's', 'sid', now())
+			ON CONFLICT (keycloak_sid, deployment_id) DO UPDATE SET signed_in_at = excluded.signed_in_at`,
+		"read and delete sign-ins":       `DELETE FROM app_auth_sign_in WHERE keycloak_sid IN (SELECT keycloak_sid FROM app_auth_sign_in WHERE false)`,
+		"write ended sessions":           `INSERT INTO app_auth_ended_session (keycloak_sid, ended_at) VALUES ('kc-` + f.unique + `', now()) ON CONFLICT DO NOTHING`,
+		"read and delete ended sessions": `DELETE FROM app_auth_ended_session WHERE ended_at < (SELECT min(ended_at) FROM app_auth_ended_session)`,
 	}
+	t.Cleanup(func() {
+		f.admin.Exec(ctx, `DELETE FROM app_auth_ended_session WHERE keycloak_sid = $1`, "kc-"+f.unique)
+	})
 	for name, sql := range allowed {
 		t.Run(name, func(t *testing.T) {
 			if _, err := pool.Exec(ctx, sql); err != nil {
@@ -639,10 +651,10 @@ func TestOIDCCodes(t *testing.T) {
 	dep := f.deploymentOf(f.otherProductID, "codes-"+f.unique+"-alice.freepod.app", "provisioned", ssoOn, declaresSSO)
 	authTime := time.Date(2026, 10, 26, 9, 30, 0, 0, time.FixedZone("CET", 3600))
 	rec := oidcCode{DeploymentID: dep, RedirectURI: "https://x/cb", Subject: "3f2a", Email: "a@x", Name: "A",
-		Nonce: "n", CodeChallenge: "c", AuthTime: authTime}
+		Nonce: "n", CodeChallenge: "c", AuthTime: authTime, SID: "app-sid"}
 
 	code := randomToken()
-	if err := st.insertOIDCCode(ctx, sha256Bytes(code), rec); err != nil {
+	if err := st.insertOIDCCode(ctx, sha256Bytes(code), rec, "kc-"+f.unique); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, found, _ := st.redeemCode(ctx, sha256Bytes(code)); found {
@@ -667,7 +679,7 @@ func TestOIDCCodes(t *testing.T) {
 		code := randomToken()
 		bare := rec
 		bare.Nonce, bare.CodeChallenge = "", ""
-		st.insertOIDCCode(ctx, sha256Bytes(code), bare)
+		st.insertOIDCCode(ctx, sha256Bytes(code), bare, "kc-"+f.unique)
 		if got, _, _, _ := st.redeemOIDCCode(ctx, sha256Bytes(code)); got.Nonce != "" || got.CodeChallenge != "" {
 			t.Fatalf("record %+v", got)
 		}
@@ -684,7 +696,7 @@ func TestOIDCCodes(t *testing.T) {
 
 	t.Run("concurrent redemption succeeds once", func(t *testing.T) {
 		code := randomToken()
-		st.insertOIDCCode(ctx, sha256Bytes(code), rec)
+		st.insertOIDCCode(ctx, sha256Bytes(code), rec, "kc-"+f.unique)
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		wins := 0
@@ -708,7 +720,7 @@ func TestOIDCCodes(t *testing.T) {
 	t.Run("expiry and purge", func(t *testing.T) {
 		stale, expired, live := randomToken(), randomToken(), randomToken()
 		for _, c := range []string{stale, expired, live} {
-			st.insertOIDCCode(ctx, sha256Bytes(c), rec)
+			st.insertOIDCCode(ctx, sha256Bytes(c), rec, "kc-"+f.unique)
 		}
 		f.exec(`UPDATE app_auth_oidc_code SET expires_at = expires_at - interval '61 seconds' WHERE code_hash = $1`, sha256Bytes(stale))
 		if _, fresh, found, _ := st.redeemOIDCCode(ctx, sha256Bytes(stale)); !found || fresh {
@@ -726,4 +738,129 @@ func TestOIDCCodes(t *testing.T) {
 		}
 		st.redeemOIDCCode(ctx, sha256Bytes(live))
 	})
+}
+
+func TestSignOutRecords(t *testing.T) {
+	f := newFixture(t)
+	st := f.store(rolePool(t))
+	ctx := context.Background()
+	wiki := f.deploymentOf(f.otherProductID, "so-wiki-"+f.unique+"-alice.freepod.app", "provisioned", ssoOn, declaresSSO)
+	notes := f.deploymentOf(f.otherProductID, "so-notes-"+f.unique+"-alice.freepod.app", "provisioned", ssoOn, declaresSSO)
+	kc, kcOther := "kc-a-"+f.unique, "kc-b-"+f.unique
+	t.Cleanup(func() {
+		f.admin.Exec(ctx, `DELETE FROM app_auth_ended_session WHERE keycloak_sid = ANY($1)`, []string{kc, kcOther})
+	})
+	signIn := func(dep, keycloakSID, sid string) oidcCode {
+		t.Helper()
+		code := randomToken()
+		rec := oidcCode{DeploymentID: dep, RedirectURI: "https://x/cb", Subject: "3f2a", Email: "a@x", Name: "A", AuthTime: time.Now(), SID: sid}
+		if err := st.insertOIDCCode(ctx, sha256Bytes(code), rec, keycloakSID); err != nil {
+			t.Fatal(err)
+		}
+		got, _, _, err := st.redeemOIDCCode(ctx, sha256Bytes(code))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	count := func(sql string, args ...any) int {
+		t.Helper()
+		var n int
+		if err := f.admin.QueryRow(ctx, sql, args...).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	signIn(wiki, kc, "sid-wiki")
+	f.exec(`UPDATE app_auth_sign_in SET signed_in_at = signed_in_at - interval '1 hour' WHERE keycloak_sid = $1`, kc)
+	if got := signIn(wiki, kc, "sid-after-rotation"); got.SID != "sid-wiki" {
+		t.Fatalf("a second sign-in's code carries sid %q, want the first one's", got.SID)
+	}
+	if n := count(`SELECT count(*) FROM app_auth_sign_in WHERE keycloak_sid = $1 AND signed_in_at > `+nowUTC+` - interval '1 minute'`, kc); n != 1 {
+		t.Fatalf("%d records for one session and deployment, or not the later time", n)
+	}
+	signIn(notes, kc, "sid-notes")
+	signIn(wiki, kcOther, "sid-other-browser")
+
+	before := time.Now().UTC().Add(-time.Minute)
+	ended, err := st.endSession(ctx, kc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, s := range ended {
+		got[s.DeploymentID] = s.SID + "/" + s.Subject
+	}
+	if len(ended) != 2 || got[wiki] != "sid-wiki/3f2a" || got[notes] != "sid-notes/3f2a" {
+		t.Fatalf("ended sign-ins %+v", ended)
+	}
+	if again, err := st.endSession(ctx, kc); err != nil || len(again) != 0 {
+		t.Fatalf("ending again returned %+v, %v", again, err)
+	}
+	if n := count(`SELECT count(*) FROM app_auth_sign_in WHERE keycloak_sid = $1`, kcOther); n != 1 {
+		t.Fatal("another browser's sign-in went with this session")
+	}
+	if n := count(`SELECT count(*) FROM app_auth_ended_session WHERE keycloak_sid = $1`, kc); n != 1 {
+		t.Fatalf("%d ended-session records", n)
+	}
+
+	t.Run("ended sessions read from a time on", func(t *testing.T) {
+		rows, err := st.endedSessions(ctx, before)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var at time.Time
+		for _, e := range rows {
+			if e.ID == kc {
+				at = e.At
+			}
+		}
+		if at.IsZero() || at.Before(before) || at.After(time.Now().Add(time.Minute)) {
+			t.Fatalf("ended at %v, want about now", at)
+		}
+		rows, _ = st.endedSessions(ctx, at)
+		if !slices.ContainsFunc(rows, func(e endedSession) bool { return e.ID == kc }) {
+			t.Fatal("reading from its own time missed it")
+		}
+		rows, _ = st.endedSessions(ctx, at.Add(time.Microsecond))
+		if slices.ContainsFunc(rows, func(e endedSession) bool { return e.ID == kc }) {
+			t.Fatal("reading from after its time returned it")
+		}
+	})
+
+	t.Run("purge", func(t *testing.T) {
+		signIn(notes, kcOther, "sid-notes-other")
+		f.exec(`UPDATE app_auth_sign_in SET signed_in_at = signed_in_at - interval '31 days' WHERE keycloak_sid = $1 AND deployment_id = $2`, kcOther, wiki)
+		f.exec(`INSERT INTO app_auth_ended_session (keycloak_sid, ended_at) VALUES ($1, `+nowUTC+` - interval '8 days')`, kcOther)
+		if _, err := st.purgeSignOuts(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n := count(`SELECT count(*) FROM app_auth_sign_in WHERE keycloak_sid = $1`, kcOther); n != 1 {
+			t.Fatalf("%d sign-ins left, want only the young one", n)
+		}
+		if n := count(`SELECT count(*) FROM app_auth_ended_session WHERE keycloak_sid = ANY($1)`, []string{kc, kcOther}); n != 1 {
+			t.Fatalf("%d ended sessions left, want only the young one", n)
+		}
+	})
+}
+
+// TestSignOutRetention pins each retention to the lifetime it follows, so
+// changing one alone fails here (app-sign-out).
+func TestSignOutRetention(t *testing.T) {
+	if endedRetention != sessionTTL {
+		t.Errorf("ended sessions are kept %v, but a header session lasts %v", endedRetention, sessionTTL)
+	}
+	realm, err := os.ReadFile("../../tf/deps/keycloak-config/realm.tf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^\s*sso_session_max_lifespan\s*=\s*"([^"]+)"`).FindSubmatch(realm)
+	if m == nil {
+		t.Fatal("realm.tf sets no sso_session_max_lifespan")
+	}
+	lifespan, err := time.ParseDuration(string(m[1]))
+	if err != nil || lifespan != signInRetention {
+		t.Errorf("sign-ins are kept %v, but a Keycloak session lasts up to %s", signInRetention, m[1])
+	}
 }

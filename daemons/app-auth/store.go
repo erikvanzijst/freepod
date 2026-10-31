@@ -27,6 +27,8 @@ type codeRecord struct {
 	Name       string
 	ReturnPath string
 	NonceHash  []byte
+	// KeycloakSID is empty in codes issued before sign-ins named it.
+	KeycloakSID string
 }
 
 // oidcCode is an authorization code the provider issued, bound to the client
@@ -40,7 +42,32 @@ type oidcCode struct {
 	Nonce         string
 	CodeChallenge string
 	AuthTime      time.Time
+	// SID is the session ID the ID token gives the app (D3); empty in codes
+	// issued before sign-ins named it.
+	SID string
 }
+
+// signIn is a deployment a Keycloak session signed in to through the
+// provider, with what its logout token names.
+type signIn struct {
+	DeploymentID string
+	Subject      string
+	SID          string
+}
+
+// endedSession is a Keycloak session that has ended, and when.
+type endedSession struct {
+	ID string
+	At time.Time
+}
+
+// Retention of the sign-out records (D9). Neither can matter for longer: a
+// Keycloak session lasts at most the realm's sso_session_max_lifespan
+// (tf/deps/keycloak-config/realm.tf), and a header session sessionTTL.
+const (
+	signInRetention = 720 * time.Hour
+	endedRetention  = 7 * 24 * time.Hour
+)
 
 // headerApp is a deployment whose serving release enables header
 // authentication, as eligible finds it.
@@ -83,11 +110,22 @@ type store interface {
 	// ssoClient returns the deployment with this ID when it is an OIDC client
 	// (D2), or ok=false.
 	ssoClient(ctx context.Context, deploymentID string) (c ssoClient, ok bool, err error)
-	insertOIDCCode(ctx context.Context, codeHash []byte, c oidcCode) error
+	// insertOIDCCode records the sign-in the code completes against
+	// keycloakSID and stores the code, in one transaction (D5). A deployment
+	// keeps the sid it was first given in that session, whatever c.SID now
+	// says, so a key rotation cannot split one browser's sessions.
+	insertOIDCCode(ctx context.Context, codeHash []byte, c oidcCode, keycloakSID string) error
 	// redeemOIDCCode deletes the code whatever happens next, as redeemCode does.
 	redeemOIDCCode(ctx context.Context, codeHash []byte) (c oidcCode, fresh bool, found bool, err error)
 	// purgeExpiredCodes removes expired codes of both kinds.
 	purgeExpiredCodes(ctx context.Context) (int64, error)
+	// endSession records keycloakSID as ended, and removes and returns the
+	// sign-ins it made, in one transaction (D6). Ending it again returns none.
+	endSession(ctx context.Context, keycloakSID string) ([]signIn, error)
+	// endedSessions returns the sessions that ended at or after since.
+	endedSessions(ctx context.Context, since time.Time) ([]endedSession, error)
+	// purgeSignOuts removes sign-ins and ended sessions past their retention.
+	purgeSignOuts(ctx context.Context) (int64, error)
 }
 
 // pgStore hardwires its queries against the platform schema, as ssh-auth does;
@@ -213,9 +251,9 @@ func (s *pgStore) recordConsent(ctx context.Context, subject, deploymentID strin
 func (s *pgStore) insertCode(ctx context.Context, codeHash []byte, c codeRecord) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO app_auth_code
-		  (code_hash, host, subject, email, name, return_path, nonce_hash, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, `+nowUTC+` + make_interval(secs => $8))`,
-		codeHash, c.Host, c.Subject, c.Email, c.Name, c.ReturnPath, c.NonceHash, codeTTL.Seconds())
+		  (code_hash, host, subject, email, name, return_path, nonce_hash, keycloak_sid, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, `+nowUTC+` + make_interval(secs => $9))`,
+		codeHash, c.Host, c.Subject, c.Email, c.Name, c.ReturnPath, c.NonceHash, nullable(c.KeycloakSID), codeTTL.Seconds())
 	return err
 }
 
@@ -224,8 +262,8 @@ func (s *pgStore) redeemCode(ctx context.Context, codeHash []byte) (codeRecord, 
 	var fresh bool
 	err := s.pool.QueryRow(ctx, `
 		DELETE FROM app_auth_code WHERE code_hash = $1
-		RETURNING host, subject, email, name, return_path, nonce_hash, expires_at > `+nowUTC,
-		codeHash).Scan(&c.Host, &c.Subject, &c.Email, &c.Name, &c.ReturnPath, &c.NonceHash, &fresh)
+		RETURNING host, subject, email, name, return_path, nonce_hash, coalesce(keycloak_sid, ''), expires_at > `+nowUTC,
+		codeHash).Scan(&c.Host, &c.Subject, &c.Email, &c.Name, &c.ReturnPath, &c.NonceHash, &c.KeycloakSID, &fresh)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return codeRecord{}, false, false, nil
 	}
@@ -254,13 +292,14 @@ func (s *pgStore) ssoClient(ctx context.Context, deploymentID string) (ssoClient
 	if !clientIDPattern.MatchString(deploymentID) {
 		return ssoClient{}, false, nil
 	}
-	var hostname, access string
+	var hostname, access, logoutPath string
 	var paths, natives []byte
 	var pkce bool
 	err := s.pool.QueryRow(ctx, `
 		SELECT d.hostname,
 		       t.system_values_json::jsonb #> '{auth,oidc,redirectPaths}',
 		       t.system_values_json::jsonb #> '{auth,oidc,nativeRedirectUris}',
+		       coalesce(t.system_values_json::jsonb #>> '{auth,oidc,backchannelLogoutPath}', ''),
 		       coalesce(t.system_values_json::jsonb #>> '{auth,oidc,pkce}', '') <> 'false',
 		       `+authAccess+`
 		  FROM deployment d
@@ -270,14 +309,14 @@ func (s *pgStore) ssoClient(ctx context.Context, deploymentID string) (ssoClient
 		   AND d.status <> 'deleted'
 		   AND d.hostname IS NOT NULL
 		   AND `+authEnabled+`
-		   AND `+authProtocol+` = 'oidc'`, deploymentID).Scan(&hostname, &paths, &natives, &pkce, &access)
+		   AND `+authProtocol+` = 'oidc'`, deploymentID).Scan(&hostname, &paths, &natives, &logoutPath, &pkce, &access)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ssoClient{}, false, nil
 	}
 	if err != nil {
 		return ssoClient{}, false, err
 	}
-	c, ok := newSSOClient(deploymentID, hostname, json.RawMessage(paths), json.RawMessage(natives), pkce)
+	c, ok := newSSOClient(deploymentID, hostname, json.RawMessage(paths), json.RawMessage(natives), logoutPath, pkce)
 	c.Listed = access != "anyone"
 	return c, ok, nil
 }
@@ -289,14 +328,82 @@ func nullable(s string) *string {
 	return &s
 }
 
-func (s *pgStore) insertOIDCCode(ctx context.Context, codeHash []byte, c oidcCode) error {
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO app_auth_oidc_code
-		  (code_hash, deployment_id, redirect_uri, subject, email, name, nonce, code_challenge, auth_time, expires_at)
-		VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, `+nowUTC+` + make_interval(secs => $10))`,
-		codeHash, c.DeploymentID, c.RedirectURI, c.Subject, c.Email, c.Name,
-		nullable(c.Nonce), nullable(c.CodeChallenge), c.AuthTime.UTC(), codeTTL.Seconds())
-	return err
+func (s *pgStore) insertOIDCCode(ctx context.Context, codeHash []byte, c oidcCode, keycloakSID string) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO app_auth_sign_in (keycloak_sid, deployment_id, subject, sid, signed_in_at)
+			VALUES ($1, $2::uuid, $3, $4, `+nowUTC+`)
+			ON CONFLICT (keycloak_sid, deployment_id)
+			DO UPDATE SET subject = excluded.subject, signed_in_at = excluded.signed_in_at
+			RETURNING sid`,
+			keycloakSID, c.DeploymentID, c.Subject, c.SID).Scan(&c.SID); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `
+			INSERT INTO app_auth_oidc_code
+			  (code_hash, deployment_id, redirect_uri, subject, email, name, nonce, code_challenge, sid, auth_time, expires_at)
+			VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, `+nowUTC+` + make_interval(secs => $11))`,
+			codeHash, c.DeploymentID, c.RedirectURI, c.Subject, c.Email, c.Name,
+			nullable(c.Nonce), nullable(c.CodeChallenge), c.SID, c.AuthTime.UTC(), codeTTL.Seconds())
+		return err
+	})
+}
+
+func (s *pgStore) endSession(ctx context.Context, keycloakSID string) ([]signIn, error) {
+	var out []signIn
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO app_auth_ended_session (keycloak_sid, ended_at) VALUES ($1, `+nowUTC+`)
+			ON CONFLICT DO NOTHING`, keycloakSID); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `
+			DELETE FROM app_auth_sign_in WHERE keycloak_sid = $1
+			RETURNING deployment_id::text, subject, sid`, keycloakSID)
+		if err != nil {
+			return err
+		}
+		out, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (signIn, error) {
+			var s signIn
+			return s, row.Scan(&s.DeploymentID, &s.Subject, &s.SID)
+		})
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *pgStore) endedSessions(ctx context.Context, since time.Time) ([]endedSession, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT keycloak_sid, ended_at FROM app_auth_ended_session WHERE ended_at >= $1`, since.UTC())
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (endedSession, error) {
+		var e endedSession
+		return e, row.Scan(&e.ID, &e.At)
+	})
+}
+
+func (s *pgStore) purgeSignOuts(ctx context.Context) (int64, error) {
+	var n int64
+	for _, p := range []struct {
+		table, column string
+		retention     time.Duration
+	}{
+		{"app_auth_sign_in", "signed_in_at", signInRetention},
+		{"app_auth_ended_session", "ended_at", endedRetention},
+	} {
+		tag, err := s.pool.Exec(ctx, `DELETE FROM `+p.table+` WHERE `+p.column+` < `+nowUTC+` - make_interval(secs => $1)`,
+			p.retention.Seconds())
+		if err != nil {
+			return n, err
+		}
+		n += tag.RowsAffected()
+	}
+	return n, nil
 }
 
 func (s *pgStore) redeemOIDCCode(ctx context.Context, codeHash []byte) (oidcCode, bool, bool, error) {
@@ -305,9 +412,9 @@ func (s *pgStore) redeemOIDCCode(ctx context.Context, codeHash []byte) (oidcCode
 	var fresh bool
 	err := s.pool.QueryRow(ctx, `
 		DELETE FROM app_auth_oidc_code WHERE code_hash = $1
-		RETURNING deployment_id::text, redirect_uri, subject, email, name, nonce, code_challenge, auth_time,
-		          expires_at > `+nowUTC,
-		codeHash).Scan(&c.DeploymentID, &c.RedirectURI, &c.Subject, &c.Email, &c.Name, &nonce, &challenge, &c.AuthTime, &fresh)
+		RETURNING deployment_id::text, redirect_uri, subject, email, name, nonce, code_challenge, coalesce(sid, ''),
+		          auth_time, expires_at > `+nowUTC,
+		codeHash).Scan(&c.DeploymentID, &c.RedirectURI, &c.Subject, &c.Email, &c.Name, &nonce, &challenge, &c.SID, &c.AuthTime, &fresh)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return oidcCode{}, false, false, nil
 	}
