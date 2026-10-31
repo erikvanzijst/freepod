@@ -22,6 +22,22 @@ a {
   text-decoration: none;
 }
 
+/* Shown only by the <noscript> rule in index.html, so a browser waiting on the bundle never paints it. */
+.static-page {
+  display: none;
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.static-page a {
+  text-decoration: underline;
+}
+
+.static-page pre {
+  overflow-x: auto;
+}
+
 /* ── Landing page animation primitives ──────────────────────────────────── */
 @keyframes lp-fade-up {
   from {
