@@ -19,7 +19,7 @@ from sqlmodel import Session, select
 
 from app.config import CaelusSettings, get_settings
 from app.models import DeploymentDatabaseORM, DeploymentDatabaseRead, DeploymentORM
-from app.services import mailer, var_crypto
+from app.services import mail_layout, mailer, var_crypto
 from app.services.errors import IntegrityException, NotFoundException
 from app.services.postgres_admin import PostgresAdminClient
 
@@ -557,25 +557,47 @@ def _notify_threshold(
         return False
 
     used = f"{size_bytes / 1024 ** 2:.0f} MB of {allowance / 1024 ** 2:.0f} MB"
+    named = deployment.name
+    if deployment.hostname:
+        named += f" at https://{deployment.hostname}"
     if threshold >= READONLY_THRESHOLD:
         subject = f"{deployment.name}: database is full and now read-only"
-        body = (
-            f"The database for {deployment.name} has reached its plan allowance "
-            f"({used}), and is now read-only: your application can still read its "
-            f"data, but writes will be refused.\n\n"
-            f"To start writing again, move to a plan with a larger database "
-            f"allowance, or contact support.\n"
-        )
+        heading = "Your database is full"
+        paragraphs = [
+            (
+                f"The database for {named} has reached its plan allowance "
+                f"({used}), and is now read-only: your application can still read its "
+                f"data, but writes will be refused."
+            ),
+            (
+                "To start writing again, move to a plan with a larger database "
+                "allowance from your dashboard, or contact support."
+            ),
+        ]
     else:
         subject = f"{deployment.name}: database is {threshold}% full"
-        body = (
-            f"The database for {deployment.name} is using {used}, which is over "
-            f"{threshold}% of its plan allowance.\n\n"
-            f"At 100% the database becomes read-only and your application's writes "
-            f"will be refused.\n"
-        )
+        heading = f"Your database is {threshold}% full"
+        paragraphs = [
+            (
+                f"The database for {named} is using {used}, which is over "
+                f"{threshold}% of its plan allowance."
+            ),
+            (
+                "At 100% the database becomes read-only and your application's writes "
+                "will be refused. You can move to a plan with a larger database "
+                "allowance from your dashboard."
+            ),
+        ]
+    body, html = mail_layout.compose(
+        heading=heading,
+        paragraphs=paragraphs,
+        button=mail_layout.Button("Open your dashboard", settings.base_url),
+        reason=f"You received this email because you own {deployment.name} on Freepod.",
+    )
 
-    return mailer.send_email(to=owner.email, subject=subject, body=body, settings=settings)
+    return mailer.send_email(
+        to=owner.email, subject=subject, body=body, html=html, settings=settings
+    )
 
 
 def _apply_quota_state(

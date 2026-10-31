@@ -338,6 +338,7 @@ def test_invitation_is_fixed_text(user_client, db_session, sent):
     assert mail["to"] == "ana@example.com"
     assert USER_EMAIL in mail["body"] and "https://cloud-yourname.freepod.app" in mail["body"]
     assert "ana@example.com" in mail["body"]
+    assert 'href="https://cloud-yourname.freepod.app"' in mail["html"] and USER_EMAIL in mail["html"]
 
 
 def test_relay_failure_keeps_the_entry(user_client, db_session, monkeypatch):

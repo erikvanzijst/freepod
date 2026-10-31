@@ -40,7 +40,7 @@ from app.models import (
     ProductTemplateVersionORM,
 )
 from app.models.core import _utcnow
-from app.services import app_auth_oidc, mailer, template_values
+from app.services import app_auth_oidc, mail_layout, mailer, template_values
 from app.services.errors import (
     ConflictException,
     NotFoundException,
@@ -228,23 +228,31 @@ def _check_invitation_limit(session: Session, user_id: int) -> None:
         )
 
 
-def invitation_text(invitation: Invitation) -> tuple[str, str]:
-    """The fixed invitation, which carries nothing the owner wrote (D6)."""
+def invitation_text(invitation: Invitation) -> tuple[str, str, str]:
+    """The fixed invitation, which carries nothing the owner wrote (D6), as
+    (subject, plain text, HTML)."""
     url = f"https://{invitation.hostname}"
     subject = f"You have been given access to {invitation.hostname}"
-    body = (
-        f"{invitation.owner_email} gave you access to the app at {url}.\n"
-        "\n"
-        f"To use it, sign in there with a Freepod account that uses this email address,\n"
-        f"{invitation.to}. If you do not have a Freepod account yet, you can create one\n"
-        "when you sign in.\n"
+    text, html = mail_layout.compose(
+        heading="You have been given access",
+        paragraphs=[
+            f"{invitation.owner_email} gave you access to their app at {invitation.hostname}.",
+            (
+                f"To use it, sign in there with a Freepod account that uses this email address, "
+                f"{invitation.to}. If you do not have a Freepod account yet, you can create one "
+                "when you sign in."
+            ),
+        ],
+        button=mail_layout.Button("Open the app", url),
+        reason=f"You received this email because {invitation.owner_email} added this address "
+        "to their app. If you don't know them, you can safely ignore it.",
     )
-    return subject, body
+    return subject, text, html
 
 
 def send_invitation(invitation: Invitation) -> None:
-    subject, body = invitation_text(invitation)
-    mailer.send_email(to=invitation.to, subject=subject, body=body)
+    subject, text, html = invitation_text(invitation)
+    mailer.send_email(to=invitation.to, subject=subject, body=text, html=html)
 
 
 def sweep_invitations(session: Session) -> int:
