@@ -1,8 +1,36 @@
 # Freepod
 
-> Private, EU-hosted apps for your photos, files, passwords and chats, and hosting for your own apps, deployed from source with the `freepod` command-line client.
+> Freepod is an EU-hosted cloud with two separate uses. Freepod Apps gives anyone a private copy of a curated open-source app, with no technical knowledge needed. Freepod for Developers deploys code you wrote yourself, using the `freepod` command-line client, with or without a coding agent.
 
-## Deploying your own project
+Choose by what is being deployed:
+
+- An existing app for everyday use, such as photo storage, file sync or a password manager: use [Freepod Apps](#freepod-apps). This happens on the website and needs no command line.
+- A project in a local directory: use [Freepod for Developers](#freepod-for-developers).
+
+## Freepod Apps
+
+For anyone who wants a private alternative to a cloud service. Freepod installs, runs and updates the app.
+
+1. Create an account at [freepod.eu](https://freepod.eu) and choose a handle.
+2. Pick an app from the [catalog](https://freepod.eu/apps) and a plan.
+3. Launch it. It gets its own HTTPS address, such as `photos-alice.freepod.app`, or can use your own domain.
+
+Creating an account and choosing a plan need a person at a browser. The [getting started guide](https://freepod.eu/docs/apps) has the details.
+
+Apps in the catalog:
+
+- Photos: [Immich](https://freepod.eu/apps/immich) (replaces Google Photos and iCloud Photos), [PhotoPrism](https://freepod.eu/apps/photoprism)
+- Files: [Nextcloud](https://freepod.eu/apps/nextcloud)
+- Passwords and passkeys: [Vaultwarden](https://freepod.eu/apps/vaultwarden)
+- Chat: [Matrix](https://freepod.eu/apps/matrix)
+- Team collaboration: [Mattermost](https://freepod.eu/apps/mattermost)
+- Forums and communities: [Discourse](https://freepod.eu/apps/discourse), [Lemmy](https://freepod.eu/apps/lemmy)
+- Knowledge and wikis: [BookStack](https://freepod.eu/apps/bookstack), [Docmost](https://freepod.eu/apps/docmost)
+- Project management: [OpenProject](https://freepod.eu/apps/openproject)
+
+## Freepod for Developers
+
+For code you wrote yourself, by hand or with a coding agent. The `freepod` client builds a container from your source, with no Dockerfile needed, and puts it live on its own hostname. Postgres, object storage and sign-in are built in.
 
 Install the client with any one of:
 
@@ -12,13 +40,13 @@ pip install freepod
 brew install erikvanzijst/tap/freepod
 ```
 
-Add the skill that teaches your coding agent how to build and deploy for Freepod:
+If you use a coding agent, install the skill that teaches it how to build and deploy for Freepod, then let it read the skill before changing the project:
 
 ```bash
 freepod skill install
 ```
 
-`freepod login` needs a person at a browser. Then deploy from the project directory:
+Deploy from the project directory. `freepod login` needs a person at a browser.
 
 ```bash
 freepod login
@@ -26,8 +54,6 @@ freepod init
 freepod deploy
 ```
 
-## Docs
-
 - [Freepod for developers](https://freepod.eu/dev)
+- [Developer docs](https://freepod.eu/docs/developers)
 - [Coding agents](https://freepod.eu/docs/developers/coding-agents)
-- [Documentation](https://freepod.eu/docs/)

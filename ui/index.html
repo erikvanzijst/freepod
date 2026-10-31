@@ -15,15 +15,28 @@
       <!-- For clients that don't run JavaScript; React replaces it on mount. Keep in step with public/llms.txt -->
       <main class="static-page">
         <h1>Freepod</h1>
-        <p>Private alternatives to the cloud services you use every day, for your photos, files, passwords and chats. Each app runs in a pod of its own, hosted in the EU.</p>
-        <h2>Deploying your own project to Freepod</h2>
-        <p>Deployments use the <code>freepod</code> command-line client. Install it with any one of:</p>
+        <p>Freepod is an EU-hosted cloud with two separate uses. To get an existing app for everyday use, such as photo storage, use Freepod Apps on the website. To deploy a project of your own, use Freepod for Developers and the <code>freepod</code> command-line client.</p>
+        <h2>Freepod Apps</h2>
+        <p>For anyone who wants a private alternative to a cloud service, with no technical knowledge needed. Create an account, pick an app from the <a href="https://freepod.eu/apps">catalog</a> and launch it. Freepod installs, runs and updates it. See <a href="https://freepod.eu/docs/apps">getting started</a>.</p>
+        <ul>
+          <li>Photos: <a href="https://freepod.eu/apps/immich">Immich</a>, <a href="https://freepod.eu/apps/photoprism">PhotoPrism</a></li>
+          <li>Files: <a href="https://freepod.eu/apps/nextcloud">Nextcloud</a></li>
+          <li>Passwords and passkeys: <a href="https://freepod.eu/apps/vaultwarden">Vaultwarden</a></li>
+          <li>Chat: <a href="https://freepod.eu/apps/matrix">Matrix</a></li>
+          <li>Team collaboration: <a href="https://freepod.eu/apps/mattermost">Mattermost</a></li>
+          <li>Forums and communities: <a href="https://freepod.eu/apps/discourse">Discourse</a>, <a href="https://freepod.eu/apps/lemmy">Lemmy</a></li>
+          <li>Knowledge and wikis: <a href="https://freepod.eu/apps/bookstack">BookStack</a>, <a href="https://freepod.eu/apps/docmost">Docmost</a></li>
+          <li>Project management: <a href="https://freepod.eu/apps/openproject">OpenProject</a></li>
+        </ul>
+        <h2>Freepod for Developers</h2>
+        <p>For code you wrote yourself, by hand or with a coding agent. The <code>freepod</code> client builds a container from your source and puts it live on its own hostname. Install it with any one of:</p>
         <pre>uv tool install freepod
 pip install freepod
 brew install erikvanzijst/tap/freepod</pre>
-        <p>Then add the skill that teaches your coding agent how to build and deploy for Freepod, sign in, which needs a person at a browser, and deploy from the project directory:</p>
-        <pre>freepod skill install
-freepod login
+        <p>If you use a coding agent, install the skill that teaches it how to build and deploy for Freepod:</p>
+        <pre>freepod skill install</pre>
+        <p>Deploy from the project directory. <code>freepod login</code> needs a person at a browser.</p>
+        <pre>freepod login
 freepod init
 freepod deploy</pre>
         <p>Read more in <a href="https://freepod.eu/dev">Freepod for developers</a> and the <a href="https://freepod.eu/docs/developers/coding-agents">coding agents guide</a>.</p>
