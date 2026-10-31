@@ -28,9 +28,6 @@ spec:
   replicas: 1
   strategy:
     type: Recreate
-  # Upstream's worker chart: the grace period is the GoodJob shutdown timeout
-  # plus 30, so a running job can finish or be requeued before SIGKILL.
-  terminationGracePeriodSeconds: 90
   selector:
     matchLabels:
       {{- include "openproject.componentSelector" (dict "root" . "name" "openproject") | nindent 6 }}
@@ -40,6 +37,9 @@ spec:
         {{- include "openproject.componentSelector" (dict "root" . "name" "openproject") | nindent 8 }}
         {{- include "openproject.podLabels" . | nindent 8 }}
     spec:
+      # Upstream's worker chart: the grace period is the GoodJob shutdown timeout
+      # plus 30, so a running job can finish or be requeued before SIGKILL.
+      terminationGracePeriodSeconds: 90
       automountServiceAccountToken: false
       # Not runAsNonRoot here: the SSH sidecar in this pod runs as root.
       securityContext:
