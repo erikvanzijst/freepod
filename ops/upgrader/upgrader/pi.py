@@ -11,6 +11,9 @@ from pathlib import Path
 from .config import Settings
 
 PROVIDER = "upgrader"
+# The only extension a session loads (product-upgrade-runs): it ends a session stuck repeating
+# one tool call. The image's copy is the service's, which the session user can read but not change.
+LOOP_GUARD = Path(__file__).resolve().parents[1] / "extensions" / "loop-guard.ts"
 
 
 def models_config(settings: Settings) -> dict:
@@ -64,7 +67,7 @@ def repair_prompt(slug: str, problem: str) -> str:
 
 
 def command(settings: Settings, skill: Path, session_dir: Path, message: str, pi: str = "pi",
-            resume: Path | None = None) -> list[str]:
+            resume: Path | None = None, extension: Path = LOOP_GUARD) -> list[str]:
     """A fresh session, or with `resume` one more turn of the session in that transcript."""
     return [
         pi,
@@ -72,6 +75,7 @@ def command(settings: Settings, skill: Path, session_dir: Path, message: str, pi
         "--thinking", settings.thinking_level,
         "--skill", str(skill),
         "--no-context-files",
+        "--no-extensions", "-e", str(extension),
         "--session-dir", str(session_dir),
         *(["--session", str(resume)] if resume else []),
         "-p", "--", message,

@@ -194,6 +194,23 @@ the run's next product. A cancel ends the session the same way.
 - **WHEN** a session starts a background process with `setsid` and the product then times out or is canceled
 - **THEN** that process is terminated too, before the next product starts
 
+### Requirement: A session stuck repeating one tool call is stopped
+A session MUST load no pi extension but the service's loop guard, from a file the session
+user cannot change. The guard counts consecutive tool calls with the same tool and the same
+arguments; a call with other arguments, or another tool, resets the count. It MUST run the
+first two, refuse the third and fourth without running them, telling the model the call is a
+repeat whose output it already has, and on the fifth refuse the call and end the session. A
+session the guard ended is judged like any session that ended on its own, repair turn included.
+
+#### Scenario: A session repeats one call
+- **WHEN** the model asks for the same `bash` command five times in a row
+- **THEN** the command runs twice, the third and fourth requests return an error naming the repeat
+- **AND** the fifth ends the session, well before `PRODUCT_TIMEOUT_MINUTES`
+
+#### Scenario: A repeat after other work
+- **WHEN** the model runs a command, then another, then the first again
+- **THEN** every call runs
+
 ### Requirement: A product's outcome comes from its result file
 A product's recorded outcome MUST come from the `status` in the `result.json` its session
 wrote, as defined by `product-upgrade-skill`. In a real run, `would_open` becomes `opened`
