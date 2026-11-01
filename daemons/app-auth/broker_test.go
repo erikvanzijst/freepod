@@ -601,7 +601,7 @@ func TestSessionNamesTheKeycloakSession(t *testing.T) {
 	g.st.recordConsent(context.Background(), "3f2a", "dep-milk", disclosedClaims)
 	loc, _ := url.Parse(g.returnFromIdP(g.start(milk)).Header().Get("Location"))
 	v := &verifier{keys: g.b.keys, store: g.st, loginURL: login, now: g.clock.now, log: quiet,
-		patterns: newPatternCache(quiet), allowed: newAllowCache(quiet), ended: readyEnded(g.st, g.clock.now)}
+		patterns: newPatternCache(quiet), ended: readyEnded(g.st, g.clock.now)}
 	w := v.do(fwd{host: milk, uri: loc.RequestURI(), header: cookieHeader(loginCookie + "=" + g.nonce)})
 	var s session
 	if err := v.keys.open("session", setCookieValue(t, w, sessionCookie), &s, v.now()); err != nil || s.KeycloakSID != "kc-session-1" {

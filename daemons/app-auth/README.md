@@ -14,8 +14,8 @@ which the API edits. It has three roles:
   every platform cookie from the request, and sets the identity headers, or
   answers with a redirect to sign in (navigations) or `401` (everything else).
   Its address carries the deployment's public paths (`p`) and, optionally,
-  whether the access list applies (`l=1`), the accounts allowed in (`a`) and
-  the app's name for the no-access page (`n`). It also serves
+  whether the access list applies (`l=1`) and the app's name for the
+  no-access page (`n`). It also serves
   `/.freepod/auth/{login,callback,logout}` on each app host, from inside
   forward-auth. A session names the Keycloak session it came from, and counts
   as none once that has ended. The per-request path reads the database only

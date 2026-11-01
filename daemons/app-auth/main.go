@@ -109,9 +109,9 @@ func run(log *slog.Logger) error {
 
 	v := &verifier{
 		keys: keys, store: st, loginURL: cfg.loginURL, now: time.Now, log: log,
-		patterns: newPatternCache(log), allowed: newAllowCache(log),
-		access: newAccessCache(st, cfg.tenantDomain, time.Now, log),
-		ended:  newEndedCache(st, time.Now, log),
+		patterns: newPatternCache(log),
+		access:   newAccessCache(st, cfg.tenantDomain, time.Now, log),
+		ended:    newEndedCache(st, time.Now, log),
 	}
 	b := &broker{
 		chrome:   newChrome(cfg.loginURL),

@@ -39,7 +39,6 @@ type verifier struct {
 	now      func() time.Time
 	log      *slog.Logger
 	patterns *patternCache
-	allowed  *allowCache
 	access   *accessCache
 	ended    *endedCache
 }
@@ -83,15 +82,10 @@ func (v *verifier) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if ok && foreignInitiated(method, r.Header, host) {
 		ok = false
 	}
-	// `l` applies the deployment's access list, and `a` restricts the app to
-	// the accounts it names. Both are checked before the public paths, so a
-	// signed-in account that is not admitted sees nothing.
+	// `l` applies the deployment's access list. It is checked before the
+	// public paths, so a signed-in account that is not admitted sees nothing.
 	edge := r.URL.Query()
 	if ok && edge.Has("l") && (edge.Get("l") != "1" || !v.access.admits(r.Context(), host, sess)) {
-		v.refuse(w, method, r.Header, host, edge.Get("n"), sess.Email)
-		return
-	}
-	if ok && edge.Has("a") && !v.allowed.admits(edge.Get("a"), sess.Email) {
 		v.refuse(w, method, r.Header, host, edge.Get("n"), sess.Email)
 		return
 	}
@@ -317,46 +311,4 @@ func (c *patternCache) compiled(key string) []*regexp.Regexp {
 	}
 	c.byKey[key] = res
 	return res
-}
-
-// allowCache decodes each deployment's allowed accounts once, keyed by the
-// middleware's `a` parameter verbatim like patternCache. A list it cannot
-// decode admits nobody (fail closed).
-type allowCache struct {
-	mu    sync.Mutex
-	byKey map[string]map[string]bool
-	log   *slog.Logger
-}
-
-func newAllowCache(log *slog.Logger) *allowCache {
-	return &allowCache{byKey: map[string]map[string]bool{}, log: log}
-}
-
-func (c *allowCache) admits(key, email string) bool {
-	return email != "" && c.emails(key)[strings.ToLower(email)]
-}
-
-func (c *allowCache) emails(key string) map[string]bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if set, ok := c.byKey[key]; ok {
-		return set
-	}
-	set := map[string]bool{}
-	var emails []string
-	raw, err := base64.RawURLEncoding.DecodeString(key)
-	if err == nil {
-		err = json.Unmarshal(raw, &emails)
-	}
-	if err != nil {
-		c.log.Warn("undecodable allowed accounts; none admitted", "err", err)
-	}
-	for _, e := range emails {
-		set[strings.ToLower(strings.TrimSpace(e))] = true
-	}
-	if len(c.byKey) >= patternCacheLimit {
-		c.byKey = map[string]map[string]bool{}
-	}
-	c.byKey[key] = set
-	return set
 }
