@@ -160,6 +160,31 @@ def test_the_owner_has_no_password(tmp_path):
     assert "t-admin" not in {d["metadata"]["name"] for d in docs}
 
 
+def test_the_logout_plugin_is_mounted_only_with_sso(tmp_path):
+    docs = _render(tmp_path, SSO)
+    plugin = next(d for d in docs if d["metadata"]["name"] == "t-plugin")["data"]["plugin.rb"]
+    source = (CHART / "files" / "freepod-backchannel-logout" / "plugin.rb").read_text()
+    pod = _discourse(docs)
+    mounts = {m["name"]: m for m in _containers(docs)["discourse"]["volumeMounts"]}
+
+    assert plugin.strip() == source.strip()
+    assert '"/freepod/backchannel-logout"' in plugin
+    assert mounts["plugin"]["mountPath"] == "/var/www/discourse/plugins/freepod-backchannel-logout"
+    assert mounts["plugin"]["readOnly"] is True
+    assert {"name": "plugin", "configMap": {"name": "t-plugin"}} in pod["volumes"]
+    assert "plugin" not in {m["name"] for m in _containers(docs)["setup"]["volumeMounts"]}
+    assert "t-plugin" not in {d["metadata"]["name"] for d in _render(tmp_path, {})}
+
+
+def test_a_changed_plugin_restarts_the_forum(tmp_path):
+    docs = _render(tmp_path, SSO)
+    template = next(
+        d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"] == "t-discourse"
+    )["spec"]["template"]
+
+    assert template["metadata"]["annotations"]["checksum/plugin"]
+
+
 def test_the_forum_stays_public_and_decides_who_joins(tmp_path):
     docs = _render(tmp_path, SSO)
     env = _env(_containers(docs)["discourse"])

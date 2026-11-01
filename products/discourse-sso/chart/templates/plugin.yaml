@@ -1,0 +1,17 @@
+{{- /*
+Discourse has no OpenID Connect back-channel logout, so this small server-side
+plugin adds it. It has no assets, and goes in through a mount because the
+chart runs upstream's image unchanged. The template names its route as
+auth.oidc.backchannelLogoutPath.
+*/}}
+{{- if include "discourse.sso" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-plugin
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+data:
+  plugin.rb: |
+    {{- .Files.Get "files/freepod-backchannel-logout/plugin.rb" | nindent 4 }}
+{{- end }}

@@ -37,12 +37,15 @@ re-links an account to whichever Freepod account next presents that email.
 It offers no SSH or SFTP access: Discourse's own backup and restore is how data
 moves in and out, so the chart renders no sidecar and no `-ssh` Service.
 
-Discourse has no back-channel logout, so the template declares no
-`auth.oidc.backchannelLogoutPath`. Signing out of the forum ends the Freepod
-session, but signing out elsewhere leaves the forum session in place until it
-expires. If Discourse's sign-in ever breaks,
-the only way in is `rails runner`: `/u/admin-login` needs the email login that
-SSO turns off.
+Discourse has no back-channel logout, so the chart adds it with a small
+server-side plugin, `chart/files/freepod-backchannel-logout/plugin.rb`, mounted
+into `plugins/` with SSO on. It verifies the provider's logout token and ends the
+user's browser sessions. Discourse has no record tying a session to the provider's
+`sid`, so signing out in one browser ends all of that user's forum sessions; their
+user API keys, which the Discourse Hub app uses, stay.
+
+If Discourse's sign-in ever breaks, the only way in is `rails runner`:
+`/u/admin-login` needs the email login that SSO turns off.
 
 The template's system values carry the OIDC settings, which tenants cannot
 change:
@@ -54,6 +57,7 @@ auth:
   access: anyone
   oidc:
     redirectPaths: ["/auth/oidc/callback"]
+    backchannelLogoutPath: /freepod/backchannel-logout
 ```
 
 Spec: [app-oidc-chart-contract](../../openspec/specs/app-oidc-chart-contract/spec.md).

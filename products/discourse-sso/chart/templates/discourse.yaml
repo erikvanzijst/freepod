@@ -40,6 +40,10 @@ spec:
       labels:
         {{- include "discourse.componentSelector" (dict "root" . "name" "discourse") | nindent 8 }}
         {{- include "discourse.podLabels" . | nindent 8 }}
+      {{- if include "discourse.sso" . }}
+      annotations:
+        checksum/plugin: {{ .Files.Get "files/freepod-backchannel-logout/plugin.rb" | sha256sum }}
+      {{- end }}
     spec:
       automountServiceAccountToken: false
       # Discourse maps every DISCOURSE_* env var to a setting; service links
@@ -155,6 +159,11 @@ spec:
           volumeMounts:
             - name: shared
               mountPath: /shared
+            {{- if include "discourse.sso" . }}
+            - name: plugin
+              mountPath: /var/www/discourse/plugins/freepod-backchannel-logout
+              readOnly: true
+            {{- end }}
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -166,6 +175,11 @@ spec:
         - name: seed
           configMap:
             name: {{ .Release.Name }}-seed
+        {{- if include "discourse.sso" . }}
+        - name: plugin
+          configMap:
+            name: {{ .Release.Name }}-plugin
+        {{- end }}
 ---
 {{- /*
 Fixed name (not release-prefixed) so an existing volume in the namespace is
