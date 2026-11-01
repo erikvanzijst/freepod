@@ -5,7 +5,7 @@ description: >-
   Freepod without touching the catalog chart. Renders the full deployment
   (discourse, postgres, redis) directly.
 type: application
-version: 0.1.4
+version: 0.1.5
 appVersion: "2026.7.4"
 keywords:
   - discourse

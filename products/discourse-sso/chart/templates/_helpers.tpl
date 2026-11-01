@@ -146,10 +146,10 @@ setting and hides it from the admin UI.
 # enable_local_logins, so it goes separately, and DiscourseConnect would replace
 # Sign in with Freepod altogether. With local logins off Discourse counts every
 # 2FA method as off, so a forum restored from a backup that requires 2FA would
-# send everyone to a setup page that no longer works; the last pin below exempts
-# sign-ins through Freepod. Other login methods only add to it, so they stay with
-# the tenant, as does who may join: allow_new_registrations, invite_only,
-# must_approve_users.
+# send everyone to a setup page that no longer works, which pinning
+# enforce_second_factor_on_external_auth off prevents for sign-ins through
+# Freepod. Other login methods only add to it, so they stay with the tenant, as
+# does who may join: allow_new_registrations, invite_only, must_approve_users.
 - name: DISCOURSE_OPENID_CONNECT_ENABLED
   value: "true"
 - name: DISCOURSE_OPENID_CONNECT_DISCOVERY_DOCUMENT
