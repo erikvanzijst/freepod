@@ -49,8 +49,8 @@
   - **Sign-out from Immich:** the header app ends within 10 seconds and the dashboard within a minute. Signing in again needs a password, then is silent for the dashboard.
   - **App down:** with Immich scaled to zero, signing out of the dashboard still completes, and app-auth logs the failed delivery.
   - **Screenshot:** a dev dashboard screenshot of the Access dialog matching canvas boards 2a–2c, carried from `app-access-list`.
-- [ ] 9.2 Prod, only with Erik's go-ahead: roll out `app-access-list` and this change, apply the prod halves of 7.3 and the prod `tf/app` (oauth2-proxy), and repeat 9.1's checks on prod's studio and immich-sso. Verify: the prod studio admits only its owner, prod immich-sso signs in, and a dashboard sign-out ends the prod Immich web session.
-- [ ] 9.3 After every App Studio deployment on dev and prod serves chart 0.2.19 or later, remove `allowCache` and `a=` from the verifier and its spec references, and release the daemon. Verify: `git grep -n "allowCache\|\"a\"" daemons/app-auth` finds nothing, and `go test ./...` passes.
+- [x] 9.2 Prod, only with Erik's go-ahead: roll out `app-access-list` and this change, apply the prod halves of 7.3 and the prod `tf/app` (oauth2-proxy), and repeat 9.1's checks on prod's studio and immich-sso. Verify: the prod studio admits only its owner, prod immich-sso signs in, and a dashboard sign-out ends the prod Immich web session.
+- [x] 9.3 After every App Studio deployment on dev and prod serves chart 0.2.19 or later, remove `allowCache` and `a=` from the verifier and its spec references, and release the daemon. Verify: `git grep -n "allowCache\|\"a\"" daemons/app-auth` finds nothing, and `go test ./...` passes.
 
 ## Workflow follow-up
 

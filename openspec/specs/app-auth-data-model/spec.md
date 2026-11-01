@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The platform records app authentication keeps: per-user, per-deployment consent, the short-lived single-use sign-in codes and OIDC authorization codes, plus the least-privilege database access the app authentication service runs with.
+The platform records app authentication keeps: per-user, per-deployment consent, the short-lived single-use sign-in codes and OIDC authorization codes, the access list entries and invitations, the OIDC sign-in and ended Keycloak session records that sign a browser out of its apps, plus the least-privilege database access the app authentication service runs with.
 
 ## Requirements
 
@@ -22,7 +22,7 @@ The platform SHALL store one consent record per (identity-provider subject, depl
 
 ### Requirement: Sign-in code records
 
-The platform SHALL store each issued sign-in code only as a one-way hash. Each record SHALL carry the host, subject, email, display name, return target, sign-in attempt binding, and expiry. Redeeming a code SHALL remove its record atomically, so two concurrent redemptions of one code cannot both succeed. Expired records SHALL be removed within one hour of expiry.
+The platform SHALL store each issued sign-in code only as a one-way hash. Each record SHALL carry the host, subject, email, display name, identity provider session ID, return target, sign-in attempt binding, and expiry. Redeeming a code SHALL remove its record atomically, so two concurrent redemptions of one code cannot both succeed. Expired records SHALL be removed within one hour of expiry.
 
 #### Scenario: Concurrent redemption
 
@@ -41,7 +41,7 @@ The platform SHALL store each issued sign-in code only as a one-way hash. Each r
 
 ### Requirement: OIDC authorization code records
 
-The platform SHALL store each OIDC authorization code the provider issues only as a one-way hash, in records separate from sign-in codes, so that neither kind can be redeemed as the other. Each record SHALL carry the deployment, the redirect URI, the subject, email and display name, the request's nonce and code challenge when given, the time the user authenticated, and the expiry. Redeeming a code SHALL remove its record atomically. Expired records SHALL be removed within one hour of expiry.
+The platform SHALL store each OIDC authorization code the provider issues only as a one-way hash, in records separate from sign-in codes, so that neither kind can be redeemed as the other. Each record SHALL carry the deployment, the redirect URI, the subject, email and display name, the `sid` given to the deployment, the request's nonce and code challenge when given, the time the user authenticated, and the expiry. Redeeming a code SHALL remove its record atomically. Expired records SHALL be removed within one hour of expiry.
 
 #### Scenario: Concurrent redemption
 
@@ -55,7 +55,7 @@ The platform SHALL store each OIDC authorization code the provider issues only a
 
 ### Requirement: Least-privilege database role
 
-The app authentication service SHALL connect to the platform database as its own role. The role SHALL be able to read only the columns it needs to decide eligibility and access: the deployment's identifier, hostname, status, owner and applied release; that release's template and values; the template's system values; and the owning user's identifier and email. It SHALL read and write only the consent table, the sign-in code table and the OIDC authorization code table. It SHALL read access list entries and update only their subject, display name and binding time. It SHALL NOT be able to write any other table or read any other column. The role SHALL be created and its grants re-applied idempotently on every rollout.
+The app authentication service SHALL connect to the platform database as its own role. The role SHALL be able to read only the columns it needs to decide eligibility and access: the deployment's identifier, hostname, status, owner and applied release; that release's template and values; the template's system values; and the owning user's identifier and email. It SHALL read and write only the consent table, the sign-in code table, the OIDC authorization code table, the sign-in record table and the ended-session table. It SHALL read access list entries and update only their subject, display name and binding time. It SHALL NOT be able to write any other table or read any other column. The role SHALL be created and its grants re-applied idempotently on every rollout.
 
 #### Scenario: Service bug cannot write deployments
 
@@ -75,6 +75,11 @@ The app authentication service SHALL connect to the platform database as its own
 #### Scenario: OIDC codes are its own
 
 - **WHEN** the role inserts, reads and deletes an OIDC authorization code record
+- **THEN** the database allows it
+
+#### Scenario: Sign-out records are its own
+
+- **WHEN** the role inserts, reads and deletes sign-in and ended-session records
 - **THEN** the database allows it
 
 #### Scenario: The list is the owner's to change
@@ -109,3 +114,26 @@ The platform SHALL record each invitation it sends, with the inviting owner and 
 
 - **WHEN** an owner removes an entry they added an hour ago
 - **THEN** the invitation sent for it is still recorded
+
+### Requirement: Sign-in records
+
+The platform SHALL store one sign-in record per (identity provider session, deployment), holding the identity provider session ID, the deployment, the subject, the `sid` given to the deployment, and the time of the latest sign-in. Records SHALL be deleted with their deployment.
+
+#### Scenario: One record per session and deployment
+
+- **WHEN** a sign-in is recorded twice for the same identity provider session and deployment
+- **THEN** exactly one record exists, carrying the later time
+
+#### Scenario: Deployment deleted
+
+- **WHEN** a deployment with sign-in records is deleted
+- **THEN** its sign-in records no longer exist
+
+### Requirement: Ended-session records
+
+The platform SHALL store each ended identity provider session once, with its session ID and the time it ended.
+
+#### Scenario: Ended twice
+
+- **WHEN** the same session is recorded as ended twice
+- **THEN** exactly one record exists, carrying the first time

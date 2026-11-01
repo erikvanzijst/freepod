@@ -234,7 +234,10 @@ This repository is a monorepo with:
   `auth.protocol: oidc` is a client with no client record, under its
   deployment ID, with a derived secret the reconciler publishes in a Secret
   (`caelus.oidc.secretName`); removing someone from such an app's list sends it
-  a back-channel logout token, signed by the API. A template's `auth.*` values
+  a back-channel logout token, signed by the API. Ending a Keycloak SSO session
+  signs that browser out of every app it signed in to: Keycloak tells app-auth,
+  which refuses the browser's header-app sessions and sends each OIDC app a
+  logout token for that session. A template's `auth.*` values
   are chart defaults a user value overrides, except `auth.oidc`, read from
   system values only; a template forces one by leaving it out of its user
   schema. Spec:
@@ -246,10 +249,13 @@ This repository is a monorepo with:
   [app-oidc-provider](openspec/specs/app-oidc-provider/spec.md),
   [app-oidc-chart-contract](openspec/specs/app-oidc-chart-contract/spec.md),
   [app-access-list](openspec/specs/app-access-list/spec.md),
-  [app-access-dialog](openspec/specs/app-access-dialog/spec.md) ·
+  [app-access-dialog](openspec/specs/app-access-dialog/spec.md),
+  [app-sign-out](openspec/specs/app-sign-out/spec.md) ·
   Rationale: [app-authentication](openspec/changes/archive/2026-09-28-app-authentication/design.md),
   [app-auth-owner-and-preview](openspec/changes/archive/2026-10-16-app-auth-owner-and-preview/design.md),
   [app-oidc-provider](openspec/changes/archive/2026-10-26-app-oidc-provider/design.md),
+  [app-access-list](openspec/changes/archive/2026-10-30-app-access-list/design.md),
+  [app-session-logout](openspec/changes/archive/2026-11-01-app-session-logout/design.md),
   [daemons/app-auth/README.md](daemons/app-auth/README.md)
 - **The platform's Go daemons ship in one image and are pinned per consumer.**
   Each is its own module under `daemons/` and becomes `/<directory>` in

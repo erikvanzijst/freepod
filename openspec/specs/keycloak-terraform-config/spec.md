@@ -10,6 +10,7 @@ Terraform from reaching user data — end-user accounts and group membership are
 deliberately left outside Terraform's control.
 
 ## Requirements
+
 ### Requirement: Keycloak configuration is declared in Terraform
 
 The system SHALL manage Keycloak realm, client, client-scope and group
@@ -129,7 +130,8 @@ The `freepod` realm SHALL declare one OpenID Connect client per environment for 
 - enable only the standard (authorization code) flow, with PKCE method `S256`;
 - disable the implicit flow, direct access grants and service accounts;
 - list exactly one valid redirect URI: its environment's broker callback on `login.freepod.eu` or `login.dev.freepod.eu`;
-- list exactly one valid post-logout redirect URI: its environment's broker post-logout landing on the same host.
+- list exactly one valid post-logout redirect URI: its environment's broker post-logout landing on the same host;
+- declare a back-channel logout URL that reaches its environment's broker inside the cluster, require the session ID in logout tokens, and leave offline sessions alone.
 
 Neither client SHALL use a wildcard redirect URI or a wildcard post-logout redirect URI. Neither SHALL require identity-provider consent, because the broker asks for consent per app itself. The number of clients SHALL NOT grow with the number of deployments.
 
@@ -159,3 +161,8 @@ The broker's client ID and secret SHALL reach `tf/app` the same way the existing
 
 - **WHEN** `tf/app` is applied in the `prod` workspace
 - **THEN** the broker is configured with the `freepod-apps-prod` client ID and secret
+
+#### Scenario: Back-channel logout reaches the broker
+
+- **WHEN** a user who signed in to an app through `freepod-apps-dev` signs out at the identity provider
+- **THEN** the identity provider posts a logout token carrying `sid` to the dev broker, without leaving the cluster

@@ -11,7 +11,9 @@ Identity providers are specified separately, one capability each: Google in
 [keycloak-google-identity-provider](../keycloak-google-identity-provider/spec.md).
 This capability covers only what they rely on, such as the email-verification
 rule a trusted provider may satisfy.
+
 ## Requirements
+
 ### Requirement: Keycloak has a Freepod realm
 The system SHALL authenticate Freepod end users against a dedicated Keycloak
 realm named `freepod`. End-user accounts SHALL NOT be created in the built-in
@@ -454,3 +456,16 @@ would deny every CLI request on the gated development environment.
 - **THEN** `offline_access` is available to be requested, so a client can obtain
   a durable refresh token
 
+### Requirement: Dashboard clients issue one-minute access tokens
+
+The `freepod-prod` and `freepod-dev` clients SHALL issue access tokens that expire 60 seconds after issue, matching oauth2-proxy's refresh interval. Other clients SHALL keep the realm's access token lifespan.
+
+#### Scenario: Dashboard token lifetime
+
+- **WHEN** oauth2-proxy obtains tokens from `freepod-dev`
+- **THEN** the access token expires 60 seconds after it was issued
+
+#### Scenario: CLI clients unaffected
+
+- **WHEN** a CLI client obtains an access token
+- **THEN** its lifetime is the realm's, not 60 seconds
