@@ -144,9 +144,11 @@ setting and hides it from the admin UI.
 # Sign in with Freepod. Each of these pins its site setting, so an admin cannot
 # turn it off or change the provider. Passkey login does not honor
 # enable_local_logins, so it goes separately, and DiscourseConnect would replace
-# Sign in with Freepod altogether. Other login methods only add to it, so they
-# stay with the tenant, as does who may join: allow_new_registrations,
-# invite_only, must_approve_users.
+# Sign in with Freepod altogether. Discourse refuses an account with 2FA on an
+# external sign-in and sends it to a password login that is off, so 2FA at
+# sign-in is left to Freepod. Other login methods only add to it, so they stay
+# with the tenant, as does who may join: allow_new_registrations, invite_only,
+# must_approve_users.
 - name: DISCOURSE_OPENID_CONNECT_ENABLED
   value: "true"
 - name: DISCOURSE_OPENID_CONNECT_DISCOVERY_DOCUMENT
@@ -180,6 +182,8 @@ setting and hides it from the admin UI.
 - name: DISCOURSE_ENABLE_PASSKEYS
   value: "false"
 - name: DISCOURSE_ENABLE_DISCOURSE_CONNECT
+  value: "false"
+- name: DISCOURSE_ENFORCE_SECOND_FACTOR_ON_EXTERNAL_AUTH
   value: "false"
 - name: DISCOURSE_AUTH_OVERRIDES_EMAIL
   value: "true"

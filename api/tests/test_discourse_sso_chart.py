@@ -128,6 +128,7 @@ def test_it_pins_sign_in_to_the_provider(tmp_path):
             "DISCOURSE_ENABLE_LOCAL_LOGINS_VIA_EMAIL": "false",
             "DISCOURSE_ENABLE_PASSKEYS": "false",
             "DISCOURSE_ENABLE_DISCOURSE_CONNECT": "false",
+            "DISCOURSE_ENFORCE_SECOND_FACTOR_ON_EXTERNAL_AUTH": "false",
             "DISCOURSE_AUTH_OVERRIDES_EMAIL": "true",
             "DISCOURSE_EMAIL_EDITABLE": "false",
         }.items():
