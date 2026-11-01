@@ -44,10 +44,11 @@ user's browser sessions. Discourse has no record tying a session to the provider
 `sid`, so signing out in one browser ends all of that user's forum sessions; their
 user API keys, which the Discourse Hub app uses, stay.
 
-Two-factor authentication at sign-in is Freepod's. Discourse would otherwise
-refuse an account with 2FA and send it to a password login that is off, so the
-chart pins `enforce_second_factor_on_external_auth` off. A 2FA method set up in
-Discourse then applies only to the few sensitive actions Discourse guards itself.
+Two-factor authentication is Freepod's. With local logins off Discourse offers
+no 2FA and counts any method already set up as off. A forum restored from a backup
+that requires 2FA would still send its members to a setup page that no longer
+works, so the chart pins `enforce_second_factor_on_external_auth` off, which
+exempts sign-ins through Freepod.
 
 If Discourse's sign-in ever breaks, the only way in is `rails runner`:
 `/u/admin-login` needs the email login that SSO turns off.

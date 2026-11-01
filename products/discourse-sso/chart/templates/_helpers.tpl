@@ -144,10 +144,11 @@ setting and hides it from the admin UI.
 # Sign in with Freepod. Each of these pins its site setting, so an admin cannot
 # turn it off or change the provider. Passkey login does not honor
 # enable_local_logins, so it goes separately, and DiscourseConnect would replace
-# Sign in with Freepod altogether. Discourse refuses an account with 2FA on an
-# external sign-in and sends it to a password login that is off, so 2FA at
-# sign-in is left to Freepod. Other login methods only add to it, so they stay
-# with the tenant, as does who may join: allow_new_registrations, invite_only,
+# Sign in with Freepod altogether. With local logins off Discourse counts every
+# 2FA method as off, so a forum restored from a backup that requires 2FA would
+# send everyone to a setup page that no longer works; the last pin below exempts
+# sign-ins through Freepod. Other login methods only add to it, so they stay with
+# the tenant, as does who may join: allow_new_registrations, invite_only,
 # must_approve_users.
 - name: DISCOURSE_OPENID_CONNECT_ENABLED
   value: "true"
