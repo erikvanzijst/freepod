@@ -28,8 +28,15 @@ identity, email becomes an ordinary attribute of the record.
   email match never adopts a record that already carries a different subject.
 - **An email change no longer creates a second account.** A request whose subject matches an
   existing record updates that record's email in place.
-- **Existing accounts adopt lazily**, on their next authenticated request. No admin-API
-  sweep, no backfill script, no downtime, and nothing to run in a maintenance window.
+- **Existing accounts adopt lazily**, on their next authenticated request, and that stays the
+  permanent mechanism: no shipped sweep, no downtime, and nothing to run in a maintenance
+  window. At rollout an operator runs a one-off, uncommitted backfill per environment from
+  Keycloak's own database, so that people who only ever sign in to their apps, and so never
+  call the API, are bound too.
+- **App sign-in recognizes a deployment's owner by subject.** app-auth's admission check
+  matches the owner by the subject stored on their record, and by email only while that
+  record carries none, so a later holder of the owner's old address is not taken for the
+  owner.
 - **The email fallback is permanent, not transitional.** Subjects are realm-scoped, so
   rebuilding or replacing a realm reissues every one of them — as the `master` → `freepod`
   migration already did once. Removing the fallback would orphan every account the next
@@ -60,6 +67,10 @@ identity, email becomes an ordinary attribute of the record.
   sole join key and that no Keycloak subject identifier is persisted. Both statements
   change. Email verification remains a security control, for a narrower reason: it is what
   makes adoption by email safe. Adds the public-subject-type requirement.
+- `app-access-list`: the owner is admitted by the subject stored on their record, by email
+  only while it carries none.
+- `app-auth-verifier`: the verifier recognizes the owner the same way.
+- `app-auth-data-model`: the app authentication role may read the owning user's subject.
 
 ## Impact
 
@@ -69,9 +80,14 @@ identity, email becomes an ordinary attribute of the record.
   ladder; `get_optional_user` follows it unchanged.
 - `api/tests/conftest.py` and the per-module header fixtures: authenticated test requests
   currently carry only `X-Auth-Request-Email`.
-- `ui/src/state/useAuthEmail.ts`: sets the identity header by hand in local development.
+- `ui/src/state/useAuthEmail.ts`: sets the identity headers by hand in local development, and
+  gains a subject derived from the typed email.
 - `api/README.md`: the Authentication section states that the caller is resolved by
   `lower(email)` and that no Keycloak identifier is stored.
+- `daemons/app-auth/`: the access-list load reads the owner's subject and `admit` matches the
+  owner by it; released as a new daemons version (`app_auth_image` in `tf/app/variables.tf`).
+- `tf/app/caelus/app-auth-bootstrap.sql`: a column grant on the user's subject for
+  `caelus_app_auth`.
 - `tf/deps/keycloak-config/clients.tf`: asserted, not necessarily changed — the clients must
   use the public subject type.
 - `tf/app/login/main.tf`: unchanged. `X-Auth-Request-User` is already in the forward-auth

@@ -17,10 +17,11 @@ from tests.conftest import (
     OTHER_EMAIL,
     USER_AUTH_HEADER,
     USER_EMAIL,
+    auth_header,
     create_user,
 )
 
-AUTH_ADMIN = {"X-Auth-Request-Email": ADMIN_EMAIL}
+AUTH_ADMIN = auth_header(ADMIN_EMAIL)
 _counter = itertools.count()
 
 

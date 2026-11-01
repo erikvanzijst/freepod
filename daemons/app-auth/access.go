@@ -8,12 +8,18 @@ import (
 	"time"
 )
 
-// admit is D3 against one copy of a deployment's access list: the owner by
-// email, then an entry bound to sub, then an unbound entry with this email,
-// which it returns for the caller to bind. An entry bound to another subject
-// admits nobody else, whatever their email.
+// admit is D3 against one copy of a deployment's access list: the owner, then
+// an entry bound to sub, then an unbound entry with this email, which it
+// returns for the caller to bind. An owner whose record carries a subject is
+// recognized by it alone, and by email only while it carries none
+// (keycloak-subject-join-key D8), as an entry bound to another subject admits
+// nobody else, whatever their email.
 func (l accessList) admit(sub, email string) (ok bool, bindID string) {
-	if email != "" && strings.EqualFold(email, l.OwnerEmail) {
+	if l.OwnerSubject != "" {
+		if sub != "" && sub == l.OwnerSubject {
+			return true, ""
+		}
+	} else if email != "" && strings.EqualFold(email, l.OwnerEmail) {
 		return true, ""
 	}
 	for _, e := range l.Entries {

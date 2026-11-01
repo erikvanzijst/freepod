@@ -55,10 +55,11 @@ GRANT SELECT (id, hostname, status, applied_release_id, user_id) ON TABLE deploy
 GRANT SELECT (id, template_id, values_json) ON TABLE deployment_release TO caelus_app_auth;
 GRANT SELECT (id, system_values_json) ON TABLE product_template_version TO caelus_app_auth;
 
--- Access: a `listed` deployment admits its owner, recognized by email, and
--- its access list. The list is the owner's, written through the API; this role
+-- Access: a `listed` deployment admits its owner, recognized by the Keycloak
+-- subject their record is bound to (by email while it is unbound), and its
+-- access list. The list is the owner's, written through the API; this role
 -- only ties an entry to the subject that first signs in with it.
-GRANT SELECT (id, email) ON TABLE "user" TO caelus_app_auth;
+GRANT SELECT (id, email, keycloak_subject) ON TABLE "user" TO caelus_app_auth;
 GRANT SELECT ON TABLE app_access_entry TO caelus_app_auth;
 GRANT UPDATE (subject, name, bound_at) ON TABLE app_access_entry TO caelus_app_auth;
 

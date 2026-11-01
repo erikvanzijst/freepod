@@ -200,6 +200,10 @@ resource "kubernetes_manifest" "oauth2_proxy_middleware" {
         #
         # Removing "Authorization" from this list would let a client-supplied
         # header through to the API untouched.
+        #
+        # X-Auth-Request-User is the Keycloak subject (set-xauthrequest, from
+        # the `sub` claim), and the API resolves callers by it
+        # (caller-identity-resolution): it is load-bearing, not unused.
         authResponseHeaders = [
           "X-Auth-Request-User",
           "X-Auth-Request-Email",

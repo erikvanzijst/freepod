@@ -89,14 +89,17 @@ type accessEntry struct {
 // accessList is everything admit needs: the owner, then the list.
 type accessList struct {
 	OwnerEmail string
-	Entries    []accessEntry
+	// OwnerSubject is the Keycloak subject the owner's record is bound to,
+	// empty until the platform has bound it.
+	OwnerSubject string
+	Entries      []accessEntry
 }
 
 type store interface {
 	// eligible returns the deployment whose hostname is exactly host and whose
 	// applied release has header authentication enabled, or ok=false.
 	eligible(ctx context.Context, host string) (app headerApp, ok bool, err error)
-	// accessList returns a deployment's owner email and access list entries.
+	// accessList returns a deployment's owner and access list entries.
 	accessList(ctx context.Context, deploymentID string) (accessList, error)
 	// bindEntry ties an unbound entry to subject, and reports whether this
 	// call did.
@@ -192,8 +195,9 @@ func (s *pgStore) eligible(ctx context.Context, host string) (headerApp, bool, e
 func (s *pgStore) accessList(ctx context.Context, deploymentID string) (accessList, error) {
 	var l accessList
 	if err := s.pool.QueryRow(ctx, `
-		SELECT u.email FROM deployment d JOIN "user" u ON u.id = d.user_id WHERE d.id = $1::uuid`,
-		deploymentID).Scan(&l.OwnerEmail); err != nil {
+		SELECT u.email, coalesce(u.keycloak_subject, '')
+		  FROM deployment d JOIN "user" u ON u.id = d.user_id WHERE d.id = $1::uuid`,
+		deploymentID).Scan(&l.OwnerEmail, &l.OwnerSubject); err != nil {
 		return accessList{}, err
 	}
 	rows, err := s.pool.Query(ctx, `

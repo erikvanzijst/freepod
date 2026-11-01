@@ -1,7 +1,7 @@
 from starlette.testclient import TestClient
 
 from tests.conftest import client, db_session
-from tests.conftest import create_free_plan_template, create_user
+from tests.conftest import auth_header, create_free_plan_template, create_user
 
 from app.db import get_session
 from app.main import app as fastapi_app
@@ -15,7 +15,7 @@ def test_me_returns_user_for_known_email(client, db_session):
     create_user(client, "known@example.com")
 
     # Now call /api/me with that email
-    me_resp = client.get("/api/me", headers={"X-Auth-Request-Email": "known@example.com"})
+    me_resp = client.get("/api/me", headers=auth_header("known@example.com"))
     assert me_resp.status_code == 200
     data = me_resp.json()
     assert data["email"] == "known@example.com"
@@ -24,7 +24,7 @@ def test_me_returns_user_for_known_email(client, db_session):
 
 
 def test_me_auto_creates_unknown_email(client):
-    me_resp = client.get("/api/me", headers={"X-Auth-Request-Email": "newuser@example.com"})
+    me_resp = client.get("/api/me", headers=auth_header("newuser@example.com"))
     assert me_resp.status_code == 200
     data = me_resp.json()
     assert data["email"] == "newuser@example.com"
@@ -41,9 +41,20 @@ def test_me_case_insensitive_email(client, db_session):
     create_user(client, "alice@example.com")
 
     # Call /api/me with mixed-case variant
-    me_resp = client.get("/api/me", headers={"X-Auth-Request-Email": "Alice@Example.COM"})
+    me_resp = client.get("/api/me", headers=auth_header("Alice@Example.COM"))
     assert me_resp.status_code == 200
     assert me_resp.json()["email"] == "alice@example.com"
+
+
+def test_keycloak_subject_is_not_part_of_the_api(client):
+    """The join key is internal: no model the API reads or writes users with
+    carries it, and no user response shows it."""
+    from app.models import UserCreate, UserRead
+
+    assert "keycloak_subject" not in UserCreate.model_fields
+    assert "keycloak_subject" not in UserRead.model_fields
+    assert "keycloak_subject" not in client.get("/api/me").json()
+    assert all("keycloak_subject" not in u for u in client.get("/api/users").json())
 
 
 def test_me_returns_404_when_header_missing(db_session):

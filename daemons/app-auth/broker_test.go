@@ -543,6 +543,26 @@ func TestBrokerListedOwnerWithEmptyList(t *testing.T) {
 	g.redeemable(w, milk)
 }
 
+func TestBrokerListedBoundOwner(t *testing.T) {
+	t.Run("is admitted by subject under a changed email", func(t *testing.T) {
+		g := listedRig(t)
+		g.st.ownerSubjects["dep-milk"] = "3f2a"
+		body := g.returnFromIdP(g.start(milk)).Body.String()
+		w := g.do("POST", "/consent", url.Values{"csrf": {formValue(t, body, "csrf")}, "decision": {"allow"}})
+		g.redeemable(w, milk)
+	})
+
+	t.Run("is not impersonated by another subject with the owner's email", func(t *testing.T) {
+		g := listedRig(t)
+		g.st.ownerSubjects["dep-milk"] = "s-owner"
+		g.auth.id.Email = "owner@example.com"
+		refusedWith(t, g.returnFromIdP(g.start(milk)), milk, "owner@example.com", login+"/logout?host="+milk+"&rd=%2F")
+		if len(g.st.codes) != 0 {
+			t.Fatal("a code was issued")
+		}
+	})
+}
+
 func TestBrokerListedFirstSignInBinds(t *testing.T) {
 	g := listedRig(t)
 	g.st.list("dep-milk", "e-alice", "alice@example.com", "")
