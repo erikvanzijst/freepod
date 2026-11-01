@@ -345,6 +345,16 @@ def test_build_owner_overrides_projects_email_and_id() -> None:
     }
 
 
+def test_build_owner_overrides_projects_a_bound_owners_subject() -> None:
+    """A chart can recognize the owner by the identity their record is bound
+    to. An unbound owner simply has no such field."""
+    bound = SimpleNamespace(user=SimpleNamespace(email="owner@example.com", id=42, keycloak_subject="kc-1"))
+    unbound = SimpleNamespace(user=SimpleNamespace(email="owner@example.com", id=42, keycloak_subject=None))
+
+    assert DeploymentReconciler._build_owner_overrides(bound)["caelus"]["owner"]["subject"] == "kc-1"
+    assert "subject" not in DeploymentReconciler._build_owner_overrides(unbound)["caelus"]["owner"]
+
+
 def test_build_owner_overrides_projects_id_as_int() -> None:
     """The id stays an int: charts compare it against the string prefix of an image
     reference themselves, so any stringification belongs in the template, not here."""

@@ -1,0 +1,89 @@
+{{- /*
+Bundled Redis for Sidekiq's queues, the message bus and the cache, at the
+major version the standard install runs. Persisted like upstream's
+/shared/redis_data, so queued and scheduled jobs survive a restart. The image
+starts as root and drops to the redis user itself. A StatefulSet for the
+reason postgres.yaml gives.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.redis.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.redis.persistence.size }}
+  {{- if .Values.redis.persistence.storageClassName }}
+  storageClassName: {{ .Values.redis.persistence.storageClassName }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-redis
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "discourse.componentSelector" (dict "root" . "name" "redis") | nindent 4 }}
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-redis
+  labels:
+    {{- include "discourse.labels" . | nindent 4 }}
+    {{- include "discourse.componentSelector" (dict "root" . "name" "redis") | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: {{ .Release.Name }}-redis
+  selector:
+    matchLabels:
+      {{- include "discourse.componentSelector" (dict "root" . "name" "redis") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "discourse.componentSelector" (dict "root" . "name" "redis") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      {{- include "discourse.podPlacement" . | nindent 6 }}
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          ports:
+            - containerPort: 6379
+              name: redis
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "redis-cli ping | grep -q PONG"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "redis-cli ping | grep -q PONG"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- with .Values.redis.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: redis-data
