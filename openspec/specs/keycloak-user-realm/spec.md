@@ -56,8 +56,8 @@ The `freepod` realm SHALL set `registrationEmailAsUsername`, so that a self-regi
 user's username is their email address and no username field appears on the registration
 form.
 
-Nothing in Freepod reads a Keycloak username: callers are resolved by email, and no Keycloak
-identifier is persisted. A required, uniqueness-checked field with no consumer is a second
+Nothing in Freepod reads a Keycloak username: callers are resolved by the Keycloak subject. A
+required, uniqueness-checked field with no consumer is a second
 way for registration to fail, on a form that reports failures only on submit and clears the
 password fields when it does.
 
@@ -131,34 +131,6 @@ Terraform SHALL NOT perform this pass, because it does not manage end-user accou
 - **WHEN** a user whose username was normalized signs in afterwards
 - **THEN** their email address and existing password authenticate them, and no password
   reset is required
-
-### Requirement: Email verification is required
-The system SHALL require email verification for new user accounts in the
-`freepod` realm. Because the email claim is the sole join key between Keycloak
-and Freepod's own user records, an unverified email is a privilege-escalation
-vector and verification SHALL NOT be relaxed.
-
-An account created through an identity provider configured to trust its email
-assertions — currently only Google — SHALL be marked verified by that assertion
-instead of by a Keycloak verification email. No other path SHALL mark an email
-verified without the user following a Keycloak verification link.
-
-#### Scenario: Email verification is required
-- **WHEN** the `freepod` realm settings are inspected
-- **THEN** `verifyEmail` is set to `true`
-
-#### Scenario: Email is the identity join key
-- **WHEN** Freepod resolves an authenticated caller to a user record
-- **THEN** the lookup is performed on the verified email claim
-- **AND** no Keycloak subject identifier is persisted by Freepod
-
-#### Scenario: Trusted identity provider verifies the email
-- **WHEN** an account is created by a first sign-in through Google
-- **THEN** its email is marked verified without a Keycloak verification email
-
-#### Scenario: Self-registration still verifies by email
-- **WHEN** a user registers through the registration form
-- **THEN** they must follow the Keycloak verification link before they can sign in
 
 ### Requirement: SMTP is configured for email sending
 The system SHALL configure SMTP on the `freepod` realm through Terraform, so
@@ -469,3 +441,51 @@ The `freepod-prod` and `freepod-dev` clients SHALL issue access tokens that expi
 
 - **WHEN** a CLI client obtains an access token
 - **THEN** its lifetime is the realm's, not 60 seconds
+
+### Requirement: Email verification gates record adoption
+
+The system SHALL require email verification for new user accounts in the `freepod` realm,
+and SHALL NOT relax it.
+
+Freepod resolves an authenticated caller to its own user record by the Keycloak subject,
+not by email. Verification remains a security control for a narrower but still load-bearing
+reason: a record that carries no subject yet is claimed by the caller whose email matches
+it, so an account whose address could be set to somebody else's would take over that
+Freepod record on its first authenticated request. Together with the realm refusing to let
+two accounts hold one address, verification is what makes that claim safe.
+
+#### Scenario: Email verification is required
+- **WHEN** the `freepod` realm settings are inspected
+- **THEN** `verifyEmail` is set to `true`
+
+#### Scenario: The subject is the identity join key
+- **WHEN** Freepod resolves an authenticated caller to a user record
+- **THEN** the lookup is performed on the Keycloak subject
+- **AND** the subject is persisted on the record it resolves to
+
+#### Scenario: A verified address claims a record that has no subject
+- **WHEN** an authenticated caller's subject matches no record and their verified email
+  matches a record carrying no subject
+- **THEN** that record is claimed by the caller's subject
+- **AND** it is thereafter reachable by subject alone
+
+### Requirement: Clients issue a public subject identifier
+
+Every client in the `freepod` realm through which an end user authenticates to Freepod
+SHALL issue the same subject for a given user — that is, the realm's default public subject
+type, not a pairwise one.
+
+A pairwise subject is derived per client. Freepod is reached through more than one client
+per environment (a browser session client and a CLI client), so a pairwise subject would
+give one person a different identifier depending on how they connected, and the platform
+would resolve them to a different account for each. The failure is silent and looks to the
+user like the CLI and the web interface disagreeing about what they own.
+
+#### Scenario: Subject type is public on every Freepod client
+- **WHEN** the environment session clients and CLI clients are inspected
+- **THEN** none is configured to issue a pairwise subject
+
+#### Scenario: One identity presents one subject across clients
+- **WHEN** the same user authenticates through the browser client and through the CLI client
+  of one environment
+- **THEN** the subject in both tokens is identical

@@ -55,7 +55,7 @@ The platform SHALL store each OIDC authorization code the provider issues only a
 
 ### Requirement: Least-privilege database role
 
-The app authentication service SHALL connect to the platform database as its own role. The role SHALL be able to read only the columns it needs to decide eligibility and access: the deployment's identifier, hostname, status, owner and applied release; that release's template and values; the template's system values; and the owning user's identifier and email. It SHALL read and write only the consent table, the sign-in code table, the OIDC authorization code table, the sign-in record table and the ended-session table. It SHALL read access list entries and update only their subject, display name and binding time. It SHALL NOT be able to write any other table or read any other column. The role SHALL be created and its grants re-applied idempotently on every rollout.
+The app authentication service SHALL connect to the platform database as its own role. The role SHALL be able to read only the columns it needs to decide eligibility and access: the deployment's identifier, hostname, status, owner and applied release; that release's template and values; the template's system values; and the owning user's identifier, email and subject. It SHALL read and write only the consent table, the sign-in code table, the OIDC authorization code table, the sign-in record table and the ended-session table. It SHALL read access list entries and update only their subject, display name and binding time. It SHALL NOT be able to write any other table or read any other column. The role SHALL be created and its grants re-applied idempotently on every rollout.
 
 #### Scenario: Service bug cannot write deployments
 
@@ -89,7 +89,7 @@ The app authentication service SHALL connect to the platform database as its own
 
 #### Scenario: Users' other details are out of reach
 
-- **WHEN** the role attempts to read a user's columns other than the identifier and email
+- **WHEN** the role attempts to read a user's columns other than the identifier, email and subject
 - **THEN** the database refuses
 
 ### Requirement: Access list entry records
