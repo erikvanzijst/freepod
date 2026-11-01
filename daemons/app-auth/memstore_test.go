@@ -11,13 +11,15 @@ import (
 // memStore is the store contract in memory, for handler tests. The SQL behind
 // the same contract is exercised against the real schema in store_test.go.
 type memStore struct {
-	mu      sync.Mutex
-	now     func() time.Time
-	hosts   map[string]string // host -> deployment id, auth-enabled only
-	listed  map[string]bool   // deployment id -> `auth.access: listed`
-	owners  map[string]string // deployment id -> owner's email
-	entries map[string][]accessEntry
-	names   map[string]string // entry id -> name it was bound with
+	mu     sync.Mutex
+	now    func() time.Time
+	hosts  map[string]string // host -> deployment id, auth-enabled only
+	listed map[string]bool   // deployment id -> `auth.access: listed`
+	owners map[string]string // deployment id -> owner's email
+	// ownerSubjects are owners' bound subjects; an owner absent here is unbound.
+	ownerSubjects map[string]string
+	entries       map[string][]accessEntry
+	names         map[string]string // entry id -> name it was bound with
 	// accessErr fails every accessList read, as a database outage does.
 	accessErr error
 	// accessReads counts accessList calls.
@@ -64,7 +66,7 @@ func newMemStore(now func() time.Time) *memStore {
 	return &memStore{now: now, hosts: map[string]string{}, consents: map[[2]string][]string{}, codes: map[string]memCode{},
 		clients: map[string]memClient{}, oidcCodes: map[string]memOIDCCode{},
 		signIns: map[[2]string]memSignIn{}, ended: map[string]time.Time{},
-		listed: map[string]bool{}, owners: map[string]string{}, entries: map[string][]accessEntry{}, names: map[string]string{}}
+		listed: map[string]bool{}, owners: map[string]string{}, ownerSubjects: map[string]string{}, entries: map[string][]accessEntry{}, names: map[string]string{}}
 }
 
 func (m *memStore) eligible(_ context.Context, host string) (headerApp, bool, error) {
@@ -84,7 +86,7 @@ func (m *memStore) accessList(_ context.Context, dep string) (accessList, error)
 	if m.accessErr != nil {
 		return accessList{}, m.accessErr
 	}
-	return accessList{OwnerEmail: m.owners[dep], Entries: slices.Clone(m.entries[dep])}, nil
+	return accessList{OwnerEmail: m.owners[dep], OwnerSubject: m.ownerSubjects[dep], Entries: slices.Clone(m.entries[dep])}, nil
 }
 
 func (m *memStore) bindEntry(_ context.Context, entryID, sub, name string) (bool, error) {

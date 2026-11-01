@@ -6,8 +6,9 @@ identity headers (`X-Freepod-User`, `X-Freepod-Email`, `X-Freepod-Name`) on
 every request, with Freepod's Keycloak as the identity provider. A deployment
 whose template declares `auth.oidc.redirectPaths` and that has `auth.protocol:
 oidc` is instead an OpenID Connect client of this service. Either way,
-`auth.access: listed` admits only the owner and the deployment's access list,
-which the API edits. It has three roles:
+`auth.access: listed` admits only the owner, recognized by the Keycloak
+subject their account is bound to, and the deployment's access list, which the
+API edits. It has three roles:
 
 - **The verifier** (`:8080/verify`) is Traefik's forward-auth endpoint for
   every auth-enabled app. It checks a host-bound session cookie, strips it and

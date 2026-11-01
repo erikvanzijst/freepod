@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.config import CaelusSettings
 from app.models import UserORM
-from tests.conftest import OTHER_EMAIL, USER_EMAIL, create_user
+from tests.conftest import OTHER_EMAIL, USER_EMAIL, auth_header, create_user
 
 
 def test_new_user_holds_no_handle(db_session):
@@ -57,7 +57,7 @@ def test_many_accounts_may_hold_none(db_session):
 
 
 def _headers(email: str) -> dict:
-    return {"X-Auth-Request-Email": email}
+    return auth_header(email)
 
 
 def _claim(client, email: str, handle: str, *, dry_run: bool = False):

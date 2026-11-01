@@ -267,9 +267,12 @@ This repository is a monorepo with:
   [daemons/README.md](daemons/README.md)
 - Authentication: all API endpoints require the `X-Auth-Request-Email` header
   (injected by oauth2-proxy in production, set by the frontend in local dev);
+  the caller resolves to the user record bound to the Keycloak subject in
+  `X-Auth-Request-User`, and an unbound record holding the email is adopted.
   `GET /api/me` is the session initialization endpoint. The CLI uses
   `CAELUS_USER_EMAIL` with an optional `--as-user` override. Spec:
   [auth-header-integration](openspec/specs/auth-header-integration/spec.md),
+  [caller-identity-resolution](openspec/specs/caller-identity-resolution/spec.md),
   [user-endpoint-authorization](openspec/specs/user-endpoint-authorization/spec.md)
 
 ## Quick Start

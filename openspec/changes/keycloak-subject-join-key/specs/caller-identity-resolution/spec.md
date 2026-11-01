@@ -24,6 +24,11 @@ no record, in which case one is created. A record carrying a subject MUST NOT be
 email under any circumstances, so that once a record has been bound to an identity, no
 other identity can reach it by presenting an address.
 
+Two non-deleted records MUST NOT hold the same email. A request that would need to create
+or update a record so that it holds an email another non-deleted record still holds MUST be
+refused with a conflict error that says the address is held by another account, and MUST
+change neither record. Repairing that state is an operator's job.
+
 #### Scenario: A returning caller resolves by subject
 
 - **WHEN** a request presents a subject that a user record already carries
@@ -41,7 +46,15 @@ other identity can reach it by presenting an address.
 - **WHEN** a request presents a subject that matches no record, and an email address that
   matches a record already carrying a different subject
 - **THEN** the request does not resolve to that record
-- **AND** a new record is created instead
+- **AND** it is refused with a conflict error
+- **AND** neither that record nor any other is created or changed
+
+#### Scenario: A changed address that another record still holds
+
+- **WHEN** a request resolves by subject to a record, and presents an email address that a
+  different non-deleted record holds
+- **THEN** it is refused with a conflict error
+- **AND** neither record is changed
 
 ### Requirement: A record that carries no subject is adopted by email
 
@@ -103,8 +116,8 @@ from one that has been emptied.
 
 ### Requirement: An unknown caller is recorded with both identifiers
 
-When neither the presented subject nor an adoptable email matches any record, the platform
-MUST create one carrying both the subject and the email, so that the record is bound to the
+When no record carries the presented subject and no non-deleted record holds the presented
+email, the platform MUST create one carrying both the subject and the email, so that the record is bound to the
 identity from its first request and never enters the adoptable state.
 
 #### Scenario: A new account is bound on creation

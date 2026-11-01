@@ -472,6 +472,19 @@ func TestAccessListApplies(t *testing.T) {
 		})
 	}
 
+	t.Run("bound owner is recognized by subject alone", func(t *testing.T) {
+		v, st, _ := listedVerifier(t)
+		st.ownerSubjects["dep-milk"] = owner.Sub
+		moved := session{Sub: owner.Sub, Email: "owner@new.example", Name: "Owner"}
+		if w := v.do(fwd{host: milk, uri: "/lists", edge: listed, header: signedIn(v, moved, milk)}); w.Code != 200 {
+			t.Fatalf("owner under a changed email: %d", w.Code)
+		}
+		impostor := session{Sub: "n3xt", Email: "owner@example.com", Name: "Next holder"}
+		if w := v.do(fwd{host: milk, uri: "/lists", edge: listed, header: signedIn(v, impostor, milk)}); w.Code != http.StatusForbidden {
+			t.Fatalf("another subject with the owner's email: %d", w.Code)
+		}
+	})
+
 	t.Run("stranger navigating gets the no-access page", func(t *testing.T) {
 		v, _, _ := listedVerifier(t)
 		w := v.do(fwd{host: milk, uri: "/lists", edge: listed, header: navigate(signedIn(v, bob, milk))})

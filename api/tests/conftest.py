@@ -18,7 +18,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -525,14 +525,38 @@ def create_paid_plan_template(
     return ptv.id
 
 
+def subject_for(email: str) -> str:
+    """A stable Keycloak subject for a test identity, derived from its email so
+    every request a test makes as that address presents the same one."""
+    return f"kc-{uuid5(NAMESPACE_URL, email.strip().lower())}"
+
+
+def auth_header(email: str, subject: str | None = None) -> dict[str, str]:
+    """The identity headers the edge sends for an authenticated caller.
+
+    Always sets both: a request's headers merge over the client's defaults,
+    so leaving the subject out would send the default caller's.
+    """
+    return {
+        "X-Auth-Request-Email": email,
+        "X-Auth-Request-User": subject_for(email) if subject is None else subject,
+    }
+
+
+def subjectless_header(email: str) -> dict[str, str]:
+    """An email with no subject: local development and tests, never the edge
+    (caller-identity-resolution)."""
+    return {"X-Auth-Request-Email": email, "X-Auth-Request-User": ""}
+
+
 ADMIN_EMAIL = "test@example.com"
-AUTH_HEADER = {"X-Auth-Request-Email": ADMIN_EMAIL}
+AUTH_HEADER = auth_header(ADMIN_EMAIL)
 
 USER_EMAIL = "regular@example.com"
-USER_AUTH_HEADER = {"X-Auth-Request-Email": USER_EMAIL}
+USER_AUTH_HEADER = auth_header(USER_EMAIL)
 
 OTHER_EMAIL = "other@example.com"
-OTHER_AUTH_HEADER = {"X-Auth-Request-Email": OTHER_EMAIL}
+OTHER_AUTH_HEADER = auth_header(OTHER_EMAIL)
 
 
 def create_user(
@@ -550,20 +574,20 @@ def create_user(
     ``accept_tos=False`` or ``claim_handle=False`` to leave one unsettled,
     for tests of the flows that settle them.
     """
-    resp = client.get("/api/me", headers={"X-Auth-Request-Email": email})
+    resp = client.get("/api/me", headers=auth_header(email))
     assert resp.status_code == 200, f"provisioning {email}: {resp.status_code}"
     if accept_tos:
         acc = client.post(
             "/api/me/tos-acceptance",
             json={"version": CURRENT_TOS_VERSION},
-            headers={"X-Auth-Request-Email": email},
+            headers=auth_header(email),
         )
         assert acc.status_code == 200, f"accepting tos for {email}: {acc.status_code}"
     if claim_handle:
         claim = client.post(
             "/api/me/handle",
             json={"handle": handle_for(email)},
-            headers={"X-Auth-Request-Email": email},
+            headers=auth_header(email),
         )
         assert claim.status_code == 200, f"claiming handle for {email}: {claim.text}"
     return resp.json()
@@ -607,7 +631,8 @@ def client(db_session):
     app.dependency_overrides[get_payment_provider] = lambda: None
 
     # Pre-create the default test user as admin so existing tests pass
-    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True, handle=handle_for(ADMIN_EMAIL),
+    admin_user = UserORM(email=ADMIN_EMAIL, keycloak_subject=subject_for(ADMIN_EMAIL), is_admin=True,
+                         handle=handle_for(ADMIN_EMAIL),
                          tos_accepted_version=CURRENT_TOS_VERSION, tos_accepted_at=_utcnow())
     db_session.add(admin_user)
     db_session.commit()
@@ -639,7 +664,8 @@ def paid_client(db_session, fake_payment_provider, monkeypatch):
     app.dependency_overrides[get_session] = override_get_db
     app.dependency_overrides[get_payment_provider] = lambda: fake_payment_provider
 
-    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True, handle=handle_for(ADMIN_EMAIL),
+    admin_user = UserORM(email=ADMIN_EMAIL, keycloak_subject=subject_for(ADMIN_EMAIL), is_admin=True,
+                         handle=handle_for(ADMIN_EMAIL),
                          tos_accepted_version=CURRENT_TOS_VERSION, tos_accepted_at=_utcnow())
     db_session.add(admin_user)
     db_session.commit()
@@ -660,12 +686,14 @@ def user_client(db_session):
     app.dependency_overrides[get_session] = override_get_db
 
     # Pre-create admin user (some tests need resources created by admin)
-    admin_user = UserORM(email=ADMIN_EMAIL, is_admin=True, handle=handle_for(ADMIN_EMAIL),
+    admin_user = UserORM(email=ADMIN_EMAIL, keycloak_subject=subject_for(ADMIN_EMAIL), is_admin=True,
+                         handle=handle_for(ADMIN_EMAIL),
                          tos_accepted_version=CURRENT_TOS_VERSION, tos_accepted_at=_utcnow())
     db_session.add(admin_user)
     # Pre-create the acting regular user as already-accepted so deploy tests
     # under this client don't trip the acceptance precondition.
-    regular_user = UserORM(email=USER_EMAIL, handle=handle_for(USER_EMAIL),
+    regular_user = UserORM(email=USER_EMAIL, keycloak_subject=subject_for(USER_EMAIL),
+                           handle=handle_for(USER_EMAIL),
                            tos_accepted_version=CURRENT_TOS_VERSION, tos_accepted_at=_utcnow())
     db_session.add(regular_user)
     db_session.commit()

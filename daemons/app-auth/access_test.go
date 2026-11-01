@@ -33,6 +33,28 @@ func TestAdmit(t *testing.T) {
 	}
 }
 
+func TestAdmitBoundOwner(t *testing.T) {
+	l := accessList{OwnerEmail: "owner@example.com", OwnerSubject: "s-owner", Entries: []accessEntry{
+		{ID: "e-ana", Email: "ana@example.com", Subject: "s-ana"},
+	}}
+	for name, c := range map[string]struct {
+		sub, email string
+		ok         bool
+	}{
+		"owner":                        {"s-owner", "owner@example.com", true},
+		"owner with a changed email":   {"s-owner", "owner@new.example", true},
+		"owner's email, other subject": {"s-next-holder", "owner@example.com", false},
+		"owner's email, no subject":    {"", "owner@example.com", false},
+		"listed account":               {"s-ana", "ana@example.com", true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if ok, _ := l.admit(c.sub, c.email); ok != c.ok {
+				t.Fatalf("admit = %v; want %v", ok, c.ok)
+			}
+		})
+	}
+}
+
 func TestAdmittedBinds(t *testing.T) {
 	ctx := context.Background()
 	st := newMemStore(nil)

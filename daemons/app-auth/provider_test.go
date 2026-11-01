@@ -1052,6 +1052,22 @@ func TestProviderListed(t *testing.T) {
 		g.codeFor(depWiki, cb)
 	})
 
+	t.Run("bound owner signs in under a changed email", func(t *testing.T) {
+		g := listedProvider(t)
+		g.st.ownerSubjects[depWiki] = "3f2a"
+		g.codeFor(depWiki, cb)
+	})
+
+	t.Run("another subject with the bound owner's email gets no code", func(t *testing.T) {
+		g := listedProvider(t)
+		g.st.ownerSubjects[depWiki] = "s-owner"
+		g.auth.id.Email = "owner@example.com"
+		refusedWith(t, g.returnFromIdP(g.authorize(authorizeQuery(depWiki, cb))), wiki, "owner@example.com", login+"/oidc/logout")
+		if len(g.st.oidcCodes) != 0 {
+			t.Fatal("a code was issued")
+		}
+	})
+
 	t.Run("removed while deciding", func(t *testing.T) {
 		g := listedProvider(t)
 		g.st.list(depWiki, "e-alice", "alice@example.com", "")

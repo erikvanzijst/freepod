@@ -17,6 +17,7 @@ from tests.conftest import (
     USER_AUTH_HEADER,
     USER_EMAIL,
     create_free_plan_template,
+    subjectless_header,
 )
 from app.db import get_session
 from app.main import app as fastapi_app
@@ -222,6 +223,22 @@ def test_other_user_rejected_from_resources(authz_setup):
         assert resp.status_code == 403, (
             f"{method} {path}: expected 403, got {resp.status_code}"
         )
+
+
+def test_subjectless_callers_meet_the_same_rules(authz_setup):
+    """A request with an email and no subject (local development, tests)
+    resolves by email and is held to the same self-or-admin rules as one the
+    edge identified by subject."""
+    s = authz_setup
+    with (
+        TestClient(fastapi_app, headers=subjectless_header(USER_EMAIL)) as user_client,
+        TestClient(fastapi_app, headers=subjectless_header(OTHER_EMAIL)) as other_client,
+    ):
+        for method, path, body in _self_read_endpoints(s["user"].id, s["deployment_id"]):
+            resp = user_client.request(method, path, json=body)
+            assert resp.status_code == 200, f"{method} {path}: expected 200, got {resp.status_code}"
+            resp = other_client.request(method, path, json=body)
+            assert resp.status_code == 403, f"{method} {path}: expected 403, got {resp.status_code}"
 
 
 def test_admin_can_access_other_users_resources(authz_setup):

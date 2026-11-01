@@ -354,8 +354,14 @@ func TestAccessList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.OwnerEmail != "owner-"+f.unique+"@app-auth.test" || len(l.Entries) != 2 {
+	if l.OwnerEmail != "owner-"+f.unique+"@app-auth.test" || l.OwnerSubject != "" || len(l.Entries) != 2 {
 		t.Fatalf("list %+v", l)
+	}
+	if _, err := f.admin.Exec(ctx, `UPDATE "user" SET keycloak_subject = $2 WHERE id = $1`, f.userID, "s-owner-"+f.unique); err != nil {
+		t.Fatal(err)
+	}
+	if l, err = st.accessList(ctx, dep); err != nil || l.OwnerSubject != "s-owner-"+f.unique {
+		t.Fatalf("bound owner: %+v, %v", l, err)
 	}
 
 	if bound, err := st.bindEntry(ctx, jules, "s-jules", "Jules"); err != nil || !bound {
@@ -509,6 +515,7 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 		"read var values":            `SELECT * FROM deployment_var LIMIT 1`,
 		"read database passwords":    `SELECT * FROM deployment_database LIMIT 1`,
 		"read other account columns": `SELECT handle FROM "user" LIMIT 1`,
+		"bind an account":            `UPDATE "user" SET keycloak_subject = keycloak_subject WHERE false`,
 		"update consent":             `UPDATE app_auth_consent SET claims = '{}'`,
 		"update OIDC codes":          `UPDATE app_auth_oidc_code SET subject = subject`,
 		"update ended sessions":      `UPDATE app_auth_ended_session SET ended_at = ended_at`,
@@ -530,7 +537,7 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 	}
 
 	allowed := map[string]string{
-		"read the owner":       `SELECT d.user_id, u.email FROM deployment d JOIN "user" u ON u.id = d.user_id LIMIT 1`,
+		"read the owner":       `SELECT d.user_id, u.email, u.keycloak_subject FROM deployment d JOIN "user" u ON u.id = d.user_id LIMIT 1`,
 		"read access entries":  `SELECT id, email, subject, name, created_at, bound_at FROM app_access_entry LIMIT 1`,
 		"bind an access entry": `UPDATE app_access_entry SET subject = subject, name = name, bound_at = bound_at WHERE false`,
 		"write sign-ins": `INSERT INTO app_auth_sign_in (keycloak_sid, deployment_id, subject, sid, signed_in_at)

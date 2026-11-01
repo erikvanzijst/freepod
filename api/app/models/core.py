@@ -53,9 +53,19 @@ class UserORM(UserBase, table=True):
             unique=True,
             postgresql_where=Column("deleted_at").is_(None),
         ),
+        Index(
+            "uq_user_keycloak_subject_active",
+            "keycloak_subject",
+            unique=True,
+            postgresql_where=Column("deleted_at").is_(None),
+        ),
     )
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(nullable=False, unique=False)
+    # The Keycloak subject this record is bound to: the identity join key, an
+    # opaque string compared exactly. NULL until the record is adopted
+    # (openspec caller-identity-resolution). Never read or set through the API.
+    keycloak_subject: Optional[str] = Field(default=None, nullable=True)
     is_admin: bool = Field(default=False, nullable=False)
     mollie_customer_id: Optional[str] = Field(default=None)
     # Terms of Service acceptance is a user-level fact recorded once, not per

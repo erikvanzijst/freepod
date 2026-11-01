@@ -6,7 +6,7 @@ from sqlmodel import select
 
 from app.config import CaelusSettings
 from app.models import UserORM
-from tests.conftest import OTHER_EMAIL, USER_EMAIL, create_user, make_deployment_with_release
+from tests.conftest import OTHER_EMAIL, USER_EMAIL, auth_header, create_user, make_deployment_with_release
 from tests.test_hostnames import seed_parents  # noqa: F401
 
 SETTINGS = CaelusSettings(
@@ -29,7 +29,7 @@ def _holding(client, db_session, email: str, handle: str) -> dict:
     user.handle = handle
     db_session.add(user)
     db_session.commit()
-    return {"X-Auth-Request-Email": email}
+    return auth_header(email)
 
 
 def test_the_check_requires_authentication(db_session, tenant_settings):
@@ -99,7 +99,7 @@ def test_an_application_name_in_use(client, db_session, tenant_settings, seed_pa
 def test_a_bare_label_without_a_handle_is_invalid(client, tenant_settings):
     create_user(client, USER_EMAIL, claim_handle=False)
 
-    resp = client.get("/api/hostnames/photos", headers={"X-Auth-Request-Email": USER_EMAIL})
+    resp = client.get("/api/hostnames/photos", headers=auth_header(USER_EMAIL))
 
     assert resp.json() == {"fqdn": "photos", "usable": False, "reason": "invalid"}
 

@@ -47,18 +47,29 @@ deployment lifecycle operations. Both call the same service layer.
 
 Most API endpoints require the `X-Auth-Request-Email` header and return `404`
 when it is absent. In production, Traefik routes requests through oauth2-proxy,
-which injects the header after Keycloak authentication (the `freepod` realm,
-one session client per environment, dev additionally group-gated); in local
-development the frontend sets it. The backend trusts the header
-unconditionally: `get_current_user` (`app/deps.py`) resolves the caller by
-`lower(email)` with auto-creation, and no Keycloak identifier is ever stored.
-`GET /api/me` is the session initialization endpoint. Non-browser clients
-present a Keycloak access token as `Authorization: Bearer`; the edge verifies
-it and injects the header from its `email` claim, so the API cannot tell a
-token request from a browser one — and on `dev.freepod.eu` a `401` can mean
-"not in the `freepod-dev` group" as much as "no credential".
+which injects it after Keycloak authentication (the `freepod` realm, one
+session client per environment, dev additionally group-gated), together with
+`X-Auth-Request-User`, the Keycloak subject; in local development the frontend
+sets both, deriving the subject from the email. The backend trusts the headers
+unconditionally. `get_current_user` (`app/deps.py`) resolves the caller to the
+user record bound to the subject (`user.keycloak_subject`); failing that, it
+adopts a record that has no subject yet and holds the email, binding the
+subject to it; failing that, it creates a record with both. A bound record is
+never reached by email, a changed email is updated on the record in place, and
+a request that would leave two live records holding one address is refused with
+`409`. `GET /api/me` is the session initialization endpoint. Non-browser
+clients present a Keycloak access token as `Authorization: Bearer`; the edge
+verifies it and injects the same headers from its claims, so the API cannot
+tell a token request from a browser one — and on `dev.freepod.eu` a `401` can
+mean "not in the `freepod-dev` group" as much as "no credential".
+
+A request with an email and no subject resolves by email alone and binds
+nothing. That path exists for tests and local development only: the edge always
+sends a subject on the routes it authenticates, and the routes it skips must not
+identify a caller from either header (see the footgun below).
 
 Spec: [auth-header-integration](../openspec/specs/auth-header-integration/spec.md),
+[caller-identity-resolution](../openspec/specs/caller-identity-resolution/spec.md),
 [oauth2-proxy-deployment](../openspec/specs/oauth2-proxy-deployment/spec.md),
 [keycloak-deployment](../openspec/specs/keycloak-deployment/spec.md),
 [keycloak-user-realm](../openspec/specs/keycloak-user-realm/spec.md),
@@ -122,10 +133,9 @@ are therefore *also* listed in oauth2-proxy's `skip_auth_routes` (see
 matching requests, which has two dangerous consequences:
 
 - **No trusted identity, no sanitization.** oauth2-proxy does not inject
-  `X-Auth-Request-Email` on skipped routes, *and* it does not strip a
-  client-supplied one. Never read `X-Auth-Request-Email` for
-  authorization on any endpoint matched by a skip rule — a caller could
-  spoof it.
+  `X-Auth-Request-Email` or `X-Auth-Request-User` on skipped routes, *and* it
+  does not strip client-supplied ones. Never read either for authorization on
+  any endpoint matched by a skip rule — a caller could spoof them.
 - **Bearer tokens are ignored, not rejected.** The same bypass applies to
   `Authorization: Bearer`: a skipped route neither verifies the token nor
   derives an identity from it, so the request is anonymous no matter how

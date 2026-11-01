@@ -16,12 +16,16 @@ See proposal.md — Why. The state that shapes the approach:
   it a sanitizer for a client-supplied value.
 - The realm's `master` → `freepod` migration reissued every subject once already. Whatever
   this change does must survive that happening again.
+- app-auth admits a `listed` deployment's owner by email (`app-access-list` D3, step 1): its
+  role reads `"user"(id, email)` and compares `lower(email)` with the signed-in account's.
+  The broker, the OIDC provider and the verifier's cache all go through that one `admit`.
 
 ## Goals / Non-Goals
 
 **Goals:**
 
 - One user record per Keycloak identity, across an email change.
+- App sign-in recognizes a deployment's owner by the same join key.
 - No migration event: existing records bind themselves as their owners show up.
 - No new edge configuration, and no new failure mode for the CLI or bearer-token path.
 
@@ -75,7 +79,8 @@ reuse from becoming account takeover. The realm forbids two accounts from holdin
 address *simultaneously*, but not *sequentially*: a user can change their address away from
 `x@example.com`, after which a different person can register it and verify it. If email
 matched a bound record, that second person would land on the first person's account. With
-the rule, they get a new one.
+the rule, they never reach it; while that record still holds the address, they are refused
+(D7).
 
 The residual exposure is a record that carries no subject: whoever holds its verified
 address first will bind it. That is precisely the trust model in place today — the platform
@@ -84,16 +89,28 @@ this exposure per account, on first authentication, rather than introducing it. 
 why the realm's `verifyEmail` is restated as a security control in the realm spec instead of
 being relaxed now that it is no longer the join key.
 
-### D4: Lazy adoption, no backfill
+### D4: Lazy adoption, plus a one-off backfill at rollout
 
-The alternative is a one-off sweep of the Keycloak admin API mapping email to subject. It
-was rejected because it needs an admin credential on a migration path, it is a point-in-time
-snapshot that is stale for anyone who registers between the sweep and the deploy, and the
-lazy path has to exist anyway to serve those users. A sweep would be strictly additional
-code guarding a strictly smaller window.
+Lazy adoption is the permanent mechanism, and no sweep ships. A sweep of the Keycloak admin
+API mapping email to subject was rejected as shipped code: it needs an admin credential on a
+migration path, it is a point-in-time snapshot that is stale for anyone who registers
+between the sweep and the deploy, and the lazy path has to exist anyway to serve those
+users.
 
-The cost of lazy adoption is a tail: a record whose owner never signs in again keeps a null
-subject forever. That is harmless — such a record is also never resolved.
+That argument assumed the API was the only reader of the subject. app-auth is a second one
+(D8), and a person who only signs in to their own apps never calls the API, so lazy adoption
+alone would never bind them. At rollout an operator therefore runs a one-off backfill per
+environment, kept out of the repository:
+
+- it reads `user_entity` (`id`, `email`, `email_verified`) for the `freepod` realm straight
+  from Keycloak's database, so no admin credential enters the platform;
+- it sets `keycloak_subject` on each non-deleted user row that carries none and whose
+  `lower(email)` equals a verified Keycloak email;
+- it is idempotent, and it only does what adoption would do on that person's next request.
+
+Anyone who registers after it runs adopts lazily. The remaining tail, a record whose email
+matches no verified Keycloak account, keeps a null subject until its owner returns. That is
+harmless: such a record is also never resolved.
 
 ### D5: Pairwise subjects are the one way this silently breaks
 
@@ -109,11 +126,14 @@ usefully do at runtime: two subjects for one person is indistinguishable from tw
 
 ### D6: A missing subject resolves by email instead of failing closed
 
-Three paths present an email and no subject: the local development UI, which sets the header
-by hand (`ui/src/state/useAuthEmail.ts`); the API's own tests, whose fixtures build header
-dicts; and any route matched by `skip_auth_routes`, where the edge injects nothing at all.
+Three paths can present an email and no subject: the local development UI, which sets the
+headers by hand (`ui/src/state/useAuthEmail.ts`); the API's own tests, whose fixtures build
+header dicts; and any route matched by `skip_auth_routes`, where the edge injects nothing at
+all. The first two send a subject by default, derived from the email so that each address is
+one stable identity (the dev UI's email dialog chooses who you are; it has no email-change
+action), and the tests keep explicit coverage of the subject-less path.
 
-Failing closed would break the first two and protect nothing in the third — a skipped route
+Failing closed would break whatever still omits it and protect nothing in the third — a skipped route
 must not identify a caller from client-controlled headers whatever they contain, which the
 existing skip-auth footgun note in `api/README.md` already governs. On an edge-authenticated
 route the header is always present, so the tolerant branch is unreachable in production.
@@ -128,12 +148,42 @@ feature that is explicitly a non-goal, and would have to be redesigned when it a
 
 `uq_user_active` stays. It is not what makes adoption safe (the realm's verification is), but
 it still keeps the subject-less path from producing two records for one address. It does
-introduce one narrow failure: if record A holds `x@example.com` and its owner has since moved
-to another address without signing in, and a different person now takes `x@example.com` and
-authenticates first, updating A's email later collides. The right response is to fail the
-request loudly rather than mutate or delete another account's row silently. It is rare
-enough — it needs an address change, a re-registration, and an ordering — that a clear error
-and a manual repair is the proportionate answer.
+introduce one narrow failure, reached two ways. Record A holds `x@example.com`, and its owner
+has since moved to another address without signing in:
+
+- a different person now registers `x@example.com` and authenticates first. Email must not
+  reach A, which is bound, and a new record for them would hold A's address;
+- or A's owner moves to an address that another record, bound or not, still holds, and
+  updating A's email would take it.
+
+Either way the request is refused with `409` and a message saying the address is held by
+another account. Neither row is touched: mutating or deleting another account's row
+silently is worse than a visible refusal. It is rare enough (an address change, a
+re-registration, and an ordering) that a clear error and a manual repair is the
+proportionate answer.
+
+### D8: App sign-in recognizes the owner by subject
+
+The owner step of app-auth's `admit` follows D3:
+
+- When the owner's record carries a subject, the owner is admitted only when the signed-in
+  account's `sub` equals it, whatever its email.
+- Only a record that carries no subject falls back to `lower(email)`, as today.
+- Email never matches an owner whose record carries a subject, so the next holder of the
+  owner's old address is refused at the owner's `listed` apps, as D3 refuses them the
+  account.
+
+The role gains `SELECT (keycloak_subject)` on `"user"` and nothing more. app-auth still never
+writes to `user`: binding stays with the API's resolution and the rollout backfill. The
+verifier's cached copy of a list carries the owner's subject with their email, so all three
+paths change together.
+
+The API's refusal to add the owner's own email to their list stays email-based: it concerns
+the address being added, not who signs in with it.
+
+The daemon's query names the new column, so the rollout order is the migration, then the
+bootstrap grants, then the daemon. A daemon started before the grant fails every listed
+sign-in.
 
 ## Risks / Trade-offs
 
@@ -155,6 +205,10 @@ and a manual repair is the proportionate answer.
   means an administrator who changes a user's email in Keycloak silently moves that Freepod
   account's address. That is the intended direction, but it makes the admin console a way to
   edit Freepod account data — worth knowing when granting realm admin.
+- **A realm replacement locks owners out of their `listed` apps.** Every stored subject then
+  matches no identity, and D8 does not fall back to email for a bound owner. → The same
+  operator action the spec prescribes for the API, clearing the stored subjects, restores
+  both.
 
 ## Migration Plan
 
@@ -163,10 +217,15 @@ and a manual repair is the proportionate answer.
    consequence at current row counts.
 2. Deploy the API. Every authenticated request from that point resolves by the ladder, and
    each pre-existing record is adopted on its owner's next request.
-3. Verification: the count of non-deleted records with a null subject should fall toward the
-   set of accounts that are simply inactive. Confirm one adoption end to end, and confirm a
-   CLI (bearer-token) request adopts and resolves identically to a browser one.
+3. Run the one-off backfill (D4) against the environment.
+4. Apply the bootstrap grants, then release app-auth with subject-based owner matching (D8).
+5. Verification: the only non-deleted records left with a null subject belong to people
+   without a verified Keycloak account. Confirm one adoption end to end, confirm a CLI
+   (bearer-token) request adopts and resolves identically to a browser one, and confirm an
+   owner signs in to their `listed` app.
 
-**Rollback:** redeploy the previous image. The column is additive and nothing else reads it,
-so records adopted in the meantime continue to resolve by email exactly as before. The
-migration does not need to be reversed, and reversing it is safe if wanted.
+**Rollback:** redeploy the previous API image, and the previous daemons version for app-auth.
+The column is additive, so records adopted in the meantime continue to resolve by email
+exactly as before, and the previous daemon matches owners by email again. The migration does
+not need to be reversed, and reversing it is safe if wanted, once no running daemon reads the
+column.
