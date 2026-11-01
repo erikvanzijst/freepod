@@ -19,7 +19,9 @@ type ssoClient struct {
 	Hostname     string
 	RedirectURIs []string // https://<hostname><path>, one per valid declared path
 	NativeURIs   []string
+	LogoutURI    string // where the app takes back-channel logout tokens, if it does
 	PKCE         bool
+	Listed       bool     // `auth.access` is not `anyone` (D2)
 	Ignored      []string // declared entries that broke the rules, for the log
 }
 
@@ -27,22 +29,29 @@ type ssoClient struct {
 // client, and is never sent to the database as a uuid it would fail to cast.
 var clientIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-// newSSOClient applies D4 to a template's raw `sso` system values. ok is false
+// newSSOClient applies D4 to a template's raw `auth.oidc` system values. ok is false
 // when no declared path survives, which makes the deployment no client at all.
-func newSSOClient(id, hostname string, redirectPaths, nativeURIs json.RawMessage, pkce bool) (ssoClient, bool) {
+func newSSOClient(id, hostname string, redirectPaths, nativeURIs json.RawMessage, logoutPath string, pkce bool) (ssoClient, bool) {
 	c := ssoClient{ID: id, Hostname: strings.ToLower(hostname), PKCE: pkce}
+	if logoutPath != "" {
+		if uri, ok := redirectURIFor(c.Hostname, logoutPath); ok {
+			c.LogoutURI = uri
+		} else {
+			c.Ignored = append(c.Ignored, "auth.oidc.backchannelLogoutPath: "+logoutPath)
+		}
+	}
 	for _, p := range jsonStrings(redirectPaths, &c.Ignored) {
 		if uri, ok := redirectURIFor(c.Hostname, p); ok {
 			c.RedirectURIs = append(c.RedirectURIs, uri)
 		} else {
-			c.Ignored = append(c.Ignored, "sso.redirectPaths: "+p)
+			c.Ignored = append(c.Ignored, "auth.oidc.redirectPaths: "+p)
 		}
 	}
 	for _, u := range jsonStrings(nativeURIs, &c.Ignored) {
 		if validNativeURI(u) {
 			c.NativeURIs = append(c.NativeURIs, u)
 		} else {
-			c.Ignored = append(c.Ignored, "sso.nativeRedirectUris: "+u)
+			c.Ignored = append(c.Ignored, "auth.oidc.nativeRedirectUris: "+u)
 		}
 	}
 	return c, len(c.RedirectURIs) > 0
@@ -160,6 +169,24 @@ func (kr *keyring) verifyClientSecret(clientID, secret string) bool {
 		ok |= subtle.ConstantTimeCompare([]byte(deriveClientSecret(k.secret, clientID)), []byte(secret))
 	}
 	return ok == 1
+}
+
+// sidLabel derives, from the sealing keyring's first key, the key apps' session
+// IDs are made with, so no sealed value can ever collide with one.
+const sidLabel = "app-auth/oidc-sid"
+
+// appSID is the `sid` a client sees for a Keycloak session (D3): the same for
+// every sign-in from that session to that client, different across clients and
+// sessions, and never Keycloak's own. It is stored where it is issued, so
+// rotating the keyring changes only the sids issued after.
+func (kr *keyring) appSID(clientID, keycloakSID string) string {
+	k := hmac.New(sha256.New, kr.keys[0].secret)
+	k.Write([]byte(sidLabel))
+	mac := hmac.New(sha256.New, k.Sum(nil))
+	mac.Write([]byte(clientID))
+	mac.Write([]byte{0})
+	mac.Write([]byte(keycloakSID))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 // withQuery appends parameters to a redirect URI that may already carry a

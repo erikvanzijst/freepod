@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -32,7 +34,18 @@ func newTestVerifier(t *testing.T) (*verifier, *memStore, *clock) {
 	return &verifier{
 		keys: mustKeyring(t, "k1:"+testKey('a')), store: st, loginURL: login,
 		now: c.now, log: quiet, patterns: newPatternCache(quiet), allowed: newAllowCache(quiet),
+		access: newAccessCache(st, "freepod.app", c.now, quiet),
+		ended:  readyEnded(st, c.now),
 	}, st, c
+}
+
+// readyEnded is an ended-session cache that has read st once.
+func readyEnded(st store, now func() time.Time) *endedCache {
+	c := newEndedCache(st, now, quiet)
+	if err := c.refresh(context.Background()); err != nil {
+		panic(err)
+	}
+	return c
 }
 
 var alice = session{Sub: "3f2a", Email: "alice@example.com", Name: "Alice Ångström"}
@@ -512,6 +525,178 @@ func TestAllowedAccounts(t *testing.T) {
 	})
 }
 
+// listedVerifier serves milk as a `listed` deployment owned by
+// owner@example.com, with Alice on its list.
+func listedVerifier(t *testing.T) (*verifier, *memStore, *clock) {
+	v, st, c := newTestVerifier(t)
+	st.hosts[milk] = "dep-milk"
+	st.listed["dep-milk"] = true
+	st.owners["dep-milk"] = "owner@example.com"
+	st.list("dep-milk", "e-alice", "alice@example.com", "3f2a")
+	return v, st, c
+}
+
+func TestAccessListApplies(t *testing.T) {
+	listed := url.Values{"l": {"1"}, "n": {"Notes"}}
+	signedIn := func(v *verifier, s session, host string) http.Header {
+		return cookieHeader(sessionCookie + "=" + v.sessionFor(t, s, host))
+	}
+	owner := session{Sub: "0wn3", Email: "Owner@Example.com", Name: "Owner"}
+	bob := session{Sub: "9c1d", Email: "bob@example.com", Name: "Bob"}
+	noor := session{Sub: "n00r", Email: "noor@example.org", Name: "Noor"}
+
+	for name, c := range map[string]struct {
+		s      session
+		admits bool
+	}{
+		"owner, matched case-insensitively": {owner, true},
+		"listed account":                    {alice, true},
+		"stranger":                          {bob, false},
+		"listed email, other subject":       {session{Sub: "other", Email: "alice@example.com"}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			v, _, _ := listedVerifier(t)
+			w := v.do(fwd{host: milk, uri: "/lists", edge: listed, header: signedIn(v, c.s, milk)})
+			if c.admits != (w.Code == 200) {
+				t.Fatalf("status %d", w.Code)
+			}
+			if c.admits && w.Header().Get("X-Freepod-User") != c.s.Sub {
+				t.Fatalf("identity %q", w.Header().Get("X-Freepod-User"))
+			}
+		})
+	}
+
+	t.Run("stranger navigating gets the no-access page", func(t *testing.T) {
+		v, _, _ := listedVerifier(t)
+		w := v.do(fwd{host: milk, uri: "/lists", edge: listed, header: navigate(signedIn(v, bob, milk))})
+		body := w.Body.String()
+		for _, want := range []string{"You don't have access to Notes", "https://" + milk, "bob@example.com", "ask whoever shared the link",
+			"https://" + milk + reservedPrefix + "logout?rd=/"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("page lacks %q", want)
+			}
+		}
+	})
+
+	t.Run("public path does not admit a stranger", func(t *testing.T) {
+		v, _, _ := listedVerifier(t)
+		w := v.do(fwd{host: milk, uri: "/", public: publicParam("^/$"), edge: listed, header: signedIn(v, bob, milk)})
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("status %d", w.Code)
+		}
+	})
+
+	t.Run("anonymous public path reads no list", func(t *testing.T) {
+		v, st, _ := listedVerifier(t)
+		w := v.do(fwd{host: milk, uri: "/", public: publicParam("^/$"), edge: listed})
+		if w.Code != 200 || w.Header().Get("X-Freepod-User") != "" || st.accessReads != 0 {
+			t.Fatalf("status %d user %q reads %d", w.Code, w.Header().Get("X-Freepod-User"), st.accessReads)
+		}
+	})
+
+	t.Run("preview hostname uses its deployment's list", func(t *testing.T) {
+		v, _, _ := listedVerifier(t)
+		preview := "preview-" + milk
+		if w := v.do(fwd{host: preview, uri: "/", edge: listed, header: signedIn(v, bob, preview)}); w.Code != http.StatusForbidden {
+			t.Fatalf("stranger on the preview: %d", w.Code)
+		}
+		if w := v.do(fwd{host: preview, uri: "/", edge: listed, header: signedIn(v, alice, preview)}); w.Code != 200 {
+			t.Fatalf("listed account on the preview: %d", w.Code)
+		}
+	})
+
+	t.Run("a removal applies within 30 seconds", func(t *testing.T) {
+		v, st, c := listedVerifier(t)
+		req := fwd{host: milk, uri: "/", edge: listed, header: signedIn(v, alice, milk)}
+		if w := v.do(req); w.Code != 200 {
+			t.Fatalf("before removal: %d", w.Code)
+		}
+		st.unlist("dep-milk", "e-alice")
+		c.t = c.t.Add(29 * time.Second)
+		if w := v.do(req); w.Code != 200 {
+			t.Fatalf("the copy was not used: %d", w.Code)
+		}
+		c.t = c.t.Add(2 * time.Second)
+		if w := v.do(req); w.Code != http.StatusForbidden {
+			t.Fatalf("after 31 seconds: %d", w.Code)
+		}
+	})
+
+	t.Run("an addition applies on the next refusal", func(t *testing.T) {
+		v, st, c := listedVerifier(t)
+		req := fwd{host: milk, uri: "/", edge: listed, header: signedIn(v, noor, milk)}
+		if w := v.do(req); w.Code != http.StatusForbidden {
+			t.Fatalf("before the addition: %d", w.Code)
+		}
+		st.list("dep-milk", "e-noor", "noor@example.org", "n00r")
+		c.t = c.t.Add(6 * time.Second)
+		if w := v.do(req); w.Code != 200 {
+			t.Fatalf("after the addition: %d", w.Code)
+		}
+	})
+
+	t.Run("refusals reread at most every 5 seconds", func(t *testing.T) {
+		v, st, c := listedVerifier(t)
+		req := fwd{host: milk, uri: "/", edge: listed, header: signedIn(v, bob, milk)}
+		v.do(req)
+		reads := st.accessReads
+		c.t = c.t.Add(4 * time.Second)
+		v.do(req)
+		v.do(req)
+		if st.accessReads != reads {
+			t.Fatalf("%d reads within 5 seconds of the last", st.accessReads-reads)
+		}
+	})
+
+	t.Run("an outage keeps the copy held", func(t *testing.T) {
+		v, st, c := listedVerifier(t)
+		req := func(s session) *httptest.ResponseRecorder {
+			return v.do(fwd{host: milk, uri: "/", edge: listed, header: signedIn(v, s, milk)})
+		}
+		req(alice)
+		st.accessErr = errors.New("database down")
+		c.t = c.t.Add(time.Hour)
+		if w := req(alice); w.Code != 200 {
+			t.Fatalf("listed account during the outage: %d", w.Code)
+		}
+		if w := req(bob); w.Code != http.StatusForbidden {
+			t.Fatalf("stranger during the outage: %d", w.Code)
+		}
+	})
+
+	t.Run("an outage with no copy admits nobody", func(t *testing.T) {
+		v, st, _ := listedVerifier(t)
+		st.accessErr = errors.New("database down")
+		if w := v.do(fwd{host: milk, uri: "/", edge: listed, header: signedIn(v, owner, milk)}); w.Code != http.StatusForbidden {
+			t.Fatalf("status %d", w.Code)
+		}
+	})
+
+	t.Run("a host that is no longer a header app admits nobody", func(t *testing.T) {
+		v, st, _ := listedVerifier(t)
+		delete(st.hosts, milk)
+		if w := v.do(fwd{host: milk, uri: "/", edge: listed, header: signedIn(v, owner, milk)}); w.Code != http.StatusForbidden {
+			t.Fatalf("status %d", w.Code)
+		}
+	})
+
+	for _, bad := range []string{"", "0", "true", "2"} {
+		t.Run("l="+bad+" refuses every signed-in request", func(t *testing.T) {
+			v, _, _ := listedVerifier(t)
+			if w := v.do(fwd{host: milk, uri: "/", edge: url.Values{"l": {bad}}, header: signedIn(v, owner, milk)}); w.Code != http.StatusForbidden {
+				t.Fatalf("status %d", w.Code)
+			}
+		})
+	}
+
+	t.Run("without l the list does not apply", func(t *testing.T) {
+		v, st, _ := listedVerifier(t)
+		if w := v.do(fwd{host: milk, uri: "/", header: signedIn(v, bob, milk)}); w.Code != 200 || st.accessReads != 0 {
+			t.Fatalf("status %d reads %d", w.Code, st.accessReads)
+		}
+	})
+}
+
 func TestRequestsFromOtherOriginsAreNotIdentified(t *testing.T) {
 	v, _, _ := newTestVerifier(t)
 	sess := sessionCookie + "=" + v.sessionFor(t, alice, milk)
@@ -554,5 +739,82 @@ func TestRequestsFromOtherOriginsAreNotIdentified(t *testing.T) {
 				t.Fatalf("X-Freepod-User = %q, want %q", got, c.wantUser)
 			}
 		})
+	}
+}
+
+func TestEndedSessions(t *testing.T) {
+	v, st, c := newTestVerifier(t)
+	ctx := context.Background()
+	request := func(s session) int {
+		t.Helper()
+		return v.do(fwd{host: milk, uri: "/lists", header: cookieHeader(sessionCookie + "=" + v.sessionFor(t, s, milk))}).Code
+	}
+	laptop, phone, before := alice, alice, alice
+	laptop.KeycloakSID, phone.KeycloakSID = "kc-laptop", "kc-phone"
+
+	if endedRefresh*2 > 10*time.Second {
+		t.Fatalf("a refresh every %v misses the 10-second bound", endedRefresh)
+	}
+	st.ended["kc-laptop"] = c.now()
+	if err := v.ended.refresh(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if code := request(laptop); code != http.StatusUnauthorized {
+		t.Fatalf("a session from an ended Keycloak session: %d", code)
+	}
+	if code := request(phone); code != http.StatusOK {
+		t.Fatalf("another browser's session: %d", code)
+	}
+	if code := request(before); code != http.StatusOK {
+		t.Fatalf("a session that names no Keycloak session: %d", code)
+	}
+
+	t.Run("an outage keeps the copy", func(t *testing.T) {
+		st.endedErr = errors.New("database down")
+		defer func() { st.endedErr = nil }()
+		if err := v.ended.refresh(ctx); err == nil {
+			t.Fatal("no error")
+		}
+		if request(laptop) != http.StatusUnauthorized || request(phone) != http.StatusOK {
+			t.Fatal("the copy was not kept")
+		}
+	})
+
+	t.Run("reads back from the latest it holds, less the lookback", func(t *testing.T) {
+		c.t = t0.Add(time.Hour)
+		defer func() { c.t = t0 }()
+		st.ended["kc-phone"] = t0.Add(-30 * time.Second) // committed late, behind kc-laptop
+		v.ended.refresh(ctx)
+		if since := st.endedReads[len(st.endedReads)-1]; !since.Equal(t0.Add(-endedLookback)) {
+			t.Fatalf("read from %v, want %v", since, t0.Add(-endedLookback))
+		}
+		if request(phone) != http.StatusUnauthorized {
+			t.Fatal("a session ended just behind the latest was missed")
+		}
+		delete(st.ended, "kc-phone")
+	})
+
+	t.Run("forgets sessions past every cookie", func(t *testing.T) {
+		c.t = t0.Add(endedRetention + time.Minute)
+		defer func() { c.t = t0 }()
+		v.ended.refresh(ctx)
+		if ended, _ := v.ended.status("kc-laptop"); ended {
+			t.Fatal("kept a session ended over seven days ago")
+		}
+	})
+}
+
+func TestEndedSessionsNeverRead(t *testing.T) {
+	v, st, _ := newTestVerifier(t)
+	st.endedErr = errors.New("database down")
+	v.ended = newEndedCache(st, v.now, quiet)
+	if err := v.ended.refresh(context.Background()); err == nil {
+		t.Fatal("no error")
+	}
+	if w := v.do(fwd{host: milk, uri: "/lists", header: cookieHeader(sessionCookie + "=" + v.sessionFor(t, alice, milk))}); w.Code != http.StatusServiceUnavailable || w.Header().Get("X-Freepod-User") != "" {
+		t.Fatalf("a signed-in request before the first read: %d", w.Code)
+	}
+	if w := v.do(fwd{host: milk, uri: "/lists", header: navigate(nil)}); w.Code != http.StatusFound {
+		t.Fatalf("an anonymous navigation: %d", w.Code)
 	}
 }

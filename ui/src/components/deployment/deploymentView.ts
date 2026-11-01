@@ -36,6 +36,10 @@ export interface DeploymentView {
   openable: boolean
   canEdit: boolean
   canRemove: boolean
+  /** Who can sign in, in words; absent unless Sign in with Freepod is on. */
+  signIn?: string
+  /** Whether the owner keeps the list of who can sign in (`auth.access: listed`). */
+  listed: boolean
 }
 
 function docsUrl(slug: string | null | undefined): string | null {
@@ -103,6 +107,14 @@ function price(d: Deployment): string | undefined {
   return `${formatEuro(plan.price_cents)}/${plan.billing_interval === 'annual' ? 'yr' : 'mo'}`
 }
 
+function signIn(d: Deployment, appName: string): string | undefined {
+  if (!d.auth?.enabled) return undefined
+  if (d.auth.access !== 'listed') return `Managed in ${appName}`
+  const n = d.auth.listed_count ?? 0
+  if (n === 0) return 'Only you'
+  return `You and ${n} ${n === 1 ? 'person' : 'people'}`
+}
+
 export function deploymentView(d: Deployment): DeploymentView {
   const product = d.desired_template?.product
   const plan = d.subscription?.plan_template?.plan?.name
@@ -113,8 +125,9 @@ export function deploymentView(d: Deployment): DeploymentView {
     d.hostname &&
       !(d.status === 'pending' || d.status === 'deleting' || (d.status === 'provisioning' && (d.generation ?? 1) <= 1)),
   )
+  const appName = product?.name ?? 'App'
   return {
-    appName: product?.name ?? 'App',
+    appName,
     iconUrl: product?.icon_url ? resolveApiPath(product.icon_url) : null,
     address: d.hostname,
     url: d.hostname ? ensureUrl(d.hostname) : null,
@@ -130,6 +143,8 @@ export function deploymentView(d: Deployment): DeploymentView {
     openable,
     canEdit: d.status === 'ready' || d.status === 'error',
     canRemove: d.status !== 'deleting' && d.status !== 'deleted',
+    signIn: signIn(d, appName),
+    listed: Boolean(d.auth?.enabled && d.auth.access === 'listed'),
   }
 }
 

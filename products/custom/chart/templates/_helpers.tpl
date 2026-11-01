@@ -132,8 +132,16 @@ The Traefik middlewares every route to the app carries, strip first.
 {{- define "custom.routerMiddlewares" -}}
 {{- $ns := .Release.Namespace -}}
 {{- $mw := list (printf "%s-%s-strip-identity@kubernetescrd" $ns .Release.Name) -}}
-{{- if .Values.auth.enabled -}}
+{{- if include "custom.headerAuth" . -}}
 {{- $mw = append $mw (printf "%s-%s-app-auth@kubernetescrd" $ns .Release.Name) -}}
 {{- end -}}
 {{- join "," $mw -}}
+{{- end }}
+
+{{/*
+Non-empty when the platform verifier fronts the app: `auth.enabled` with
+header authentication (app-auth-chart-contract).
+*/}}
+{{- define "custom.headerAuth" -}}
+{{- if and .Values.auth.enabled (eq (.Values.auth.protocol | default "header") "header") -}}true{{- end -}}
 {{- end }}

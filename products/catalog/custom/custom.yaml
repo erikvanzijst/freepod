@@ -13,7 +13,7 @@ upstream:
   version_path: template.system_values.placeholderImage
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/custom
-  chart_version: 0.14.2
+  chart_version: 0.15.0
   system_values:
     placeholderImage: ghcr.io/erikvanzijst/freepod/custom-placeholder:0.2.0
     nodePool: tenant
@@ -55,6 +55,14 @@ template:
             title: Sign in with Freepod
             description: Visitors sign in with their Freepod account before reaching the app, which then
               receives their identity in the X-Freepod-User, X-Freepod-Email and X-Freepod-Name headers.
+          access:
+            type: string
+            title: Who can sign in
+            enum:
+            - anyone
+            - listed
+            description: anyone lets every Freepod account sign in. listed admits only you and the people
+              you add to the app's access list on the dashboard.
           public:
             type: array
             title: Public paths

@@ -20,34 +20,6 @@ Every request to an App Studio deployment's hostname and to its preview hostname
 - **WHEN** a browser without a session opens the preview hostname
 - **THEN** it is sent to sign in with Freepod before seeing the preview
 
-### Requirement: Only the owner is allowed
-
-The only account allowed to reach either hostname SHALL be the deployment's owner, identified by the owner's email address as the platform injects it. A different signed-in Freepod account SHALL be refused on both hostnames. The allowed account SHALL come only from platform-injected values, never from the deployment's user values.
-
-#### Scenario: Owner signs in
-
-- **WHEN** the deployment's owner signs in on the studio's hostname
-- **THEN** the studio loads
-
-#### Scenario: Another account signs in
-
-- **WHEN** a Freepod account other than the owner signs in on the studio or preview hostname
-- **THEN** it is refused and sees a page saying it has no access
-
-#### Scenario: User values cannot widen access
-
-- **WHEN** a deployment's user values try to add an allowed account
-- **THEN** schema validation rejects them
-
-### Requirement: No owner, no studio
-
-When the platform has not injected the owner's email or the verifier's address, the chart SHALL fail to render rather than serve either hostname with weaker access control.
-
-#### Scenario: Owner email missing
-
-- **WHEN** an App Studio deployment is rendered without the owner's email
-- **THEN** rendering fails and the previous release keeps serving
-
 ### Requirement: Identity headers stripped
 
 Requests to both hostnames SHALL have client-supplied identity headers removed before the verifier sets its own, as for every other app with a hostname.
@@ -86,3 +58,41 @@ frame either. The preview's Ingress SHALL NOT carry it.
 - **WHEN** the chart is rendered with an ingress host
 - **THEN** `<release>-ingress` lists `<release>-frame-self`, which sets `X-Frame-Options: SAMEORIGIN`
 - **AND** `<release>-preview` does not list it
+
+### Requirement: The owner and the people they list are allowed
+
+An App Studio template SHALL set `auth.enabled: true` and `auth.access: listed` as system values and offer neither in its user values. Only the deployment's owner and the people on its access list SHALL reach the studio or its preview. With an empty list, which is how every studio starts, only the owner SHALL reach either hostname.
+
+#### Scenario: Owner signs in
+
+- **WHEN** the deployment's owner signs in on the studio's hostname
+- **THEN** the studio loads
+
+#### Scenario: Another account signs in
+
+- **WHEN** a Freepod account that is neither the owner nor listed signs in on the studio or preview hostname
+- **THEN** it is refused and sees a page saying it has no access
+
+#### Scenario: The owner lists someone
+
+- **WHEN** the owner adds Sam to the studio's access list and Sam signs in on the studio's hostname
+- **THEN** the studio loads for Sam
+
+#### Scenario: User values cannot widen access
+
+- **WHEN** a deployment's user values try to set `auth.access: anyone`
+- **THEN** schema validation rejects them
+
+### Requirement: No verifier, no studio
+
+The chart SHALL fail to render when the platform has not injected the verifier's address, or when its values do not set `auth.enabled: true`, `auth.protocol: header` and `auth.access: listed`, rather than serve either hostname with weaker access control.
+
+#### Scenario: Verifier address missing
+
+- **WHEN** an App Studio deployment is rendered without the verifier's address
+- **THEN** rendering fails and the previous release keeps serving
+
+#### Scenario: Open access
+
+- **WHEN** an App Studio deployment is rendered with `auth.access: anyone`
+- **THEN** rendering fails

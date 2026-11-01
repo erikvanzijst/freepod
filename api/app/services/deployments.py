@@ -31,7 +31,7 @@ from app.models import (
 )
 from app.network_policy import deployment_namespace_labels
 from app.services.jobs import JobService
-from app.services import object_storage, relational_storage
+from app.services import app_access, object_storage, relational_storage
 from app.services import image_retention
 from app.services import ssh_keys as ssh_keys_service
 from app.services import subscriptions as subscription_service
@@ -544,6 +544,7 @@ def _read_with_vars(session: Session, deployment: DeploymentORM) -> DeploymentRe
     reported = vars_service.read_vars(session, deployment)
     read.vars = reported.vars
     read.pending = reported.pending
+    read.auth = app_access.auth_summaries(session, [deployment]).get(deployment.id)
     return read
 
 
@@ -552,7 +553,12 @@ def list_deployments(session: Session, *, user_id: int | None = None) -> list[De
     stmt = select(DeploymentORM).where(DeploymentORM.status != DEPLOYMENT_STATUS_DELETED)
     if user_id is not None:
         stmt = stmt.where(DeploymentORM.user_id == user_id)
-    return [DeploymentRead.model_validate(d) for d in session.exec(stmt).all()]
+    found = session.exec(stmt).all()
+    summaries = app_access.auth_summaries(session, found)
+    reads = [DeploymentRead.model_validate(d) for d in found]
+    for read in reads:
+        read.auth = summaries.get(read.id)
+    return reads
 
 
 def get_deployment(session: Session, *, deployment_id: UUID, user_id: int | None = None) -> DeploymentRead:

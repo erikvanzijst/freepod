@@ -144,7 +144,7 @@ def sent(monkeypatch):
     """Capture what would have gone to the relay."""
     messages: list[dict] = []
 
-    def send_email(*, to, subject, body, settings=None):
+    def send_email(*, to, subject, body, html=None, settings=None):
         messages.append({"to": to, "subject": subject, "body": body})
         return True
 
@@ -215,7 +215,7 @@ def test_an_unsent_mail_is_retried_rather_than_suppressed(
 
     attempts: list[int] = []
 
-    def failing(*, to, subject, body, settings=None):
+    def failing(*, to, subject, body, html=None, settings=None):
         attempts.append(1)
         return False
 

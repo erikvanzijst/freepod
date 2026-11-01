@@ -95,12 +95,16 @@ valkey:
     limits:
       memory: 2Gi
 
-# Sign in with Freepod. With it on, Immich signs in only through the platform's
-# OpenID Provider (caelus.oidc) and the owner (caelus.owner.email) is created as
-# its first admin. redirectPaths and nativeRedirectUris are read by the
-# reconciler, not by this chart.
-sso:
+# Sign in with Freepod (app-oidc-chart-contract). With `enabled` and
+# `protocol: oidc`, Immich signs in only through the platform's OpenID Provider
+# (caelus.oidc), the owner (caelus.owner.email) is created as its first admin,
+# and Immich registers whoever the provider admits, so SSO requires
+# `access: listed`. Everything under `oidc` is read by the platform, not by
+# this chart.
+auth:
   enabled: false
+  protocol: header
+  access: anyone
 
 # TLS is injected per-deployment by the Caelus reconciler (caelus.ingress.tls).
 # These defaults let the chart render standalone (helm template / tests).

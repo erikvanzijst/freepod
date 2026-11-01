@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -205,6 +207,7 @@ func (f *fixture) cleanup() {
 	ctx := context.Background()
 	for _, sql := range []string{
 		`DELETE FROM app_auth_consent WHERE deployment_id IN (SELECT id FROM deployment WHERE user_id = $1)`,
+		`DELETE FROM app_access_entry WHERE deployment_id IN (SELECT id FROM deployment WHERE user_id = $1)`,
 		`UPDATE deployment SET applied_release_id = NULL WHERE user_id = $1`,
 		`DELETE FROM deployment_release WHERE deployment_id IN (SELECT id FROM deployment WHERE user_id = $1)`,
 		`DELETE FROM deployment WHERE user_id = $1`,
@@ -251,6 +254,12 @@ func TestEligibility(t *testing.T) {
 	f.deploymentOf(f.otherProductID, "nosetting-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x"}`, `{"nodePool":"tenant"}`)
 	// The store matches hostnames exactly; preview hostnames are the broker's.
 	f.deployment("preview-milk-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x"}`)
+	f.deployment("oidc-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x","auth":{"enabled":true,"protocol":"oidc"}}`)
+	f.deployment("saml-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x","auth":{"enabled":true,"protocol":"saml"}}`)
+	explicit := f.deployment("explicit-"+u+"-erik.freepod.app", "provisioned", `{"hostname":"x","auth":{"enabled":true,"protocol":"header"}}`)
+	f.deploymentOf(f.otherProductID, "templateoidc-"+u+"-erik.freepod.app", "provisioned", authOn, `{"auth":{"protocol":"oidc"}}`)
+	userHeader := f.deploymentOf(f.otherProductID, "userheader-"+u+"-erik.freepod.app", "provisioned",
+		`{"hostname":"x","auth":{"enabled":true,"protocol":"header"}}`, `{"auth":{"protocol":"oidc"}}`)
 
 	cases := []struct {
 		host string
@@ -273,16 +282,119 @@ func TestEligibility(t *testing.T) {
 		{"templateoff-" + u + "-erik.freepod.app", templateOff},
 		{"nosetting-" + u + "-erik.freepod.app", ""},
 		{"preview-milk-" + u + "-erik.freepod.app", ""},
+		// Header authentication needs `auth.protocol: header`, its default.
+		{"oidc-" + u + "-erik.freepod.app", ""},
+		{"saml-" + u + "-erik.freepod.app", ""},
+		{"explicit-" + u + "-erik.freepod.app", explicit},
+		{"templateoidc-" + u + "-erik.freepod.app", ""},
+		{"userheader-" + u + "-erik.freepod.app", userHeader},
 	}
 	for _, c := range cases {
-		id, ok, err := st.eligible(ctx, c.host)
+		app, ok, err := st.eligible(ctx, c.host)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if ok != (c.want != "") || id != c.want {
-			t.Errorf("eligible(%q) = %q, %v; want %q", c.host, id, ok, c.want)
+		if ok != (c.want != "") || app.ID != c.want {
+			t.Errorf("eligible(%q) = %q, %v; want %q", c.host, app.ID, ok, c.want)
 		}
 	}
+}
+
+func TestEligibleAccess(t *testing.T) {
+	f := newFixture(t)
+	st := f.store(rolePool(t))
+	ctx := context.Background()
+	u := f.unique
+	p := f.otherProductID
+
+	for i, c := range []struct {
+		name, values, system string
+		listed               bool
+	}{
+		{"default", authOn, "", false},
+		{"user lists", `{"hostname":"x","auth":{"enabled":true,"access":"listed"}}`, "", true},
+		{"template lists", `{"hostname":"x"}`, `{"auth":{"enabled":true,"access":"listed"}}`, true},
+		{"user value over template's", `{"hostname":"x","auth":{"access":"anyone"}}`, `{"auth":{"enabled":true,"access":"listed"}}`, false},
+		{"unknown access fails closed", `{"hostname":"x","auth":{"enabled":true,"access":"friends"}}`, "", true},
+		{"anyone, stated", `{"hostname":"x","auth":{"enabled":true,"access":"anyone"}}`, "", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			host := fmt.Sprintf("access%d-%s.example.com", i, u)
+			id := f.deploymentOf(p, host, "provisioned", c.values, c.system)
+			app, ok, err := st.eligible(ctx, host)
+			if err != nil || !ok || app.ID != id {
+				t.Fatalf("eligible = %+v, %v, %v", app, ok, err)
+			}
+			if app.Listed != c.listed {
+				t.Fatalf("listed = %v, want %v", app.Listed, c.listed)
+			}
+		})
+	}
+}
+
+func TestAccessList(t *testing.T) {
+	f := newFixture(t)
+	st := f.store(rolePool(t))
+	ctx := context.Background()
+	dep := f.deployment("list-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
+	other := f.deployment("list2-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
+	entry := func(dep, email string) string {
+		var id string
+		if err := f.admin.QueryRow(ctx, `INSERT INTO app_access_entry (id, deployment_id, email, created_at)
+			VALUES (gen_random_uuid(), $1::uuid, $2, now()) RETURNING id::text`, dep, email).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	jules := entry(dep, "jules@example.org")
+	noor := entry(dep, "noor@example.org")
+	entry(other, "sam@example.org")
+
+	l, err := st.accessList(ctx, dep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.OwnerEmail != "owner-"+f.unique+"@app-auth.test" || len(l.Entries) != 2 {
+		t.Fatalf("list %+v", l)
+	}
+
+	if bound, err := st.bindEntry(ctx, jules, "s-jules", "Jules"); err != nil || !bound {
+		t.Fatalf("bind = %v, %v", bound, err)
+	}
+	if bound, err := st.bindEntry(ctx, jules, "s-other", "Other"); err != nil || bound {
+		t.Fatalf("rebinding a bound entry = %v, %v", bound, err)
+	}
+	if bound, err := st.bindEntry(ctx, noor, "s-jules", "Jules"); err != nil || bound {
+		t.Fatalf("binding a second entry to one subject = %v, %v", bound, err)
+	}
+	var sub, name string
+	var boundAt *time.Time
+	f.admin.QueryRow(ctx, `SELECT subject, name, bound_at FROM app_access_entry WHERE id = $1::uuid`, jules).Scan(&sub, &name, &boundAt)
+	if sub != "s-jules" || name != "Jules" || boundAt == nil {
+		t.Fatalf("entry holds %q %q %v", sub, name, boundAt)
+	}
+
+	t.Run("concurrent binds by one subject", func(t *testing.T) {
+		id := entry(dep, "concurrent@example.org")
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		wins := 0
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if bound, err := st.bindEntry(ctx, id, "s-concurrent", "C"); err == nil && bound {
+					mu.Lock()
+					wins++
+					mu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+		if wins != 1 {
+			t.Fatalf("%d binds succeeded", wins)
+		}
+	})
 }
 
 func TestConsent(t *testing.T) {
@@ -393,15 +505,20 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 	dep := f.deployment("r-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
 
 	denied := map[string]string{
-		"write deployments":        `UPDATE deployment SET hostname = hostname WHERE id = '` + dep + `'`,
-		"read the owner":           `SELECT user_id FROM deployment LIMIT 1`,
-		"read var values":          `SELECT * FROM deployment_var LIMIT 1`,
-		"read database passwords":  `SELECT * FROM deployment_database LIMIT 1`,
-		"read accounts":            `SELECT email FROM "user" LIMIT 1`,
-		"update consent":           `UPDATE app_auth_consent SET claims = '{}'`,
-		"update OIDC codes":        `UPDATE app_auth_oidc_code SET subject = subject`,
-		"read release build ids":   `SELECT build_id FROM deployment_release LIMIT 1`,
-		"read template chart refs": `SELECT chart_ref FROM product_template_version LIMIT 1`,
+		"write deployments":          `UPDATE deployment SET hostname = hostname WHERE id = '` + dep + `'`,
+		"read var values":            `SELECT * FROM deployment_var LIMIT 1`,
+		"read database passwords":    `SELECT * FROM deployment_database LIMIT 1`,
+		"read other account columns": `SELECT handle FROM "user" LIMIT 1`,
+		"update consent":             `UPDATE app_auth_consent SET claims = '{}'`,
+		"update OIDC codes":          `UPDATE app_auth_oidc_code SET subject = subject`,
+		"update ended sessions":      `UPDATE app_auth_ended_session SET ended_at = ended_at`,
+		"read release build ids":     `SELECT build_id FROM deployment_release LIMIT 1`,
+		"read template chart refs":   `SELECT chart_ref FROM product_template_version LIMIT 1`,
+		"read products":              `SELECT name FROM product LIMIT 1`,
+		"insert access entries":      `INSERT INTO app_access_entry (id, deployment_id, email, created_at) VALUES (gen_random_uuid(), '` + dep + `', 'x@example.com', now())`,
+		"change an entry's email":    `UPDATE app_access_entry SET email = email`,
+		"delete access entries":      `DELETE FROM app_access_entry`,
+		"read invitations":           `SELECT * FROM app_access_invitation LIMIT 1`,
 	}
 	for name, sql := range denied {
 		t.Run(name, func(t *testing.T) {
@@ -411,12 +528,34 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 			}
 		})
 	}
+
+	allowed := map[string]string{
+		"read the owner":       `SELECT d.user_id, u.email FROM deployment d JOIN "user" u ON u.id = d.user_id LIMIT 1`,
+		"read access entries":  `SELECT id, email, subject, name, created_at, bound_at FROM app_access_entry LIMIT 1`,
+		"bind an access entry": `UPDATE app_access_entry SET subject = subject, name = name, bound_at = bound_at WHERE false`,
+		"write sign-ins": `INSERT INTO app_auth_sign_in (keycloak_sid, deployment_id, subject, sid, signed_in_at)
+			VALUES ('kc-` + f.unique + `', '` + dep + `', 's', 'sid', now())
+			ON CONFLICT (keycloak_sid, deployment_id) DO UPDATE SET signed_in_at = excluded.signed_in_at`,
+		"read and delete sign-ins":       `DELETE FROM app_auth_sign_in WHERE keycloak_sid IN (SELECT keycloak_sid FROM app_auth_sign_in WHERE false)`,
+		"write ended sessions":           `INSERT INTO app_auth_ended_session (keycloak_sid, ended_at) VALUES ('kc-` + f.unique + `', now()) ON CONFLICT DO NOTHING`,
+		"read and delete ended sessions": `DELETE FROM app_auth_ended_session WHERE ended_at < (SELECT min(ended_at) FROM app_auth_ended_session)`,
+	}
+	t.Cleanup(func() {
+		f.admin.Exec(ctx, `DELETE FROM app_auth_ended_session WHERE keycloak_sid = $1`, "kc-"+f.unique)
+	})
+	for name, sql := range allowed {
+		t.Run(name, func(t *testing.T) {
+			if _, err := pool.Exec(ctx, sql); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
 
 const (
-	ssoOn          = `{"hostname":"x","sso":{"enabled":true}}`
-	declaresSSO    = `{"sso":{"redirectPaths":["/oidc/callback"],"nativeRedirectUris":["app.immich:///oauth-callback"]}}`
-	declaresNoPKCE = `{"sso":{"redirectPaths":["/oidc/callback"],"pkce":false}}`
+	ssoOn          = `{"hostname":"x","auth":{"enabled":true,"protocol":"oidc"}}`
+	declaresSSO    = `{"auth":{"oidc":{"redirectPaths":["/oidc/callback"],"nativeRedirectUris":["app.immich:///oauth-callback"]}}}`
+	declaresNoPKCE = `{"auth":{"oidc":{"redirectPaths":["/oidc/callback"],"pkce":false}}}`
 )
 
 func TestSSOClient(t *testing.T) {
@@ -428,17 +567,25 @@ func TestSSOClient(t *testing.T) {
 
 	enabled := f.deploymentOf(p, "Wiki-"+u+"-alice.freepod.app", "provisioned", ssoOn, declaresSSO)
 	templated := f.deploymentOf(p, "templated-"+u+"-alice.freepod.app", "provisioned", `{"hostname":"x"}`,
-		`{"sso":{"enabled":true,"redirectPaths":["/cb"]}}`)
+		`{"auth":{"enabled":true,"protocol":"oidc","oidc":{"redirectPaths":["/cb"]}}}`)
 	noPKCE := f.deploymentOf(p, "nopkce-"+u+"-alice.freepod.app", "provisioned", ssoOn, declaresNoPKCE)
 	undeclared := f.deploymentOf(p, "undeclared-"+u+"-alice.freepod.app", "provisioned",
-		`{"hostname":"x","sso":{"enabled":true,"redirectPaths":["/cb"]}}`, "")
+		`{"hostname":"x","auth":{"enabled":true,"protocol":"oidc","oidc":{"redirectPaths":["/cb"]}}}`, "")
 	allInvalid := f.deploymentOf(p, "invalid-"+u+"-alice.freepod.app", "provisioned", ssoOn,
-		`{"sso":{"redirectPaths":["@evil.example/cb",".evil.example/cb","/cb?next=/"]}}`)
+		`{"auth":{"oidc":{"redirectPaths":["@evil.example/cb",".evil.example/cb","/cb?next=/"]}}}`)
 	userOverrides := f.deploymentOf(p, "useron-"+u+"-alice.freepod.app", "provisioned", ssoOn,
-		`{"sso":{"enabled":false,"redirectPaths":["/cb"]}}`)
+		`{"auth":{"enabled":false,"oidc":{"redirectPaths":["/cb"]}}}`)
 	userTurnsOff := f.deploymentOf(p, "useroff-"+u+"-alice.freepod.app", "provisioned",
-		`{"hostname":"x","sso":{"enabled":false}}`, `{"sso":{"enabled":true,"redirectPaths":["/cb"]}}`)
+		`{"hostname":"x","auth":{"enabled":false}}`, `{"auth":{"enabled":true,"protocol":"oidc","oidc":{"redirectPaths":["/cb"]}}}`)
 	headersOnly := f.deploymentOf(p, "headers-"+u+"-alice.freepod.app", "provisioned", authOn, declaresSSO)
+	templateProtocol := f.deploymentOf(p, "tproto-"+u+"-alice.freepod.app", "provisioned", authOn,
+		`{"auth":{"protocol":"oidc","oidc":{"redirectPaths":["/cb"]}}}`)
+	unknownProtocol := f.deploymentOf(p, "saml-"+u+"-alice.freepod.app", "provisioned",
+		`{"hostname":"x","auth":{"enabled":true,"protocol":"saml"}}`, declaresSSO)
+	userNative := f.deploymentOf(p, "usernative-"+u+"-alice.freepod.app", "provisioned",
+		`{"hostname":"x","auth":{"enabled":true,"protocol":"oidc","oidc":{"nativeRedirectUris":["app.evil:///steal"],"pkce":false}}}`, declaresSSO)
+	listed := f.deploymentOf(p, "listed-"+u+"-alice.freepod.app", "provisioned",
+		`{"hostname":"x","auth":{"enabled":true,"protocol":"oidc","access":"listed"}}`, declaresSSO)
 	off := f.deploymentOf(p, "off-"+u+"-alice.freepod.app", "provisioned", `{"hostname":"x"}`, declaresSSO)
 	rolling := f.deploymentOf(p, "rolling-"+u+"-alice.freepod.app", "provisioned", `{"hostname":"x"}`, declaresSSO)
 	f.desire(rolling, ssoOn)
@@ -456,6 +603,8 @@ func TestSSOClient(t *testing.T) {
 		"user value over template's":    {userOverrides, true},
 		"user turns the template's off": {userTurnsOff, false},
 		"header authentication alone":   {headersOnly, false},
+		"template sets the protocol":    {templateProtocol, true},
+		"unknown protocol":              {unknownProtocol, false},
 		"not enabled":                   {off, false},
 		"enabled but not yet applied":   {rolling, false},
 		"deleted":                       {deleted, false},
@@ -483,6 +632,16 @@ func TestSSOClient(t *testing.T) {
 	if got, _, _ := st.ssoClient(ctx, noPKCE); got.PKCE {
 		t.Fatal("the template's PKCE opt-out was not read")
 	}
+	if got.Listed {
+		t.Fatal("a client listed by default")
+	}
+	if got, _, _ := st.ssoClient(ctx, listed); !got.Listed {
+		t.Fatal("auth.access: listed was not read")
+	}
+	// auth.oidc is read from the template alone.
+	if got, _, _ := st.ssoClient(ctx, userNative); len(got.NativeURIs) != 1 || got.NativeURIs[0] != "app.immich:///oauth-callback" || !got.PKCE {
+		t.Fatalf("user values reached the client: %+v", got)
+	}
 }
 
 func TestOIDCCodes(t *testing.T) {
@@ -492,10 +651,10 @@ func TestOIDCCodes(t *testing.T) {
 	dep := f.deploymentOf(f.otherProductID, "codes-"+f.unique+"-alice.freepod.app", "provisioned", ssoOn, declaresSSO)
 	authTime := time.Date(2026, 10, 26, 9, 30, 0, 0, time.FixedZone("CET", 3600))
 	rec := oidcCode{DeploymentID: dep, RedirectURI: "https://x/cb", Subject: "3f2a", Email: "a@x", Name: "A",
-		Nonce: "n", CodeChallenge: "c", AuthTime: authTime}
+		Nonce: "n", CodeChallenge: "c", AuthTime: authTime, SID: "app-sid"}
 
 	code := randomToken()
-	if err := st.insertOIDCCode(ctx, sha256Bytes(code), rec); err != nil {
+	if err := st.insertOIDCCode(ctx, sha256Bytes(code), rec, "kc-"+f.unique); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, found, _ := st.redeemCode(ctx, sha256Bytes(code)); found {
@@ -520,7 +679,7 @@ func TestOIDCCodes(t *testing.T) {
 		code := randomToken()
 		bare := rec
 		bare.Nonce, bare.CodeChallenge = "", ""
-		st.insertOIDCCode(ctx, sha256Bytes(code), bare)
+		st.insertOIDCCode(ctx, sha256Bytes(code), bare, "kc-"+f.unique)
 		if got, _, _, _ := st.redeemOIDCCode(ctx, sha256Bytes(code)); got.Nonce != "" || got.CodeChallenge != "" {
 			t.Fatalf("record %+v", got)
 		}
@@ -537,7 +696,7 @@ func TestOIDCCodes(t *testing.T) {
 
 	t.Run("concurrent redemption succeeds once", func(t *testing.T) {
 		code := randomToken()
-		st.insertOIDCCode(ctx, sha256Bytes(code), rec)
+		st.insertOIDCCode(ctx, sha256Bytes(code), rec, "kc-"+f.unique)
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		wins := 0
@@ -561,7 +720,7 @@ func TestOIDCCodes(t *testing.T) {
 	t.Run("expiry and purge", func(t *testing.T) {
 		stale, expired, live := randomToken(), randomToken(), randomToken()
 		for _, c := range []string{stale, expired, live} {
-			st.insertOIDCCode(ctx, sha256Bytes(c), rec)
+			st.insertOIDCCode(ctx, sha256Bytes(c), rec, "kc-"+f.unique)
 		}
 		f.exec(`UPDATE app_auth_oidc_code SET expires_at = expires_at - interval '61 seconds' WHERE code_hash = $1`, sha256Bytes(stale))
 		if _, fresh, found, _ := st.redeemOIDCCode(ctx, sha256Bytes(stale)); !found || fresh {
@@ -579,4 +738,129 @@ func TestOIDCCodes(t *testing.T) {
 		}
 		st.redeemOIDCCode(ctx, sha256Bytes(live))
 	})
+}
+
+func TestSignOutRecords(t *testing.T) {
+	f := newFixture(t)
+	st := f.store(rolePool(t))
+	ctx := context.Background()
+	wiki := f.deploymentOf(f.otherProductID, "so-wiki-"+f.unique+"-alice.freepod.app", "provisioned", ssoOn, declaresSSO)
+	notes := f.deploymentOf(f.otherProductID, "so-notes-"+f.unique+"-alice.freepod.app", "provisioned", ssoOn, declaresSSO)
+	kc, kcOther := "kc-a-"+f.unique, "kc-b-"+f.unique
+	t.Cleanup(func() {
+		f.admin.Exec(ctx, `DELETE FROM app_auth_ended_session WHERE keycloak_sid = ANY($1)`, []string{kc, kcOther})
+	})
+	signIn := func(dep, keycloakSID, sid string) oidcCode {
+		t.Helper()
+		code := randomToken()
+		rec := oidcCode{DeploymentID: dep, RedirectURI: "https://x/cb", Subject: "3f2a", Email: "a@x", Name: "A", AuthTime: time.Now(), SID: sid}
+		if err := st.insertOIDCCode(ctx, sha256Bytes(code), rec, keycloakSID); err != nil {
+			t.Fatal(err)
+		}
+		got, _, _, err := st.redeemOIDCCode(ctx, sha256Bytes(code))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	count := func(sql string, args ...any) int {
+		t.Helper()
+		var n int
+		if err := f.admin.QueryRow(ctx, sql, args...).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	signIn(wiki, kc, "sid-wiki")
+	f.exec(`UPDATE app_auth_sign_in SET signed_in_at = signed_in_at - interval '1 hour' WHERE keycloak_sid = $1`, kc)
+	if got := signIn(wiki, kc, "sid-after-rotation"); got.SID != "sid-wiki" {
+		t.Fatalf("a second sign-in's code carries sid %q, want the first one's", got.SID)
+	}
+	if n := count(`SELECT count(*) FROM app_auth_sign_in WHERE keycloak_sid = $1 AND signed_in_at > `+nowUTC+` - interval '1 minute'`, kc); n != 1 {
+		t.Fatalf("%d records for one session and deployment, or not the later time", n)
+	}
+	signIn(notes, kc, "sid-notes")
+	signIn(wiki, kcOther, "sid-other-browser")
+
+	before := time.Now().UTC().Add(-time.Minute)
+	ended, err := st.endSession(ctx, kc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, s := range ended {
+		got[s.DeploymentID] = s.SID + "/" + s.Subject
+	}
+	if len(ended) != 2 || got[wiki] != "sid-wiki/3f2a" || got[notes] != "sid-notes/3f2a" {
+		t.Fatalf("ended sign-ins %+v", ended)
+	}
+	if again, err := st.endSession(ctx, kc); err != nil || len(again) != 0 {
+		t.Fatalf("ending again returned %+v, %v", again, err)
+	}
+	if n := count(`SELECT count(*) FROM app_auth_sign_in WHERE keycloak_sid = $1`, kcOther); n != 1 {
+		t.Fatal("another browser's sign-in went with this session")
+	}
+	if n := count(`SELECT count(*) FROM app_auth_ended_session WHERE keycloak_sid = $1`, kc); n != 1 {
+		t.Fatalf("%d ended-session records", n)
+	}
+
+	t.Run("ended sessions read from a time on", func(t *testing.T) {
+		rows, err := st.endedSessions(ctx, before)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var at time.Time
+		for _, e := range rows {
+			if e.ID == kc {
+				at = e.At
+			}
+		}
+		if at.IsZero() || at.Before(before) || at.After(time.Now().Add(time.Minute)) {
+			t.Fatalf("ended at %v, want about now", at)
+		}
+		rows, _ = st.endedSessions(ctx, at)
+		if !slices.ContainsFunc(rows, func(e endedSession) bool { return e.ID == kc }) {
+			t.Fatal("reading from its own time missed it")
+		}
+		rows, _ = st.endedSessions(ctx, at.Add(time.Microsecond))
+		if slices.ContainsFunc(rows, func(e endedSession) bool { return e.ID == kc }) {
+			t.Fatal("reading from after its time returned it")
+		}
+	})
+
+	t.Run("purge", func(t *testing.T) {
+		signIn(notes, kcOther, "sid-notes-other")
+		f.exec(`UPDATE app_auth_sign_in SET signed_in_at = signed_in_at - interval '31 days' WHERE keycloak_sid = $1 AND deployment_id = $2`, kcOther, wiki)
+		f.exec(`INSERT INTO app_auth_ended_session (keycloak_sid, ended_at) VALUES ($1, `+nowUTC+` - interval '8 days')`, kcOther)
+		if _, err := st.purgeSignOuts(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n := count(`SELECT count(*) FROM app_auth_sign_in WHERE keycloak_sid = $1`, kcOther); n != 1 {
+			t.Fatalf("%d sign-ins left, want only the young one", n)
+		}
+		if n := count(`SELECT count(*) FROM app_auth_ended_session WHERE keycloak_sid = ANY($1)`, []string{kc, kcOther}); n != 1 {
+			t.Fatalf("%d ended sessions left, want only the young one", n)
+		}
+	})
+}
+
+// TestSignOutRetention pins each retention to the lifetime it follows, so
+// changing one alone fails here (app-sign-out).
+func TestSignOutRetention(t *testing.T) {
+	if endedRetention != sessionTTL {
+		t.Errorf("ended sessions are kept %v, but a header session lasts %v", endedRetention, sessionTTL)
+	}
+	realm, err := os.ReadFile("../../tf/deps/keycloak-config/realm.tf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^\s*sso_session_max_lifespan\s*=\s*"([^"]+)"`).FindSubmatch(realm)
+	if m == nil {
+		t.Fatal("realm.tf sets no sso_session_max_lifespan")
+	}
+	lifespan, err := time.ParseDuration(string(m[1]))
+	if err != nil || lifespan != signInRetention {
+		t.Errorf("sign-ins are kept %v, but a Keycloak session lasts up to %s", signInRetention, m[1])
+	}
 }

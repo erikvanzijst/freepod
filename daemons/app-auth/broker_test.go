@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -33,6 +34,10 @@ func (f *fakeAuth) exchange(context.Context, string, string, string) (identity, 
 	return f.id, f.err
 }
 
+func (f *fakeAuth) verifyLogout(context.Context, string, time.Time) (string, error) {
+	return "", errors.New("fakeAuth verifies no logout tokens")
+}
+
 type brokerRig struct {
 	t     *testing.T
 	b     *broker
@@ -48,7 +53,7 @@ func newBrokerRig(t *testing.T) *brokerRig {
 	c := &clock{t: t0}
 	st := newMemStore(c.now)
 	st.hosts[milk] = "dep-milk"
-	auth := &fakeAuth{id: identity{Sub: "3f2a", Email: "alice@example.com", Name: "Alice"}}
+	auth := &fakeAuth{id: identity{Sub: "3f2a", Email: "alice@example.com", Name: "Alice", KeycloakSID: "kc-session-1"}}
 	return &brokerRig{
 		t: t, st: st, auth: auth, clock: c, jar: map[string]string{}, nonce: "app-host-nonce",
 		b: &broker{loginURL: login, keys: mustKeyring(t, "k1:"+testKey('a')), store: st, auth: auth, now: c.now, log: quiet, tenantDomain: "freepod.app"},
@@ -120,7 +125,8 @@ func (g *brokerRig) redeemable(w *httptest.ResponseRecorder, host string) {
 		g.t.Fatalf("code %q is shorter than 256 random bits encode to", code)
 	}
 	rec, fresh, found, _ := g.st.redeemCode(context.Background(), sha256Bytes(code))
-	if !found || !fresh || rec.Host != host || rec.ReturnPath != "/lists" || string(rec.NonceHash) != string(sha256Bytes(g.nonce)) || rec.Subject != "3f2a" {
+	if !found || !fresh || rec.Host != host || rec.ReturnPath != "/lists" || string(rec.NonceHash) != string(sha256Bytes(g.nonce)) || rec.Subject != "3f2a" ||
+		rec.KeycloakSID != "kc-session-1" {
 		g.t.Fatalf("code record %+v (found=%v fresh=%v)", rec, found, fresh)
 	}
 }
@@ -291,6 +297,18 @@ func TestBrokerCallbackRejects(t *testing.T) {
 		w := g.returnFromIdP(g.start(milk))
 		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "verified") || len(g.st.codes) != 0 {
 			t.Fatalf("%d", w.Code)
+		}
+	})
+	t.Run("ID token without a session", func(t *testing.T) {
+		g := newBrokerRig(t)
+		idp := newStubIdP(t)
+		g.b.auth = idp.auth()
+		g.st.recordConsent(context.Background(), "3f2a", "dep-milk", disclosedClaims)
+		loc, _ := url.Parse(g.start(milk).Header().Get("Location"))
+		code := idp.authorize(t, loc.String(), map[string]any{"email": "alice@example.com", "email_verified": true, "sid": nil})
+		w := g.do("GET", "/callback?"+url.Values{"code": {code}, "state": {loc.Query().Get("state")}}.Encode(), nil)
+		if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "try again later") || len(g.st.codes) != 0 {
+			t.Fatalf("%d %s", w.Code, w.Body)
 		}
 	})
 	t.Run("user cancelled at the identity provider", func(t *testing.T) {
@@ -471,4 +489,129 @@ func TestPreviewBase(t *testing.T) {
 			t.Errorf("previewBase(%q) = %q, %v; want %q", host, got, ok, want)
 		}
 	}
+}
+
+// listedRig is a broker rig whose milk deployment is `listed`, owned by
+// owner@example.com, with Alice signing in.
+func listedRig(t *testing.T) *brokerRig {
+	g := newBrokerRig(t)
+	g.st.listed["dep-milk"] = true
+	g.st.owners["dep-milk"] = "owner@example.com"
+	return g
+}
+
+func refusedWith(t *testing.T, w *httptest.ResponseRecorder, host, email, signOut string) {
+	t.Helper()
+	body := w.Body.String()
+	if w.Code != http.StatusForbidden || w.Header().Get("Location") != "" {
+		t.Fatalf("%d Location=%q", w.Code, w.Header().Get("Location"))
+	}
+	for _, want := range []string{"https://" + host, email, "ask whoever shared the link", `href="` + strings.ReplaceAll(signOut, "&", "&amp;") + `"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("no-access page lacks %q", want)
+		}
+	}
+	if strings.Contains(body, "Continue to") {
+		t.Error("a consent page was shown")
+	}
+}
+
+func TestBrokerListedStranger(t *testing.T) {
+	g := listedRig(t)
+	g.st.list("dep-milk", "e-bob", "bob@example.com", "")
+	w := g.returnFromIdP(g.start(milk))
+	refusedWith(t, w, milk, "alice@example.com", login+"/logout?host="+milk+"&rd=%2F")
+	if len(g.st.codes) != 0 || len(g.st.consents) != 0 {
+		t.Fatal("a stranger got a code or recorded consent")
+	}
+
+	t.Run("even with consent from an earlier, open release", func(t *testing.T) {
+		g := listedRig(t)
+		g.st.recordConsent(context.Background(), "3f2a", "dep-milk", disclosedClaims)
+		refusedWith(t, g.returnFromIdP(g.start(milk)), milk, "alice@example.com", login+"/logout?host="+milk+"&rd=%2F")
+		if len(g.st.codes) != 0 {
+			t.Fatal("a code was issued")
+		}
+	})
+}
+
+func TestBrokerListedOwnerWithEmptyList(t *testing.T) {
+	g := listedRig(t)
+	g.auth.id.Email = "Owner@Example.com"
+	body := g.returnFromIdP(g.start(milk)).Body.String()
+	w := g.do("POST", "/consent", url.Values{"csrf": {formValue(t, body, "csrf")}, "decision": {"allow"}})
+	g.redeemable(w, milk)
+}
+
+func TestBrokerListedFirstSignInBinds(t *testing.T) {
+	g := listedRig(t)
+	g.st.list("dep-milk", "e-alice", "alice@example.com", "")
+	body := g.returnFromIdP(g.start(milk)).Body.String()
+	if e := g.st.entry("dep-milk", "e-alice"); e.Subject != "" {
+		t.Fatal("bound before a code was issued")
+	}
+	w := g.do("POST", "/consent", url.Values{"csrf": {formValue(t, body, "csrf")}, "decision": {"allow"}})
+	g.redeemable(w, milk)
+	if e := g.st.entry("dep-milk", "e-alice"); e.Subject != "3f2a" || g.st.names["e-alice"] != "Alice" {
+		t.Fatalf("entry %+v", e)
+	}
+
+	t.Run("without a consent page", func(t *testing.T) {
+		g := listedRig(t)
+		g.st.list("dep-milk", "e-alice", "alice@example.com", "")
+		g.st.recordConsent(context.Background(), "3f2a", "dep-milk", disclosedClaims)
+		g.redeemable(g.returnFromIdP(g.start(milk)), milk)
+		if e := g.st.entry("dep-milk", "e-alice"); e.Subject != "3f2a" {
+			t.Fatalf("entry %+v", e)
+		}
+	})
+}
+
+func TestBrokerListedRemovedWhileDeciding(t *testing.T) {
+	g := listedRig(t)
+	g.st.list("dep-milk", "e-alice", "alice@example.com", "")
+	body := g.returnFromIdP(g.start(milk)).Body.String()
+	g.st.unlist("dep-milk", "e-alice")
+	w := g.do("POST", "/consent", url.Values{"csrf": {formValue(t, body, "csrf")}, "decision": {"allow"}})
+	refusedWith(t, w, milk, "alice@example.com", login+"/logout?host="+milk+"&rd=%2F")
+	if len(g.st.codes) != 0 || len(g.st.consents) != 0 {
+		t.Fatal("a removed person got a code or recorded consent")
+	}
+}
+
+func TestBrokerListedPreviewUsesTheList(t *testing.T) {
+	g := listedRig(t)
+	preview := "preview-" + milk
+	refusedWith(t, g.returnFromIdP(g.start(preview)), preview, "alice@example.com", login+"/logout?host="+preview+"&rd=%2F")
+}
+
+func TestBrokerListedListUnreadable(t *testing.T) {
+	g := listedRig(t)
+	g.st.accessErr = errors.New("database down")
+	if w := g.returnFromIdP(g.start(milk)); w.Code != http.StatusServiceUnavailable || len(g.st.codes) != 0 {
+		t.Fatalf("%d codes=%d", w.Code, len(g.st.codes))
+	}
+}
+
+// TestSessionNamesTheKeycloakSession signs in through the broker and redeems
+// the code at the verifier: the session names the Keycloak session the user
+// signed in with, so that ending it ends the session (app-sign-out).
+func TestSessionNamesTheKeycloakSession(t *testing.T) {
+	g := newBrokerRig(t)
+	g.st.recordConsent(context.Background(), "3f2a", "dep-milk", disclosedClaims)
+	loc, _ := url.Parse(g.returnFromIdP(g.start(milk)).Header().Get("Location"))
+	v := &verifier{keys: g.b.keys, store: g.st, loginURL: login, now: g.clock.now, log: quiet,
+		patterns: newPatternCache(quiet), allowed: newAllowCache(quiet), ended: readyEnded(g.st, g.clock.now)}
+	w := v.do(fwd{host: milk, uri: loc.RequestURI(), header: cookieHeader(loginCookie + "=" + g.nonce)})
+	var s session
+	if err := v.keys.open("session", setCookieValue(t, w, sessionCookie), &s, v.now()); err != nil || s.KeycloakSID != "kc-session-1" {
+		t.Fatalf("session %+v, %v", s, err)
+	}
+
+	t.Run("a session from before names none and is still valid", func(t *testing.T) {
+		w := v.do(fwd{host: milk, uri: "/", header: cookieHeader(sessionCookie + "=" + v.sessionFor(t, alice, milk))})
+		if w.Code != http.StatusOK || w.Header().Get("X-Freepod-User") != alice.Sub {
+			t.Fatalf("status %d", w.Code)
+		}
+	})
 }

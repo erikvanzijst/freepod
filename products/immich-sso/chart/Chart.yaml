@@ -5,7 +5,7 @@ description: >-
   Freepod without touching the catalog chart. Renders the full deployment
   (server, machine-learning, valkey, postgres) directly.
 type: application
-version: 0.1.1
+version: 0.1.3
 appVersion: "v2.7.0"
 keywords:
   - immich

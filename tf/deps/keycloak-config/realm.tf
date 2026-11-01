@@ -35,11 +35,9 @@ resource "keycloak_realm" "freepod" {
   # path of the cutover.
   reset_password_allowed = true
 
-  # The dashboard's session rides an offline session (tf/app/login requests
-  # offline_access), so it outlives Keycloak's default 30-minute SSO session,
-  # and signing in to an app would then ask for a password the dashboard never
-  # did. These match the two. Reusing the SSO cookie still checks that the
-  # user is enabled.
+  # The dashboard's session refreshes against the SSO session (tf/app/login),
+  # so these are how long anyone stays signed in, to the dashboard and its
+  # apps alike. Reusing the SSO cookie still checks that the user is enabled.
   sso_session_idle_timeout = "168h"
   sso_session_max_lifespan = "720h"
 

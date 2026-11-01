@@ -11,20 +11,43 @@ import (
 // memStore is the store contract in memory, for handler tests. The SQL behind
 // the same contract is exercised against the real schema in store_test.go.
 type memStore struct {
-	mu       sync.Mutex
-	now      func() time.Time
-	hosts    map[string]string // host -> deployment id, auth-enabled only
-	consents map[[2]string][]string
-	codes    map[string]memCode
+	mu      sync.Mutex
+	now     func() time.Time
+	hosts   map[string]string // host -> deployment id, auth-enabled only
+	listed  map[string]bool   // deployment id -> `auth.access: listed`
+	owners  map[string]string // deployment id -> owner's email
+	entries map[string][]accessEntry
+	names   map[string]string // entry id -> name it was bound with
+	// accessErr fails every accessList read, as a database outage does.
+	accessErr error
+	// accessReads counts accessList calls.
+	accessReads int
+	consents    map[[2]string][]string
+	codes       map[string]memCode
 	// clients are SSO-enabled deployments by ID, as their template declares them.
 	clients   map[string]memClient
 	oidcCodes map[string]memOIDCCode
+	// signIns are keyed by Keycloak session and deployment, ended holds when
+	// each Keycloak session ended.
+	signIns map[[2]string]memSignIn
+	ended   map[string]time.Time
+	// signOutErr fails sign-in records and endSession; endedErr fails
+	// endedSessions, whose every since endedReads records.
+	signOutErr, endedErr error
+	endedReads           []time.Time
+}
+
+type memSignIn struct {
+	signIn
+	at time.Time
 }
 
 type memClient struct {
 	host           string
 	paths, natives string // JSON, as the template's system values hold them
+	logout         string // auth.oidc.backchannelLogoutPath
 	pkceOptOut     bool
+	listed         bool
 }
 
 type memOIDCCode struct {
@@ -39,14 +62,70 @@ type memCode struct {
 
 func newMemStore(now func() time.Time) *memStore {
 	return &memStore{now: now, hosts: map[string]string{}, consents: map[[2]string][]string{}, codes: map[string]memCode{},
-		clients: map[string]memClient{}, oidcCodes: map[string]memOIDCCode{}}
+		clients: map[string]memClient{}, oidcCodes: map[string]memOIDCCode{},
+		signIns: map[[2]string]memSignIn{}, ended: map[string]time.Time{},
+		listed: map[string]bool{}, owners: map[string]string{}, entries: map[string][]accessEntry{}, names: map[string]string{}}
 }
 
-func (m *memStore) eligible(_ context.Context, host string) (string, bool, error) {
+func (m *memStore) eligible(_ context.Context, host string) (headerApp, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	id, ok := m.hosts[host]
-	return id, ok, nil
+	if !ok {
+		return headerApp{}, false, nil
+	}
+	return headerApp{ID: id, Listed: m.listed[id]}, true, nil
+}
+
+func (m *memStore) accessList(_ context.Context, dep string) (accessList, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.accessReads++
+	if m.accessErr != nil {
+		return accessList{}, m.accessErr
+	}
+	return accessList{OwnerEmail: m.owners[dep], Entries: slices.Clone(m.entries[dep])}, nil
+}
+
+func (m *memStore) bindEntry(_ context.Context, entryID, sub, name string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for dep, es := range m.entries {
+		for i, e := range es {
+			if e.ID == entryID && e.Subject == "" {
+				es[i].Subject = sub
+				m.entries[dep] = es
+				m.names[entryID] = name
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// list puts an entry on a deployment's list, bound when sub is set.
+func (m *memStore) list(dep, id, email, sub string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.entries[dep] = append(m.entries[dep], accessEntry{ID: id, Email: email, Subject: sub})
+}
+
+// unlist removes an entry, as the owner does through the API.
+func (m *memStore) unlist(dep, id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.entries[dep] = slices.DeleteFunc(m.entries[dep], func(e accessEntry) bool { return e.ID == id })
+}
+
+func (m *memStore) entry(dep, id string) accessEntry {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, e := range m.entries[dep] {
+		if e.ID == id {
+			return e
+		}
+	}
+	return accessEntry{}
 }
 
 func (m *memStore) hasConsent(_ context.Context, sub, dep string, claims []string) (bool, error) {
@@ -98,16 +177,62 @@ func (m *memStore) ssoClient(_ context.Context, id string) (ssoClient, bool, err
 	if !ok {
 		return ssoClient{}, false, nil
 	}
-	c, ok := newSSOClient(id, mc.host, json.RawMessage(mc.paths), json.RawMessage(mc.natives), !mc.pkceOptOut)
+	c, ok := newSSOClient(id, mc.host, json.RawMessage(mc.paths), json.RawMessage(mc.natives), mc.logout, !mc.pkceOptOut)
+	c.Listed = mc.listed
 	return c, ok, nil
 }
 
-func (m *memStore) insertOIDCCode(_ context.Context, h []byte, c oidcCode) error {
+func (m *memStore) insertOIDCCode(_ context.Context, h []byte, c oidcCode, keycloakSID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.signOutErr != nil {
+		return m.signOutErr
+	}
+	key := [2]string{keycloakSID, c.DeploymentID}
+	if held, ok := m.signIns[key]; ok {
+		c.SID = held.SID
+	}
+	m.signIns[key] = memSignIn{signIn{DeploymentID: c.DeploymentID, Subject: c.Subject, SID: c.SID}, m.now()}
 	m.oidcCodes[string(h)] = memOIDCCode{rec: c, expires: m.now().Add(codeTTL)}
 	return nil
 }
+
+func (m *memStore) endSession(_ context.Context, keycloakSID string) ([]signIn, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.signOutErr != nil {
+		return nil, m.signOutErr
+	}
+	if _, ok := m.ended[keycloakSID]; !ok {
+		m.ended[keycloakSID] = m.now()
+	}
+	var out []signIn
+	for k, s := range m.signIns {
+		if k[0] == keycloakSID {
+			out = append(out, s.signIn)
+			delete(m.signIns, k)
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) endedSessions(_ context.Context, since time.Time) ([]endedSession, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.endedReads = append(m.endedReads, since)
+	if m.endedErr != nil {
+		return nil, m.endedErr
+	}
+	var out []endedSession
+	for id, at := range m.ended {
+		if !at.Before(since) {
+			out = append(out, endedSession{ID: id, At: at})
+		}
+	}
+	return out, nil
+}
+
+func (m *memStore) purgeSignOuts(context.Context) (int64, error) { return 0, nil }
 
 func (m *memStore) redeemOIDCCode(_ context.Context, h []byte) (oidcCode, bool, bool, error) {
 	m.mu.Lock()

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -87,11 +88,15 @@ func (p *stubIdP) authorize(t *testing.T, authURL string, claims map[string]any)
 		t.Fatalf("authorization URL without S256 PKCE: %s", authURL)
 	}
 	full := map[string]any{
-		"iss": p.srv.URL, "aud": "freepod-apps-dev", "sub": "3f2a",
+		"iss": p.srv.URL, "aud": "freepod-apps-dev", "sub": "3f2a", "sid": "kc-session-1",
 		"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix(), "nonce": q.Get("nonce"),
 	}
 	for k, v := range claims {
-		full[k] = v
+		if v == nil {
+			delete(full, k)
+		} else {
+			full[k] = v
+		}
 	}
 	code := randomToken()
 	p.mu.Lock()
@@ -121,7 +126,7 @@ func TestOIDCExchange(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if id.Sub != "3f2a" || id.Email != "alice@example.com" || id.Name != "Alice" || !id.AuthTime.Equal(authTime) {
+		if id.Sub != "3f2a" || id.Email != "alice@example.com" || id.Name != "Alice" || !id.AuthTime.Equal(authTime) || id.KeycloakSID != "kc-session-1" {
 			t.Fatalf("identity %+v", id)
 		}
 	})
@@ -155,6 +160,15 @@ func TestOIDCExchange(t *testing.T) {
 		code := p.authorize(t, u, map[string]any{"email": "a@x", "email_verified": false})
 		if _, err := a.exchange(ctx, code, "verifier-2-verifier-2-verifier-2-verifier-2", "n"); !errors.Is(err, errEmailUnverified) {
 			t.Fatalf("got %v, want errEmailUnverified", err)
+		}
+	})
+
+	t.Run("no session", func(t *testing.T) {
+		a := p.auth()
+		u, _ := a.authURL("s", "n", "verifier-7-verifier-7-verifier-7-verifier-7", authParams{})
+		code := p.authorize(t, u, map[string]any{"email": "a@x", "email_verified": true, "sid": nil})
+		if _, err := a.exchange(ctx, code, "verifier-7-verifier-7-verifier-7-verifier-7", "n"); !errors.Is(err, errNoSession) {
+			t.Fatalf("got %v, want errNoSession", err)
 		}
 	})
 
@@ -210,5 +224,21 @@ func TestOIDCDiscoveryRecovers(t *testing.T) {
 	a.issuer = p.srv.URL
 	if _, err := a.authURL("s", "n", "v", authParams{}); err != nil {
 		t.Fatalf("did not recover once the provider came back: %v", err)
+	}
+}
+
+// signingVectorKid is the RFC 7638 thumbprint of testdata/signing-vector.pem,
+// shared with api/tests/test_app_access_logout.py: the API signs logout tokens
+// with this service's key, and apps find it in the JWKS by this kid.
+const signingVectorKid = "DJzcmmKmm4e0t9MCNr3DAProsJzIcYZIsPIOvC76tl0"
+
+func TestSigningKeyIDVector(t *testing.T) {
+	pem, err := os.ReadFile("testdata/signing-vector.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := mustSigner(t, string(pem))
+	if s.keys[0].kid != signingVectorKid || s.jwks.Keys[0].KeyID != signingVectorKid {
+		t.Fatalf("kid %q, want the shared vector", s.keys[0].kid)
 	}
 }

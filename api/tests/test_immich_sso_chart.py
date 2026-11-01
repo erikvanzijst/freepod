@@ -1,6 +1,7 @@
 """The immich-sso chart is the catalog Immich chart until SSO is turned on.
 
-It is a sandbox copy, so with `sso.enabled` off it must render what the catalog
+It is a sandbox copy, so without `auth.enabled` and `auth.protocol: oidc` it
+must render what the catalog
 chart renders, apart from waiting for Postgres before Immich starts, and nothing it does with SSO on may put the client secret into a
 rendered object. Shells out to a real `helm template`; skipped when helm is
 unavailable.
@@ -90,7 +91,7 @@ def test_without_sso_it_renders_the_catalog_chart(tmp_path, values):
 
 
 SSO = {
-    "sso": {"enabled": True},
+    "auth": {"enabled": True, "protocol": "oidc", "access": "listed"},
     "caelus": {
         "oidc": {"issuer": "https://login.example.test", "clientId": "dep-42", "secretName": "t-oidc"},
         "owner": {"email": "owner@example.test"},
@@ -156,6 +157,32 @@ def test_sso_refuses_to_render_without_what_it_needs(tmp_path, path, missing):
     assert missing in result.stderr
 
 
+@pytest.mark.parametrize(
+    "auth",
+    [{"enabled": True}, {"enabled": True, "protocol": "header"}, {"enabled": False, "protocol": "oidc"}],
+    ids=["enabled alone", "header", "oidc but not enabled"],
+)
+def test_sso_needs_enabled_and_oidc(tmp_path, auth):
+    values = {**SSO, "auth": auth}
+    assert "oauth" not in _immich_config(_render(tmp_path, values))
+
+
+@pytest.mark.parametrize("access", ["anyone", None], ids=["anyone", "unset"])
+def test_sso_refuses_to_render_without_an_access_list(tmp_path, access):
+    result = _helm_template(tmp_path, _with(SSO, "auth.access", access))
+    assert result.returncode != 0
+    assert "auth.access listed" in result.stderr
+
+
+def test_the_platform_keys_are_accepted(tmp_path):
+    values = _with(SSO, "auth.oidc", {
+        "redirectPaths": ["/auth/login"],
+        "nativeRedirectUris": ["app.immich:///oauth-callback"],
+        "backchannelLogoutPath": "/api/oauth/backchannel-logout",
+    })
+    assert _immich_config(_render(tmp_path, values))["oauth"]["enabled"] is True
+
+
 def test_without_sso_the_config_is_json_without_oauth(tmp_path):
     config = _immich_config(_render(tmp_path, {}))
     assert config == {"server": {"externalDomain": f"https://{HOST}"}}
@@ -170,7 +197,7 @@ def test_sso_configures_oauth_against_the_provider(tmp_path):
         "scope": "openid email profile",
         "signingAlgorithm": "RS256",
         "tokenEndpointAuthMethod": "client_secret_post",
-        "autoRegister": False,
+        "autoRegister": True,
         "autoLaunch": True,
         "buttonText": "Sign in with Freepod",
         "mobileOverrideEnabled": False,

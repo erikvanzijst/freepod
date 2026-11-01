@@ -7,6 +7,7 @@ pass several of these for reasons production does not have.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from uuid import uuid4
 
 import psycopg
@@ -540,7 +541,7 @@ def mail_sent(monkeypatch):
     once the relay accepted the message."""
     messages: list[dict] = []
 
-    def send_email(*, to, subject, body, settings=None):
+    def send_email(*, to, subject, body, html=None, settings=None):
         messages.append({"to": to, "subject": subject})
         return True
 
@@ -590,3 +591,26 @@ def test_a_reconcile_evaluation_records_no_threshold(session, tenant_db, setting
 
     _evaluate_at(session, deployment, tenant_db, settings, percent=85)
     assert rs.get_record(session, deployment).warned_threshold == 80
+
+
+@pytest.mark.parametrize("hostname", ["wiki-ana.freepod.app", None])
+def test_threshold_mail_names_the_deployment_and_links_the_dashboard(monkeypatch, hostname):
+    messages: list[dict] = []
+    def send_email(**kw):
+        messages.append(kw)
+        return True
+
+    monkeypatch.setattr("app.services.relational_storage.mailer.send_email", send_email)
+    deployment = SimpleNamespace(
+        id=uuid4(), name="wiki", hostname=hostname, user=SimpleNamespace(email="ana@example.com")
+    )
+    settings = CaelusSettings(base_url="https://freepod.example")
+    for threshold in (80, rs.READONLY_THRESHOLD):
+        assert rs._notify_threshold(
+            deployment, threshold=threshold, size_bytes=900, allowance=1000, settings=settings
+        )
+    for mail in messages:
+        assert 'href="https://freepod.example"' in mail["html"]
+        assert "https://freepod.example" in mail["body"]
+        assert ("https://wiki-ana.freepod.app" in mail["body"]) == bool(hostname)
+        assert "wiki" in mail["html"]

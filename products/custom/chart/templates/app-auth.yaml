@@ -6,7 +6,9 @@ strip-identity is rendered for EVERY deployment with an Ingress, opted in or
 not: it removes client-supplied identity headers, so an app that reads
 X-Freepod-Email without having enabled `auth` cannot be trivially spoofed.
 
-app-auth is rendered only when `auth.enabled`. It sends every request through
+app-auth is rendered only for header authentication: `auth.enabled`, with
+`auth.protocol` left at `header`, the only protocol this chart offers. It sends
+every request through
 the platform verifier (daemons/app-auth/), whose address the reconciler injects
 as caelus.appAuth.verifyUrl -- never a user value, or a tenant could choose its
 own identities. Two Traefik behaviors carry the contract, both covered by
@@ -16,8 +18,10 @@ daemons/app-auth/traefik_test.go:
     `Cookie` is in it so the verifier can strip its session cookie;
   - trustForwardHeader stays UNSET, so X-Forwarded-Host is the request's real
     Host and not a client-supplied one; sessions are bound to that host.
-Keep authResponseHeaders in step with identityHeaders in
-daemons/app-auth/request.go.
+With `auth.access: listed` the address carries `l=1`, which has the verifier
+apply the deployment's access list on every request; the list itself lives in
+the platform, never in values. Keep authResponseHeaders in step with
+identityHeaders in daemons/app-auth/request.go.
 */}}
 {{- if .Values.caelus.ingress.enabled }}
 apiVersion: traefik.io/v1alpha1
@@ -32,12 +36,19 @@ spec:
       {{- range (include "custom.identityHeaders" . | fromJsonArray) }}
       {{ . }}: ""
       {{- end }}
-{{- if .Values.auth.enabled }}
+{{- if include "custom.headerAuth" . }}
 ---
 {{- $verifyUrl := required "auth.enabled needs caelus.appAuth.verifyUrl, which the reconciler injects; refusing to serve this app unauthenticated" .Values.caelus.appAuth.verifyUrl }}
-{{- $address := $verifyUrl }}
+{{- $params := list }}
 {{- with .Values.auth.public }}
-{{- $address = printf "%s?p=%s" $verifyUrl (toJson . | b64enc | replace "+" "-" | replace "/" "_" | trimAll "=") }}
+{{- $params = append $params (printf "p=%s" (toJson . | b64enc | replace "+" "-" | replace "/" "_" | trimAll "=")) }}
+{{- end }}
+{{- if ne (.Values.auth.access | default "anyone") "anyone" }}
+{{- $params = append $params "l=1" }}
+{{- end }}
+{{- $address := $verifyUrl }}
+{{- if $params }}
+{{- $address = printf "%s?%s" $verifyUrl (join "&" $params) }}
 {{- end }}
 apiVersion: traefik.io/v1alpha1
 kind: Middleware

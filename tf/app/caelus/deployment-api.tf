@@ -151,6 +151,14 @@ resource "kubernetes_deployment" "api" {
             }
           }
 
+          # Removing someone from an OIDC app's access list sends it a
+          # back-channel logout token, signed as app-auth signs ID tokens.
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.app_auth_oidc_signing_keys.metadata[0].name
+            }
+          }
+
           volume_mount {
             name       = "static-data"
             mount_path = "/var/static"

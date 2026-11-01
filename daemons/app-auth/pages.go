@@ -237,8 +237,9 @@ func decodeNonceHash(s string) ([]byte, error) {
 	return b, nil
 }
 
-// The no-access page renders on the app's own host, in the app's place, so it
-// takes the look of the platform's placeholder for a deployment without an app
+// The no-access page renders in the app's place, on the app's own host or on
+// the login host when the broker refuses someone at sign-in, so it takes the
+// look of the platform's placeholder for a deployment without an app
 // (products/custom/placeholder/index.html) rather than the broker's card, and
 // loads nothing: its only style is inline, admitted by hash.
 const noAccessStyle = `
@@ -265,7 +266,8 @@ var noAccessPage = template.Must(template.New("no-access").Parse(`<!doctype html
 </head><body><main>
 <div class="dot" aria-hidden="true"></div>
 <h1>You don't have access to {{.App}}</h1>
-<p>{{if .Named}}{{.App}} at {{end}}<a href="{{.URL}}">{{.URL}}</a> is not open to the account you are signed in with, {{.Email}}.</p>
+<p>{{if .Named}}{{.App}} at {{end}}<a href="{{.URL}}">{{.URL}}</a> is open only to the people its owner has added, and the account you are signed in with, {{.Email}}, is not one of them.</p>
+<p>If you should have access, ask whoever shared the link to add {{.Email}}.</p>
 <p class="switch"><a href="{{.SignOut}}">Sign out to use another account</a></p>
 <footer>Freepod</footer>
 </main></body></html>`))

@@ -43,11 +43,14 @@ preview:
 # leaves the CLI's own default, prod.
 freepodEnv: ""
 
-# Owner-only "Sign in with Freepod" on the studio and the preview. Must be set
-# to true as a system value of the template, where the broker reads it; the
-# chart refuses to render otherwise. See templates/app-auth.yaml.
+# "Sign in with Freepod" on the studio and the preview, for the owner and the
+# people on the deployment's access list. `enabled: true` and `access: listed`
+# must be system values of the template, where the broker reads them; the chart
+# refuses to render otherwise. See templates/app-auth.yaml.
 auth:
   enabled: false
+  protocol: header
+  access: anyone
 
 # The SSH sidecar (products/_lib/ssh-sidecar-image), which serves the project
 # directory over SFTP, read-only. A system value, pinned exactly.

@@ -80,7 +80,9 @@ func (b *broker) discovery(w http.ResponseWriter, r *http.Request) {
 		"id_token_signing_alg_values_supported": []string{"RS256"},
 		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post"},
 		"code_challenge_methods_supported":      []string{"S256"},
-		"claims_supported":                      []string{"iss", "aud", "azp", "sub", "email", "email_verified", "name", "iat", "exp", "auth_time", "nonce"},
+		"backchannel_logout_supported":          true,
+		"backchannel_logout_session_supported":  true,
+		"claims_supported":                      []string{"iss", "aud", "azp", "sub", "sid", "email", "email_verified", "name", "iat", "exp", "auth_time", "nonce"},
 		"prompt_values_supported":               []string{"none", "login", "consent", "select_account"},
 		"claims_parameter_supported":            false,
 		"request_parameter_supported":           false,
@@ -302,7 +304,7 @@ func (b *broker) oidcCallback(w http.ResponseWriter, r *http.Request, f flow) {
 		return
 	}
 	id, ok := b.exchange(ctx, w, q.Get("code"), f)
-	if !ok {
+	if !ok || !b.oidcAdmits(ctx, w, client, req, id, false) {
 		return
 	}
 	consented, err := b.store.hasConsent(ctx, id.Sub, client.ID, disclosedClaims)
@@ -311,7 +313,7 @@ func (b *broker) oidcCallback(w http.ResponseWriter, r *http.Request, f flow) {
 		return
 	}
 	if consented && !req.ForceConsent {
-		b.issueOIDCCode(ctx, w, req, id)
+		b.issueOIDCCode(ctx, w, client, req, id)
 		return
 	}
 	if req.PromptNone {
@@ -322,7 +324,7 @@ func (b *broker) oidcCallback(w http.ResponseWriter, r *http.Request, f flow) {
 	pc := pendingConsent{
 		Host: client.Hostname, DeploymentID: client.ID,
 		Sub: id.Sub, Email: id.Email, Name: id.Name, CSRF: randomToken(),
-		OIDC: req, AuthTime: id.AuthTime.Unix(),
+		OIDC: req, AuthTime: id.AuthTime.Unix(), KeycloakSID: id.KeycloakSID,
 	}
 	sealed, err := b.keys.seal("consent", pc, consentTTL, b.now())
 	if err != nil {
@@ -353,21 +355,53 @@ func (b *broker) oidcConsent(w http.ResponseWriter, r *http.Request, pc pendingC
 		redirectError(w, req.RedirectURI, "access_denied", "", req.State)
 		return
 	}
+	id := identity{Sub: pc.Sub, Email: pc.Email, Name: pc.Name, AuthTime: time.Unix(pc.AuthTime, 0), KeycloakSID: pc.KeycloakSID}
+	if !b.oidcAdmits(ctx, w, client, req, id, false) {
+		return
+	}
 	if err := b.store.recordConsent(ctx, pc.Sub, client.ID, disclosedClaims); err != nil {
 		b.internal(w, "recording consent", err)
 		return
 	}
-	b.issueOIDCCode(ctx, w, req, identity{Sub: pc.Sub, Email: pc.Email, Name: pc.Name, AuthTime: time.Unix(pc.AuthTime, 0)})
+	b.issueOIDCCode(ctx, w, client, req, id)
 }
 
-func (b *broker) issueOIDCCode(ctx context.Context, w http.ResponseWriter, req *oidcRequest, id identity) {
+// oidcAdmits applies a listed client's access list, binding the entry that
+// admits id when bind is set. A refusal is the no-access page, or for
+// prompt=none, which may show none, access_denied.
+func (b *broker) oidcAdmits(ctx context.Context, w http.ResponseWriter, client ssoClient, req *oidcRequest, id identity, bind bool) bool {
+	if !client.Listed {
+		return true
+	}
+	ok, err := admitted(ctx, b.store, client.ID, id, bind)
+	if err != nil {
+		b.internal(w, "reading the access list", err)
+		return false
+	}
+	switch {
+	case ok:
+	case req.PromptNone:
+		redirectError(w, req.RedirectURI, "access_denied", "", req.State)
+	default:
+		b.noAccess(w, client.Hostname, id.Email, b.loginURL+"/oidc/logout")
+	}
+	return ok
+}
+
+func (b *broker) issueOIDCCode(ctx context.Context, w http.ResponseWriter, client ssoClient, req *oidcRequest, id identity) {
+	if !b.oidcAdmits(ctx, w, client, req, id, true) {
+		return
+	}
 	code := randomToken()
 	if err := b.store.insertOIDCCode(ctx, sha256Bytes(code), oidcCode{
 		DeploymentID: req.ClientID, RedirectURI: req.RedirectURI,
 		Subject: id.Sub, Email: id.Email, Name: id.Name,
 		Nonce: req.Nonce, CodeChallenge: req.Challenge, AuthTime: id.AuthTime,
-	}); err != nil {
-		b.internal(w, "storing OIDC code", err)
+		SID: b.keys.appSID(req.ClientID, id.KeycloakSID),
+	}, id.KeycloakSID); err != nil {
+		// A sign-in no sign-out could find is no sign-in (app-sign-out).
+		b.log.Error("storing OIDC code", "err", err)
+		redirectError(w, req.RedirectURI, "server_error", "", req.State)
 		return
 	}
 	v := url.Values{"code": {code}}
@@ -467,6 +501,18 @@ func (b *broker) token(w http.ResponseWriter, r *http.Request) {
 		tokenError(w, http.StatusBadRequest, "invalid_grant", "")
 		return
 	}
+	if client.Listed {
+		ok, err := admitted(ctx, b.store, client.ID, identity{Sub: rec.Subject, Email: rec.Email}, false)
+		if err != nil {
+			b.log.Error("reading the access list", "err", err)
+			tokenError(w, http.StatusServiceUnavailable, "temporarily_unavailable", "")
+			return
+		}
+		if !ok {
+			tokenError(w, http.StatusBadRequest, "invalid_grant", "")
+			return
+		}
+	}
 	verifier := form.Get("code_verifier")
 	if rec.CodeChallenge == "" {
 		// RFC 9700 §2.1.1: a verifier for a code issued without a challenge
@@ -532,7 +578,10 @@ func (b *broker) userinfo(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	_, ok, err := b.store.ssoClient(ctx, g.ClientID)
+	client, ok, err := b.store.ssoClient(ctx, g.ClientID)
+	if err == nil && ok && client.Listed {
+		ok, err = admitted(ctx, b.store, client.ID, identity{Sub: g.Sub, Email: g.Email}, false)
+	}
 	if err != nil {
 		b.log.Error("looking up OIDC client", "err", err)
 		tokenError(w, http.StatusServiceUnavailable, "temporarily_unavailable", "")

@@ -1,4 +1,5 @@
-"""The reconciler publishes OIDC client credentials for SSO-enabled deployments.
+"""The reconciler publishes OIDC client credentials for SSO-enabled deployments:
+`auth.enabled` with `auth.protocol: oidc`.
 
 What these assert is D10 of app-oidc-provider: a Secret in the deployment's
 namespace before Helm runs, references only in the values, and no Secret once
@@ -45,14 +46,14 @@ def _settings(monkeypatch):
     monkeypatch.setattr("app.services.app_auth_oidc.get_settings", lambda: settings)
 
 
-def _seed(db_session, *, system_sso: dict | None, user_sso: dict | None) -> DeploymentORM:
+def _seed(db_session, *, system_auth: dict | None, user_auth: dict | None) -> DeploymentORM:
     user = make_accepted_user(db_session, "sso-user@example.com")
     product = products.create_product(
         db_session, payload=products.ProductCreate(name="sso-product", description="d")
     )
     system_values: dict = {"replicas": 1}
-    if system_sso is not None:
-        system_values["sso"] = system_sso
+    if system_auth is not None:
+        system_values["auth"] = system_auth
     template = templates.create_template(
         db_session,
         payload=templates.ProductTemplateVersionCreate(
@@ -68,9 +69,9 @@ def _seed(db_session, *, system_sso: dict | None, user_sso: dict | None) -> Depl
                         "properties": {"domain": {"type": "string", "title": "hostname"}},
                         "additionalProperties": False,
                     },
-                    "sso": {
+                    "auth": {
                         "type": "object",
-                        "properties": {"enabled": {"type": "boolean"}},
+                        "properties": {"enabled": {"type": "boolean"}, "protocol": {"type": "string"}},
                         "additionalProperties": False,
                     },
                 },
@@ -95,8 +96,8 @@ def _seed(db_session, *, system_sso: dict | None, user_sso: dict | None) -> Depl
     db_session.commit()
 
     user_values: dict = {"user": {"domain": "wiki.example.test"}}
-    if user_sso is not None:
-        user_values["sso"] = user_sso
+    if user_auth is not None:
+        user_values["auth"] = user_auth
     deployment_id = deployments.create_deployment(
         db_session,
         payload=DeploymentCreate(
@@ -109,7 +110,7 @@ def _seed(db_session, *, system_sso: dict | None, user_sso: dict | None) -> Depl
     return db_session.get(DeploymentORM, deployment_id)
 
 
-DECLARES = {"redirectPaths": ["/oidc/callback"]}
+DECLARES = {"protocol": "oidc", "oidc": {"redirectPaths": ["/oidc/callback"]}}
 
 
 def _reconcile(db_session, deployment: DeploymentORM) -> FakeProvisioner:
@@ -135,7 +136,7 @@ def _oidc_removals(provisioner: FakeProvisioner) -> list[dict]:
 
 
 def test_enabled_publishes_credentials_before_helm_and_names_them_only(db_session, caplog):
-    deployment = _seed(db_session, system_sso=DECLARES, user_sso={"enabled": True})
+    deployment = _seed(db_session, system_auth=DECLARES, user_auth={"enabled": True})
     caplog.set_level(logging.DEBUG)
     provisioner = _reconcile(db_session, deployment)
 
@@ -166,46 +167,54 @@ def test_enabled_publishes_credentials_before_helm_and_names_them_only(db_sessio
 
 
 def test_a_user_value_overrides_the_templates_default(db_session):
-    deployment = _seed(db_session, system_sso={**DECLARES, "enabled": False}, user_sso={"enabled": True})
+    deployment = _seed(db_session, system_auth={**DECLARES, "enabled": False}, user_auth={"enabled": True})
     provisioner = _reconcile(db_session, deployment)
     assert len(_oidc_secrets(provisioner)) == 1
-    assert _helm_values(provisioner)["sso"]["enabled"] is True
+    assert _helm_values(provisioner)["auth"]["enabled"] is True
 
 
 def test_template_forced(db_session):
-    deployment = _seed(db_session, system_sso={**DECLARES, "enabled": True}, user_sso=None)
+    deployment = _seed(db_session, system_auth={**DECLARES, "enabled": True}, user_auth=None)
     provisioner = _reconcile(db_session, deployment)
     assert len(_oidc_secrets(provisioner)) == 1
     assert _helm_values(provisioner)["caelus"]["oidc"]["clientId"] == str(deployment.id)
 
 
 @pytest.mark.parametrize(
-    ("system_sso", "user_sso"),
+    ("system_auth", "user_auth"),
     [
         (DECLARES, None),
         (DECLARES, {"enabled": False}),
         ({**DECLARES, "enabled": True}, {"enabled": False}),
         (None, None),
+        (None, {"enabled": True}),
+        ({**DECLARES, "enabled": True}, {"protocol": "header"}),
     ],
-    ids=["default off", "user off", "user turns the template's off", "no sso"],
+    ids=[
+        "default off",
+        "user off",
+        "user turns the template's off",
+        "no auth",
+        "header authentication",
+        "user picks header over the template's oidc",
+    ],
 )
-def test_disabled_publishes_and_names_nothing(db_session, system_sso, user_sso):
-    deployment = _seed(db_session, system_sso=system_sso, user_sso=user_sso)
+def test_disabled_publishes_and_names_nothing(db_session, system_auth, user_auth):
+    deployment = _seed(db_session, system_auth=system_auth, user_auth=user_auth)
     provisioner = _reconcile(db_session, deployment)
     assert _oidc_secrets(provisioner) == []
     values = _helm_values(provisioner)
     assert "oidc" not in values.get("caelus", {})
-    assert values.get("sso", {}).get("enabled") is not True
     [removal] = _oidc_removals(provisioner)
     assert removal["namespace"] == deployment.namespace
     assert f"app.kubernetes.io/instance={deployment.name}" in removal["selector"]
 
 
 def test_toggled_off_removes_the_secret_after_helm(db_session):
-    deployment = _seed(db_session, system_sso=DECLARES, user_sso={"enabled": True})
+    deployment = _seed(db_session, system_auth=DECLARES, user_auth={"enabled": True})
     assert len(_oidc_secrets(_reconcile(db_session, deployment))) == 1
 
-    deployment.user_values_json = {"user": {"domain": "wiki.example.test"}, "sso": {"enabled": False}}
+    deployment.user_values_json = {"user": {"domain": "wiki.example.test"}, "auth": {"enabled": False}}
     db_session.add(deployment)
     db_session.commit()
     provisioner = _reconcile(db_session, deployment)
@@ -224,14 +233,14 @@ def test_toggled_off_removes_the_secret_after_helm(db_session):
 def test_no_provider_configured_publishes_nothing(db_session, monkeypatch):
     settings = CaelusSettings(tls_cluster_issuer="letsencrypt-http", domain="example.test", _env_file=None)
     monkeypatch.setattr("app.services.reconcile.get_settings", lambda: settings)
-    deployment = _seed(db_session, system_sso=DECLARES, user_sso={"enabled": True})
+    deployment = _seed(db_session, system_auth=DECLARES, user_auth={"enabled": True})
     provisioner = _reconcile(db_session, deployment)
     assert _oidc_secrets(provisioner) == []
     assert "oidc" not in _helm_values(provisioner).get("caelus", {})
 
 
 def test_user_values_cannot_shadow_the_injected_block(db_session):
-    deployment = _seed(db_session, system_sso={**DECLARES, "enabled": True}, user_sso=None)
+    deployment = _seed(db_session, system_auth={**DECLARES, "enabled": True}, user_auth=None)
     merged = template_values.merge_values_scoped(
         {},
         {"caelus": {"oidc": {"issuer": "https://evil.example", "secretName": "stolen"}}},

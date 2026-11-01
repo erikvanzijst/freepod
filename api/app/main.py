@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import (
+    access,
     artifacts,
     builds,
     users,
@@ -108,6 +109,7 @@ app.include_router(webhooks.router, prefix="/api")
 app.include_router(artifacts.router, prefix="/api")
 app.include_router(builds.router, prefix="/api")
 app.include_router(vars.router, prefix="/api")
+app.include_router(access.router, prefix="/api")
 app.include_router(ssh_keys.router, prefix="/api")
 app.include_router(usage.router, prefix="/api")
 app.include_router(usage.admin_router, prefix="/api")

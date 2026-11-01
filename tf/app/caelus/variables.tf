@@ -281,6 +281,12 @@ variable "app_auth_oidc_client_keys" {
   sensitive   = true
 }
 
+variable "app_auth_oidc_signing_keys" {
+  description = "app-auth's OpenID Provider signing keys, current first; the API signs back-channel logout tokens with them"
+  type        = string
+  sensitive   = true
+}
+
 variable "app_auth_verify_url" {
   description = "The app authentication verifier's forward-auth address; the reconciler injects it into custom deployments as caelus.appAuth.verifyUrl."
   type        = string

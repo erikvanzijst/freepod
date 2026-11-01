@@ -8,3 +8,9 @@ output "oidc_client_keys" {
   value       = local.oidc_client_keys
   sensitive   = true
 }
+
+output "oidc_signing_keys" {
+  description = "The provider's signing keys, current first; the API signs back-channel logout tokens with the first."
+  value       = local.oidc_signing_keys
+  sensitive   = true
+}

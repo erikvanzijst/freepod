@@ -23,6 +23,14 @@
         "enabled": {
           "type": "boolean"
         },
+        "access": {
+          "type": "string",
+          "enum": [
+            "anyone",
+            "listed"
+          ],
+          "description": "Who may sign in: any Freepod account, or only the owner and the deployment's access list."
+        },
         "public": {
           "type": "array",
           "maxItems": 32,

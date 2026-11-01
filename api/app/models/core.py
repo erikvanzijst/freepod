@@ -777,6 +777,17 @@ class DeploymentUpdate(SQLModel):
     )
 
 
+class DeploymentAuthRead(SQLModel):
+    """Sign in with Freepod as the serving release configures it, defaults
+    applied, the same way for every product (app-access-list)."""
+
+    enabled: bool
+    protocol: str
+    access: str
+    # How many people are on the access list; `None` unless `access` is `listed`.
+    listed_count: Optional[int] = None
+
+
 class DeploymentRead(DeploymentBase):
     id: UUID
     created_at: datetime
@@ -805,6 +816,8 @@ class DeploymentRead(DeploymentBase):
     # True when rolling out would change the running pod's environment,
     # measured against the *applied* release and never the desired one.
     pending: Optional[bool] = None
+    # `None` when no release is serving yet.
+    auth: Optional[DeploymentAuthRead] = None
 
 
 class SftpCredentialsRead(SQLModel):

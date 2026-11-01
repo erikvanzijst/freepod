@@ -13,7 +13,9 @@ The models are split across three modules:
                 a deployment, whose owner is the build's owner.
   - ssh_key.py: SshKey (and its Create/Read variants). Owned by a user and
                 scoped to no deployment.
-  - app_auth.py: AppAuthConsent, AppAuthCode -- written only by `daemons/app-auth/`.
+  - app_auth.py: AppAuthConsent, AppAuthCode -- written only by `daemons/app-auth/`;
+                AppAccessEntry, AppAccessInvitation -- the access lists of
+                `listed` deployments, written by the API.
   - usage.py:   UsageMetric, UsageSubject, UsageSample -- the usage ledger, plus
                 the enums naming its catalog dimensions; UsageRate, what each
                 quantity costs from when; and UsageReport, the priced read-back.
@@ -23,6 +25,7 @@ The models are split across three modules:
 from app.models.core import (  # noqa: F401
     _utcnow,
     ReleaseStatus,
+    DeploymentAuthRead,
     DeploymentBase,
     DeploymentCreate,
     DeploymentCreateResponse,
@@ -137,4 +140,13 @@ DeploymentRead.model_rebuild()
 # which lives in build.py and is only imported above.
 DeploymentReleaseWithBuildRead.model_rebuild()
 
-from app.models.app_auth import AppAuthCodeORM, AppAuthConsentORM, AppAuthOIDCCodeORM  # noqa: F401,E402
+from app.models.app_auth import (  # noqa: F401,E402
+    AccessEntryCreate,
+    AccessEntryRead,
+    AccessListRead,
+    AppAccessEntryORM,
+    AppAccessInvitationORM,
+    AppAuthCodeORM,
+    AppAuthConsentORM,
+    AppAuthOIDCCodeORM,
+)
