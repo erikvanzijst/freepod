@@ -24,6 +24,7 @@ Spec:
 | `upgrader/`                       | the service: `web.py` (dashboard), `scheduler.py`, `runner.py` (per-product execution), `agent.py` (the session user), `proposal.py` (checking and publishing a proposal), `untrusted.py` (reading what a session wrote), `github.py`, `pi.py`, `store.py`, `db.py` |
 | `migrations/`                     | Alembic, applied at container start                                                                                               |
 | `bin/gh`, `bin/git`, `bin/docker` | the guards, first on a session's `PATH`                                                                                           |
+| `extensions/loop-guard.ts`        | the only pi extension a session loads; ends a session that keeps repeating one tool call                                          |
 | `hooks/pre-push`                  | installed through the system `core.hooksPath`                                                                                     |
 | `sudoers`                         | lets the service, as `node`, run sessions as `agent`                                                                              |
 | `upgrade_products.sh`             | the local runner                                                                                                                  |
