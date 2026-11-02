@@ -37,6 +37,7 @@ WORKLOAD_KINDS = {"Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob"}
 DATASTORES = {
     "bookstack": {"bookstack/templates/mysql.yaml"},
     "discourse": {"discourse/templates/postgres.yaml", "discourse/templates/redis.yaml"},
+    "discourse-sso": {"discourse-sso/templates/postgres.yaml", "discourse-sso/templates/redis.yaml"},
     "docmost": {"docmost/templates/postgres.yaml", "docmost/templates/redis.yaml"},
     "immich": {"immich/templates/postgres.yaml", "immich/templates/valkey.yaml"},
     "immich-sso": {"immich-sso/templates/postgres.yaml", "immich-sso/templates/valkey.yaml"},

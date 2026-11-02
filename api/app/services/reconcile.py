@@ -828,6 +828,9 @@ class DeploymentReconciler:
         user_id = getattr(user, "id", None)
         if user_id is not None:
             owner["id"] = user_id
+        subject = getattr(user, "keycloak_subject", None)
+        if subject:
+            owner["subject"] = subject
         return {"caelus": {"owner": owner}} if owner else None
 
     @staticmethod

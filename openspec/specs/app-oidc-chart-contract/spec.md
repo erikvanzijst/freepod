@@ -77,12 +77,22 @@ A chart SHALL apply the issuer, client ID and client secret from the published S
 
 ### Requirement: Apps that decide access close their own doors
 
-A chart with `auth.access: anyone` that relies on its app to decide who may sign in SHALL turn off the app's automatic registration of new SSO users and its local sign-up, so that a Freepod account the app's admin did not invite is refused and nobody can pre-create an account under another person's email.
+A chart with `auth.access: anyone` that relies on its app to decide who may sign in SHALL turn off the app's local sign-up, so that nobody can pre-create an account under another person's email. It SHALL also turn off the app's automatic registration of new SSO users, so that a Freepod account the app's admin did not invite is refused, unless the app is meant to be joined by people its admin has not named and its own settings decide who may join. Such a chart SHALL leave those settings to the app's admin.
 
 #### Scenario: Uninvited account
 
-- **WHEN** a Freepod account the app's admin never invited signs in through SSO
+- **WHEN** a Freepod account the app's admin never invited signs in through SSO to an app whose members are invited
 - **THEN** the app refuses it and creates no account
+
+#### Scenario: Joining a community
+
+- **WHEN** a Freepod account signs in through SSO to a forum whose admin allows new registrations
+- **THEN** the forum lets it create an account
+
+#### Scenario: A community that closes its doors
+
+- **WHEN** a forum's admin requires an invitation, and a Freepod account without one signs in through SSO
+- **THEN** the forum refuses it and creates no account
 
 #### Scenario: Pre-created account
 
