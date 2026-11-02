@@ -114,7 +114,7 @@ resource "keycloak_openid_client" "freepod_cli_prod" {
 
   # PORT-LESS ON PURPOSE. A native client must bind an ephemeral port
   # (RFC 8252 section 7.3), which cannot be known at registration time.
-  # Keycloak 24's RedirectUtils retries a failed match after rewriting the
+  # Keycloak's RedirectUtils retries a failed match after rewriting the
   # request to port 80 when the host is localhost / 127.0.0.1 / [::1], so the
   # port-less form here matches http://127.0.0.1:54321/callback. Adding a port
   # would break every client that does not happen to use it.

@@ -6,7 +6,8 @@
 # /opt/keycloak/themes at runtime, so a plain COPY is all that's needed (no
 # `kc.sh build` required, and build-time DB/feature options stay untouched).
 #
-# Build + push with: ./scripts/build-images.sh --keycloak
+# Build + push with: ./scripts/build-images.sh <version>-<build> --keycloak
+# (see keycloak_image in variables.tf for the tag scheme).
 
 # Cache busting. Keycloak serves theme resources under /resources/<v>/ with a
 # 30-day max-age, and <v> derives from the Keycloak version, not the theme, so
@@ -25,6 +26,6 @@ RUN set -eu; \
         || { echo "css/${name} is not listed in the styles of ${props}" >&2; exit 1; }; \
     done
 
-FROM quay.io/keycloak/keycloak:24.0
+FROM quay.io/keycloak/keycloak:26.8.1
 
 COPY --from=theme /theme /opt/keycloak/themes/freepod

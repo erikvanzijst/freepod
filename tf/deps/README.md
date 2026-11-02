@@ -239,15 +239,17 @@ Behavior that is deliberate (openspec `keycloak-google-identity-provider`):
 
 ### Things that will bite you
 
-- **`groups` is not a Keycloak built-in client scope.** Keycloak 24.0.5 ships
-  ten default scopes and `groups` is not among them, so the scope and its
-  mapper are declared here rather than merely attached. The mapper sets
+- **`groups` is not a Keycloak built-in client scope.** None of Keycloak's
+  default scopes carries group membership, so the scope and its mapper are
+  declared here rather than merely attached. The mapper sets
   `full_path = false`, so the claim carries bare names (`freepod-dev`), which
   is what `allowed_groups` compares against.
-- **The provider is pinned `~> 5.7.0`.** From 5.8.0 it unconditionally sends
-  `bruteForceStrategy`, a field added in Keycloak 26; Keycloak 24.0.5 rejects
-  the whole request with `400 unable to read contents from stream` and realm
-  creation fails. Raise the cap only together with a Keycloak upgrade.
+- **`basic` must stay in every client's default scopes.** It carries the
+  mapper that puts `sub` into access tokens. The default-scope lists are
+  authoritative, so dropping it strips the subject from CLI bearer tokens, and
+  the API silently falls back to resolving callers by email.
+- **The provider and the server move together.** Provider 5.8 and later need
+  Keycloak 26 or newer; they send realm fields older servers reject.
 - **The realm carries two destroy guards.** `prevent_destroy` guards the plan
   but only while the resource block exists in the configuration;
   `terraform_deletion_protection` is enforced by the provider at the delete
@@ -307,22 +309,28 @@ type's `template.ftl`.
 
 The theme is **baked into the Keycloak image** rather than mounted (it's ~22
 files / ~400KB — too much for a ConfigMap). `keycloak/Dockerfile` copies
-`theme/freepod` onto `quay.io/keycloak/keycloak:24.0`, after a small build stage
+`theme/freepod` onto a pinned `quay.io/keycloak/keycloak` release, after a small build stage
 that appends `?v=<content hash>` to each stylesheet in its theme's `styles`
 line. Keycloak serves theme resources with a 30-day `max-age` under a path that
 changes only with the Keycloak version, so without that hash browsers keep the
 old CSS for a month after a theme change. Fonts and images referenced from the
-CSS are not hashed: give a changed asset a new file name. Build, push and roll
-out:
+CSS are not hashed: give a changed asset a new file name.
+
+Images are tagged `<Keycloak version>-<build>`, for example `26.8.1-1`, and a
+tag is never re-pushed: every theme or base-image change takes the next build
+number. Build, push and roll out:
 
 ```bash
-./scripts/build-images.sh --keycloak     # build + push ghcr.io/<owner>/caelus/keycloak
-cd tf/deps && terraform apply            # if var.keycloak_image / digest changed
-kubectl rollout restart deployment/keycloak -n keycloak
+./scripts/build-images.sh 26.8.1-2 --keycloak  # build + push ghcr.io/<owner>/freepod/keycloak
+# set keycloak_image in variables.tf to the new tag, then:
+cd tf/deps && terraform apply -target=module.keycloak
 ```
 
-The deployment references `var.keycloak_image`
-(default `ghcr.io/erikvanzijst/freepod/keycloak:latest`).
+The deployment uses the `Recreate` strategy, so the old pod is gone before the
+new one starts: a new Keycloak version migrates the database on startup, one
+way. Take a `pg_dump` of the `keycloak` database before raising the version;
+rolling back means restoring it with the previous image. Startup, readiness
+and liveness probes use `/health/*` on the management port 9000.
 
 ### Assigning the theme to the realm
 
@@ -364,12 +372,12 @@ HOST_WS=$(docker inspect "$DEVCTR" --format \
 
 docker run -d --name freepod-kc \
   --network "container:$DEVCTR" \
-  -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
   -v "$HOST_WS/tf/deps/keycloak/theme/freepod:/opt/keycloak/themes/freepod:ro" \
-  quay.io/keycloak/keycloak:24.0 \
+  quay.io/keycloak/keycloak:26.8.1 \
   start-dev --http-port=8501 \
-    --spi-theme-cache-themes=false --spi-theme-cache-templates=false \
-    --spi-theme-static-max-age=-1
+    --spi-theme--cache-themes=false --spi-theme--cache-templates=false \
+    --spi-theme--static-max-age=-1
 ```
 
 Then point the `master` realm at the theme and add a permissive client so the

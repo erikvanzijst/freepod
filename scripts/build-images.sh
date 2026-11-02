@@ -7,7 +7,7 @@
 #   ./scripts/build-images.sh v1.2.3        # Builds both images with custom tag
 #   ./scripts/build-images.sh --api          # Build only API image (tag = git SHA)
 #   ./scripts/build-images.sh --ui           # Build only UI image (tag = git SHA)
-#   ./scripts/build-images.sh --keycloak     # Build only Keycloak image (Freepod theme)
+#   ./scripts/build-images.sh 26.8.1-1 --keycloak  # Build only Keycloak image (Freepod theme), versioned tag
 #   ./scripts/build-images.sh --ssh-sidecar   # Build only the dev-profile SSH sidecar
 #   ./scripts/build-images.sh --daemons       # Build only the platform Go daemons image
 #   ./scripts/build-images.sh --builder       # Build only the tenant build image
