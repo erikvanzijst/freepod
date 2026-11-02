@@ -24,6 +24,14 @@ than through the Keycloak admin console.
 - **AND** the version constraint resolves to 5.x or later
 - **AND** the unmaintained `mrparkers/keycloak` provider is not used
 
+#### Scenario: Provider supports the running server
+
+- **WHEN** the provider version constraint is compared with the running
+  Keycloak's major version
+- **THEN** the resolved provider release supports that major version
+- **AND** any cap held for an older server is removed in the same change that
+  retires that server
+
 #### Scenario: Realm configuration is reproducible from code
 
 - **WHEN** an operator inspects the `freepod` realm's registration policy, email

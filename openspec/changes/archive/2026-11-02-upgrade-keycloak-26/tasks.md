@@ -36,7 +36,7 @@
 
 ## 6. Cutover
 
-- [ ] 6.1 Write the cutover and rollback runbook in `var/keycloak-26-cutover.md` from the design's Migration Plan, including the exact commands, the running 24 image digest to roll back to, and the 5.3 outcome; verify by doing a full rollback drill on the rehearsal (restore dump, then the 24 image) that ends in a working 24 sign-in
+- [x] 6.1 Write the cutover and rollback runbook in `var/keycloak-26-cutover.md` from the design's Migration Plan, including the exact commands, the running 24 image digest to roll back to, and the 5.3 outcome; verify by doing a full rollback drill on the rehearsal (restore dump, then the 24 image) that ends in a working 24 sign-in
 - [x] 6.2 Publish the versioned Keycloak image (`26.8.1-1`); verify `docker pull` of the tag succeeds and its digest is recorded in the runbook
 - [x] 6.3 Take a fresh prod `pg_dump`, then run phase 1 (`terraform apply -target=module.keycloak`); verify the pod is Ready, all migration steps logged, and the discovery `issuer` is `https://keycloak.freepod.eu/realms/freepod`
 - [x] 6.4 Run phase 2 (`terraform plan`, then apply in `tf/deps`); verify the plan removes no client scope before applying, and the apply completes with no errors
