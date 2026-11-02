@@ -1,8 +1,7 @@
 # The `groups` client scope.
 #
-# NOT a Keycloak built-in. Keycloak 24.0.5 ships ten default client scopes
-# (acr, address, email, microprofile-jwt, offline_access, phone, profile,
-# role_list, roles, web-origins); `groups` is absent from all of them. The one
+# NOT a Keycloak built-in: none of Keycloak's default client scopes carries
+# group membership. The one
 # in the `master` realm was created by hand when Grafana was set up, which is
 # exactly why it is on the `grafana` client and missing from `caelus-dev` — and
 # therefore why group-based gating is not available to Freepod today. A fresh
@@ -33,14 +32,7 @@ resource "keycloak_openid_group_membership_protocol_mapper" "groups" {
   add_to_access_token = true
   add_to_userinfo     = true
 
-  # No add_to_token_introspection: the argument does not exist before provider
-  # 5.8.0, and we are capped below that for Keycloak 24 compatibility (see
-  # ../providers.tf). The resulting mapper leaves `introspection.token.claim`
-  # unset, where `master` has it explicitly "true" — the one deliberate
-  # difference from the mapper being replaced. It is inert here: nothing reads
-  # the groups claim through token introspection. oauth2-proxy uses the ID
-  # token and userinfo, Grafana the userinfo endpoint. If a future consumer
-  # does need it, raising the provider cap is the fix.
+  add_to_token_introspection = true
 }
 
 # Per-environment audience scopes for the CLI clients.
@@ -107,7 +99,8 @@ resource "keycloak_openid_audience_protocol_mapper" "api_dev" {
 locals {
   # Authoritative default client scope set for every client below. Matches the
   # Keycloak defaults for an OIDC client, plus `groups`. Anything not listed
-  # here is removed from the client on apply.
+  # here is removed from the client on apply, so `basic` must stay: it is what
+  # puts `sub` into access tokens.
   #
   # The freepod-api-* audience scopes are deliberately NOT here. This local is
   # applied to freepod_prod, freepod_dev and grafana alike, so adding one would
@@ -115,6 +108,7 @@ locals {
   # scopes exist to provide.
   default_client_scopes = [
     "acr",
+    "basic",
     "email",
     "profile",
     "roles",
@@ -201,7 +195,7 @@ resource "keycloak_openid_client_optional_scopes" "freepod_dev" {
 # beyond what the consent page lists, and no optional scopes either, so an
 # `offline_access` refresh token can never be requested.
 locals {
-  app_auth_client_scopes = ["acr", "email", "profile"]
+  app_auth_client_scopes = ["acr", "basic", "email", "profile"]
 }
 
 resource "keycloak_openid_client_default_scopes" "freepod_apps_prod" {

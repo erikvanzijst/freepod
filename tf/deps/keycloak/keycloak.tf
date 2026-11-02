@@ -7,43 +7,35 @@ resource "kubernetes_secret" "keycloak" {
   type = "Opaque"
 
   data = {
-    # Replaces the deprecated `KC_PROXY=edge`, which Keycloak 24 warns about
-    # and later versions remove. `edge` bundled TWO concerns, and both need a
-    # replacement — dropping it while setting only proxy-headers makes
-    # Keycloak refuse to start with "Key material not provided to setup
-    # HTTPS", because production mode then expects to terminate TLS itself:
-    #
-    #   1. parse the X-Forwarded-* headers          -> KC_PROXY_HEADERS
-    #   2. TLS terminates at the proxy, serve HTTP  -> KC_HTTP_ENABLED
-    #
-    # KC_HOSTNAME_URL below is a third, separate thing: it pins the URLs
-    # Keycloak *generates* to https, and does not affect the listener.
+    # TLS terminates at Traefik: Keycloak serves plain HTTP and trusts the
+    # X-Forwarded-* headers Traefik sets. Traefik is the only path in, but any
+    # pod reaching the ClusterIP directly could forge a client IP. Harmless
+    # while bruteForceProtected is off; revisit if it is ever enabled, since
+    # IP-based lockout would become spoofable.
     KC_PROXY_HEADERS = "xforwarded"
     KC_HTTP_ENABLED  = "true"
 
-    # Redundant alongside proxy-headers (which turns on Quarkus' forwarded
-    # address handling itself), kept only because dropping it is an unrelated
-    # change. It is what the "X-Forwarded-* headers will be considered"
-    # startup warning refers to: Traefik is the only path in, but any pod
-    # reaching the ClusterIP directly could forge a client IP. Harmless while
-    # bruteForceProtected is off; revisit if it is ever enabled, since
-    # IP-based lockout would become spoofable.
-    KC_PROXY_ADDRESS_FORWARDING    = "true"
-    KC_HOSTNAME_STRICT             = "false"
-    KC_HOSTNAME_STRICT_BACKCHANNEL = "false"
-    KC_HOSTNAME_URL                = "https://keycloak.${var.domain}"
-    KC_HOSTNAME_ADMIN_URL          = "https://keycloak.${var.domain}"
+    # Pins every URL Keycloak generates, and the issuer, to the public URL,
+    # however a request reached it. Every client, in-cluster ones included,
+    # talks to Keycloak through that URL.
+    KC_HOSTNAME = "https://keycloak.${var.domain}"
+
+    # Serves /health/* on the management port (9000) for the probes below.
+    KC_HEALTH_ENABLED = "true"
 
     # INFO, not DEBUG: at DEBUG a near-idle Keycloak emitted ~32k lines in six
     # minutes (99.9% of the log), which is pure disk and Loki ingest on a node
     # with a history of disk pressure. Raise it temporarily when debugging.
-    KC_LOG_LEVEL            = "INFO"
-    KC_DB                   = "postgres"
-    KC_DB_URL               = "jdbc:postgresql://${kubernetes_service.postgres.metadata[0].name}.${var.namespace}.svc.cluster.local:5432/keycloak"
-    KC_DB_USERNAME          = "keycloak"
-    KC_DB_PASSWORD          = "keycloak"
-    KEYCLOAK_ADMIN          = "admin"
-    KEYCLOAK_ADMIN_PASSWORD = var.keycloak_admin_password
+    KC_LOG_LEVEL   = "INFO"
+    KC_DB          = "postgres"
+    KC_DB_URL      = "jdbc:postgresql://${kubernetes_service.postgres.metadata[0].name}.${var.namespace}.svc.cluster.local:5432/keycloak"
+    KC_DB_USERNAME = "keycloak"
+    KC_DB_PASSWORD = "keycloak"
+
+    # Creates the master-realm admin on an empty database only; ignored once
+    # it exists.
+    KC_BOOTSTRAP_ADMIN_USERNAME = "admin"
+    KC_BOOTSTRAP_ADMIN_PASSWORD = var.keycloak_admin_password
   }
 }
 
@@ -58,6 +50,12 @@ resource "kubernetes_deployment" "keycloak" {
 
   spec {
     replicas = 1
+
+    # A new version migrates the schema on startup, one-way, so the old pod
+    # must be gone before the new one starts.
+    strategy {
+      type = "Recreate"
+    }
 
     selector {
       match_labels = {
@@ -79,10 +77,44 @@ resource "kubernetes_deployment" "keycloak" {
 
           image_pull_policy = "Always"
 
-          args = ["start", "--hostname-debug=true"]
+          args = ["start"]
 
           port {
             container_port = 8080
+          }
+
+          port {
+            name           = "management"
+            container_port = 9000
+          }
+
+          # The HTTP port opens before bootstrap (and any schema migration)
+          # has finished, so traffic waits for /health/ready. Startup gets up
+          # to 10 minutes before liveness takes over.
+          startup_probe {
+            http_get {
+              path = "/health/started"
+              port = "management"
+            }
+            period_seconds    = 10
+            failure_threshold = 60
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/health/ready"
+              port = "management"
+            }
+            period_seconds = 10
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/health/live"
+              port = "management"
+            }
+            period_seconds    = 30
+            failure_threshold = 3
           }
 
           env_from {

@@ -182,6 +182,13 @@ authenticated request is authorized on the same evidence as a browser session.
 - **AND** the claim is present in the access token, not only in the ID token or
   userinfo response
 
+#### Scenario: Subject claim is present
+
+- **WHEN** an access token obtained through either CLI client is decoded
+- **THEN** it carries a `sub` claim
+- **AND** a bearer-authenticated request reaches the API with that subject as
+  the caller's identity, exactly as a browser session for the same user does
+
 ### Requirement: Clients can obtain a durable credential
 
 The system SHALL make the `offline_access` scope available to the CLI clients,
@@ -258,4 +265,3 @@ and has no notion of OAuth scopes.
 - **WHEN** a user wants to invalidate a credential issued to a CLI client
 - **THEN** the Keycloak account console lists the client's offline session
 - **AND** revoking it there prevents further token refresh
-

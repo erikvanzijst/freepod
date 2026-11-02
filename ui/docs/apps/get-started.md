@@ -11,8 +11,8 @@ Freepod runs apps from its catalog, such as photo libraries, file storage and pa
 ## 1. Create an account
 
 1. Go to [freepod.eu](app:/) and select **Create account**.
-2. Register with an email address and password, or with a Google account.
-3. If you registered with an email address, open the verification link Freepod sends you.
+2. Register with your email address and name, or with a Google account.
+3. If you registered with an email address, open the verification link Freepod sends you and choose a password.
 
 ## 2. Choose your handle
 
