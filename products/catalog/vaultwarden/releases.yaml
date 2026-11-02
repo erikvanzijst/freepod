@@ -1,3 +1,12 @@
+- version: "1.37.5"
+  notes: |-
+    A security release that also keeps the bundled web vault current.
+
+    - Fixes two vulnerabilities in website icons and emergency access
+    - Email two-step codes work again when signing in with SSO on iOS and Android
+    - Stuck web vault connections are cleaned up automatically, so the app stays responsive
+    - Importing an organization now updates existing groups when their data changes
+    - Required for the newest Bitwarden apps to turn two-step login methods on or off, and to take over an account through emergency access
 - version: "1.37.4"
   notes: |-
     A security release that fixes several vulnerabilities, including one that let removed organization members keep seeing shared items.
