@@ -343,6 +343,10 @@ a:hover { color: var(--accent-pink); }
   color: var(--fg-muted);
 }
 #kc-registration { font-family: var(--sans); }
+.pf-v5-c-login__main-footer-band {
+  --pf-v5-c-login__main-footer-band--BorderTopColor: var(--line-soft);
+  margin-top: 28px;
+}
 #kc-registration-container,
 #kc-form-buttons {
   margin-top: 16px;
@@ -357,48 +361,40 @@ a:hover { color: var(--accent-pink); }
 .pf-v5-c-alert__title { color: var(--fg-primary) !important; }
 
 /* ── Identity providers ("or" divider + Sign in with Google) ──────────────
-   keycloak.v2 renders each provider in the card footer as an icon-only link.
-   Google's branding guidelines require its four-color G and "Sign in with
-   Google", so the Google link is restyled as their dark-theme button: #131314
-   fill, #8E918F stroke, #E3E3E3 Roboto Medium text. */
-.pf-v5-c-login__main-footer {
-  padding: 0 36px 36px;
-}
-#kc-social-providers::before {
-  content: 'or';
-  display: flex;
-  align-items: center;
+   keycloak.v2 renders its own "or" divider and, per provider, a full-width
+   tertiary button holding the provider's icon and "Sign in with <name>".
+   Google's branding guidelines require its four-color G and that label, so
+   the Google button is restyled as their dark-theme button: #131314 fill,
+   #8E918F stroke, #E3E3E3 Roboto Medium text. The official G replaces the
+   parent's gradient one at the same path, img/social/google.svg. */
+.kc-login-divider {
   gap: 14px;
-  margin-bottom: 20px;
+  margin: 28px 0 20px;
+}
+.kc-login-divider::before,
+.kc-login-divider::after {
+  border-bottom-color: var(--line-soft);
+}
+.kc-login-divider > span {
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 11.5px !important;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--fg-faint);
-  background:
-    linear-gradient(var(--line-soft), var(--line-soft)) left center / calc(50% - 26px) 1px no-repeat,
-    linear-gradient(var(--line-soft), var(--line-soft)) right center / calc(50% - 26px) 1px no-repeat;
-  justify-content: center;
+  color: var(--fg-faint) !important;
 }
-#kc-social-providers .pf-v5-c-login__main-footer-links {
+#kc-social-providers ul {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
   gap: 12px;
   margin: 0;
-  padding: 0;
+  padding: 0 !important;
 }
-#kc-social-providers .pf-v5-c-login__main-footer-links-item {
-  width: 100%;
-  margin: 0;
-  padding: 0;
+#kc-social-providers li {
+  padding: 0 !important;
 }
 a#social-google {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  justify-content: center !important;
   gap: 10px;
-  width: 100%;
   height: 44px;
   padding: 0 16px;
   background: #131314;
@@ -412,6 +408,10 @@ a#social-google {
   text-decoration: none;
   transition: background 0.15s, border-color 0.15s;
 }
+/* PatternFly draws the tertiary button's outline on ::after. */
+a#social-google::after {
+  display: none;
+}
 a#social-google:hover {
   background: #1E1F20;
   border-color: #A6A9A7;
@@ -421,16 +421,10 @@ a#social-google:focus-visible {
   outline: 3px solid rgba(91, 140, 255, 0.5);
   outline-offset: 2px;
 }
-/* Swap the template's single-color glyph for the official G. */
-a#social-google svg {
-  display: none;
-}
-a#social-google::before {
-  content: '';
+a#social-google img {
   width: 20px;
   height: 20px;
-  background: url('../img/google-g.svg') center / contain no-repeat;
 }
-a#social-google::after {
-  content: 'Sign in with Google';
+a#social-google span {
+  margin: 0 !important;
 }
