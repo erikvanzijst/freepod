@@ -116,6 +116,17 @@ module "prometheus" {
   depends_on = [module.mailer]
 }
 
+# Heartbeats for the public hostnames; keys name the healthchecks.io checks.
+module "uptime" {
+  source    = "./uptime"
+  namespace = kubernetes_namespace.monitoring.metadata[0].name
+  probes = {
+    freepod-eu  = "https://freepod.eu/"
+    freepod-app = "https://freepod.app/"
+  }
+  ping_urls = var.uptime_ping_urls
+}
+
 module "opencost" {
   source    = "./opencost"
   namespace = kubernetes_namespace.monitoring.metadata[0].name

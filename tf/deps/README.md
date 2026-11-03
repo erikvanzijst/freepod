@@ -72,6 +72,12 @@ letsencrypt_email    = "ops@example.com"
 # Monitoring stack
 grafana_admin_password = "replace-with-actual-password" # break-glass local admin
 alert_email_to         = "ops@example.com"              # Alertmanager recipient
+
+# Uptime heartbeats: healthchecks.io ping URL per check in main.tf's module.uptime
+uptime_ping_urls = {
+  freepod-eu  = "https://hc-ping.com/<uuid>"
+  freepod-app = "https://hc-ping.com/<uuid>"
+}
 ```
 
 Grafana's OIDC client ID and secret are **not** configured here. The `grafana`
@@ -125,6 +131,11 @@ all Caelus environments (it is *not* duplicated per env). Modules:
   forked `prometheus/scrape_configs.yaml` drops high-cardinality control-plane
   histogram buckets for the single node — **reconcile it when bumping the chart
   version**.
+- `uptime/` — one CronJob per [healthchecks.io](https://healthchecks.io) check,
+  every minute: it requests the check's public URL through the public edge
+  (2xx/3xx is up) and pings `<ping URL>/<curl exit code>`. A failing site
+  reports a failure right away; a cluster that stops running jobs goes quiet,
+  and the check times out. Ping URLs live in `uptime_ping_urls`.
 
 Runtime dependencies on other `tf/deps` singletons:
 

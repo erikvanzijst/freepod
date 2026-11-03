@@ -106,3 +106,11 @@ variable "alert_email_to" {
   default     = "erik.van.zijst@gmail.com"
 }
 
+
+# --- Uptime heartbeats ---
+
+variable "uptime_ping_urls" {
+  description = "healthchecks.io ping URL per uptime check (freepod-eu, freepod-app). Anyone holding one can ping its check, so use secrets.auto.tfvars."
+  type        = map(string)
+  sensitive   = true
+}
