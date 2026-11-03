@@ -8,6 +8,7 @@ const listTemplatesMock = vi.fn()
 const listPlansMock = vi.fn()
 const createDeploymentMock = vi.fn()
 const updateDeploymentMock = vi.fn()
+const getDeploymentMock = vi.fn()
 const checkHostnameMock = vi.fn()
 const getMyHandleMock = vi.fn()
 // The account's domain; unset keeps the hostname field in custom mode.
@@ -22,6 +23,7 @@ vi.mock('../api/endpoints', () => ({
   listPlans: (...args: unknown[]) => listPlansMock(...args),
   createDeployment: (...args: unknown[]) => createDeploymentMock(...args),
   updateDeployment: (...args: unknown[]) => updateDeploymentMock(...args),
+  getDeployment: (...args: unknown[]) => getDeploymentMock(...args),
   checkHostname: (...args: unknown[]) => checkHostnameMock(...args),
   getMyHandle: (...args: unknown[]) => getMyHandleMock(...args),
   getCnameTarget: vi.fn().mockResolvedValue(''),
@@ -559,5 +561,92 @@ describe('DeployDialog', () => {
       expect(screen.getByRole('button', { name: 'Launch' })).toBeDisabled()
     })
     expect(screen.getByText(hint)).toBeInTheDocument()
+  })
+  it('edit mode leaves a stored var in a hidden field untouched', async () => {
+    const nextcloudTemplate: ProductTemplate = {
+      id: 7,
+      product_id: 1,
+      chart_ref: 'oci://registry/nextcloud',
+      chart_version: '1.0.0',
+      system_values_json: null,
+      values_schema_json: {
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          hostname: { title: 'hostname', type: 'string', minLength: 1 },
+          auth: {
+            type: 'object',
+            properties: {
+              enabled: { type: 'boolean', title: 'Sign in with Freepod', default: true },
+            },
+          },
+          ADMIN_USER: { type: 'string', title: 'Admin user', 'x-caelus-target': 'runtime' },
+          NEXTCLOUD_ADMIN_PASSWORD: {
+            type: 'string',
+            title: 'Admin password',
+            'x-caelus-target': 'runtime',
+            'x-caelus-sensitive': true,
+          },
+        },
+        required: ['hostname'],
+        if: {
+          required: ['auth'],
+          properties: {
+            auth: { required: ['enabled'], properties: { enabled: { const: false } } },
+          },
+        },
+        then: { required: ['ADMIN_USER', 'NEXTCLOUD_ADMIN_PASSWORD'] },
+      },
+      created_at: '2026-01-01T00:00:00Z',
+      product: helloWorld,
+    }
+    const deployment: Deployment = {
+      id: '00000000-0000-0000-0000-00000000007a',
+      user_id: 1,
+      desired_template_id: 7,
+      name: 'nextcloud-abc123',
+      namespace: 'test-example-123456789',
+      hostname: 'cloud.example.com',
+      user_values_json: { hostname: 'cloud.example.com', auth: { enabled: true } },
+      desired_template: nextcloudTemplate,
+      status: 'ready',
+      generation: 1,
+      created_at: '2026-01-15T00:00:00Z',
+      user: { id: 1, email: 'test@example.com', is_admin: false, created_at: '2026-01-01T00:00:00Z' },
+    }
+    getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
+    getDeploymentMock.mockResolvedValue({
+      ...deployment,
+      pending: false,
+      vars: {
+        ADMIN_USER: { value: 'admin', sensitive: false },
+        NEXTCLOUD_ADMIN_PASSWORD: { sensitive: true },
+      },
+    })
+    updateDeploymentMock.mockReset()
+    updateDeploymentMock.mockResolvedValue({ id: deployment.id })
+
+    renderWithQuery(
+      <DeployDialog product={helloWorld} userId={1} onClose={vi.fn()} deployment={deployment} />,
+    )
+
+    await waitFor(() => expect(getDeploymentMock).toHaveBeenCalled())
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /sign in with freepod/i })).toBeChecked()
+    })
+    expect(screen.queryByLabelText(/admin user/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/admin password/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+
+    // No vars at all: neither the stored values nor a deletion of them.
+    await waitFor(() => {
+      expect(updateDeploymentMock).toHaveBeenCalledWith(1, deployment.id, {
+        desired_template_id: 7,
+        user_values_json: { hostname: 'cloud.example.com', auth: { enabled: true } },
+        vars: undefined,
+      })
+    })
   })
 })

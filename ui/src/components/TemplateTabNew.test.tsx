@@ -197,4 +197,42 @@ describe('TemplateTabNew', () => {
     const indicator = schemaLabel.parentElement?.querySelector('svg')
     expect(indicator).toBeInTheDocument()
   })
+  it('re-evaluates the schema conditionals as the editor and the preview change', async () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        auth: {
+          type: 'object',
+          properties: { enabled: { type: 'boolean', title: 'Sign in with Freepod', default: true } },
+        },
+        ADMIN_PASSWORD: { type: 'string', title: 'Admin password', 'x-caelus-target': 'runtime' },
+      },
+    }
+    const conditional = {
+      ...schema,
+      if: {
+        required: ['auth'],
+        properties: { auth: { required: ['enabled'], properties: { enabled: { const: false } } } },
+      },
+      then: { required: ['ADMIN_PASSWORD'] },
+    }
+    renderWithQuery(
+      <TemplateTabNew
+        product={product}
+        templates={[{ ...existingTemplate, values_schema_json: schema }]}
+        onSave={vi.fn()}
+      />,
+    )
+    const [schemaEditor] = await screen.findAllByTestId('monaco-editor')
+    expect(await screen.findByLabelText('Admin password')).toBeInTheDocument()
+
+    fireEvent.change(schemaEditor, { target: { value: JSON.stringify(conditional) } })
+    await waitFor(() => expect(screen.queryByLabelText('Admin password')).not.toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Sign in with Freepod' }))
+    await waitFor(() => expect(screen.getByLabelText(/Admin password/)).toBeRequired())
+
+    fireEvent.change(schemaEditor, { target: { value: JSON.stringify(schema) } })
+    await waitFor(() => expect(screen.getByLabelText('Admin password')).not.toBeRequired())
+  })
 })

@@ -21,6 +21,10 @@ when the var is supplied, because the rule is evaluated against chart values onl
   `anyOf`, `oneOf`, `not`, `dependentRequired`, `dependentSchemas`) leave the chart
   projection and are evaluated by the full-document pass only. The UI's client-side
   chart validation follows the same split.
+- The deploy form (create, Edit and the admin deployment dialog, and the admin
+  template preview) shows a field a root conditional mentions only while a branch
+  mentioning it applies, and marks it required when that branch requires it. A hidden
+  field's value is not submitted; a hidden stored var is left as it is.
 - A full-document failure is reported by location (`vars.<KEY>` or
   `user_values_json.<path>`) and failed constraint, never with a value. It answers 409
   on the deployment endpoints and 400 on the vars API, matching each endpoint's
@@ -39,6 +43,10 @@ None.
   schema in addition to the two projections.
 - `deployment-vars-api`: the never-echo-a-value guarantee covers full-document failures,
   which can be triggered by a var write against stored chart values.
+- `deploy-dialog-shared`: the deploy form derives field visibility and required
+  marking from the schema's root conditionals, and submits no hidden field.
+- `admin-schema-preview`: the live preview reflects the conditionals of the schema
+  being edited.
 
 ## Impact
 
@@ -46,8 +54,9 @@ None.
   validation), `api/app/services/vars.py` (every var write runs it),
   `api/app/services/deployments.py` (create and update ask for 409).
 - Endpoint docs for deployment create/update and the vars API.
-- `ui/src/components/UserValuesForm.tsx`: the client-side chart projection drops the
-  same keywords, so the form no longer refuses what the platform accepts.
+- `ui/src/components/UserValuesForm.tsx` and the new `schemaConditionals.ts`: the
+  client-side chart projection drops the same keywords, and the form shows, hides and
+  requires fields by the conditionals.
 - No migration, no catalog change: no current catalog schema uses a root keyword the
-  projections do not already apply. The `freepod` CLI does no schema validation and
-  needs no change.
+  projections do not already apply, so none is newly refused. The `freepod` CLI does
+  no schema validation and needs no change.

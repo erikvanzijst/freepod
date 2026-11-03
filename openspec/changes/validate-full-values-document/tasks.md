@@ -5,10 +5,10 @@
 - [x] 1.1 Drop the cross-property root keywords from the chart projection
   (`derive_projections`); verify with a test that a root `if`/`then` is absent from it
 - [x] 1.2 Add `validate_document()`: merge chart values and coerced vars, validate
-  against the schema without its root key-set keywords, report location and keyword
-  only, raised with no chained `ValidationError`; verify with unit tests for a
-  cross-half conditional, `dependentRequired`, coercion, an open vars half and the
-  key-set keywords
+  against the schema without its root key-set keywords, report the failing path and
+  keyword (plus a `required` failure's missing key) only, raised with no chained
+  `ValidationError`; verify with unit tests for a cross-half conditional,
+  `dependentRequired`, coercion, an open vars half and the key-set keywords
 - [x] 1.3 Prove no value leaks: a sensitive var failing a cross-half rule is absent
   from the message, the exception chain, the formatted traceback and the logs
 - [x] 1.4 Raise `validate_vars` failures without chaining the `ValidationError`; verify
@@ -27,8 +27,28 @@
 
 ## 3. Compatibility
 
-- [x] 3.1 Verify every `products/catalog` schema uses no root keyword the projections
-  do not already apply, and accepts representative valid input through all passes
+- [x] 3.1 Confirm no `products/catalog` schema uses a root keyword the projections do
+  not already apply, so none is newly refused (a one-time check, not a lasting test)
 - [x] 3.2 Mirror the keyword split in the UI's client-side chart projection; verify
   with a `UserValuesForm` test that a cross-half conditional no longer blocks the form
-- [x] 3.3 Run the full api suite and the UI tests green
+
+## 4. Conditional fields in the deploy form
+
+- [x] 4.1 Add `schemaConditionals.ts`: evaluate root `if`/`then`/`else`, `allOf` entries
+  of those and `dependentRequired` with the form's Ajv instance; verify with unit tests
+  for hide/show, `else`, `allOf`, `dependentRequired`, root-required properties and
+  typed values
+- [x] 4.2 In `UserValuesForm`, evaluate against the document the form would submit,
+  render only shown fields, mark conditionally required ones, and submit no hidden
+  field; verify with tests for toggling, required marking and the submitted payloads
+- [x] 4.3 Verify the Edit dialog sends no entry for a stored var whose field is hidden
+- [x] 4.4 Verify the admin template preview re-evaluates on editor changes and on
+  toggles in the preview
+- [x] 4.5 Give the `admin-schema-preview` main spec the `## Purpose`/`## Requirements`
+  structure and the scenario it lacked, so its delta can archive; verify with
+  `openspec validate admin-schema-preview --type spec --strict`
+
+## 5. Integration
+
+- [x] 5.1 Run the full api suite, the full UI suite, and the UI type check and build
+  green

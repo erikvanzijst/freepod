@@ -19,11 +19,13 @@ validates it against the vars projection of the deployment's desired template.
   against both.
 - No current template refuses anything it accepts today.
 - No var value reaches an error message, a log line or an exception chain.
+- The deploy form shows a conditional field only while its condition applies, and
+  marks it required when an applying branch requires it.
 
 **Non-Goals:**
-- Rendering conditionals in the deploy form (`UserValuesForm` renders a flat field
-  list). The form submits; the platform's error names the field.
-- Client-side full-document validation in the UI.
+- Client-side full-document validation in the UI: the form shows and requires
+  fields; the platform validates.
+- Conditionals beyond the subset in D8 in the form, and conditionals below the root.
 - Re-checking the full document at reconcile time.
 
 ## Decisions
@@ -96,11 +98,12 @@ which is the right reading. No client change.
 `jsonschema`'s messages embed the instance (`'hunter2' is too short`), and the full
 document contains var values. The error is built from the failing path and keyword
 only, with the same shape `validate_vars` uses: `vars.<KEY>: failed constraint "<kw>"`
-or `user_values_json.<path>: failed constraint "<kw>"`. For `required` and
-`dependentRequired`, the missing key, taken from the schema rather than the instance,
-is appended, so the message points at the field to fill. A path's first segment picks
-the channel: a declared property by its routing marker, an undeclared one as a var when
-it was submitted as one or the vars half is open.
+or `user_values_json.<path>: failed constraint "<kw>"`. For `required`, the missing
+key, taken from the schema rather than the instance, is appended, so the message points
+at the field to fill. The prefix is what is cheap to know: `vars.` for a submitted var
+or a declared runtime property, `user_values_json.` for a declared chart property, and
+none for anything else (an undeclared key a rule demands). A failure with no path is
+reported as `values: failed constraint "<kw>"`.
 
 The exception is raised after the `except` block, so the `ValidationError` holding the
 value is attached neither as `__cause__` nor as `__context__`. `validate_vars` raises
@@ -119,8 +122,45 @@ mean decrypting vars in the worker for no new guarantee.
 ### D7. The UI mirrors the projection split
 
 `UserValuesForm`'s client-side chart projection drops the D1 keywords, so the form
-does not refuse a launch the platform would accept. It does not evaluate the full
+does not refuse a launch the platform would accept. It does not validate the full
 document: the platform's error names the field.
+
+### D8. The deploy form derives visibility from the conditionals
+
+Fields stay declared in the root `properties`, which is what routes them, so the form
+cannot learn visibility from where a property is declared. It learns it from the
+branches that mention it (`schemaConditionals.ts`):
+
+- **Branches read**: the root `if` with its `then`/`else`; the same inside each root
+  `allOf` entry; and each root `dependentRequired` entry, as a branch requiring its
+  dependents that applies while its trigger is present. `anyOf`, `oneOf`, `not`,
+  `dependentSchemas` and anything below the root are not read: they still hold on the
+  platform (D1), but the form does not change shape for them.
+- **Mentions**: a branch mentions the root properties its `required` names and its
+  `properties` declares.
+- **Shown**: a root property no branch mentions is always shown; one some branch
+  mentions is shown only while a branch mentioning it applies. A property the root
+  `required` names is always shown, since hiding it could only produce a refused
+  submission. A hidden object property hides every field under it.
+- **Required**: the root `required` (as before), plus the properties an applying
+  branch's `required` names.
+- **Evaluating `if`**: with the form's Ajv 2020-12 instance, the validator it already
+  uses for chart values, against one document: the chart values and the vars the form
+  would submit, vars typed as the platform coerces them. A stored sensitive var's value
+  is unknown to the form, so an `if` reading one sees it absent. An `if` Ajv cannot
+  compile is treated as not holding.
+
+Alternative considered: a hand-written matcher for the common `const` case. Rejected:
+it would drift from what the platform evaluates the moment a template used `enum`,
+`pattern` or `minimum` in an `if`.
+
+A hidden field keeps its value in the form, so toggling a condition back restores
+what was typed, but it is submitted in neither half. Vars merge on update, so a hidden
+var that is stored stays exactly as stored: hiding sends no entry, never a deletion. A
+hidden chart value is dropped from `user_values_json`, which an update replaces whole.
+
+The admin template preview renders the same component from the schema in the editor,
+so it re-evaluates on every valid edit and on every change made in the preview itself.
 
 ## Risks / Trade-offs
 

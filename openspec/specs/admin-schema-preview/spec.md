@@ -1,4 +1,10 @@
-## ADDED Requirements
+# admin-schema-preview Specification
+
+## Purpose
+Defines the admin's "New" template tab: a schema editor with a live preview of the
+deploy dialog the schema produces, and the guards on saving a new template version.
+
+## Requirements
 
 ### Requirement: Schema editor with live validation indicator
 The "New" template tab SHALL include a Monaco editor for the user values JSON schema. A validation indicator SHALL be displayed near the editor showing the current validity state: a green tick when the editor contents are valid JSON, and a red exclamation mark when they are not.
@@ -55,7 +61,10 @@ The "New" template tab SHALL include a Monaco editor for the template's `default
 - **WHEN** the defaults editor contains invalid JSON
 - **THEN** the Save/Add button SHALL be disabled
 
-## Requirements from rename-system-values
-
 ### Requirement: Template editors use system_values_json
 The admin template UI MUST use the label "System values" instead of "Default values" for the system values Monaco editor. The `onSave` payload MUST use the field name `system_values_json` instead of `default_values_json`. The deploy dialog preview in both `TemplateTabNew` and `TemplateTabReadOnly` MUST NOT pass system values to `DeployDialogContent` (it no longer accepts the prop).
+
+#### Scenario: Saving a new template
+- **WHEN** the admin saves a new template version
+- **THEN** the system values editor is labeled "System values" and the payload carries
+  them as `system_values_json`
