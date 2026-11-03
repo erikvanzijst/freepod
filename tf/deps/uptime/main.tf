@@ -63,6 +63,17 @@ resource "kubernetes_cron_job_v1" "probe" {
             restart_policy                  = "Never"
             automount_service_account_token = false
             enable_service_links            = false
+            node_selector                   = each.value.node_pool == null ? null : { "caelus.dev/node-pool" = each.value.node_pool }
+
+            dynamic "toleration" {
+              for_each = each.value.node_pool == null ? [] : [each.value.node_pool]
+              content {
+                key      = "caelus.dev/node-pool"
+                operator = "Equal"
+                value    = toleration.value
+                effect   = "NoSchedule"
+              }
+            }
 
             security_context {
               run_as_non_root = true
@@ -80,7 +91,7 @@ resource "kubernetes_cron_job_v1" "probe" {
 
               env {
                 name  = "PROBE_URL"
-                value = each.value
+                value = each.value.url
               }
 
               env {

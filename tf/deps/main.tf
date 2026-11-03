@@ -121,8 +121,9 @@ module "uptime" {
   source    = "./uptime"
   namespace = kubernetes_namespace.monitoring.metadata[0].name
   probes = {
-    freepod-eu  = "https://freepod.eu/"
-    freepod-app = "https://freepod.app/"
+    freepod-eu = { url = "https://freepod.eu/" }
+    # Tenant apps run on the tenant pool.
+    freepod-app = { url = "https://freepod.app/", node_pool = "tenant" }
   }
   ping_urls = var.uptime_ping_urls
 }

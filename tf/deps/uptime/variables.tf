@@ -4,8 +4,11 @@ variable "namespace" {
 }
 
 variable "probes" {
-  description = "Public URL to probe, keyed by check name. Each run requests the URL through the public edge (2xx/3xx is up) and reports the outcome to that check's ping URL."
-  type        = map(string)
+  description = "Probes keyed by check name. Each run requests `url` through the public edge (2xx/3xx is up) and reports the outcome to that check's ping URL. `node_pool` pins the probe to the nodes labeled and tainted caelus.dev/node-pool=<pool>, so the check also fails when that pool cannot run it."
+  type = map(object({
+    url       = string
+    node_pool = optional(string)
+  }))
 }
 
 variable "ping_urls" {
