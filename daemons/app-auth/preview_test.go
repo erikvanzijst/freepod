@@ -27,17 +27,15 @@ func TestPreview(t *testing.T) {
 	pages := map[string]func(w http.ResponseWriter){
 		"/consent": func(w http.ResponseWriter) {
 			renderConsent(w, consentView{chrome: c, Host: "milk-fred.dev.freepod.app",
-				Name: "Alice Ångström", Email: "alice@example.com",
-				ShortSub: shortSub("3f2a91c0-5d7e-4b1a-9c3e-8f0d2b6a41e7"), CSRF: "x"})
+				Name: "Alice Ångström", Email: "alice@example.com", CSRF: "x"})
 		},
 		"/consent-long": func(w http.ResponseWriter) {
 			renderConsent(w, consentView{chrome: c, Host: "groceries-and-household-supplies.example-custom-domain.com",
-				Email:    "a.very.long.email.address@subdomain.example.org",
-				ShortSub: shortSub("3f2a91c0-5d7e-4b1a-9c3e-8f0d2b6a41e7"), CSRF: "x"})
+				Email: "a.very.long.email.address@subdomain.example.org", CSRF: "x"})
 		},
 		"/declined": func(w http.ResponseWriter) {
 			renderPage(w, 200, page{chrome: c, Kind: "done", Title: "Nothing was shared",
-				Message: "milk-fred.dev.freepod.app did not receive your name, email address or account identifier. You can close this page."})
+				Message: "milk-fred.dev.freepod.app did not receive your name or email address. You can close this page."})
 		},
 		"/signed-out": func(w http.ResponseWriter) {
 			b := &broker{chrome: c, keys: mustKeyring(t, "k1:"+testKey('a')), now: time.Now}

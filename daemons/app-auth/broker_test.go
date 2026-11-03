@@ -142,7 +142,7 @@ func TestBrokerFirstVisitAsksForConsent(t *testing.T) {
 		t.Fatalf("callback: %d", page.Code)
 	}
 	body := page.Body.String()
-	for _, want := range []string{milk, "run by a Freepod user, not by Freepod", "Your name", "Alice", "Your email address", "alice@example.com", "permanent account identifier"} {
+	for _, want := range []string{milk, "run by a Freepod user, not by Freepod", "Your name", "Alice", "Your email address", "alice@example.com"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("consent page lacks %q", want)
 		}

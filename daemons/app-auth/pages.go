@@ -62,7 +62,6 @@ const layout = `<!doctype html>
 const (
 	iconUser   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>`
 	iconMail   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/></svg>`
-	iconKey    = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M14 9l2 2"/></svg>`
 	iconShield = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6L12 3z"/><path d="M12 8v4.5M12 16h.01"/></svg>`
 	iconAlert  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16.5h.01"/></svg>`
 	iconInfo   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5h.01"/></svg>`
@@ -72,7 +71,7 @@ const (
 var funcs = template.FuncMap{
 	"icon": func(name string) template.HTML {
 		return template.HTML(map[string]string{
-			"user": iconUser, "mail": iconMail, "key": iconKey, "shield": iconShield,
+			"user": iconUser, "mail": iconMail, "shield": iconShield,
 			"error": iconAlert, "info": iconInfo, "done": iconDone,
 		}[name])
 	},
@@ -108,7 +107,6 @@ var consentTmpl = mustPage(`
 <ul class="grants">
   <li><span class="icon">{{icon "user"}}</span><span><span class="what">Your name</span><span class="value">{{if .Name}}{{.Name}}{{else}}Not set in your account{{end}}</span></span></li>
   <li><span class="icon">{{icon "mail"}}</span><span><span class="what">Your email address</span><span class="value">{{.Email}}</span></span></li>
-  <li><span class="icon">{{icon "key"}}</span><span><span class="what">A permanent account identifier</span><span class="value mono">{{.ShortSub}}</span></span></li>
 </ul>
 <div class="callout">{{icon "shield"}}<div><strong>This app is run by a Freepod user, not by Freepod.</strong> What it does with your details is up to its operator.</div></div>
 <form method="post" action="/consent">
@@ -158,13 +156,12 @@ type page struct {
 
 type consentView struct {
 	chrome
-	Title    string
-	Host     string
-	Email    string
-	Name     string
-	Initial  string
-	ShortSub string
-	CSRF     string
+	Title   string
+	Host    string
+	Email   string
+	Name    string
+	Initial string
+	CSRF    string
 	// FormAction is one more form-action source, for a native app's scheme.
 	FormAction string
 }
@@ -218,15 +215,6 @@ func initial(name, email string) string {
 		}
 	}
 	return "?"
-}
-
-// shortSub shows enough of the identifier to be recognizable, which is the
-// honest way to show "a permanent identifier" without a wall of hex.
-func shortSub(sub string) string {
-	if len(sub) <= 13 {
-		return sub
-	}
-	return sub[:8] + "…" + sub[len(sub)-4:]
 }
 
 func decodeNonceHash(s string) ([]byte, error) {

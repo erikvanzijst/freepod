@@ -235,7 +235,7 @@ func (b *broker) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setCookie(w, consentCookie, sealed, int(consentTTL.Seconds()))
-	renderConsent(w, consentView{chrome: b.chrome, Host: pc.Host, Email: pc.Email, Name: pc.Name, ShortSub: shortSub(pc.Sub), CSRF: pc.CSRF})
+	renderConsent(w, consentView{chrome: b.chrome, Host: pc.Host, Email: pc.Email, Name: pc.Name, CSRF: pc.CSRF})
 }
 
 func (b *broker) consent(w http.ResponseWriter, r *http.Request) {
@@ -265,7 +265,7 @@ func (b *broker) consent(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.PostForm.Get("decision") != "allow" {
 		renderPage(w, http.StatusOK, page{chrome: b.chrome, Kind: "done", Title: "Nothing was shared",
-			Message: pc.Host + " did not receive your name, email address or account identifier. You can close this page."})
+			Message: pc.Host + " did not receive your name or email address. You can close this page."})
 		return
 	}
 

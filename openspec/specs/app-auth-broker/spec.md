@@ -112,14 +112,14 @@ Any Freepod account with a verified email SHALL be able to sign in to any auth-e
 The first time a user signs in to a given deployment, the broker SHALL show a consent page and SHALL issue no code until the user agrees. The page SHALL state:
 - the app's hostname;
 - that the app is operated by a Freepod user and not by Freepod;
-- exactly what is disclosed: name, email address and a stable account identifier.
+- the details disclosed: name and email address. The stable account identifier the app also receives is not listed.
 
 Agreement SHALL be recorded per user and deployment, together with the claims disclosed. It SHALL NOT be asked for again on that deployment unless the broker would disclose a claim the recorded consent does not cover. A deployment deleted and recreated under the same hostname is a different deployment, so consent is asked for again. Declining SHALL issue no code and SHALL NOT be recorded. The consent submission SHALL be protected against cross-site request forgery.
 
 #### Scenario: First visit
 
 - **WHEN** Alice signs in to `milk.erik.freepod.eu` for the first time
-- **THEN** she sees a consent page naming `milk.erik.freepod.eu` and listing name, email and account identifier
+- **THEN** she sees a consent page naming `milk.erik.freepod.eu` and listing name and email address
 
 #### Scenario: Returning visit
 
