@@ -151,7 +151,7 @@ Spec: [cli-environments](../openspec/specs/cli-environments/spec.md) · Rational
 | `init`   | Write `.freepod.json` for the current directory. Reads only — creates nothing.                               | `--force`                           |
 | `deploy` | Preflight → pack → upload → build → release.                                                                 | `--recreate`, `--no-gitignore`      |
 | `delete` | Tear down the project's deployment, and follow the teardown to gone.                                         | `--yes/-y`, `--no-wait`             |
-| `builds` | List the **account's** builds, marking the one this project runs.                                            | `--limit`, `--all`                  |
+| `builds` | List the project's builds, marking the one this project runs. `builds log` prints one build's log.           | `--limit`, `--all`; `-f` (log)      |
 | `log`    | Stream the project deployment's application output.                                                          | `-f`, `-n`, `-r`, `-t`              |
 | `db`     | Group holding the deployment's database. `db status` reports identity, credential (masked), and quota state. | `--show-password` (status)          |
 | `bucket` | Group holding the deployment's bucket: `status`, and `ls`, `cp`, `mv`, `rm`, `cat`, `link` on its objects.  | `--show-secret` (status), `-l`, `-r` |
@@ -468,6 +468,13 @@ Details worth keeping:
 
 The last four apply to `releases` too, and live in `table.py` so that both
 commands share one implementation rather than two that drift.
+
+`builds log` resolves its argument against that same listing — a full ID, or
+a prefix matching exactly one build, the newest when omitted — and reads the
+log endpoint `deploy` follows: one ranged read from offset 0 without `-f`,
+`follow_build` with it, writing to stdout because there the log is the
+result. The build's outcome sets the exit code only when the command waited
+for it (`-f`), as `deploy` does; printing a failed build's stored log exits 0.
 
 ## The release history
 

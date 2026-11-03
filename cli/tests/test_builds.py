@@ -9,7 +9,8 @@ from datetime import datetime, timedelta, timezone
 import httpx
 import pytest
 
-from freepod import EXIT_OK, EXIT_USAGE
+from freepod import FreepodError
+from freepod import EXIT_BUILD_FAILED, EXIT_ERROR, EXIT_OK, EXIT_USAGE
 from freepod.cli import main
 from freepod.history import (
     DEFAULT_LIMIT,
@@ -22,6 +23,7 @@ from freepod.history import (
     list_builds,
     parse_time,
     render,
+    resolve_build,
     rows,
 )
 
@@ -58,17 +60,32 @@ class Platform:
     """The reads a listing performs, and nothing else. Builds are served only
     under the project's deployment."""
 
-    def __init__(self, *, user_id=7, builds=None, deployment=None, deployment_status=200):
+    def __init__(
+        self, *, user_id=7, builds=None, deployment=None, deployment_status=200, logs=None
+    ):
         self.user_id = user_id
         self.builds = [build()] if builds is None else builds
         self.deployment = deployment
         self.deployment_status = deployment_status
+        # build id -> the (bytes, status) pages successive log reads answer with.
+        self.logs = {key: list(pages) for key, pages in (logs or {}).items()}
+        self.ranges = []
         self.calls = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         self.calls.append((request.method, path))
 
+        log = re.fullmatch(
+            rf"/api/users/{self.user_id}/deployments/{DEPLOYMENT_ID}/builds/([^/]+)/log", path
+        )
+        if log:
+            pages = self.logs.get(log.group(1))
+            if pages is None:
+                return json_response(404, {"detail": "Build not found"})
+            self.ranges.append(request.headers.get("range"))
+            content, status = pages.pop(0) if len(pages) > 1 else pages[0]
+            return httpx.Response(206, content=content, headers={"X-Build-Status": status})
         if path == "/api/me":
             return json_response(200, {"id": self.user_id, "email": "dev@example.com"})
         if path == f"/api/users/{self.user_id}/deployments/{DEPLOYMENT_ID}/builds":
@@ -426,3 +443,182 @@ def test_a_project_for_another_environment_is_refused(
 
     assert "dev" in capsys.readouterr().err
     assert platform.calls == []
+
+
+# --------------------------------------------------------------------------
+# `freepod builds log`
+# --------------------------------------------------------------------------
+
+NEWEST = "b1111111-0000-4000-8000-000000000001"
+OLDER = "b2222222-0000-4000-8000-000000000002"
+OLDEST = "b2223333-0000-4000-8000-000000000003"
+HISTORY = [build(id=NEWEST), build(id=OLDER, status="failed"), build(id=OLDEST)]
+
+
+def test_resolving_with_no_reference_picks_the_most_recent():
+    assert resolve_build(HISTORY, None)["id"] == NEWEST
+
+
+def test_resolving_a_full_id_is_exact_and_case_insensitive():
+    assert resolve_build(HISTORY, OLDER.upper())["id"] == OLDER
+
+
+def test_resolving_a_unique_prefix():
+    assert resolve_build(HISTORY, "b1111")["id"] == NEWEST
+
+
+def test_an_ambiguous_prefix_is_refused_and_names_the_candidates():
+    with pytest.raises(FreepodError) as raised:
+        resolve_build(HISTORY, "b222")
+
+    assert raised.value.exit_code == EXIT_USAGE
+    assert OLDER in str(raised.value) and OLDEST in str(raised.value)
+
+
+@pytest.mark.parametrize("ref", ["c0ffee", ""])
+def test_a_reference_matching_nothing_is_an_error(ref):
+    with pytest.raises(FreepodError) as raised:
+        resolve_build(HISTORY, ref)
+
+    assert raised.value.exit_code == EXIT_ERROR
+    assert "freepod builds" in str(raised.value)
+
+
+def run_log(stub_api, tmp_path, monkeypatch, platform, *args):
+    project_at(tmp_path, pointer=POINTER)
+    stub_api(platform)
+    monkeypatch.chdir(tmp_path)
+    return main(["builds", "log", *args])
+
+
+def test_the_most_recent_builds_log_goes_to_stdout_byte_for_byte(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsysbinary
+):
+    """Build output is tenant-controlled and is never decoded on its way through."""
+    raw = b"step 1\n\xff\x00 not utf-8\n"
+    platform = Platform(builds=HISTORY, logs={NEWEST: [(raw, "succeeded")]})
+
+    assert run_log(stub_api, tmp_path, monkeypatch, platform) == EXIT_OK
+
+    captured = capsysbinary.readouterr()
+    assert captured.out == raw
+    assert NEWEST.encode() in captured.err
+    assert platform.ranges == ["bytes=0-"]
+
+
+def test_a_named_build_is_read_by_its_prefix(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsysbinary
+):
+    platform = Platform(
+        builds=HISTORY,
+        logs={NEWEST: [(b"newest\n", "succeeded")], OLDER: [(b"boom\n", "failed")]},
+    )
+
+    assert run_log(stub_api, tmp_path, monkeypatch, platform, OLDER[:9]) == EXIT_OK
+
+    captured = capsysbinary.readouterr()
+    assert captured.out == b"boom\n"
+    # Printing a failed build's log succeeds; the outcome is said on stderr.
+    assert f"Build {OLDER} failed.".encode() in captured.err
+
+
+def test_a_running_build_prints_what_is_stored_and_says_it_is_running(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsysbinary
+):
+    platform = Platform(
+        builds=HISTORY,
+        logs={NEWEST: [(b"so far\n", "running"), (b"later\n", "succeeded")]},
+    )
+
+    assert run_log(stub_api, tmp_path, monkeypatch, platform) == EXIT_OK
+
+    captured = capsysbinary.readouterr()
+    assert captured.out == b"so far\n"
+    assert b"still running" in captured.err and b"-f" in captured.err
+    assert len(platform.ranges) == 1
+
+
+def test_follow_reads_until_the_build_finishes(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsysbinary
+):
+    platform = Platform(
+        builds=HISTORY,
+        logs={NEWEST: [(b"", "queued"), (b"one\n", "running"), (b"two\n", "succeeded")]},
+    )
+
+    assert run_log(stub_api, tmp_path, monkeypatch, platform, "-f") == EXIT_OK
+
+    captured = capsysbinary.readouterr()
+    assert captured.out == b"one\ntwo\n"
+    assert platform.ranges == ["bytes=0-", "bytes=0-", "bytes=4-"]
+    assert b"still" not in captured.err
+
+
+@pytest.mark.parametrize("outcome", ["failed", "canceled"])
+def test_following_a_build_that_does_not_succeed_exits_four(
+    outcome, stub_api, cached_credential, tmp_path, monkeypatch, capsysbinary
+):
+    """As `deploy` does for the same build: the wait's outcome is the exit code."""
+    platform = Platform(
+        builds=HISTORY, logs={NEWEST: [(b"work\n", "running"), (b"error\n", outcome)]}
+    )
+
+    assert run_log(stub_api, tmp_path, monkeypatch, platform, "--follow") == EXIT_BUILD_FAILED
+
+    captured = capsysbinary.readouterr()
+    assert captured.out == b"work\nerror\n"
+    assert outcome.encode() in captured.err
+
+
+def test_quiet_leaves_only_the_log(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsysbinary
+):
+    project_at(tmp_path, pointer=POINTER)
+    stub_api(Platform(builds=HISTORY, logs={NEWEST: [(b"partial\n", "running")]}))
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["--quiet", "builds", "log"]) == EXIT_OK
+
+    captured = capsysbinary.readouterr()
+    assert captured.out == b"partial\n"
+    assert captured.err == b""
+
+
+def test_an_unknown_build_is_an_error_and_reads_no_log(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsysbinary
+):
+    platform = Platform(builds=HISTORY, logs={NEWEST: [(b"x", "succeeded")]})
+
+    assert run_log(stub_api, tmp_path, monkeypatch, platform, "c0ffee") == EXIT_ERROR
+
+    assert platform.ranges == []
+    assert b"c0ffee" in capsysbinary.readouterr().err
+
+
+def test_a_project_with_no_builds_has_no_log_to_print(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsysbinary
+):
+    assert run_log(stub_api, tmp_path, monkeypatch, Platform(builds=[])) == EXIT_OK
+
+    captured = capsysbinary.readouterr()
+    assert captured.out == b""
+    assert b"no builds" in captured.err
+
+
+def test_the_log_of_a_project_that_has_not_deployed_is_refused(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsys
+):
+    project_at(tmp_path, pointer=None)
+    platform = Platform()
+    stub_api(platform)
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["builds", "log"]) == EXIT_USAGE
+
+    assert "freepod deploy" in capsys.readouterr().err
+    assert platform.calls == []
+
+
+def test_builds_log_has_help(capsys):
+    assert main(["builds", "log", "--help"]) == EXIT_OK
+    assert "--follow" in capsys.readouterr().out

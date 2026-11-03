@@ -91,7 +91,7 @@ The deployment side is marked with a leading `:`. A relative remote path is rela
 
 | Symptom | Check |
 | --- | --- |
-| `freepod deploy` exits with code `4` | The build log printed by `deploy`; `freepod builds` |
+| `freepod deploy` exits with code `4` | The build log printed by `deploy`, or again with `freepod builds log`; `freepod builds` |
 | `freepod deploy` exits with code `5` | The output printed by `deploy`; `freepod log -r <release>`. Usually the server exits at startup or does not listen on `0.0.0.0:$PORT`. |
 | Requests fail, logs look normal | `freepod log --http` shows whether requests reach the application and what status they get; `freepod releases`: a failed release leaves the previous one running |
 | Configuration seems wrong | `freepod shell env` shows the environment the application receives |
