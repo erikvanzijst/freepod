@@ -7,7 +7,7 @@ variable "keycloak_admin_password" {
 variable "keycloak_image" {
   description = "Keycloak container image with the Freepod theme baked in (see keycloak/Dockerfile). Tagged <Keycloak version>-<build>, pushed by `scripts/build-images.sh <tag> --keycloak`; a tag is never re-pushed, so every theme or base change takes the next build number."
   type        = string
-  default     = "ghcr.io/erikvanzijst/freepod/keycloak:26.8.1-1"
+  default     = "ghcr.io/erikvanzijst/freepod/keycloak:26.8.1-2"
 }
 
 variable "keycloak_url" {
