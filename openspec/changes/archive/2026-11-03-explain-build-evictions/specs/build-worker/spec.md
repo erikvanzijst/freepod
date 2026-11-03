@@ -8,8 +8,8 @@ Job.
 
 When a failed Job's pod was evicted, the worker SHALL end the build's log with one line
 explaining the eviction in the tenant's terms: the limit the build outgrew, or that the
-platform stopped it. The line SHALL NOT carry the node's thresholds, available capacity, or
-other workloads' names, which the eviction message itself contains.
+platform stopped it. The line SHALL NOT carry the node's thresholds, capacity, or other
+workloads' names.
 
 #### Scenario: Successful Job yields a succeeded build
 
