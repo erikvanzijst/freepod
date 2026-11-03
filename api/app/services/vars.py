@@ -35,6 +35,7 @@ from app.models import (
 )
 from app.services import var_crypto
 from app.services.errors import (
+    CaelusException,
     DeploymentInProgressException,
     NotFoundException,
     ValidationException,
@@ -44,6 +45,7 @@ from app.services.template_values import (
     SENSITIVE_KEY,
     check_var_name,
     derive_projections,
+    validate_document,
     validate_vars,
 )
 
@@ -111,17 +113,11 @@ def _plaintext(row: DeploymentVarORM) -> str:
     return var_crypto.decrypt(row.value_encrypted, row.key_id)
 
 
-def vars_projection(session: Session, deployment: DeploymentORM) -> dict | None:
-    """The vars half of the deployment's desired template schema.
-
-    `None` when the template declares no schema at all, which rejects vars
-    outright; an empty closed projection when it declares one but marks
-    nothing runtime.
-    """
+def _desired_schema(session: Session, deployment: DeploymentORM) -> dict | None:
     template = session.get(ProductTemplateVersionORM, deployment.desired_template_id)
     if template is None:
         raise NotFoundException("Template not found")
-    return derive_projections(template.values_schema_json).vars
+    return template.values_schema_json
 
 
 def _resolve_sensitive(
@@ -184,6 +180,7 @@ def write_vars(
     actor: UserORM,
     entries: dict[str, VarWrite],
     replace: bool = False,
+    document_error: type[CaelusException] = ValidationException,
 ) -> None:
     """Apply a merge (`PATCH`) or a replace (`PUT`) to a deployment's vars.
 
@@ -194,10 +191,16 @@ def write_vars(
     The caller commits. Nothing here commits on its own, so a var write that
     is part of a larger transaction (a deployment create, which must land its
     vars and its release together) cannot half-apply.
+
+    The resulting head is also validated together with the deployment's chart
+    values -- its `user_values_json` as it stands in this transaction --
+    against the whole schema; `document_error` is the exception that failure
+    raises.
     """
     _lock_deployment(session, deployment.id)
     current = head(session, deployment.id)
-    projection = vars_projection(session, deployment)
+    schema = _desired_schema(session, deployment)
+    projection = derive_projections(schema).vars
     if entries and projection is None:
         raise ValidationException("vars are not supported on this product template")
     declared = (projection or {}).get("properties") or {}
@@ -241,7 +244,11 @@ def write_vars(
             continue
         desired[key] = (_plaintext(row), row.sensitive)
 
-    validate_vars({key: value for key, (value, _) in desired.items()}, projection)
+    plaintexts = {key: value for key, (value, _) in desired.items()}
+    validate_vars(plaintexts, projection)
+    validate_document(
+        deployment.user_values_json, plaintexts, schema, error=document_error
+    )
     _check_limits(desired)
 
     for key, (plaintext, sensitive) in sorted(desired.items()):

@@ -141,7 +141,8 @@ def merge_vars(
     ## Errors
     - **400 Bad Request** — a key that is not a legal environment variable
       name or is reserved by the platform, a value the template's schema
-      rejects, a value over 8 KiB, vars totalling over 128 KiB or numbering
+      rejects, vars the schema rejects together with the deployment's stored
+      `user_values_json`, a value over 8 KiB, vars totalling over 128 KiB or numbering
       over 256, sensitivity contradicting the schema, or making a sensitive
       var readable without supplying a new value. The error names the key and
       the constraint and never quotes the value.
@@ -274,6 +275,7 @@ def get_var(
     response_description="The var is not in the deployment's configuration.",
     responses={
         204: {"description": "The var is gone, or was never there."},
+        400: {"description": "The template's schema requires the var."},
         403: {"description": "Caller may only write their own deployments' vars."},
         404: {"description": "No such deployment for this user, or unknown phase."},
         409: {"description": "The deployment is being deleted."},
@@ -309,6 +311,8 @@ def delete_var(
     difference.
 
     ## Errors
+    - **400 Bad Request** — the template's schema requires the var, on its
+      own or given the deployment's stored `user_values_json`.
     - **403 Forbidden** — writing another account's vars without administrator
       privileges.
     - **404 Not Found** — no such deployment for this user, or a phase other

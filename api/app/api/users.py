@@ -357,16 +357,17 @@ def create_deployment(
       at the payment page; provisioning begins once payment succeeds.
 
     ## Errors
-    - **400 Bad Request** — `user_values_json` fails schema validation, or the
-      plan template is invalid. Code `image_not_retained` — the values carry
-      one of the owner's images that is no longer retained; rebuild to deploy
-      it.
+    - **400 Bad Request** — a var fails validation, or the plan template is
+      invalid. Code `image_not_retained` — the values carry one of the owner's
+      images that is no longer retained; rebuild to deploy it.
     - **403 Forbidden** — creating a deployment for another account without
       administrator privileges.
     - **404 Not Found** — the user or desired template does not exist.
-    - **409 Conflict** — the desired template is not the product's current
-      version, the chosen hostname is already in use, an operation is already in
-      progress, or a duplicate deployment already exists.
+    - **409 Conflict** — `user_values_json`, or `user_values_json` and `vars`
+      taken together, fail the template's schema; the desired template is not
+      the product's current version, the chosen hostname is already in use, an
+      operation is already in progress, or a duplicate deployment already
+      exists.
     """
     payload.user_id = user_id
     result = deployment_service.create_deployment(
@@ -693,19 +694,21 @@ def update_deployment(
     while the change is applied.
 
     ## Errors
-    - **400 Bad Request** — the effective `user_values_json` fails schema
-      validation, or `build_id` names another deployment's build or none at
-      all. Code `image_not_retained` — the named build's image, or one of the
-      owner's images in the values, is no longer retained: only the running
-      image, the one being rolled out, the two images before them and recent
-      builds are kept. Rebuild to deploy it.
+    - **400 Bad Request** — a var fails validation, or `build_id` names
+      another deployment's build or none at all. Code `image_not_retained` —
+      the named build's image, or one of the owner's images in the values, is
+      no longer retained: only the running image, the one being rolled out,
+      the two images before them and recent builds are kept. Rebuild to
+      deploy it.
     - **403 Forbidden** — updating another account's deployment without
       administrator privileges.
     - **404 Not Found** — no such deployment exists for this user, or the target
       template does not exist.
-    - **409 Conflict** — the target version is older than the current one, the
-      target template belongs to a different product, an operation is already in
-      progress, or the deployment is not in a `ready`/`error` state.
+    - **409 Conflict** — the effective `user_values_json`, or it and the
+      resulting vars taken together, fail the target template's schema; the
+      target version is older than the current one, the target template belongs
+      to a different product, an operation is already in progress, or the
+      deployment is not in a `ready`/`error` state.
     """
     deployment.user_id = user_id
     deployment.id = deployment_id

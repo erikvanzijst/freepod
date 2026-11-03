@@ -562,6 +562,24 @@ export function UserValuesForm({
 }
 
 /**
+ * Root keywords that may relate a chart value to a var. The platform leaves
+ * them out of the chart projection and checks them against chart values and
+ * vars together, so they are left to the server here.
+ */
+const DOCUMENT_KEYWORDS = new Set([
+  'allOf',
+  'anyOf',
+  'oneOf',
+  'not',
+  'if',
+  'then',
+  'else',
+  'dependentRequired',
+  'dependentSchemas',
+  'dependencies',
+])
+
+/**
  * The chart half of a schema: the same partition the platform derives.
  *
  * Chart values are validated against this rather than against the whole
@@ -576,17 +594,20 @@ function chartProjection(
   if (!valuesSchemaJson) {
     return null
   }
-  const properties = valuesSchemaJson.properties as Record<string, unknown> | undefined
+  const root = Object.fromEntries(
+    Object.entries(valuesSchemaJson).filter(([key]) => !DOCUMENT_KEYWORDS.has(key)),
+  )
+  const properties = root.properties as Record<string, unknown> | undefined
   if (!properties) {
-    return valuesSchemaJson
+    return root
   }
   const isRuntime = (key: string) => {
     const prop = properties[key] as Record<string, unknown> | undefined
     return prop?.['x-caelus-target'] === 'runtime'
   }
-  const required = (valuesSchemaJson.required as string[] | undefined) ?? []
+  const required = (root.required as string[] | undefined) ?? []
   return {
-    ...valuesSchemaJson,
+    ...root,
     properties: Object.fromEntries(
       Object.entries(properties).filter(([key]) => !isRuntime(key)),
     ),
