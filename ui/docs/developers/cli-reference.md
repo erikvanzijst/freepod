@@ -152,18 +152,39 @@ The secret key is masked unless `--show-secret` is given.
 ## `freepod builds`
 
 ```
-freepod builds [OPTIONS]
+freepod builds [OPTIONS] [COMMAND] [ARGS]...
 ```
 
 List this project's builds, most recent first.
 
 The build the deployment is currently running is marked with `*`.
-`--verbose` shows image references in full.
+`--verbose` shows image references in full. `freepod builds log` prints
+a build's log.
 
 | Option | Description |
 | --- | --- |
 | `--limit N` | how many builds to show (default: 20) |
 | `--all` | show every build, ignoring --limit |
+
+### `freepod builds log`
+
+```
+freepod builds log [OPTIONS] [BUILD]
+```
+
+Print a build's log: BUILD's, or the most recent build's.
+
+BUILD is a build ID as `freepod builds` lists it, or a prefix of one that
+matches no other build. The log goes to stdout and freepod's own messages
+to stderr, so `freepod builds log > build.log` captures only the build's
+output.
+
+Without `-f`, prints what is stored so far and exits. With `-f`, follows a
+queued or running build to the end, and exits 4 if it fails or is canceled.
+
+| Option | Description |
+| --- | --- |
+| `-f, --follow` | keep printing a queued or running build's log until it finishes |
 
 ## `freepod cp`
 

@@ -49,7 +49,7 @@ project that *does* have a `Dockerfile` in its root is built from that instead.
 | `freepod log`      | Stream your application's pod output, or with `--http` its HTTP access log.          |
 | `freepod shell`    | Open a shell in the deployment's application container, or run a command in it.      |
 | `freepod cp`       | Copy a file or directory between here and the deployment, either direction.          |
-| `freepod builds`   | List your builds, most recent first.                                                 |
+| `freepod builds`   | List your builds, most recent first; `builds log` prints a build's log.              |
 | `freepod releases` | List this project's rollouts, most recent first; the live one is marked.             |
 | `freepod delete`   | Delete this project's deployment.                                                    |
 | `freepod whoami`   | Report who you are signed in as.                                                     |

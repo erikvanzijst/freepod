@@ -247,6 +247,29 @@ def create_build(
     return response.json(), response.status_code == 200
 
 
+def read_log(
+    api: ApiClient,
+    user_id: int,
+    deployment_id: str,
+    build_id: str,
+    offset: int = 0,
+) -> Tuple[bytes, Optional[str]]:
+    """The log's bytes from `offset` on, and the status that traveled with them.
+
+    The status is None only if the platform omitted `X-Build-Status`.
+    """
+    response = api.get(
+        f"{builds_path(user_id, deployment_id)}/{build_id}/log",
+        headers={"Range": f"bytes={offset}-"},
+    )
+    if response.status_code not in (200, 206):
+        raise FreepodError(
+            f"could not read the build log: HTTP {response.status_code} "
+            f"{response.text.strip()[:300]}"
+        )
+    return response.content, response.headers.get("X-Build-Status")
+
+
 def follow_build(
     api: ApiClient,
     user_id: int,
@@ -264,10 +287,11 @@ def follow_build(
     Returns the terminal status. Raises on interrupt after saying that the
     build continues without us.
 
-    The log goes to **stderr**: it is the platform narrating its progress, not
-    the result of the command. Putting it on stdout would mean `$(freepod
-    deploy)` captured a few hundred lines of buildkit output with the address
-    buried at the end.
+    The log goes to **stderr** unless `out` says otherwise: for `deploy` it is
+    the platform narrating its progress, not the result of the command. Putting
+    it on stdout would mean `$(freepod deploy)` captured a few hundred lines of
+    buildkit output with the address buried at the end. `builds log` passes
+    stdout, because there the log is the result.
     """
     stream = out if out is not None else sys.stderr.buffer
     offset = 0
@@ -277,20 +301,10 @@ def follow_build(
 
     try:
         while True:
-            response = api.get(
-                f"{builds_path(user_id, deployment_id)}/{build_id}/log",
-                headers={"Range": f"bytes={offset}-"},
-            )
-            if response.status_code not in (200, 206):
-                raise FreepodError(
-                    f"could not read the build log: HTTP {response.status_code} "
-                    f"{response.text.strip()[:300]}"
-                )
-
+            chunk, reported = read_log(api, user_id, deployment_id, build_id, offset)
             # Present on every response, so nothing has to ask separately
             # whether the build is done.
-            status = response.headers.get("X-Build-Status", status)
-            chunk = response.content
+            status = reported or status
 
             if chunk:
                 stream.write(chunk)

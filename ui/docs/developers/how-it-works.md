@@ -54,7 +54,7 @@ Deployments are also listed on the [dashboard](app:/), where they appear as apps
 
 ## Build
 
-A container image built from an upload of the project directory. `freepod deploy` uploads and builds; `freepod builds` lists a project's builds. A build belongs to one deployment. See [Builds](builds/index.md).
+A container image built from an upload of the project directory. `freepod deploy` uploads and builds; `freepod builds` lists a project's builds and `freepod builds log` prints a build's log. A build belongs to one deployment. See [Builds](builds/index.md).
 
 ## Release
 

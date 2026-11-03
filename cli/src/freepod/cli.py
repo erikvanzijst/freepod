@@ -20,8 +20,9 @@ from urllib.parse import quote
 
 import click
 
-from . import EXIT_ERROR, EXIT_OK, FreepodError, UsageError
+from . import EXIT_ERROR, EXIT_OK, BuildFailed, FreepodError, UsageError
 from . import bucket as bucket_module
+from . import build as build_module
 from . import copy as copy_module
 from . import database as database_module
 from . import delete as delete_module
@@ -528,7 +529,7 @@ def delete(context: Context, assume_yes: bool, no_wait: bool) -> None:
         )
 
 
-@cli.command()
+@cli.group(invoke_without_command=True)
 @click.option(
     "--limit",
     type=int,
@@ -537,13 +538,17 @@ def delete(context: Context, assume_yes: bool, no_wait: bool) -> None:
     help=f"how many builds to show (default: {history.DEFAULT_LIMIT})",
 )
 @click.option("--all", "show_all", is_flag=True, help="show every build, ignoring --limit")
-@click.pass_obj
-def builds(context: Context, limit: int, show_all: bool) -> None:
+@click.pass_context
+def builds(ctx: click.Context, limit: int, show_all: bool) -> None:
     """List this project's builds, most recent first.
 
     The build the deployment is currently running is marked with `*`.
-    `--verbose` shows image references in full.
+    `--verbose` shows image references in full. `freepod builds log` prints
+    a build's log.
     """
+    if ctx.invoked_subcommand is not None:
+        return
+    context: Context = ctx.obj
     if limit <= 0 and not show_all:
         raise UsageError("--limit must be a positive number of builds")
 
@@ -575,6 +580,70 @@ def builds(context: Context, limit: int, show_all: bool) -> None:
         context.say(
             f"Showing {len(shown)} of {len(records)} builds; --all shows every one."
         )
+
+
+@builds.command("log")
+@click.argument("build_ref", metavar="[BUILD]", required=False)
+@click.option(
+    "-f", "--follow", is_flag=True,
+    help="keep printing a queued or running build's log until it finishes",
+)
+@click.pass_obj
+def builds_log(context: Context, build_ref: Optional[str], follow: bool) -> None:
+    """Print a build's log: BUILD's, or the most recent build's.
+
+    BUILD is a build ID as `freepod builds` lists it, or a prefix of one that
+    matches no other build. The log goes to stdout and freepod's own messages
+    to stderr, so `freepod builds log > build.log` captures only the build's
+    output.
+
+    Without `-f`, prints what is stored so far and exits. With `-f`, follows a
+    queued or running build to the end, and exits 4 if it fails or is canceled.
+    """
+    project_file = _project_deployment(context, lacks="builds")
+    session = context.session()
+    session.authenticate(interactive=False)
+    out = click.get_binary_stream("stdout")
+
+    with context.client(session) as api:
+        user_id = api.me()["id"]
+        deployment_id = project_file.deployment_id
+        records = history.list_builds(api, user_id, deployment_id)
+        if not records and build_ref is None:
+            context.say("This project has no builds yet — `freepod deploy` creates one.")
+            return
+        record = history.resolve_build(records, build_ref)
+        build_id = str(record["id"])
+        context.say(
+            f"Build {build_id}, created {history.format_time(record.get('created_at'))}."
+        )
+
+        try:
+            if follow:
+                status = build_module.follow_build(
+                    api, user_id, deployment_id, build_id,
+                    out=out,
+                    timeout=wait_seconds(context.timeout, BUILD_WAIT_SECONDS),
+                    echo=context.say,
+                )
+            else:
+                chunk, reported = build_module.read_log(api, user_id, deployment_id, build_id)
+                out.write(chunk)
+                out.flush()
+                status = reported or str(record.get("status"))
+        except BrokenPipeError:
+            sys.stdout = open(os.devnull, "w")
+            return
+
+    if status not in build_module.TERMINAL_STATUSES:
+        context.say(
+            f"Build {build_id} is still {status}; `freepod builds log -f` follows it "
+            f"to the end."
+        )
+    elif status != build_module.STATUS_SUCCEEDED:
+        if follow:
+            raise BuildFailed(f"the build {status} (build {build_id}).")
+        context.say(f"Build {build_id} {status}.")
 
 
 @cli.command()

@@ -91,3 +91,15 @@ freepod builds --all
 ```
 
 The build the deployment is running is marked with `*`.
+
+## Build logs
+
+Every build's log is kept with the build, so the log of a failed build can be read after `freepod deploy` has exited.
+
+```bash
+freepod builds log            # the most recent build
+freepod builds log b1f04c2e   # a build by its ID, or a prefix that matches only one build
+freepod builds log -f         # follow a queued or running build until it finishes
+```
+
+The log goes to stdout and the client's own messages to stderr, so `freepod builds log > build.log` captures only the build's output. Without `-f`, a build that is still running prints what it has logged so far. With `-f`, the command exits with code `4` if the build fails or is canceled.

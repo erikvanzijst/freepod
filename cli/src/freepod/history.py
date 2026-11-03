@@ -18,7 +18,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 
-from . import FreepodError
+from . import FreepodError, UsageError
 from .api import ApiClient
 from .build import builds_path
 from .table import (  # noqa: F401  (re-exported for callers of this module)
@@ -60,6 +60,35 @@ def list_builds(api: ApiClient, user_id: int, deployment_id: str) -> List[Dict[s
     if not isinstance(body, list):
         raise FreepodError(f"unexpected {path} response: {body!r}")
     return [entry for entry in body if isinstance(entry, dict)]
+
+
+def resolve_build(builds: Sequence[Dict[str, Any]], ref: Optional[str]) -> Dict[str, Any]:
+    """The build `ref` names, or the most recent one when it names none.
+
+    `ref` is a build ID as the listing shows it, or a prefix of one that
+    matches no other build.
+    """
+    if ref is None:
+        if not builds:
+            raise FreepodError("this project has no builds yet — `freepod deploy` creates one.")
+        return builds[0]
+
+    wanted = ref.strip().lower()
+    ids = [str(build.get("id", "")).lower() for build in builds]
+    if wanted in ids:
+        return builds[ids.index(wanted)]
+
+    matches = [build for build, id_ in zip(builds, ids) if wanted and id_.startswith(wanted)]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise FreepodError(
+            f"no build of this project matches '{ref}'. `freepod builds` lists them."
+        )
+    raise UsageError(
+        f"'{ref}' matches {len(matches)} builds; give more of the ID:\n"
+        + "\n".join(f"  {build.get('id')}" for build in matches)
+    )
 
 
 def deployed_image(api: ApiClient, user_id: int, deployment_id: str) -> Optional[str]:
