@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import signal
 import time
 from dataclasses import dataclass
@@ -48,6 +49,8 @@ from app.services.build_constants import (
 )
 from app.services.usage import builds as build_usage
 from app.services.build_jobs import (
+    BUILDKIT_VOLUME,
+    WORK_VOLUME,
     BuildJobClient,
     BuildUsage,
     KubectlBuildJobClient,
@@ -104,6 +107,48 @@ GATE_FAILURE_LOG_LINE = (
     b"freepod: the build could not start because its network isolation was not"
     b" ready in time. This is a platform problem, not your code; start the build again.\n"
 )
+
+# The kubelet's eviction messages (pkg/kubelet/eviction) name the node's
+# thresholds and other tenants' containers, so only the limit is passed on.
+_EMPTYDIR_EVICTION = re.compile(r'Usage of EmptyDir volume "([^"]+)" exceeds the limit "([^"]+)"')
+_STORAGE_EVICTION = re.compile(
+    r'(?:exceeded its local ephemeral storage limit "|exceeds the total limit of containers )'
+    r'([^". ]+)'
+)
+_NODE_EVICTION = re.compile(r"The node (?:was low on resource|had condition)")
+
+
+def eviction_log_line(message: str) -> bytes:
+    """The line a tenant reads for a build the kubelet evicted."""
+    if match := _EMPTYDIR_EVICTION.search(message):
+        volume, limit = match.groups()
+        if volume == BUILDKIT_VOLUME:
+            what = f"wrote more than {limit} of image layers and build cache"
+            remedy = "Install fewer or smaller dependencies"
+        elif volume == WORK_VOLUME:
+            what = f"grew its working copy of the project past {limit}"
+            remedy = "Make the project and what its build generates smaller"
+        else:
+            what = f"used more than {limit} of build storage"
+            remedy = "Make the build smaller"
+        return (
+            f"freepod: the build was stopped because it {what}, the most a build may use."
+            f" {remedy} and start the build again.\n"
+        ).encode()
+    if match := _STORAGE_EVICTION.search(message):
+        return (
+            f"freepod: the build was stopped because it used more than {match.group(1)} of"
+            " disk space, the most a build may use. Make the build smaller and start it again.\n"
+        ).encode()
+    if _NODE_EVICTION.search(message):
+        return (
+            b"freepod: the build was stopped because the machine running it ran short of"
+            b" resources. This is a platform problem, not your code; start the build again.\n"
+        )
+    return (
+        b"freepod: the build was stopped by the platform before it finished."
+        b" Start the build again.\n"
+    )
 
 
 def merge_log(stored: bytes, fresh: bytes | None, *, cap: int) -> bytes:
@@ -226,6 +271,12 @@ def _finish(
     logger.info("Build id=%s -> %s (%s)", build.id, status, reason)
 
 
+def _append_log_line(build: BuildORM, line: bytes) -> None:
+    stored = bytes(build.log or b"")
+    separator = b"\n" if stored and not stored.endswith(b"\n") else b""
+    build.log = stored + separator + line
+
+
 def _advance_build(
     session: Session,
     build: BuildORM,
@@ -287,18 +338,17 @@ def _advance_build(
         return
 
     if job_is_failed(job):
+        reason = "Job terminated unsuccessfully"
         gate_failure = client.read_gate_failure(str(build.id))
         if gate_failure is not None:
-            stored = bytes(build.log or b"")
-            separator = b"\n" if stored and not stored.endswith(b"\n") else b""
-            build.log = stored + separator + GATE_FAILURE_LOG_LINE
+            _append_log_line(build, GATE_FAILURE_LOG_LINE)
+            reason = f"egress gate failed: {gate_failure}"
+        elif (eviction := client.read_eviction(str(build.id))) is not None:
+            _append_log_line(build, eviction_log_line(eviction))
+            reason = f"evicted: {eviction}"
         _finish(
             session, build, status=BUILD_STATUS_FAILED, now=now,
-            reason=(
-                f"egress gate failed: {gate_failure}"
-                if gate_failure is not None
-                else "Job terminated unsuccessfully"
-            ),
+            reason=reason,
             usage=parse_usage_from_termination_message(
                 client.read_termination_message(str(build.id))
             ),

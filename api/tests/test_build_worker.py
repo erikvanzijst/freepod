@@ -54,6 +54,7 @@ class FakeCluster:
         self.logs: dict[str, bytes] = {}
         self.termination: dict[str, str] = {}
         self.gate_failures: dict[str, str] = {}
+        self.evictions: dict[str, str] = {}
         self.created: list[dict] = []
         self.deleted: list[str] = []
         self.create_error: Exception | None = None
@@ -82,6 +83,9 @@ class FakeCluster:
     def read_gate_failure(self, build_id: str) -> str | None:
         return self.gate_failures.get(build_id)
 
+    def read_eviction(self, build_id: str) -> str | None:
+        return self.evictions.get(build_id)
+
     # -- test helpers -----------------------------------------------------
     def complete(
         self, build_id: UUID, *, image: str | None = IMAGE, usage: dict | None = None
@@ -106,6 +110,11 @@ class FakeCluster:
         """The egress gate gave up, so the build container never ran."""
         self.jobs[job_name(build_id)]["status"] = {"failed": 1}
         self.gate_failures[str(build_id)] = message
+
+    def evict(self, build_id: UUID, *, message: str) -> None:
+        """The kubelet evicted the build pod; `message` is its status message."""
+        self.jobs[job_name(build_id)]["status"] = {"failed": 1}
+        self.evictions[str(build_id)] = message
 
 
 @pytest.fixture
@@ -373,6 +382,70 @@ def test_an_ordinary_failure_adds_no_gate_line(db_session, cluster, settings):
 
     db_session.refresh(build)
     assert bytes(build.log) == b"npm ERR!\n"
+
+
+BUILDKIT_EVICTION = 'Usage of EmptyDir volume "buildkit" exceeds the limit "6Gi". '
+
+
+def test_an_evicted_build_fails_and_says_why_in_its_log(db_session, cluster, settings):
+    user = _user(db_session)
+    build = _queued(db_session, user.id)
+    run_pass(db_session, client=cluster, settings=settings)
+    db_session.refresh(build)
+    cluster.logs[str(build.id)] = b"#14 Collecting torch"
+    cluster.evict(build.id, message=BUILDKIT_EVICTION)
+
+    result = run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert result.failed == [build.id]
+    assert build.status == BUILD_STATUS_FAILED
+    assert bytes(build.log) == b"#14 Collecting torch\n" + build_worker.eviction_log_line(
+        BUILDKIT_EVICTION
+    )
+
+
+def test_a_gate_failure_explains_the_build_even_if_the_pod_was_also_evicted(
+    db_session, cluster, settings
+):
+    user = _user(db_session)
+    build = _queued(db_session, user.id)
+    run_pass(db_session, client=cluster, settings=settings)
+    db_session.refresh(build)
+    cluster.fail_gate(build.id)
+    cluster.evictions[str(build.id)] = BUILDKIT_EVICTION
+
+    run_pass(db_session, client=cluster, settings=settings)
+
+    db_session.refresh(build)
+    assert bytes(build.log) == build_worker.GATE_FAILURE_LOG_LINE
+
+
+@pytest.mark.parametrize(
+    ("message", "says"),
+    [
+        (BUILDKIT_EVICTION, b"more than 6Gi of image layers and build cache"),
+        ('Usage of EmptyDir volume "work" exceeds the limit "2Gi". ', b"working copy of the project past 2Gi"),
+        ("Pod ephemeral local storage usage exceeds the total limit of containers 8Gi. ", b"more than 8Gi of disk space"),
+        ('Container build exceeded its local ephemeral storage limit "8Gi". ', b"more than 8Gi of disk space"),
+        (
+            "The node was low on resource: ephemeral-storage. Threshold quantity: 2544205452,"
+            " available: 2434404Ki. Container app was using 1820208Ki, request is 0, has larger"
+            " consumption of ephemeral-storage. ",
+            b"This is a platform problem, not your code",
+        ),
+        ("Pod was rejected: The node had condition: [DiskPressure]. ", b"This is a platform problem, not your code"),
+        ("Evicted", b"stopped by the platform before it finished"),
+    ],
+    ids=["buildkit", "work", "pod-limit", "container-limit", "node-low", "node-condition", "unknown"],
+)
+def test_the_eviction_line_names_the_limit_and_nothing_internal(message, says):
+    line = build_worker.eviction_log_line(message)
+
+    assert says in line
+    assert line.startswith(b"freepod: ") and line.endswith(b"\n") and line.count(b"\n") == 1
+    for internal in (b"Threshold", b"2544205452", b"Container app", b"DiskPressure", b"EmptyDir"):
+        assert internal not in line
 
 
 def test_success_reporting_no_image_fails_the_build(db_session, cluster, settings):
@@ -1030,6 +1103,23 @@ def test_the_gate_failure_is_read_from_its_init_status(monkeypatch):
 def test_no_gate_failure_unless_the_gate_exited_non_zero(monkeypatch, statuses):
     _kubectl(monkeypatch, stdout=_pod(statuses))
     assert build_jobs.KubectlBuildJobClient(namespace="b").read_gate_failure("x") is None
+
+
+def test_the_eviction_is_read_from_the_pod_status(monkeypatch):
+    _kubectl(monkeypatch, stdout=json.dumps({"items": [{"status": {
+        "phase": "Failed", "reason": "Evicted", "message": BUILDKIT_EVICTION,
+    }}]}))
+    assert build_jobs.KubectlBuildJobClient(namespace="b").read_eviction("x") == BUILDKIT_EVICTION.strip()
+
+
+@pytest.mark.parametrize(
+    "status",
+    [{"phase": "Failed"}, {"phase": "Failed", "reason": "DeadlineExceeded", "message": "x"}, {}],
+    ids=["no-reason", "other-reason", "empty"],
+)
+def test_no_eviction_unless_the_pod_says_evicted(monkeypatch, status):
+    _kubectl(monkeypatch, stdout=json.dumps({"items": [{"status": status}]}))
+    assert build_jobs.KubectlBuildJobClient(namespace="b").read_eviction("x") is None
 
 
 def test_the_build_log_is_read_from_the_build_container_only(monkeypatch):

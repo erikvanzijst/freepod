@@ -48,6 +48,9 @@ WORK_SIZE_LIMIT = "2Gi"
 BUILDKIT_DIR = "/home/user/.local/share/buildkit"
 BUILDKIT_SIZE_LIMIT = "6Gi"
 
+WORK_VOLUME = "work"
+BUILDKIT_VOLUME = "buildkit"
+
 # The node label and taint key naming a pool of nodes reserved for tenant code.
 NODE_POOL_LABEL = "caelus.dev/node-pool"
 
@@ -228,14 +231,14 @@ def build_job_manifest(
                                 },
                             },
                             "volumeMounts": [
-                                {"name": "work", "mountPath": WORK_DIR},
-                                {"name": "buildkit", "mountPath": BUILDKIT_DIR},
+                                {"name": WORK_VOLUME, "mountPath": WORK_DIR},
+                                {"name": BUILDKIT_VOLUME, "mountPath": BUILDKIT_DIR},
                             ],
                         }
                     ],
                     "volumes": [
-                        {"name": "work", "emptyDir": {"sizeLimit": WORK_SIZE_LIMIT}},
-                        {"name": "buildkit", "emptyDir": {"sizeLimit": BUILDKIT_SIZE_LIMIT}},
+                        {"name": WORK_VOLUME, "emptyDir": {"sizeLimit": WORK_SIZE_LIMIT}},
+                        {"name": BUILDKIT_VOLUME, "emptyDir": {"sizeLimit": BUILDKIT_SIZE_LIMIT}},
                     ],
                 },
             },
@@ -273,6 +276,8 @@ class BuildJobClient(Protocol):
     def read_termination_message(self, build_id: str) -> str | None: ...
 
     def read_gate_failure(self, build_id: str) -> str | None: ...
+
+    def read_eviction(self, build_id: str) -> str | None: ...
 
 
 class KubectlBuildJobClient:
@@ -393,6 +398,14 @@ class KubectlBuildJobClient:
                     return (terminated.get("message") or "").strip() or terminated.get(
                         "reason", "failed"
                     )
+        return None
+
+    def read_eviction(self, build_id: str) -> str | None:
+        """The kubelet's message for an evicted or rejected pod, if it was one."""
+        for pod in self._pods(build_id):
+            status = pod.get("status", {})
+            if status.get("reason") == "Evicted":
+                return (status.get("message") or "").strip() or "Evicted"
         return None
 
 
