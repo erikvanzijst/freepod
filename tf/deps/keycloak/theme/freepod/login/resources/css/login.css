@@ -336,6 +336,31 @@ a:hover { color: var(--accent-pink); }
   box-shadow: 0 18px 48px rgba(124, 91, 255, 0.52);
 }
 
+/* ── Secondary button (passkey sign-in, cancel, back to login): outlined
+   pill, the same size as the primary. PF draws its square outline on ::after. */
+.pf-v5-c-button.pf-m-secondary {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+  border-radius: 999px !important;
+  color: var(--fg-primary) !important;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: 0.01em;
+  padding: 14px 24px;
+  transition: border-color 0.18s, background 0.18s;
+}
+.pf-v5-c-button.pf-m-secondary::after { display: none !important; }
+.pf-v5-c-button.pf-m-secondary:hover {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-color: var(--accent-blue) !important;
+}
+.pf-v5-c-button.pf-m-secondary:focus-visible {
+  outline: none;
+  border-color: var(--accent-blue) !important;
+  box-shadow: 0 0 0 3px rgba(91, 140, 255, 0.25);
+}
+
 /* ── Footer / "New user? Register" ─────────────────────────────────────── */
 .pf-v5-c-login__main-footer,
 #kc-info,
