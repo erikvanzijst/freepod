@@ -399,40 +399,23 @@ def validate_vars(
 def _document_error(
     exc: ValidationError, values_schema_json: dict[str, Any], var_keys: set[str]
 ) -> str:
-    """Locate a full-document failure in the channel it belongs to.
-
-    Like `_var_error`, never quotes `exc.message`: the document carries var
-    values. A missing key is named from the schema, so a `required` failure
-    points at the field to fill in rather than at the object holding it.
-    """
-    path: list[Any] = list(exc.absolute_path)
-    instance = exc.instance
-    if isinstance(instance, dict):
-        if exc.validator == "required" and isinstance(exc.validator_value, list):
-            path.extend([k for k in exc.validator_value if k not in instance][:1])
-        elif exc.validator == "dependentRequired" and isinstance(exc.validator_value, dict):
-            path.extend(
-                [
-                    dep
-                    for trigger, deps in exc.validator_value.items()
-                    if trigger in instance and isinstance(deps, list)
-                    for dep in deps
-                    if dep not in instance
-                ][:1]
-            )
+    """The failing path and keyword. Never `exc.message`: the document holds var
+    values. A `required` failure names the missing key, taken from the schema."""
+    path = [str(p) for p in exc.absolute_path]
+    if exc.validator == "required" and isinstance(exc.instance, dict):
+        path += [k for k in exc.validator_value if k not in exc.instance][:1]
     constraint = f'failed constraint "{exc.validator}"'
     if not path:
         return f"values: {constraint}"
-    top = path[0]
-    properties = values_schema_json.get("properties")
-    properties = properties if isinstance(properties, dict) else {}
-    if top in properties:
-        is_var = _target(properties[top]) == TARGET_RUNTIME
+    properties = values_schema_json.get("properties") or {}
+    prop = properties.get(path[0])
+    if path[0] in var_keys or _target(prop) == TARGET_RUNTIME:
+        prefix = "vars."
+    elif prop is not None:
+        prefix = "user_values_json."
     else:
-        # Undeclared: a submitted var, or one a rule demands of an open vars half.
-        is_var = top in var_keys or values_schema_json.get(VARS_ADDITIONAL_KEY) is True
-    channel = "vars" if is_var else "user_values_json"
-    return f"{channel}.{'.'.join(str(p) for p in path)}: {constraint}"
+        prefix = ""
+    return f"{prefix}{'.'.join(path)}: {constraint}"
 
 
 def validate_document(
