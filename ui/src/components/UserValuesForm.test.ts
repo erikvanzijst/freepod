@@ -239,6 +239,28 @@ describe('validateUserValues', () => {
       'user_values_json.admin.name: failed constraint "required"',
     ])
   })
+
+  it('leaves a root conditional spanning chart values and vars to the server', () => {
+    const schema = {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        auth: { type: 'object', properties: { enabled: { type: 'boolean' } } },
+        ADMIN_PASSWORD: { type: 'string', 'x-caelus-target': 'runtime' },
+      },
+      if: {
+        required: ['auth'],
+        properties: { auth: { required: ['enabled'], properties: { enabled: { const: false } } } },
+      },
+      then: { required: ['ADMIN_PASSWORD'] },
+    }
+
+    expect(validateUserValues(schema, { auth: { enabled: false } })).toEqual([])
+    expect(validateUserValues(schema, { auth: { enabled: 'no' } })).toEqual([
+      'user_values_json.auth.enabled: failed constraint "type"',
+    ])
+  })
 })
 
 describe('schema flattening integration', () => {

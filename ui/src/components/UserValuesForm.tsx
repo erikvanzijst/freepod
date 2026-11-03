@@ -17,6 +17,7 @@ import { useMyHandle } from './handle/useMyHandle'
 import { HostnameField } from './HostnameField'
 import { SensitiveVarField } from './SensitiveVarField'
 import { isStringList, linesToList } from './stringListField'
+import { evaluateConditionals } from './schemaConditionals'
 
 const ajv = new Ajv2020({ allErrors: true, strict: false })
 addFormats(ajv)
@@ -198,6 +199,70 @@ export function unflatten(values: Record<string, unknown>): Record<string, unkno
   return result
 }
 
+type StoredVars = Record<string, { value?: string; sensitive: boolean }> | null | undefined
+
+/**
+ * The two payloads a form state submits. The split is by `target` and nothing
+ * else, so a property moving between channels is a schema edit and not a UI
+ * change.
+ */
+function splitSubmission(
+  fields: SchemaField[],
+  formData: Record<string, unknown>,
+  initialVars: StoredVars,
+  touchedSensitive: Set<string>,
+): { chartData: Record<string, unknown>; vars: Record<string, VarSubmission> } {
+  const chartData: Record<string, unknown> = {}
+  const vars: Record<string, VarSubmission> = {}
+
+  for (const field of fields) {
+    if (field.target !== 'runtime') {
+      if (field.path in formData) {
+        chartData[field.path] = isStringList(field)
+          ? linesToList(formData[field.path])
+          : formData[field.path]
+      }
+      continue
+    }
+
+    // An untouched sensitive field submits nothing at all: no entry means
+    // no `value`, which keeps the stored secret and is also the only thing
+    // that works on a create, where there is no stored value to leave alone.
+    if (field.sensitive && !touchedSensitive.has(field.path)) {
+      continue
+    }
+    const raw = formData[field.path]
+    const empty = raw === undefined || raw === null || raw === ''
+    // A var the user never filled in is not submitted as an empty one --
+    // unless the deployment already holds it, where blanking the field is a
+    // deliberate clear rather than an omission.
+    if (empty && initialVars?.[field.path] === undefined) {
+      continue
+    }
+    // Always a string on the wire, whatever the schema declares: that is
+    // what a process environment holds, and the platform coerces it back to
+    // the declared type to validate it.
+    vars[field.path] = { value: typeof raw === 'boolean' ? String(raw) : String(raw ?? '') }
+  }
+  return { chartData, vars }
+}
+
+const INTEGER_RE = /^[+-]?[0-9]+$/
+const NUMBER_RE = /^[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?$/
+
+/** A var's wire string typed as the platform coerces it before validation. */
+function coerceVar(value: string, type: string): unknown {
+  if (type === 'boolean') return value === 'true' ? true : value === 'false' ? false : value
+  if (type === 'integer' && INTEGER_RE.test(value)) return Number(value)
+  if (type === 'number' && NUMBER_RE.test(value)) return Number(value)
+  return value
+}
+
+/** The root property a flattened field path belongs to. */
+function rootKey(path: string): string {
+  return path.split('.')[0]
+}
+
 interface UserValuesFormProps {
   valuesSchemaJson: Record<string, unknown> | null
   initialValuesJson?: Record<string, unknown> | null
@@ -260,6 +325,31 @@ export function UserValuesForm({
   // stored secret.
   const [touchedSensitive, setTouchedSensitive] = useState<Set<string>>(new Set())
 
+  // The schema's conditionals, evaluated against what the form holds as one
+  // document: chart values and vars together, vars typed as the platform
+  // types them. A hidden field keeps its value but submits nothing.
+  const conditionals = useMemo(() => {
+    const { chartData, vars } = splitSubmission(fields, formData, initialVars, touchedSensitive)
+    const types = new Map(fields.map((f) => [f.path, f.type]))
+    const document: Record<string, unknown> = unflatten(chartData)
+    for (const [key, { value }] of Object.entries(vars)) {
+      document[key] = coerceVar(value, types.get(key) ?? 'string')
+    }
+    return evaluateConditionals(ajv, valuesSchemaJson, document)
+  }, [fields, formData, initialVars, touchedSensitive, valuesSchemaJson])
+
+  // Keyed by content, so the field list keeps its identity while typing and
+  // only changes when a conditional flips.
+  const hiddenKey = [...conditionals.hidden].sort().join('\n')
+  const requiredKey = [...conditionals.required].sort().join('\n')
+  const shownFields = useMemo(() => {
+    const hidden = new Set(hiddenKey.split('\n'))
+    const required = new Set(requiredKey.split('\n'))
+    return fields
+      .filter((field) => !hidden.has(rootKey(field.path)))
+      .map((field) => (required.has(field.path) ? { ...field, required: true } : field))
+  }, [fields, hiddenKey, requiredKey])
+
   useEffect(() => {
     const initialData: Record<string, unknown> = {}
     for (const field of fields) {
@@ -298,40 +388,12 @@ export function UserValuesForm({
       return
     }
 
-    // One form, two payloads. The split is by `target` and nothing else, so a
-    // property moving between channels is a schema edit and not a UI change.
-    const chartData: Record<string, unknown> = {}
-    const vars: Record<string, VarSubmission> = {}
-
-    for (const field of fields) {
-      if (field.target !== 'runtime') {
-        if (field.path in formData) {
-          chartData[field.path] = isStringList(field)
-            ? linesToList(formData[field.path])
-            : formData[field.path]
-        }
-        continue
-      }
-
-      // An untouched sensitive field submits nothing at all: no entry means
-      // no `value`, which keeps the stored secret and is also the only thing
-      // that works on a create, where there is no stored value to leave alone.
-      if (field.sensitive && !touchedSensitive.has(field.path)) {
-        continue
-      }
-      const raw = formData[field.path]
-      const empty = raw === undefined || raw === null || raw === ''
-      // A var the user never filled in is not submitted as an empty one --
-      // unless the deployment already holds it, where blanking the field is a
-      // deliberate clear rather than an omission.
-      if (empty && initialVars?.[field.path] === undefined) {
-        continue
-      }
-      // Always a string on the wire, whatever the schema declares: that is
-      // what a process environment holds, and the platform coerces it back to
-      // the declared type to validate it.
-      vars[field.path] = { value: typeof raw === 'boolean' ? String(raw) : String(raw ?? '') }
-    }
+    const { chartData, vars } = splitSubmission(
+      shownFields,
+      formData,
+      initialVars,
+      touchedSensitive,
+    )
 
     onVarsChange?.(vars)
 
@@ -350,7 +412,7 @@ export function UserValuesForm({
     }
 
     onChange(unflatten(chartData))
-  }, [formData, fields, initialVars, touchedSensitive, onChange, onVarsChange])
+  }, [formData, fields, shownFields, initialVars, touchedSensitive, onChange, onVarsChange])
 
   useEffect(() => {
     if (errors.length === 0) {
@@ -364,14 +426,14 @@ export function UserValuesForm({
     const newErrors: Record<string, string> = {}
     const stranded: string[] = []
     // Longest path first: `host` would otherwise claim `hostname`'s error.
-    const candidates = [...fields].sort((a, b) => b.path.length - a.path.length)
+    const candidates = [...shownFields].sort((a, b) => b.path.length - a.path.length)
     for (const error of errors) {
       // A required object the user never touched is reported at the object
       // (`user_values_json.admin`); it belongs to the first field inside it.
       const location = error.split(':')[0].replace(/^(user_values_json|vars)\./, '').toLowerCase()
       const field =
         candidates.find((f) => error.toLowerCase().includes(f.path.toLowerCase())) ??
-        fields.find((f) => f.path.toLowerCase().startsWith(`${location}.`))
+        shownFields.find((f) => f.path.toLowerCase().startsWith(`${location}.`))
       if (field) {
         // First wins: an empty value fails minLength and pattern alike, and
         // "not allowed" is the wrong thing to say about nothing.
@@ -384,11 +446,11 @@ export function UserValuesForm({
     // Tracked, not inferred from an empty `fieldErrors`: typing clears a field
     // error, which would otherwise re-raise it in the banner.
     setUnmatchedErrors(stranded)
-  }, [errors, fields])
+  }, [errors, shownFields])
 
   const requiredFilled = useMemo(
     () =>
-      fields.every((field) => {
+      shownFields.every((field) => {
         if (!field.required || field.type === 'boolean') return true
         // Untouched, a stored secret is carried forward rather than cleared.
         if (field.sensitive && initialVars?.[field.path] && !touchedSensitive.has(field.path)) {
@@ -397,7 +459,7 @@ export function UserValuesForm({
         const value = formData[field.path]
         return value !== undefined && value !== null && value !== ''
       }),
-    [fields, formData, initialVars, touchedSensitive],
+    [shownFields, formData, initialVars, touchedSensitive],
   )
 
   useEffect(() => {
@@ -445,7 +507,7 @@ export function UserValuesForm({
           ))}
         </Box>
       )}
-      {fields.map((field) => {
+      {shownFields.map((field) => {
         if (field.title?.toLowerCase() === 'hostname') {
           return (
             <HostnameField
@@ -562,6 +624,24 @@ export function UserValuesForm({
 }
 
 /**
+ * Root keywords that may relate a chart value to a var. The platform leaves
+ * them out of the chart projection and checks them against chart values and
+ * vars together, so they are left to the server here.
+ */
+const DOCUMENT_KEYWORDS = new Set([
+  'allOf',
+  'anyOf',
+  'oneOf',
+  'not',
+  'if',
+  'then',
+  'else',
+  'dependentRequired',
+  'dependentSchemas',
+  'dependencies',
+])
+
+/**
  * The chart half of a schema: the same partition the platform derives.
  *
  * Chart values are validated against this rather than against the whole
@@ -576,17 +656,20 @@ function chartProjection(
   if (!valuesSchemaJson) {
     return null
   }
-  const properties = valuesSchemaJson.properties as Record<string, unknown> | undefined
+  const root = Object.fromEntries(
+    Object.entries(valuesSchemaJson).filter(([key]) => !DOCUMENT_KEYWORDS.has(key)),
+  )
+  const properties = root.properties as Record<string, unknown> | undefined
   if (!properties) {
-    return valuesSchemaJson
+    return root
   }
   const isRuntime = (key: string) => {
     const prop = properties[key] as Record<string, unknown> | undefined
     return prop?.['x-caelus-target'] === 'runtime'
   }
-  const required = (valuesSchemaJson.required as string[] | undefined) ?? []
+  const required = (root.required as string[] | undefined) ?? []
   return {
-    ...valuesSchemaJson,
+    ...root,
     properties: Object.fromEntries(
       Object.entries(properties).filter(([key]) => !isRuntime(key)),
     ),

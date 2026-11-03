@@ -626,3 +626,135 @@ describe('string list fields', () => {
     expect(validateUserValues(authSchema, { auth: { enabled: true, public: '^/$' } })).not.toEqual([])
   })
 })
+
+describe('UserValuesForm conditionals', () => {
+  const nextcloudSchema = {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      host: { type: 'string', title: 'Host' },
+      auth: {
+        type: 'object',
+        properties: {
+          enabled: { type: 'boolean', title: 'Sign in with Freepod', default: true },
+        },
+      },
+      NEXTCLOUD_ADMIN_PASSWORD: {
+        type: 'string',
+        title: 'Admin password',
+        'x-caelus-target': 'runtime',
+        'x-caelus-sensitive': true,
+      },
+    },
+    required: ['host'],
+    if: {
+      required: ['auth'],
+      properties: {
+        auth: { required: ['enabled'], properties: { enabled: { const: false } } },
+      },
+    },
+    then: { required: ['NEXTCLOUD_ADMIN_PASSWORD'] },
+  }
+
+  const password = () => screen.queryByLabelText(/admin password/i)
+  const signIn = () => screen.getByRole('checkbox', { name: /sign in with freepod/i })
+
+  it('shows the password only while sign-in is off, and requires it then', async () => {
+    render(
+      <UserValuesForm valuesSchemaJson={nextcloudSchema} onChange={vi.fn()} onVarsChange={vi.fn()} />,
+      { wrapper: Wrapper },
+    )
+
+    expect(signIn()).toBeChecked()
+    expect(password()).not.toBeInTheDocument()
+
+    fireEvent.click(signIn())
+    await waitFor(() => expect(password()).toBeInTheDocument())
+    expect(password()).toBeRequired()
+
+    fireEvent.click(signIn())
+    await waitFor(() => expect(password()).not.toBeInTheDocument())
+  })
+
+  it('reports required fields filled only once a shown conditional field holds a value', async () => {
+    const onRequiredFilledChange = vi.fn()
+    render(
+      <UserValuesForm
+        valuesSchemaJson={nextcloudSchema}
+        initialValuesJson={{ host: 'cloud.example.test' }}
+        onChange={vi.fn()}
+        onVarsChange={vi.fn()}
+        onRequiredFilledChange={onRequiredFilledChange}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    await waitFor(() => expect(onRequiredFilledChange).toHaveBeenLastCalledWith(true))
+    fireEvent.click(signIn())
+    await waitFor(() => expect(onRequiredFilledChange).toHaveBeenLastCalledWith(false))
+    fireEvent.change(password()!, { target: { value: 'correct-horse' } })
+    await waitFor(() => expect(onRequiredFilledChange).toHaveBeenLastCalledWith(true))
+  })
+
+  it('never submits a hidden field, not even what was typed before it was hidden', async () => {
+    const onChange = vi.fn()
+    const onVarsChange = vi.fn()
+    render(
+      <UserValuesForm
+        valuesSchemaJson={nextcloudSchema}
+        initialValuesJson={{ host: 'cloud.example.test' }}
+        onChange={onChange}
+        onVarsChange={onVarsChange}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    fireEvent.click(signIn())
+    await waitFor(() => expect(password()).toBeInTheDocument())
+    fireEvent.change(password()!, { target: { value: 'correct-horse' } })
+    await waitFor(() =>
+      expect(onVarsChange).toHaveBeenLastCalledWith({
+        NEXTCLOUD_ADMIN_PASSWORD: { value: 'correct-horse' },
+      }),
+    )
+
+    fireEvent.click(signIn())
+    await waitFor(() => expect(onVarsChange).toHaveBeenLastCalledWith({}))
+    expect(onChange).toHaveBeenLastCalledWith({ host: 'cloud.example.test', auth: { enabled: true } })
+
+    // The typed value is kept, and comes back with the field.
+    fireEvent.click(signIn())
+    await waitFor(() =>
+      expect(onVarsChange).toHaveBeenLastCalledWith({
+        NEXTCLOUD_ADMIN_PASSWORD: { value: 'correct-horse' },
+      }),
+    )
+  })
+
+  it('hides a chart value its branch mentions, and drops it from the submission', async () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        mode: { type: 'string', title: 'Mode' },
+        smtp: { type: 'object', properties: { host: { type: 'string', title: 'SMTP host' } } },
+      },
+      if: { required: ['mode'], properties: { mode: { const: 'mail' } } },
+      then: { required: ['smtp'] },
+    }
+    const onChange = vi.fn()
+    render(
+      <UserValuesForm
+        valuesSchemaJson={schema}
+        initialValuesJson={{ mode: 'mail', smtp: { host: 'mx.example.test' } }}
+        onChange={onChange}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(screen.getByLabelText('SMTP host')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Mode'), { target: { value: 'none' } })
+    await waitFor(() => expect(screen.queryByLabelText('SMTP host')).not.toBeInTheDocument())
+    expect(onChange).toHaveBeenLastCalledWith({ mode: 'none' })
+  })
+})

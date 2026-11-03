@@ -510,6 +510,9 @@ for a self-evident line, delete it.
   chart values through `onChange`, runtime vars through `onVarsChange`. A
   sensitive field renders empty and submits **no entry at all** when untouched
   — an empty string is a real value and would wipe the stored secret.
+- `UserValuesForm` hides a field the schema's root conditionals mention until
+  a branch mentioning it applies, and a hidden field submits nothing. Spec:
+  [deploy-dialog-shared](openspec/specs/deploy-dialog-shared/spec.md).
 
 ## Contribution Checklist
 - Update or add tests for new behavior.

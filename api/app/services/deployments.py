@@ -461,7 +461,11 @@ def create_deployment(
     # Mollie payment behind.
     try:
         vars_service.write_vars(
-            session, deployment=deployment, actor=user, entries=payload.vars
+            session,
+            deployment=deployment,
+            actor=user,
+            entries=payload.vars,
+            document_error=IntegrityException,
         )
         vars_service.snapshot_release(
             session, release_id=release_id, deployment_id=deployment_id
@@ -853,6 +857,7 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
         deployment=deployment,
         actor=session.get(UserORM, deployment.user_id),
         entries=update.vars,
+        document_error=IntegrityException,
     )
     vars_service.snapshot_release(
         session, release_id=release_id, deployment_id=deployment.id

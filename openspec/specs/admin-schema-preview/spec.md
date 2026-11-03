@@ -1,4 +1,10 @@
-## ADDED Requirements
+# admin-schema-preview Specification
+
+## Purpose
+Defines the admin's "New" template tab: a schema editor with a live preview of the
+deploy dialog the schema produces, and the guards on saving a new template version.
+
+## Requirements
 
 ### Requirement: Schema editor with live validation indicator
 The "New" template tab SHALL include a Monaco editor for the user values JSON schema. A validation indicator SHALL be displayed near the editor showing the current validity state: a green tick when the editor contents are valid JSON, and a red exclamation mark when they are not.
@@ -55,7 +61,29 @@ The "New" template tab SHALL include a Monaco editor for the template's `default
 - **WHEN** the defaults editor contains invalid JSON
 - **THEN** the Save/Add button SHALL be disabled
 
-## Requirements from rename-system-values
-
 ### Requirement: Template editors use system_values_json
 The admin template UI MUST use the label "System values" instead of "Default values" for the system values Monaco editor. The `onSave` payload MUST use the field name `system_values_json` instead of `default_values_json`. The deploy dialog preview in both `TemplateTabNew` and `TemplateTabReadOnly` MUST NOT pass system values to `DeployDialogContent` (it no longer accepts the prop).
+
+#### Scenario: Saving a new template
+- **WHEN** the admin saves a new template version
+- **THEN** the system values editor is labeled "System values" and the payload carries
+  them as `system_values_json`
+
+### Requirement: The preview reflects the schema's conditionals
+The live deploy dialog preview SHALL show, hide and require fields by the root
+conditionals of the schema in the editor, as the deploy form does. It SHALL re-evaluate
+them whenever the editor holds a new valid schema and whenever the admin changes a
+field in the preview.
+
+#### Scenario: A conditional added in the editor
+- **WHEN** the admin adds a root `if`/`then` whose `then` requires a field, and the
+  condition does not hold for the preview's values
+- **THEN** after the debounce period the preview no longer shows that field
+
+#### Scenario: A toggle in the preview
+- **WHEN** the admin changes a preview field so that the condition holds
+- **THEN** the field appears, marked required
+
+#### Scenario: The conditional removed again
+- **WHEN** the admin removes the `if`/`then` from the editor
+- **THEN** the field is shown and no longer marked required

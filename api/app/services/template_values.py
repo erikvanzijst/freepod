@@ -7,7 +7,7 @@ from typing import Any, NamedTuple
 from jsonschema import SchemaError, ValidationError
 from jsonschema import validate as jsonschema_validate
 
-from app.services.errors import IntegrityException, ValidationException
+from app.services.errors import CaelusException, IntegrityException, ValidationException
 
 
 def bytes_to_k8s_size(n: int) -> str:
@@ -59,6 +59,38 @@ RESERVED_VAR_NAMES = ("BUCKET_NAME", "PORT")
 # `signups__allowed`) written twice, in the UI to build the payload and in the
 # API to undo it -- the same rule in two languages, free to drift.
 SCALAR_TYPES = ("string", "number", "integer", "boolean")
+
+# Root keywords that relate properties to one another, and so may span both
+# halves. They are left out of the chart projection and evaluated against the
+# full document only (validate-full-values-document D1).
+DOCUMENT_KEYWORDS = frozenset(
+    {
+        "allOf",
+        "anyOf",
+        "oneOf",
+        "not",
+        "if",
+        "then",
+        "else",
+        "dependentRequired",
+        "dependentSchemas",
+        "dependencies",
+    }
+)
+
+# Root keywords that decide which keys the object may hold. Each projection
+# decides that for its own half, so the full document is validated without
+# them (D2).
+KEY_SET_KEYWORDS = frozenset(
+    {
+        "additionalProperties",
+        "unevaluatedProperties",
+        "patternProperties",
+        "propertyNames",
+        "minProperties",
+        "maxProperties",
+    }
+)
 
 
 class SchemaProjections(NamedTuple):
@@ -118,7 +150,7 @@ def derive_projections(values_schema_json: dict[str, Any] | None) -> SchemaProje
     chart = {
         k: deepcopy(v)
         for k, v in values_schema_json.items()
-        if k not in ("properties", "required")
+        if k not in ("properties", "required") and k not in DOCUMENT_KEYWORDS
     }
     chart["properties"] = {
         k: deepcopy(v) for k, v in properties.items() if _target(v) == TARGET_CHART
@@ -349,6 +381,7 @@ def validate_vars(
             )
 
     instance = {k: _coerce_var(v, declared.get(k)) for k, v in vars.items()}
+    failure: str | None = None
     try:
         jsonschema_validate(instance=instance, schema=vars_projection)
     except SchemaError as exc:
@@ -356,7 +389,70 @@ def validate_vars(
             f"product template has an invalid values_schema_json: {exc.message}"
         ) from exc
     except ValidationError as exc:
-        raise ValidationException(_var_error(exc)) from exc
+        failure = _var_error(exc)
+    if failure is not None:
+        # Raised outside the handler so the ValidationError, which holds the
+        # value, is not even attached as `__context__`.
+        raise ValidationException(failure)
+
+
+def _document_error(
+    exc: ValidationError, values_schema_json: dict[str, Any], var_keys: set[str]
+) -> str:
+    """The failing path and keyword. Never `exc.message`: the document holds var
+    values. A `required` failure names the missing key, taken from the schema."""
+    path = [str(p) for p in exc.absolute_path]
+    if exc.validator == "required" and isinstance(exc.instance, dict):
+        path += [k for k in exc.validator_value if k not in exc.instance][:1]
+    constraint = f'failed constraint "{exc.validator}"'
+    if not path:
+        return f"values: {constraint}"
+    properties = values_schema_json.get("properties") or {}
+    prop = properties.get(path[0])
+    if path[0] in var_keys or _target(prop) == TARGET_RUNTIME:
+        prefix = "vars."
+    elif prop is not None:
+        prefix = "user_values_json."
+    else:
+        prefix = ""
+    return f"{prefix}{'.'.join(path)}: {constraint}"
+
+
+def validate_document(
+    user_values_json: dict[str, Any] | None,
+    vars: dict[str, Any],
+    values_schema_json: dict[str, Any] | None,
+    *,
+    error: type[CaelusException] = IntegrityException,
+) -> None:
+    """Validate chart values and vars together against the whole schema.
+
+    The document is the shape a client submits: both halves merged into one
+    object, vars coerced as `validate_vars` coerces them. This is what makes a
+    root conditional spanning both halves work. It runs in addition to the
+    per-projection checks, which still decide which keys each half may hold,
+    so the schema is applied without its root key-set keywords (D2).
+
+    `error` is the caller's status contract (D4): 409 on the deployment
+    endpoints, 400 on the vars API.
+    """
+    if not values_schema_json:
+        return
+    declared = (derive_projections(values_schema_json).vars or {}).get("properties") or {}
+    document = dict(user_values_json or {})
+    document.update({k: _coerce_var(v, declared.get(k)) for k, v in vars.items()})
+    schema = {k: v for k, v in values_schema_json.items() if k not in KEY_SET_KEYWORDS}
+    failure: str | None = None
+    try:
+        jsonschema_validate(instance=document, schema=schema)
+    except SchemaError as exc:
+        raise IntegrityException(
+            f"product template has an invalid values_schema_json: {exc.message}"
+        ) from exc
+    except ValidationError as exc:
+        failure = _document_error(exc, values_schema_json, set(vars))
+    if failure is not None:
+        raise error(failure)  # outside the handler, as in `validate_vars`
 
 
 def merge_values_scoped(
