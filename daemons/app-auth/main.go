@@ -28,6 +28,9 @@ type config struct {
 	clientID     string
 	clientSecret string
 	tenantDomain string
+	// platformURL (https://<domain>) serves product icons. Optional: without
+	// it, Keycloak's sign-in page shows an app's name but not its icon.
+	platformURL string
 	// The OpenID Provider's keys. Optional: without both, its routes are
 	// absent, so an image can roll out ahead of the configuration.
 	providerClientKeys  string
@@ -52,6 +55,7 @@ func loadConfig() (config, error) {
 		clientID:     os.Getenv("APP_AUTH_OIDC_CLIENT_ID"),
 		clientSecret: os.Getenv("APP_AUTH_OIDC_CLIENT_SECRET"),
 		tenantDomain: os.Getenv("APP_AUTH_TENANT_DOMAIN"),
+		platformURL:  strings.TrimRight(os.Getenv("APP_AUTH_PLATFORM_URL"), "/"),
 
 		providerClientKeys:  os.Getenv("APP_AUTH_OIDC_CLIENT_KEYS"),
 		providerSigningKeys: os.Getenv("APP_AUTH_OIDC_SIGNING_KEYS"),
@@ -76,6 +80,9 @@ func loadConfig() (config, error) {
 	}
 	if !strings.HasPrefix(c.loginURL, "https://") {
 		return c, errors.New("APP_AUTH_LOGIN_URL must be an https:// URL")
+	}
+	if c.platformURL != "" && !strings.HasPrefix(c.platformURL, "https://") {
+		return c, errors.New("APP_AUTH_PLATFORM_URL must be an https:// URL")
 	}
 	return c, nil
 }
@@ -118,6 +125,7 @@ func run(log *slog.Logger) error {
 		loginURL: cfg.loginURL,
 		keys:     keys, store: st, now: time.Now, log: log,
 		tenantDomain: cfg.tenantDomain,
+		platformURL:  cfg.platformURL,
 		logoutClient: newLogoutClient(),
 		auth: &oidcAuth{
 			issuer: cfg.issuer, clientID: cfg.clientID, clientSecret: cfg.clientSecret,

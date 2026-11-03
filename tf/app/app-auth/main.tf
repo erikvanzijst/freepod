@@ -117,6 +117,12 @@ resource "kubernetes_deployment" "app_auth" {
             value = var.tenant_domain
           }
 
+          # Where product icons are served, for Keycloak's app-branded sign-in page.
+          env {
+            name  = "APP_AUTH_PLATFORM_URL"
+            value = "https://${var.domain}"
+          }
+
           env {
             name  = "APP_AUTH_OIDC_ISSUER"
             value = var.oidc_issuer

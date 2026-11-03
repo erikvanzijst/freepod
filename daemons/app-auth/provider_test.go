@@ -446,7 +446,7 @@ func TestAuthorizationCodeFlow(t *testing.T) {
 	t.Run("prompt and max_age reach Keycloak", func(t *testing.T) {
 		g := newProviderRig(t)
 		g.authorize(authorizeQuery(depWiki, wikiCallback, "prompt", "login select_account", "max_age", "300"))
-		if g.auth.params != (authParams{prompt: "login select_account", maxAge: "300"}) {
+		if g.auth.params.prompt != "login select_account" || g.auth.params.maxAge != "300" {
 			t.Fatalf("%+v", g.auth.params)
 		}
 	})

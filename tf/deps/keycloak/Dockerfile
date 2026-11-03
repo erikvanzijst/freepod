@@ -1,13 +1,21 @@
-# Keycloak with the Freepod theme baked in.
+# Keycloak with the Freepod theme and login provider baked in.
 #
 # The custom login/account/email theme (theme/freepod/) is ~22 files / ~400KB
 # of CSS, fonts, logo and FreeMarker templates — too much to ride along in a
 # ConfigMap mount, so we bake it into the image instead. Themes are read from
-# /opt/keycloak/themes at runtime, so a plain COPY is all that's needed (no
-# `kc.sh build` required, and build-time DB/feature options stay untouched).
+# /opt/keycloak/themes at runtime, so a plain COPY is all that's needed.
+#
+# The provider (provider/) shows the app a sign-in is for on the login pages
+# and in that flow's emails. It extends Keycloak's internal FreeMarker login
+# and email providers, so it is compiled against this exact base image's jars:
+# a Keycloak upgrade that changes what it overrides fails this build.
 #
 # Build + push with: ./scripts/build-images.sh <version>-<build> --keycloak
 # (see keycloak_image in variables.tf for the tag scheme).
+
+ARG KEYCLOAK=quay.io/keycloak/keycloak:26.8.1
+
+FROM ${KEYCLOAK} AS keycloak
 
 # Cache busting. Keycloak serves theme resources under /resources/<v>/ with a
 # 30-day max-age, and <v> derives from the Keycloak version, not the theme, so
@@ -26,6 +34,25 @@ RUN set -eu; \
         || { echo "css/${name} is not listed in the styles of ${props}" >&2; exit 1; }; \
     done
 
-FROM quay.io/keycloak/keycloak:26.8.1
+# The base image runs Java 21, so the provider targets 21. VectorCheck pins
+# the signature to app-auth's and is left out of the jar.
+FROM eclipse-temurin:21-jdk AS provider
+COPY --from=keycloak /opt/keycloak/lib/lib /kc-lib
+COPY provider /provider
+WORKDIR /provider
+RUN set -eu; \
+    cp='/kc-lib/main/*:/kc-lib/boot/*'; \
+    javac --release 21 -Xlint:all -Werror -cp "$cp" -d out $(find src -name '*.java'); \
+    javac --release 21 -cp "$cp:out" -d test-out $(find test -name '*.java'); \
+    java -cp "$cp:out:test-out" eu.freepod.keycloak.VectorCheck; \
+    cp -r src/META-INF out/; \
+    jar --create --file /freepod-keycloak.jar -C out .
+
+FROM keycloak
 
 COPY --from=theme /theme /opt/keycloak/themes/freepod
+COPY --from=provider /freepod-keycloak.jar /opt/keycloak/providers/
+# Our providers replace Keycloak's own; build-time options, applied as the
+# server augments on start.
+ENV KC_SPI_LOGIN__PROVIDER=freepod \
+    KC_SPI_EMAIL_TEMPLATE__PROVIDER=freepod

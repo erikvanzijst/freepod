@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"sync"
 	"time"
@@ -11,11 +12,12 @@ import (
 // memStore is the store contract in memory, for handler tests. The SQL behind
 // the same contract is exercised against the real schema in store_test.go.
 type memStore struct {
-	mu     sync.Mutex
-	now    func() time.Time
-	hosts  map[string]string // host -> deployment id, auth-enabled only
-	listed map[string]bool   // deployment id -> `auth.access: listed`
-	owners map[string]string // deployment id -> owner's email
+	mu       sync.Mutex
+	now      func() time.Time
+	hosts    map[string]string  // host -> deployment id, auth-enabled only
+	listed   map[string]bool    // deployment id -> `auth.access: listed`
+	products map[string]product // deployment id -> its catalog product
+	owners   map[string]string  // deployment id -> owner's email
 	// ownerSubjects are owners' bound subjects; an owner absent here is unbound.
 	ownerSubjects map[string]string
 	entries       map[string][]accessEntry
@@ -66,7 +68,16 @@ func newMemStore(now func() time.Time) *memStore {
 	return &memStore{now: now, hosts: map[string]string{}, consents: map[[2]string][]string{}, codes: map[string]memCode{},
 		clients: map[string]memClient{}, oidcCodes: map[string]memOIDCCode{},
 		signIns: map[[2]string]memSignIn{}, ended: map[string]time.Time{},
-		listed: map[string]bool{}, owners: map[string]string{}, ownerSubjects: map[string]string{}, entries: map[string][]accessEntry{}, names: map[string]string{}}
+		listed: map[string]bool{}, products: map[string]product{}, owners: map[string]string{}, ownerSubjects: map[string]string{}, entries: map[string][]accessEntry{}, names: map[string]string{}}
+}
+
+func (m *memStore) product(_ context.Context, id string) (product, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if p, ok := m.products[id]; ok {
+		return p, nil
+	}
+	return product{}, errors.New("no product")
 }
 
 func (m *memStore) eligible(_ context.Context, host string) (headerApp, bool, error) {

@@ -3,8 +3,14 @@
   <h1 style="margin:0 0 16px 0; font-family:Georgia,'Times New Roman',serif;
              font-size:23px; font-weight:normal; color:#0B1020;">Reset your password</h1>
 
+  <#if freepodApp??>
+  <p style="margin:0 0 4px 0;">Someone — hopefully you — asked to reset the password
+  you use to sign in to ${freepodApp.label}. ${freepodApp.label} is hosted on Freepod, so this
+  is your Freepod account's password. Click the button below to choose a new one.</p>
+  <#else>
   <p style="margin:0 0 4px 0;">Someone — hopefully you — asked to reset the password
   for your Freepod account. Click the button below to choose a new one.</p>
+  </#if>
 
   <@layout.button href=link label="Reset my password" />
 

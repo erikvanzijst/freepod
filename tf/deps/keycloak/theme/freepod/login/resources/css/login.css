@@ -453,3 +453,65 @@ a#social-google img {
 a#social-google span {
   margin: 0 !important;
 }
+
+/* ── App sign-in: the app's name leads, Freepod is the subtitle ────────── */
+.fp-app-brand::before {
+  display: none;
+}
+.fp-app-icon {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+.fp-app-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fp-app-name {
+  font-size: 34px;
+}
+.fp-app-on {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--fg-muted);
+}
+.fp-app-on::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  background: url('../img/logo.svg') center / contain no-repeat;
+}
+body.fp-app .pf-v5-c-login__main-header::before {
+  content: 'Sign in with Freepod';
+}
+.fp-app-hosted {
+  margin: 20px auto 0;
+  padding: 0 20px;
+  max-width: 460px;
+  overflow-wrap: anywhere;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-faint);
+}
+/* An app without a name of its own (custom) is shown by its address. */
+.fp-app-host {
+  font-family: var(--mono);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.fp-app-brand:has(.fp-app-host) .fp-app-titles {
+  align-items: center;
+}

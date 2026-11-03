@@ -75,10 +75,12 @@ type identity struct {
 	KeycloakSID string
 }
 
-// authParams are what an OIDC client's request passes through to Keycloak.
+// authParams are what a sign-in passes on to Keycloak: an OIDC client's
+// prompt and max_age, and for every sign-in, the app it is for.
 type authParams struct {
 	prompt string
 	maxAge string
+	brand  appBrand
 }
 
 // authenticator is the Keycloak leg. Tests substitute a stub provider through
@@ -110,6 +112,9 @@ type broker struct {
 	// tenantDomain is the only domain whose `preview-` names are previews; the
 	// platform reserves that prefix there and nowhere else.
 	tenantDomain string
+	// platformURL is where product icons are served from (/api/static/);
+	// empty leaves icons off the sign-in page.
+	platformURL string
 	// oidc is the OpenID Provider; nil leaves its routes out.
 	oidc *provider
 	// logoutClient sends apps their logout tokens; signOuts tracks the
@@ -146,7 +151,8 @@ func (b *broker) start(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	if _, ok := b.eligible(ctx, w, host); !ok {
+	app, ok := b.eligible(ctx, w, host)
+	if !ok {
 		return
 	}
 
@@ -163,7 +169,7 @@ func (b *broker) start(w http.ResponseWriter, r *http.Request) {
 		b.internal(w, "sealing flow", err)
 		return
 	}
-	target, err := b.auth.authURL(f.State, f.OIDCNonce, f.Verifier, authParams{})
+	target, err := b.auth.authURL(f.State, f.OIDCNonce, f.Verifier, authParams{brand: b.brand(ctx, app.ID, host)})
 	if err != nil {
 		b.log.Error("identity provider unavailable", "err", err)
 		b.errorPage(w, http.StatusServiceUnavailable, "Sign-in is temporarily unavailable", "Something on our side isn't answering. Please try again in a moment.")
@@ -503,6 +509,9 @@ func (a *oidcAuth) authURL(state, nonce, verifier string, p authParams) (string,
 	}
 	if p.maxAge != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("max_age", p.maxAge))
+	}
+	if v := p.brand.sign(a.clientSecret); v != "" {
+		opts = append(opts, oauth2.SetAuthURLParam(brandParam, v))
 	}
 	return cfg.AuthCodeURL(state, opts...), nil
 }

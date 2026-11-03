@@ -18,7 +18,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
-  <title>Freepod</title>
+  <title><#if freepodApp??>${freepodApp.label} on Freepod<#else>Freepod</#if></title>
 </head>
 <body style="margin:0; padding:0; background-color:#EAEDF3;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
@@ -34,12 +34,18 @@
           <!-- Dark brand header band -->
           <tr>
             <td style="background-color:#0B1020; padding:30px 36px 26px 36px;">
+              <#if freepodApp?? && !freepodApp.name??>
+              <div style="font-family:'Courier New',Courier,monospace; font-size:21px;
+                          font-weight:bold; color:#F4F6FB; line-height:1.25;
+                          word-break:break-all;">${freepodApp.host}</div>
+              <#else>
               <div style="font-family:Georgia,'Times New Roman',serif; font-size:27px;
                           font-weight:bold; color:#F4F6FB; letter-spacing:-0.5px;
-                          line-height:1;">Freepod</div>
+                          line-height:1;"><#if freepodApp??>${freepodApp.name}<#else>Freepod</#if></div>
+              </#if>
               <div style="font-family:Helvetica,Arial,sans-serif; font-size:11px;
                           letter-spacing:3px; text-transform:uppercase; color:#38BDF8;
-                          margin-top:10px;">The European cloud</div>
+                          margin-top:10px;"><#if freepodApp??>on Freepod<#else>The European cloud</#if></div>
             </td>
           </tr>
 
@@ -63,8 +69,10 @@
             <td style="padding:24px 36px 30px 36px; border-top:1px solid #ECEFF5;
                        font-family:Helvetica,Arial,sans-serif; font-size:12px;
                        line-height:1.6; color:#8A93A8;">
+              <#if freepodApp??>${freepodApp.label} is hosted on <strong style="color:#6B7488;">Freepod</strong>,
+              which runs private, EU-hosted apps.<br/><#else>
               <strong style="color:#6B7488;">Freepod</strong> — private, EU-hosted apps,
-              free of ads, tracking and lock-in.<br/>
+              free of ads, tracking and lock-in.<br/></#if>
               You received this email because it was requested for your account. If it
               wasn't you, you can safely ignore it.
             </td>

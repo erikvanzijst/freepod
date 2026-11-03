@@ -314,12 +314,35 @@ keycloak/theme/freepod/
   login/     # FreeMarker + CSS: sign-in, register, reset, OTP, errors
   account/   # PatternFly-v4 SPA skin: profile / "Personal info" pages
   email/     # FreeMarker: password reset, verify email, admin actions
+keycloak/provider/   # Java: the app a sign-in is for, for login/ and email/
 ```
 
 Each type has its own `resources/` (the fonts are self-hosted per type, copied
 from the UI's `@fontsource` packages — no Google Fonts calls). One stylesheet
 per type rebrands every screen of that type, because all screens share the
 type's `template.ftl`.
+
+### App-branded sign-in
+
+A sign-in that app-auth starts for an app leads with that app: its name and
+icon, or for a `custom` app its hostname, with "on Freepod" beneath, and the
+verification and password reset emails of that flow name it too. app-auth
+passes the app in a signed `freepod_app` authorization parameter, which
+Keycloak keeps on the authentication session for every page and email of the
+flow. `keycloak/provider/` replaces Keycloak's FreeMarker login and email
+providers with subclasses that verify it, with a key derived from the
+requesting client's secret, and expose it to templates as `freepodApp`.
+Unsigned or forged values are ignored, so any other sign-in looks as before.
+
+Those classes are Keycloak internals, not a public SPI (Keycloak logs
+`KC-SERVICES0047` for them at startup), and `login/template.ftl` is a copy of
+`keycloak.v2`'s with the app header added. So a Keycloak upgrade also takes:
+
+- the image build, which compiles the provider against the new base image's
+  jars and runs its signature check (CI builds the image on every push);
+- a diff of `login/template.ftl` against the new `keycloak.v2/login/template.ftl`
+  (in `lib/lib/main/org.keycloak.keycloak-themes-<version>.jar`);
+- a look at an app-branded sign-in, register and reset page and both emails.
 
 ### How it's deployed (production)
 
@@ -337,7 +360,7 @@ tag is never re-pushed: every theme or base-image change takes the next build
 number. Build, push and roll out:
 
 ```bash
-./scripts/build-images.sh 26.8.1-2 --keycloak  # build + push ghcr.io/<owner>/freepod/keycloak
+./scripts/build-images.sh 26.8.1-3 --keycloak  # build + push ghcr.io/<owner>/freepod/keycloak
 # set keycloak_image in variables.tf to the new tag, then:
 cd tf/deps && terraform apply -target=module.keycloak
 ```
