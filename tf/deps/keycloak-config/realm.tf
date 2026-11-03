@@ -65,6 +65,20 @@ resource "keycloak_realm" "freepod" {
     starttls          = false
   }
 
+  # Passkeys: offered in the sign-in form's autofill and by a "Sign in with
+  # Passkey" button, registered from the account console. The relying party ID
+  # stays unset, so passkeys bind to the Keycloak hostname; freepod.eu would let
+  # any page on a subdomain request them. A passkey replaces the password, so
+  # the device must verify the user (fingerprint, face, PIN). RS256 is for
+  # authenticators that cannot sign with ES256.
+  web_authn_passwordless_policy {
+    relying_party_entity_name     = "Freepod"
+    signature_algorithms          = ["ES256", "RS256"]
+    user_verification_requirement = "required"
+    discoverable_credential       = "required"
+    passwordless_passkeys_enabled = true
+  }
+
   # Deleting a realm cascades to every user, credential and session inside it,
   # and Terraform does not manage those — they live in Keycloak's own Postgres
   # and are not reconstructible from this configuration.

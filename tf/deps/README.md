@@ -248,6 +248,11 @@ Behavior that is deliberate (openspec `keycloak-google-identity-provider`):
   mapper that puts `sub` into access tokens. The default-scope lists are
   authoritative, so dropping it strips the subject from CLI bearer tokens, and
   the API silently falls back to resolving callers by email.
+- **The browser flow is a copy.** `keycloak-config/authentication.tf` binds
+  `freepod browser`, a copy of the built-in `browser` flow with a condition
+  that skips OTP after a passkey sign-in. Terraform tracks only that condition
+  and the binding, not the copied steps, and Keycloak upgrades do not update
+  the copy: after an upgrade, compare it with the new built-in flow.
 - **The provider and the server move together.** Provider 5.8 and later need
   Keycloak 26 or newer; they send realm fields older servers reject.
 - **The realm carries two destroy guards.** `prevent_destroy` guards the plan
