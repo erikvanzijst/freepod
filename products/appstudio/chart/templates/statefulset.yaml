@@ -22,7 +22,12 @@ spec:
         {{- include "appstudio.podLabels" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
+      {{- with .Values.runtimeClassName }}
+      runtimeClassName: {{ . | quote }}
+      {{- else }}
+      {{- /* gVisor doesn't support pod user namespaces. */}}
       hostUsers: false
+      {{- end }}
       {{- with .Values.nodePool }}
       tolerations:
         - key: caelus.dev/node-pool

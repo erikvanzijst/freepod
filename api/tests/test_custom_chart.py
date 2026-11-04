@@ -206,6 +206,18 @@ def test_the_pod_runs_in_its_own_user_namespace():
     assert _pod_spec(_render(**BASE, image=f"1@{DIGEST}", **DATABASE))["hostUsers"] is False
 
 
+def test_without_a_runtime_class_the_pod_uses_the_default_runtime():
+    assert "runtimeClassName" not in _pod_spec(_render(**BASE))
+
+
+def test_a_sandboxed_pod_names_its_runtime_class_and_no_user_namespace():
+    """gVisor doesn't support pod user namespaces: a pod asking for both never starts."""
+    pod = _pod_spec(_render(**BASE, runtimeClassName="gvisor"))
+
+    assert pod["runtimeClassName"] == "gvisor"
+    assert "hostUsers" not in pod
+
+
 def test_the_app_container_caps_its_ephemeral_storage_without_reserving_it():
     resources = _app_container(_render(**BASE))["resources"]
 
@@ -687,3 +699,12 @@ def test_the_tenant_schema_rejects_malformed_auth(auth):
 
     with pytest.raises(CaelusException):
         validate_user_values({"hostname": "a.example", "auth": auth}, _tenant_schema())
+
+
+@pytest.mark.parametrize("runtime", ["", "runc", "gvisor"])
+def test_a_tenant_cannot_choose_the_runtime(runtime):
+    from app.services.errors import CaelusException
+    from app.services.template_values import validate_user_values
+
+    with pytest.raises(CaelusException):
+        validate_user_values({"hostname": "a.example", "runtimeClassName": runtime}, _tenant_schema())

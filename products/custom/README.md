@@ -18,6 +18,12 @@ the system values, and the user values schema that drives the deployment form.
 | Service     | `<release>-app` `:80` → the container's `http` port                                                            |
 | Ingress     | `<release>-ingress` (per-deployment TLS via `caelus.ingress.tls`), only once the reconciler injects a hostname |
 
+The pod runs under the RuntimeClass the catalog names in `runtimeClassName`:
+`gvisor`, a sandbox that only the tenant node pool provides, so the app runs
+there or not at all. With the value empty it runs on the default runtime in its
+own user namespace, and prefers the `nodePool` nodes. See
+[Sandboxed runtime](../../tf/deps/README.md#sandboxed-runtime).
+
 No PVC: an image built from a user's source tree is stateless as far as this
 chart is concerned. Persistence, if it is ever offered here, is a separate
 decision that should not be smuggled in as a default.
