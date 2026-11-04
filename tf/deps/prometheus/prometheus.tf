@@ -112,7 +112,8 @@ resource "helm_release" "prometheus" {
       # See: https://www.giffgaff.io/tech/monitoring-kubernetes-jobs
       serverFiles = {
         # Override the chart's default scrape_configs to drop high-cardinality
-        # control-plane histograms (see scrape_configs.yaml header). Helm deep-
+        # control-plane histograms and to source container usage from the
+        # kubelet's resource endpoint (see scrape_configs.yaml header). Helm deep-
         # merges this map, so the chart's rule_files/alerting defaults under
         # prometheus.yml are preserved; only the scrape_configs list is replaced.
         "prometheus.yml" = {

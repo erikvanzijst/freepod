@@ -1,8 +1,8 @@
 # Prometheus scrape_configs — FORKED from the prometheus-community/prometheus
 # chart's default serverFiles."prometheus.yml".scrape_configs (chart 27.20.0).
-# We fork it solely to attach metric_relabel_configs (drop rules) to two jobs;
-# the chart offers no partial-merge hook, so overriding the whole list is the
-# only way to drop series at ingestion.
+# We fork it to attach metric_relabel_configs to the node jobs and to add the
+# kubernetes-nodes-resource job; the chart offers no partial-merge hook, so
+# overriding the whole list is the only way to shape series at ingestion.
 #
 # IMPORTANT: reconcile this file when bumping the prometheus chart version in
 # prometheus.tf — diff against the chart's new default scrape_configs.
@@ -14,6 +14,14 @@
 #   - kubernetes-nodes: the kubelet proxy scrape re-exports the SAME control-plane
 #     metrics (k3s serves them all from one process), so drop those families here
 #     entirely as pure duplicates of the kubernetes-apiservers copy.
+#
+# Container usage (container_cpu_usage_seconds_total and
+# container_memory_working_set_bytes with a container label) comes from the
+# kubelet's /metrics/resource, not cAdvisor. OpenCost meters from these two, and
+# cAdvisor reads per-container cgroups, which a gVisor sandbox leaves empty: it
+# charges the whole pod to the sandbox cgroup. The kubelet's resource endpoint
+# takes those containers from CRI stats and is identical to cAdvisor for runc.
+# cAdvisor keeps the pod-level (container="") series and every other family.
 # The kube-state-metrics job stays in prometheus.tf's extraScrapeConfigs (omitting
 # it here avoids a duplicate scrape).
 - job_name: prometheus
@@ -78,6 +86,34 @@
   scheme: https
   tls_config:
     ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  metric_relabel_configs:
+  - source_labels:
+    - __name__
+    - container
+    regex: (container_cpu_usage_seconds_total|container_memory_working_set_bytes);.+
+    action: drop
+- bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+  job_name: kubernetes-nodes-resource
+  kubernetes_sd_configs:
+  - role: node
+  relabel_configs:
+  - action: labelmap
+    regex: __meta_kubernetes_node_label_(.+)
+  - replacement: kubernetes.default.svc:443
+    target_label: __address__
+  - regex: (.+)
+    replacement: /api/v1/nodes/$1/proxy/metrics/resource
+    source_labels:
+    - __meta_kubernetes_node_name
+    target_label: __metrics_path__
+  scheme: https
+  tls_config:
+    ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  metric_relabel_configs:
+  - source_labels:
+    - __name__
+    regex: container_cpu_usage_seconds_total|container_memory_working_set_bytes
+    action: keep
 - honor_labels: true
   job_name: kubernetes-service-endpoints
   kubernetes_sd_configs:
