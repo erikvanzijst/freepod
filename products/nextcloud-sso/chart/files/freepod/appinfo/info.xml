@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+	<id>freepod</id>
+	<name>Freepod</name>
+	<summary>Ends every sign-in of a person removed from a Freepod deployment's access list</summary>
+	<description>Receives Freepod's back-channel logout tokens. user_oidc ends the sessions a token names; a token that revokes access also removes the person's app passwords and other devices.</description>
+	<version>0.1.0</version>
+	<licence>mit</licence>
+	<author>Freepod</author>
+	<namespace>Freepod</namespace>
+	<category>security</category>
+	<bugs>https://github.com/erikvanzijst/freepod/issues</bugs>
+	<dependencies>
+		<nextcloud min-version="32" max-version="36"/>
+	</dependencies>
+</info>

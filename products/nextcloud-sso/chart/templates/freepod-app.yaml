@@ -1,0 +1,19 @@
+{{- /*
+The `freepod` Nextcloud app (files/freepod), mounted read-only into
+custom_apps with SSO on: the back-channel logout endpoint that also revokes a
+removed person's app passwords. ConfigMap keys are flat, so the volume maps
+each one back to its path in the app.
+*/}}
+{{- if include "nextcloud.sso" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-freepod-app
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+data:
+  {{- range $path, $_ := .Files.Glob "files/freepod/**" }}
+  {{ trimPrefix "files/freepod/" $path | replace "/" "__" }}: |
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+{{- end }}

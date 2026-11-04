@@ -1,0 +1,107 @@
+{{- if .Values.postgresql.enabled }}
+{{- /*
+Lean bundled PostgreSQL on the official postgres image: a Secret, a single
+headless Service, and a StatefulSet with a volumeClaimTemplate. Deliberately
+Caelus-native: the password is generated and stable, PGDATA is the conventional
+pgdata subdir, and the image runs as its own user. A StatefulSet is the right
+controller for a stateful datastore (stable identity + PVC lifecycle).
+*/}}
+{{- $pw := include "nextcloud.stableSecret" (dict "root" . "secret" "db" "key" "POSTGRES_PASSWORD" "value" .Values.postgresql.auth.password) -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-db
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+type: Opaque
+data:
+  POSTGRES_USER: {{ .Values.postgresql.auth.username | b64enc | quote }}
+  POSTGRES_PASSWORD: {{ $pw | b64enc | quote }}
+  POSTGRES_DB: {{ .Values.postgresql.auth.database | b64enc | quote }}
+---
+# Headless Service: the StatefulSet's governing service and the app's DB endpoint
+# (POSTGRES_HOST). A single replica needs no separate ClusterIP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-postgresql
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "nextcloud.componentSelector" (dict "root" . "name" "postgresql") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-postgresql
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+    {{- include "nextcloud.componentSelector" (dict "root" . "name" "postgresql") | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: {{ .Release.Name }}-postgresql
+  selector:
+    matchLabels:
+      {{- include "nextcloud.componentSelector" (dict "root" . "name" "postgresql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nextcloud.componentSelector" (dict "root" . "name" "postgresql") | nindent 8 }}
+    spec:
+      containers:
+        - name: postgresql
+          image: {{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          ports:
+            - containerPort: 5432
+              name: postgres
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
+          env:
+            # PGDATA is a subdir of the mount so the PVC root (with lost+found) is
+            # never PGDATA directly.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_INITDB_ARGS
+              value: "--data-checksums"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          {{- with .Values.postgresql.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - {{ .Values.postgresql.persistence.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.persistence.size }}
+        {{- if .Values.postgresql.persistence.storageClassName }}
+        storageClassName: {{ .Values.postgresql.persistence.storageClassName }}
+        {{- end }}
+{{- end }}

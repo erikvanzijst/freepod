@@ -1,0 +1,20 @@
+{{- /*
+Single Nextcloud data PVC. Holds the app tree via subPaths (html, data, config,
+custom_apps, themes, tmp). RWO: shared in-pod with the read-only SFTP sidecar
+(which sees only the data/ subPath). caelus.plan.storageSize overrides size.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-data
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.storage.data.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.caelus.plan.storageSize | default .Values.storage.data.size }}
+  {{- if .Values.storage.data.storageClassName }}
+  storageClassName: {{ .Values.storage.data.storageClassName }}
+  {{- end }}

@@ -1,0 +1,221 @@
+{{- /*
+Nextcloud app (official apache image). Owns the data PVC via subPath mounts and
+carries the read-only SFTP sidecar (RWO volume shared in-pod). An init container
+blocks startup until Postgres answers. fsGroup 33 (www-data) so the app and the
+uid-33 SFTP user can both read the files.
+
+<release>-admin exists only for a standalone install or with SSO on. Under
+Caelus without SSO the tenant supplies NEXTCLOUD_ADMIN_PASSWORD as a required
+sensitive var, and this would be a second, unused copy of a credential that is
+write-only everywhere else. With SSO on it installs an admin nobody signs in as.
+*/}}
+{{- include "nextcloud.ssoRequired" . }}
+{{- include "nextcloud.modeUnchanged" . }}
+{{- $adminSecret := or (not .Values.caelus.vars.secretName) (include "nextcloud.sso" .) }}
+{{- if $adminSecret }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-admin
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  NEXTCLOUD_ADMIN_PASSWORD: {{ include "nextcloud.stableSecret" (dict "root" . "secret" "admin" "key" "NEXTCLOUD_ADMIN_PASSWORD" "value" .Values.admin.password) | quote }}
+---
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-app
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+type: Opaque
+data:
+  admin-username: {{ .Values.admin.username | b64enc | quote }}
+  smtp-host: {{ .Values.smtp.host | b64enc | quote }}
+  smtp-username: {{ .Values.smtp.username | b64enc | quote }}
+  smtp-password: {{ .Values.smtp.password | b64enc | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-nextcloud
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nextcloud.componentSelector" (dict "root" . "name" "nextcloud") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-nextcloud
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+    {{- include "nextcloud.componentSelector" (dict "root" . "name" "nextcloud") | nindent 4 }}
+spec:
+  replicas: 1
+  # Single RWO data volume: never two app pods at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "nextcloud.componentSelector" (dict "root" . "name" "nextcloud") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        # Roll the pods when the non-secret config or hook script changes;
+        # envFrom/volume-mounted ConfigMaps don't alter the pod-template hash.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if include "nextcloud.sso" . }}
+        checksum/freepod-app: {{ include (print $.Template.BasePath "/freepod-app.yaml") . | sha256sum }}
+        {{- end }}
+      labels:
+        {{- include "nextcloud.componentSelector" (dict "root" . "name" "nextcloud") | nindent 8 }}
+        {{- include "nextcloud.podLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        # Mount all files as www-data (uid/gid 33); matches the SFTP user uid.
+        fsGroup: 33
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}
+          command:
+            - sh
+            - -c
+            - until pg_isready -h {{ .Release.Name }}-postgresql -U "$POSTGRES_USER"; do sleep 2; done
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-db
+      containers:
+        - name: nextcloud
+          image: {{ .Values.image.repository }}:{{ include "nextcloud.imageTag" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          # The tenant's vars come first: a later envFrom source overrides an
+          # earlier one, and no var may displace a credential or the config.
+          envFrom:
+            {{- with .Values.caelus.vars.secretName }}
+            - secretRef:
+                name: {{ . | quote }}
+            {{- end }}
+            {{- if $adminSecret }}
+            - secretRef:
+                name: {{ $.Release.Name }}-admin
+            {{- end }}
+            # POSTGRES_DB/USER/PASSWORD -- same keys the nextcloud image expects.
+            - secretRef:
+                name: {{ .Release.Name }}-db
+            # POSTGRES_HOST, OVERWRITEPROTOCOL, trusted domains/proxies, non-secret
+            # SMTP settings -- see the -config ConfigMap.
+            - configMapRef:
+                name: {{ .Release.Name }}-config
+          # Only secret-derived vars stay inline (must be valueFrom, not a ConfigMap).
+          env:
+            - name: NEXTCLOUD_ADMIN_USER
+              valueFrom:
+                secretKeyRef: { name: {{ .Release.Name }}-app, key: admin-username }
+            {{- if include "nextcloud.sso" . }}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.caelus.oidc.secretName | quote }}, key: OIDC_CLIENT_SECRET }
+            {{- end }}
+            {{- if .Values.smtp.host }}
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef: { name: {{ .Release.Name }}-app, key: smtp-host }
+            - name: SMTP_NAME
+              valueFrom:
+                secretKeyRef: { name: {{ .Release.Name }}-app, key: smtp-username }
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ .Release.Name }}-app, key: smtp-password }
+            {{- end }}
+          volumeMounts:
+            - { name: data, mountPath: /var/www,                 subPath: root }
+            - { name: data, mountPath: /var/www/html,            subPath: html }
+            - { name: data, mountPath: /var/www/html/data,       subPath: data }
+            - { name: data, mountPath: /var/www/html/config,     subPath: config }
+            - { name: data, mountPath: /var/www/html/custom_apps, subPath: custom_apps }
+            - { name: data, mountPath: /var/www/html/themes,     subPath: themes }
+            - { name: data, mountPath: /var/www/tmp,             subPath: tmp }
+            # Entrypoint hook: deferred DB maintenance (missing indices, mimetype
+            # repair) after `occ upgrade`. Mounted as the whole hook dir (not a
+            # subPath file) so defaultMode's +x bit applies -- the entrypoint
+            # sources non-executable hooks instead of running them, which would
+            # leak our script into its own shell.
+            - { name: hooks, mountPath: /docker-entrypoint-hooks.d/before-starting }
+            # HSTS for Nextcloud's server-side header check (edge Traefik owns the
+            # real header). subPath: single conf file, not the whole conf-enabled.
+            - { name: apache-conf, mountPath: /etc/apache2/conf-enabled/hsts.conf, subPath: hsts.conf }
+            {{- if include "nextcloud.sso" . }}
+            - { name: freepod-app, mountPath: /var/www/html/custom_apps/freepod, readOnly: true }
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /status.php
+              port: http
+              httpHeaders:
+                - { name: Host, value: {{ .Values.host | quote }} }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /status.php
+              port: http
+              httpHeaders:
+                - { name: Host, value: {{ .Values.host | quote }} }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /status.php
+              port: http
+              httpHeaders:
+                - { name: Host, value: {{ .Values.host | quote }} }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage
+             "sessionRoot" "volume:/data"
+             "mounts" (list (dict "volume" "data" "path" "/data" "subPath" "data"))) | nindent 8 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-data
+        - name: hooks
+          configMap:
+            name: {{ .Release.Name }}-hooks
+            defaultMode: 0755  # entrypoint only executes hook files that are +x
+        - name: apache-conf
+          configMap:
+            name: {{ .Release.Name }}-apache
+        {{- if include "nextcloud.sso" . }}
+        - name: freepod-app
+          configMap:
+            name: {{ .Release.Name }}-freepod-app
+            items:
+              {{- range $path, $_ := .Files.Glob "files/freepod/**" }}
+              {{- $rel := trimPrefix "files/freepod/" $path }}
+              - { key: {{ replace "/" "__" $rel | quote }}, path: {{ $rel | quote }} }
+              {{- end }}
+        {{- end }}

@@ -283,6 +283,7 @@ _XDIST_GROUPS = {
         "test_lemmy_chart",
         "test_mattermost_chart",
         "test_nextcloud_chart",
+        "test_nextcloud_sso_chart",
         "test_openproject_chart",
         "test_photoprism_chart",
         "test_post_render",

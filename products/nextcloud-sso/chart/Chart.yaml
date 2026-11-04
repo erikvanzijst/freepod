@@ -1,0 +1,22 @@
+apiVersion: v2
+name: nextcloud-sso
+description: >-
+  SSO sandbox copy of the Freepod Nextcloud chart, for trying Sign in with
+  Freepod without touching the catalog chart: the Nextcloud Deployment plus a
+  bundled PostgreSQL StatefulSet on the official postgres image.
+type: application
+version: 0.1.1
+appVersion: "34.0.2"
+keywords:
+  - nextcloud
+  - files
+  - storage
+  - postgres
+maintainers:
+  - name: Caelus Team
+
+# Only dependency is Freepod's own SFTP library chart.
+dependencies:
+  - name: ssh-sidecar
+    version: "0.5.1"
+    repository: "file://../../_lib/ssh-sidecar-chart"

@@ -1,0 +1,5 @@
+{{ include "ssh-sidecar.resources" (dict
+     "root" .
+     "selector" (dict
+       "app.kubernetes.io/name" "nextcloud"
+       "app.kubernetes.io/instance" .Release.Name)) }}
