@@ -1,0 +1,201 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+data:
+  POSTGRES_HOST: {{ .Release.Name }}-postgresql
+  OVERWRITEPROTOCOL: "https"
+  NEXTCLOUD_TRUSTED_DOMAINS: {{ .Values.host | quote }}
+  NEXTCLOUD_DATA_DIR: /var/www/html/data
+  {{- if .Values.trustedProxies }}
+  TRUSTED_PROXIES: {{ join " " .Values.trustedProxies | quote }}
+  {{- end }}
+  {{- if .Values.smtp.host }}
+  MAIL_FROM_ADDRESS: {{ .Values.smtp.fromAddress | quote }}
+  MAIL_DOMAIN: {{ .Values.smtp.domain | quote }}
+  SMTP_PORT: {{ .Values.smtp.port | quote }}
+  SMTP_SECURE: {{ .Values.smtp.secure | quote }}
+  SMTP_AUTHTYPE: {{ .Values.smtp.authtype | quote }}
+  {{- end }}
+  {{- if include "nextcloud.sso" . }}
+  FREEPOD_OIDC_DISCOVERY_URI: {{ printf "%s/.well-known/openid-configuration" (trimSuffix "/" .Values.caelus.oidc.issuer) | quote }}
+  FREEPOD_OIDC_CLIENT_ID: {{ .Values.caelus.oidc.clientId | quote }}
+  FREEPOD_OWNER_SUBJECT: {{ .Values.caelus.owner.subject | quote }}
+  FREEPOD_OWNER_EMAIL: {{ .Values.caelus.owner.email | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-hooks
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+data:
+  apps.sh: |
+    #!/bin/sh
+    # Installs the setup wizard's Calendar and Contacts, which the image's
+    # automated install skips. Every boot, so any instance lacking them gets them.
+    # An app that was ever installed (listed, or removed but still holding an
+    # installed_version) is the admin's and is left alone. Never fails: a
+    # non-zero exit would stop the entrypoint before Apache starts.
+    occ="php /var/www/html/occ"
+    listed=$($occ app:list) || exit 0
+    listed=$(printf '%s\n' "$listed" | sed -n 's/^  - \([^:]*\).*/\1/p')
+    for app in calendar contacts; do
+        printf '%s\n' "$listed" | grep -qx "$app" && continue
+        [ -n "$($occ config:app:get "$app" installed_version)" ] && continue
+        timeout 90 $occ app:install "$app" && continue
+        rc=$?
+        echo "apps.sh: could not install $app (exit $rc); retrying on next start"
+        [ "$rc" -eq 124 ] && break
+    done
+    exit 0
+  db-maintenance.sh: |
+    #!/bin/sh
+    # Runs from /docker-entrypoint-hooks.d/before-starting on every boot, after
+    # the entrypoint's `occ upgrade`. DB migrations are therefore already applied
+    # and the schema version matches the code, which is exactly the state these
+    # commands require.
+    #
+    # All steps are idempotent no-ops once applied, so re-running each boot is
+    # cheap and also catches changes that later-installed apps introduce without
+    # a core upgrade. Best-effort (no `set -e`): a failed step must not keep the
+    # instance from starting.
+    #
+    # The db:* and maintenance:repair steps are what Nextcloud deliberately
+    # defers out of the automatic upgrade (because it can be slow on big
+    # instances) and then nags the admin to run by hand -- work that is trivial
+    # at Freepod's scale.
+    #
+    # add-missing-*: clears the "missing indices/columns/primary keys" warning.
+    php /var/www/html/occ db:add-missing-indices
+    php /var/www/html/occ db:add-missing-columns
+    php /var/www/html/occ db:add-missing-primary-keys
+    # --include-expensive: runs the deferred repair steps, notably the mimetype
+    # migration ("mimetype migrations available" warning).
+    php /var/www/html/occ maintenance:repair --include-expensive
+    # Reconcile the persisted trusted_domains with the chart's host. This is NOT
+    # redundant with NEXTCLOUD_TRUSTED_DOMAINS: the image applies that variable
+    # only in its initial-install branch, and ignores it on every later boot
+    # because config.php already exists on the data PVC. So after a hostname
+    # change the OLD host stays persisted, Nextcloud answers 400 to any request
+    # whose Host header is not trusted, and the pod fails the /status.php
+    # startup probe -- 30 x 10s, which is exactly the platform's Helm timeout,
+    # so `helm upgrade --atomic` rolls the release back and silently reverts the
+    # ingress to the old hostname while the database keeps the new one. It
+    # presents as a Helm timeout and is not one.
+    #
+    # Index assignment mirrors the entrypoint's own install-time loop: index 0
+    # is the installer's `localhost`, and the chart's hosts own index 1 upward,
+    # so this rewrites only slots the platform already owns.
+    idx=1
+    for domain in $NEXTCLOUD_TRUSTED_DOMAINS; do
+        php /var/www/html/occ config:system:set trusted_domains "$idx" --value="$domain"
+        idx=$((idx + 1))
+    done
+  {{- if include "nextcloud.sso" . }}
+  # Named to run before the other hooks, which need any pending upgrade done.
+  00-sso.sh: |
+    #!/bin/sh
+    # Sign in with Freepod, applied on every start so a rotated client secret
+    # takes effect and an admin's changes to these settings do not stick. Unlike
+    # the other hooks it fails the start when a step fails: without it, nobody
+    # can sign in.
+    set -eu
+    occ="php /var/www/html/occ"
+    hooks=/docker-entrypoint-hooks.d/before-starting
+
+    # A new version of an app, such as the chart's own freepod app, leaves
+    # Nextcloud refusing logins until `occ upgrade` runs, and the entrypoint
+    # runs it only for a new Nextcloud.
+    if $occ status --output=json 2>/dev/null | grep -q '"needsDbUpgrade":true'; then
+        $occ upgrade
+    fi
+
+    [ -d /var/www/html/custom_apps/user_oidc ] || timeout 120 $occ app:install --keep-disabled user_oidc
+    $occ app:enable user_oidc
+    # Freepod's back-channel logout endpoint (custom_apps/freepod, from the chart).
+    $occ app:enable freepod
+
+    # Accounts are keyed by the Freepod subject (unique-uid 0 keeps it unhashed,
+    # so the owner's account can be provisioned before they first sign in), and
+    # their email and name follow Freepod's on every sign-in. Groups stay
+    # Nextcloud's: the provider sends none.
+    $occ user_oidc:provider freepod \
+        --clientid="$FREEPOD_OIDC_CLIENT_ID" \
+        --clientsecret-env=OIDC_CLIENT_SECRET \
+        --discoveryuri="$FREEPOD_OIDC_DISCOVERY_URI" \
+        --scope="openid email profile" \
+        --unique-uid=0 \
+        --mapping-uid=sub \
+        --mapping-email=email \
+        --mapping-display-name=name \
+        --send-id-token-hint=1 \
+        --group-provisioning=0 \
+        --check-bearer=0 \
+        --bearer-provisioning=0 >/dev/null
+
+    # Log in goes straight to Freepod. A sign-in whose subject names an account
+    # of another backend (one created under Users) is refused, not merged.
+    $occ config:app:set --type=string --value=0 user_oidc allow_multiple_user_backends
+    $occ config:system:set user_oidc auto_provision --type=boolean --value=true
+    $occ config:system:set user_oidc soft_auto_provision --type=boolean --value=false
+    $occ config:system:set user_oidc login_label --value="Sign in with Freepod"
+
+    php "$hooks/owner.php"
+
+    # The install's own admin has a generated password nobody is given; it stays
+    # disabled so the only way in is through Freepod.
+    $occ user:disable "$NEXTCLOUD_ADMIN_USER"
+  owner.php: |
+    <?php
+    // Provisions the deployment's owner as a Sign in with Freepod account in the
+    // admin group, so their first sign-in lands in an account that already
+    // administers this Nextcloud. Run by 00-sso.sh on every start; not a hook
+    // itself, as the entrypoint runs only *.sh.
+    declare(strict_types=1);
+
+    require_once '/var/www/html/lib/base.php';
+
+    use OCA\UserOIDC\Db\ProviderMapper;
+    use OCA\UserOIDC\Db\UserMapper;
+    use OCP\IGroupManager;
+    use OCP\IUserManager;
+    use OCP\Server;
+
+    $provider = Server::get(ProviderMapper::class)->findProviderByIdentifier('freepod');
+    $uid = Server::get(UserMapper::class)->getOrCreate($provider->getId(), getenv('FREEPOD_OWNER_SUBJECT'))->getUserId();
+    $user = Server::get(IUserManager::class)->get($uid);
+    if ($user === null) {
+        fwrite(STDERR, "owner.php: user_oidc did not provision $uid\n");
+        exit(1);
+    }
+    if ($user->getSystemEMailAddress() === null) {
+        $user->setSystemEMailAddress(getenv('FREEPOD_OWNER_EMAIL'));
+    }
+    $admins = Server::get(IGroupManager::class)->get('admin');
+    if (!$admins->inGroup($user)) {
+        $admins->addUser($user);
+    }
+    echo "owner.php: $uid is an administrator\n";
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-apache
+  labels:
+    {{- include "nextcloud.labels" . | nindent 4 }}
+data:
+  hsts.conf: |
+    # TLS terminates at the edge (Traefik), which owns the browser-facing HSTS
+    # header. But Nextcloud's server-side "HTTP headers" setup check inspects a
+    # loopback request that reaches Apache directly, bypassing that middleware,
+    # so it reports HSTS as missing. Emit it here too to satisfy the check;
+    # Traefik still overwrites it with the authoritative value on external
+    # responses, so browsers never see a duplicate.
+    <IfModule mod_headers.c>
+      Header always set Strict-Transport-Security "max-age=15552000; includeSubDomains"
+    </IfModule>

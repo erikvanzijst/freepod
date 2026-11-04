@@ -107,3 +107,22 @@ A template whose app accepts OpenID Connect Back-Channel Logout MAY declare, as 
 
 - **WHEN** a template declares `auth.oidc.backchannelLogoutPath: "/api/oauth/backchannel-logout"`
 - **THEN** the platform delivers logout tokens for its deployments to `https://<hostname>/api/oauth/backchannel-logout`
+
+### Requirement: A chart may revoke what outlives a session
+
+A logout token that carries `freepod_access: "revoked"` SHALL mean that the subject lost access to the deployment, not that a session ended. A chart whose app keeps credentials that outlive a sign-in session, such as app passwords or API keys, MAY revoke them on such a token, and SHALL NOT revoke them on any other logout token. Revoking SHALL leave the person's account and data in place, so that being given access again is enough to sign in again.
+
+#### Scenario: Removed from the access list
+
+- **WHEN** a person whose sync client holds an app password is removed from a deployment's access list, and its chart revokes on `freepod_access: "revoked"`
+- **THEN** their browser sessions end and their sync client can no longer sign in
+
+#### Scenario: Signing out
+
+- **WHEN** that person instead signs out of Freepod
+- **THEN** their browser session in the app ends and their sync client keeps working
+
+#### Scenario: Given access again
+
+- **WHEN** the owner adds the person back to the access list
+- **THEN** the person signs in to their existing account, with their files intact

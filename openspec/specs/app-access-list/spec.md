@@ -140,12 +140,17 @@ Adding or removing an entry SHALL NOT start a reconcile or change any chart valu
 
 ### Requirement: Removal signs the person out of an OIDC app
 
-When the owner removes an entry tied to a subject from an `oidc` deployment that declares `auth.oidc.backchannelLogoutPath`, the platform SHALL send the app a back-channel logout token for that subject as part of the removal. The entry SHALL be removed only when the app accepts the token; otherwise the removal SHALL fail, naming the app, and the entry SHALL stay. Removing an unbound entry SHALL send nothing.
+When the owner removes an entry tied to a subject from an `oidc` deployment that declares `auth.oidc.backchannelLogoutPath`, the platform SHALL send the app a back-channel logout token for that subject as part of the removal. The token SHALL carry no `sid` and SHALL carry the claim `freepod_access: "revoked"`, which no sign-out's token carries. The entry SHALL be removed only when the app accepts the token; otherwise the removal SHALL fail, naming the app, and the entry SHALL stay. Removing an unbound entry SHALL send nothing.
 
 #### Scenario: Removing a signed-in person
 
 - **WHEN** the owner removes Ana, whose entry is tied to their subject, from a `listed` OIDC app that declares a back-channel logout path
-- **THEN** the app receives a logout token for Ana's subject and ends their sessions, and the entry is removed
+- **THEN** the app receives a logout token for Ana's subject, without `sid` and with `freepod_access: "revoked"`, and ends their sessions, and the entry is removed
+
+#### Scenario: Signing out is not a removal
+
+- **WHEN** Ana signs out of Freepod while signed in to that app
+- **THEN** the app receives a logout token for Ana's session, with `sid` and without `freepod_access`
 
 #### Scenario: App unreachable
 

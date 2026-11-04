@@ -56,6 +56,10 @@ INVITATION_RETENTION = timedelta(days=7)
 LOGOUT_TOKEN_TTL_SEC = 120
 LOGOUT_TIMEOUT_SEC = 10
 BACKCHANNEL_LOGOUT_EVENT = "http://schemas.openid.net/event/backchannel-logout"
+# Marks a logout token as the loss of access rather than a sign-out, so an app
+# can also revoke what outlives a session, such as a sync client's app password.
+ACCESS_CLAIM = "freepod_access"
+ACCESS_REVOKED = "revoked"
 
 # Deliberately loose on the local part, which only the address's own domain
 # interprets, and strict on the domain, which mail is routed by.
@@ -346,7 +350,7 @@ def key_id(key: RSAPrivateKey) -> str:
 
 
 def logout_token(deployment_id: UUID, subject: str, *, now: float | None = None) -> str:
-    """A back-channel logout token for subject, as app-auth's provider would sign it (D9)."""
+    """A back-channel logout token revoking subject's access, as app-auth's provider would sign it (D9)."""
     key, kid = _signing_key()
     iat = int(time.time() if now is None else now)
     claims = {
@@ -357,6 +361,7 @@ def logout_token(deployment_id: UUID, subject: str, *, now: float | None = None)
         "jti": secrets.token_urlsafe(16),
         "sub": subject,
         "events": {BACKCHANNEL_LOGOUT_EVENT: {}},
+        ACCESS_CLAIM: ACCESS_REVOKED,
     }
     return jwt.encode(claims, key, algorithm="RS256", headers={"typ": "logout+jwt", "kid": kid})
 

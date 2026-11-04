@@ -44,6 +44,7 @@ DATASTORES = {
     "lemmy": {"lemmy/templates/postgres.yaml"},
     "mattermost": {"mattermost/templates/postgresql.yaml"},
     "nextcloud": {"nextcloud/templates/postgres.yaml"},
+    "nextcloud-sso": {"nextcloud-sso/templates/postgres.yaml"},
     "openproject": {
         "openproject/templates/postgres.yaml",
         "openproject/templates/memcached.yaml",
