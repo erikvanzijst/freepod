@@ -18,7 +18,9 @@
   `cluster-metrics-collection` delta). The requirement records that
   dependency; no further metering work is needed.
 - **Measured on the tenant node:**
-  - Sandbox overhead is 15–22 MiB per pod, charged to the pod's cgroup.
+  - Sandbox overhead is 15–22 MiB for an idle toy pod, and about 75 MiB of
+    unreclaimable memory and 10 millicores per pod across real tenant apps,
+    charged to the pod's cgroup.
   - NetworkPolicy is enforced in both directions.
   - Logs reach Loki with normal labels.
   - A shared PID namespace works: a sidecar can see the app container's
@@ -94,19 +96,41 @@ safe side: user namespaces stay on until a chart is shown to need them off.
 *Alternative:* gVisor's proposed opt-in annotation for user namespaces.
 Rejected: not released. Revisit once runsc supports `hostUsers: false`.
 
-### D5: Overhead of 32 MiB and 10m CPU
+### D5: Overhead of 80 MiB and 10m CPU
 
-Measured idle overhead is 15–22 MiB. 32 MiB leaves headroom for the Sentry
-growing under load without re-measuring per product. The overhead also raises
+Across the real tenant apps, sandboxing added about 75 MiB of memory the
+kernel cannot reclaim (anonymous memory plus the Sentry's shared-memory file)
+and about 10 millicores per pod. 80 MiB covers that. The overhead also raises
 the pod-level memory limit, so the app keeps its full container limit rather
-than sharing it with the sandbox. CPU is set low because the Sentry's CPU is
-spent on the workload's own system calls, which the containers' usage already
-counts.
+than sharing it with the sandbox.
+
+Most of the extra CPU is system time spent intercepting system calls, and
+part of it is attributed to the containers' own usage. Idle containers that
+used a millicore or two on runc now use several, so more of them exceed their
+CPU request.
+
+### D8: A disk-backed `/tmp` for sandboxed pods
+
+runsc mounts its own tmpfs at `/tmp` unless the pod mounts something there, and
+that tmpfs lives in the sandbox's memory. On runc, `/tmp` is part of the
+container's writable layer on disk. Apps that stage uploads in `/tmp` would
+therefore hold them in RAM: data past the memory limit OOM-kills the whole
+sandbox (measured: 1.5 GiB in a 1 GiB-limited pod).
+
+Sandboxed pods mount an `emptyDir` at `/tmp` in the containers that run tenant
+code. runsc then serves `/tmp` from the host's disk, and its use counts toward
+the pod's ephemeral storage as before (measured: the same 1.5 GiB completes
+with no OOM). The mount is conditional on `runtimeClassName`, so pods on the
+default runtime keep the image's own `/tmp`.
+
+*Alternative:* always mount it. Rejected: it would hide anything an image ships
+in `/tmp` on the default runtime, for no benefit there.
 
 ### D6: Chart versions
 
 - `custom` 0.15.0 → 0.16.0: a scheduling and runtime change, not a fix.
 - App Studio 0.2.19 → 0.2.20, following that chart's patch-level history.
+- The `/tmp` volume (D8) follows as `custom` 0.16.1 and App Studio 0.2.21.
 
 Existing versions are never re-pushed.
 
@@ -135,6 +159,16 @@ tenant node, or wondering why `gvisor` pods are Pending, will look first.
 - **Some dashboard panels go blank for sandboxed pods.** Panels built on
   cAdvisor-only families (`container_memory_rss`, throttling) have nothing to
   show. → Display only; metering does not use them.
+- **Tenants are billed somewhat more.** Part of the sandbox's system-call cost
+  is attributed to the containers, so billed usage for the same apps rose about
+  14%, and more small containers (mostly SSH sidecars) exceed their CPU
+  request. → Accepted as the cost of isolation.
+- **A rootfs-heavy app can show large file-backed memory.** The default
+  `root:self` overlay keeps the root filesystem's writable layer in a
+  disk-backed file the Sentry maps, so it shows up as active file memory in the
+  pod's cgroup. It is reclaimable and not billed, but it counts toward the
+  working set kubelet uses for node-pressure eviction. → Watched; the overlay
+  medium is a runsc setting if it becomes a problem.
 - **The SSH sidecar can take CPU from the app.** CPU limits are enforced only
   per pod. → Accepted. The pod as a whole stays bounded.
 

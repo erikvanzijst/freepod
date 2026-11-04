@@ -116,6 +116,11 @@ spec:
               readOnly: true
             - name: shm
               mountPath: /dev/shm
+            {{- if .Values.runtimeClassName }}
+            {{- /* gVisor otherwise keeps /tmp in memory (see the custom chart). */}}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -156,3 +161,7 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 512Mi
+        {{- if .Values.runtimeClassName }}
+        - name: tmp
+          emptyDir: {}
+        {{- end }}

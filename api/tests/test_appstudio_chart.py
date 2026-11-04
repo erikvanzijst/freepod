@@ -285,6 +285,22 @@ def test_a_sandboxed_pod_names_its_runtime_class_and_no_user_namespace():
     assert "hostUsers" not in pod
 
 
+def test_a_sandboxed_agent_stages_tmp_on_disk():
+    docs = _render(runtimeClassName="gvisor")
+    pod = next(d for d in docs if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
+    agent = next(c for c in pod["containers"] if c["name"] == "opencode")
+
+    assert {"name": "tmp", "emptyDir": {}} in pod["volumes"]
+    assert {"name": "tmp", "mountPath": "/tmp"} in agent["volumeMounts"]
+
+
+def test_without_a_runtime_class_tmp_is_the_images_own():
+    pod = next(d for d in _render() if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
+
+    assert all(v["name"] != "tmp" for v in pod["volumes"])
+    assert all(m["mountPath"] != "/tmp" for c in pod["containers"] for m in c.get("volumeMounts", []))
+
+
 @pytest.mark.parametrize("runtime", ["", "runc", "gvisor"])
 def test_a_tenant_cannot_choose_the_runtime(runtime):
     from app.services.errors import CaelusException

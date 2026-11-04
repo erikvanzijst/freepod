@@ -2,7 +2,7 @@
 
 ## 1. RuntimeClass in Terraform
 
-- [x] 1.1 Add a `tf/deps/sandbox` module with a `kubernetes_manifest` RuntimeClass `gvisor`: handler `runsc`, `scheduling` pinned to `caelus.dev/node-pool=tenant` with the pool's `NoSchedule` toleration, and `overhead.podFixed` of 32Mi memory and 10m CPU (design D1, D5). Wire it from `tf/deps/main.tf`. Verify with `terraform validate`.
+- [x] 1.1 Add a `tf/deps/sandbox` module with a `kubernetes_manifest` RuntimeClass `gvisor`: handler `runsc`, `scheduling` pinned to `caelus.dev/node-pool=tenant` with the pool's `NoSchedule` toleration, and `overhead.podFixed` of 80Mi memory and 10m CPU (design D1, D5). Wire it from `tf/deps/main.tf`. Verify with `terraform validate`.
 - [x] 1.2 Import the hand-made RuntimeClass into `module.sandbox` and run `terraform plan -target=module.sandbox`. Verify the plan only adds `overhead` and changes nothing else.
 - [x] 1.3 Apply with `terraform apply -target=module.sandbox`. Verify `kubectl get runtimeclass gvisor -o yaml` shows the overhead, and that a throwaway pod using it gets `spec.overhead` and is scheduled onto the tenant node.
 - [x] 1.4 Document the sandbox in `tf/deps/README.md` (design D7): what the RuntimeClass is for; the tenant node's runsc install (pinned release, tarball and checksum), the containerd `config-v3.toml.tmpl` and `/etc/containerd/runsc.toml`; how to upgrade runsc; that sandboxed pods stay Pending while the tenant pool is down. Verify the install steps match what is on the node (`runsc --version`, the rendered `config.toml`).
@@ -31,12 +31,20 @@
 - [x] 5.1 Publish `custom` 0.16.0 and App Studio 0.2.20, apply the catalog to dev, and upgrade every dev `custom` and App Studio deployment. Verify each pod has `runtimeClassName: gvisor`, runs on the tenant node, and `dmesg` inside it reports gVisor.
 - [x] 5.2 Exercise a dev `custom` app: hostname serves; `freepod shell` opens an app-container session; `freepod cp` and `freepod log` work; the app reaches its database through PgBouncer and its bucket. Verify each by hand and record the results.
 - [x] 5.3 Exercise a dev App Studio instance that already holds projects: existing projects open with their files intact; the agent can `apt install` a package and run a preview. Verify by hand and record the results.
-- [ ] 5.4 Verify isolation and metering on dev: the deployment's NetworkPolicy blocks a denied egress destination and an unadmitted ingress source; OpenCost's `/allocation` reports non-zero usage for the sandboxed containers over a settled hour.
+- [x] 5.4 Verify isolation and metering on dev: the deployment's NetworkPolicy blocks a denied egress destination and an unadmitted ingress source; OpenCost's `/allocation` reports non-zero usage for the sandboxed containers over a settled hour.
 
 ## 6. Prod rollout
 
-- [ ] 6.1 Apply the catalog to prod and upgrade every prod `custom` and App Studio deployment. Verify every such pod runs under `gvisor` on the tenant node and every hostname answers.
-- [ ] 6.2 After the first settled hour, compare those deployments' usage-ledger rows with the hour before the upgrade. Verify usage is non-zero and in line with before.
+- [x] 6.1 Apply the catalog to prod and upgrade every prod `custom` and App Studio deployment. Verify every such pod runs under `gvisor` on the tenant node and every hostname answers.
+- [x] 6.2 After the first settled hour, compare those deployments' usage-ledger rows with the hour before the upgrade. Verify usage is non-zero and in line with before.
+
+## 7. Disk-backed /tmp for sandboxed pods
+
+- [x] 7.1 Mount an `emptyDir` at `/tmp` in the `custom` app container when `runtimeClassName` is set (design D8), and bump the chart to 0.16.1. Extend `api/tests/test_custom_chart.py`: the mount is present under `gvisor` and absent without a runtime class. Verify by running the module.
+- [x] 7.2 Do the same for App Studio's `opencode` container and bump it to 0.2.21, with matching tests in `api/tests/test_appstudio_chart.py`. Verify by running the module.
+- [x] 7.3 Point both catalog entries at the new chart versions and run the full `api/` suite. Verify it is green.
+- [x] 7.4 Publish both charts, apply the catalog to dev, upgrade the dev deployments, and verify in a dev pod that `/tmp` is a host mount, not tmpfs, and that writing more than the memory limit there does not OOM-kill the pod. (Dev pods' memory limits exceed their 5Gi ephemeral-storage limit, so on them this was shown as 1 GiB in `/tmp` landing on disk with no shared memory; the over-limit OOM case was reproduced and fixed on a test pod.)
+- [x] 7.5 Apply the catalog to prod and upgrade every prod `custom` and App Studio deployment, letting the reconcile queue drain before any API or worker restart. Verify every pod's `/tmp` is the host mount and every hostname answers as before.
 
 ## Workflow follow-up
 
