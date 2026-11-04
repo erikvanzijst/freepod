@@ -120,7 +120,8 @@ func (s *signer) idToken(issuer string, c oidcCode, now time.Time) (string, erro
 }
 
 // logoutClaims are a back-channel logout token's. The API signs the same
-// format for a revocation, without sid (api/app/services/app_access.py).
+// format for a revocation, without sid and with freepod_access: revoked
+// (api/app/services/app_access.py).
 type logoutClaims struct {
 	Issuer   string              `json:"iss"`
 	Audience string              `json:"aud"`

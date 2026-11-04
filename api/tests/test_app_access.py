@@ -431,6 +431,7 @@ def test_removal_signs_the_person_out_of_an_oidc_app(user_client, db_session, ap
     assert post["follow_redirects"] is False and post["timeout"] == 10
     claims = _verified(post["data"]["logout_token"], audience=str(deployment.id))
     assert claims["sub"] == "s-ana"
+    assert claims["freepod_access"] == "revoked"
     assert db_session.exec(select(AppAccessEntryORM)).all() == []
 
 
@@ -502,6 +503,7 @@ def test_logout_token_contents():
     assert claims["sub"] == "s-ana"
     assert claims["events"] == {"http://schemas.openid.net/event/backchannel-logout": {}}
     assert claims["exp"] - claims["iat"] == 120
+    assert claims["freepod_access"] == "revoked"
     assert "nonce" not in claims and "sid" not in claims
     assert claims["jti"] != _verified(app_access.logout_token(deployment_id, "s-ana"), audience=str(deployment_id))["jti"]
 
