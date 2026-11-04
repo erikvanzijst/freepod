@@ -193,13 +193,13 @@ Two settings that look optional but are not, both in
 between its containers and the host's. Charts opt in through their
 `runtimeClassName` system value, which the catalog sets. The class pins its pods
 to the `caelus.dev/node-pool=tenant` nodes, the only ones with the runtime, and
-declares a fixed 32Mi / 10m overhead for the sandbox itself. While no tenant-pool
+declares a fixed 80Mi / 10m overhead for the sandbox itself. While no tenant-pool
 node is schedulable, sandboxed pods stay Pending; they never fall back to another
 node.
 
 Spec: [tenant-sandbox-runtime](../../openspec/specs/tenant-sandbox-runtime/spec.md)
 · Rationale:
-[gvisor-tenant-sandbox](../../openspec/changes/gvisor-tenant-sandbox/design.md)
+[gvisor-tenant-sandbox](../../openspec/changes/archive/2026-11-04-gvisor-tenant-sandbox/design.md)
 
 ### Node setup
 

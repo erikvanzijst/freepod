@@ -9,12 +9,12 @@ resource "kubernetes_manifest" "gvisor" {
       name = "gvisor"
     }
     handler = "runsc"
-    # The sandbox's own memory, measured at 15–22 MiB per idle pod, is charged
-    # to the pod's cgroup. Declaring it keeps scheduling honest and raises the
-    # pod-level limit so it doesn't come out of the app's container limit.
+    # The sandbox's own memory, about 75 MiB per pod across real tenant apps,
+    # is charged to the pod's cgroup. Declaring it keeps scheduling honest and
+    # raises the pod-level limit so it doesn't come out of the app's limit.
     overhead = {
       podFixed = {
-        memory = "32Mi"
+        memory = "80Mi"
         cpu    = "10m"
       }
     }

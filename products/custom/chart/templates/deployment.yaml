@@ -147,6 +147,15 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- if .Values.runtimeClassName }}
+          {{- /*
+          gVisor otherwise serves /tmp from the sandbox's memory, so files staged
+          there would count against the memory limit instead of ephemeral storage.
+          */}}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          {{- end }}
         {{- /*
         The platform's SSH sidecar, rooted at the application container: a shell
         in the tenant's own filesystem, file transfer into it, the PostgreSQL
@@ -156,3 +165,8 @@ spec:
         */}}
         {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage
              "sessionRoot" "app-container") | nindent 8 }}
+      {{- if .Values.runtimeClassName }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- end }}

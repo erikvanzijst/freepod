@@ -26,6 +26,9 @@ move now without being billed as idle.
 - Sandboxed pods omit `hostUsers: false`, which runsc does not support. gVisor
   runs each sandbox in its own user namespace under a seccomp filter instead.
   Pods on the default runtime keep `hostUsers: false`.
+- Sandboxed pods mount a disk-backed volume at `/tmp`. Without it gVisor serves
+  `/tmp` from memory, and files staged there would count against the memory
+  limit instead of ephemeral storage.
 - The tenant node's runsc install and containerd registration are documented
   next to the RuntimeClass, because node OS configuration is not managed by
   Terraform.
@@ -66,6 +69,6 @@ and platform workloads such as the tenant database cluster.
   `custom` README's pod description.
 - **Operations:** during a tenant-node outage, `custom` apps and App Studio are
   down rather than moved to the control-plane node. The sandbox's own memory
-  (15–22 MiB per pod, measured) is counted at pod level and not billed to any
+  (about 75 MiB per pod, measured) is counted at pod level and not billed to any
   container. Under gVisor only a pod's total CPU limit is enforced, not each
   container's.

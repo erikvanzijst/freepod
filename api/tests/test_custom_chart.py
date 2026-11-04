@@ -701,6 +701,21 @@ def test_the_tenant_schema_rejects_malformed_auth(auth):
         validate_user_values({"hostname": "a.example", "auth": auth}, _tenant_schema())
 
 
+def test_a_sandboxed_app_stages_tmp_on_disk():
+    """gVisor serves an unmounted /tmp from memory, so uploads staged there would OOM the pod."""
+    docs = _render(**BASE, runtimeClassName="gvisor")
+
+    assert {"name": "tmp", "emptyDir": {}} in _pod_spec(docs)["volumes"]
+    assert {"name": "tmp", "mountPath": "/tmp"} in _app_container(docs)["volumeMounts"]
+
+
+def test_without_a_runtime_class_tmp_is_the_images_own():
+    docs = _render(**BASE)
+
+    assert "volumes" not in _pod_spec(docs)
+    assert "volumeMounts" not in _app_container(docs)
+
+
 @pytest.mark.parametrize("runtime", ["", "runc", "gvisor"])
 def test_a_tenant_cannot_choose_the_runtime(runtime):
     from app.services.errors import CaelusException

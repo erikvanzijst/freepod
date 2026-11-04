@@ -20,7 +20,8 @@ the system values, and the user values schema that drives the deployment form.
 
 The pod runs under the RuntimeClass the catalog names in `runtimeClassName`:
 `gvisor`, a sandbox that only the tenant node pool provides, so the app runs
-there or not at all. With the value empty it runs on the default runtime in its
+there or not at all, with `/tmp` on a disk-backed volume rather than the
+sandbox's memory. With the value empty it runs on the default runtime in its
 own user namespace, and prefers the `nodePool` nodes. See
 [Sandboxed runtime](../../tf/deps/README.md#sandboxed-runtime).
 

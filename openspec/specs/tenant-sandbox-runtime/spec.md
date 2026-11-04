@@ -1,4 +1,4 @@
-# Spec Delta
+# tenant-sandbox-runtime Specification
 
 ## Purpose
 
@@ -6,7 +6,7 @@ Runs workloads that execute tenant-supplied or agent-driven code under a
 sandboxed container runtime, so a container escape needs more than one host
 kernel bug, and defines how charts opt in and where sandboxed pods schedule.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Sandboxed runtime class
 
@@ -80,6 +80,30 @@ which does not support pod user namespaces.
 
 - **WHEN** a pod renders with `runtimeClassName: gvisor`
 - **THEN** it does not set `hostUsers`
+
+### Requirement: Sandboxed pods keep a disk-backed /tmp
+
+A chart SHALL mount a disk-backed volume at `/tmp` in every container that runs
+tenant code when the pod runs on the sandboxed runtime, which otherwise serves
+`/tmp` from memory. Files there SHALL count toward the pod's ephemeral storage,
+not its memory, as they do on the default runtime.
+
+#### Scenario: A large upload is staged in /tmp
+
+- **WHEN** a sandboxed app writes more data to `/tmp` than its memory limit
+- **THEN** the write succeeds and the pod is not OOM-killed
+
+#### Scenario: /tmp counts as ephemeral storage
+
+- **WHEN** a sandboxed app keeps more data in `/tmp` than its ephemeral-storage
+  limit
+- **THEN** the pod is evicted for ephemeral storage, as it would be on the
+  default runtime
+
+#### Scenario: Default runtime is unchanged
+
+- **WHEN** a pod renders without a `runtimeClassName`
+- **THEN** no volume is mounted at `/tmp`
 
 ### Requirement: Tenant-code products run sandboxed
 
