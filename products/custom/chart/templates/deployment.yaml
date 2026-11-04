@@ -34,10 +34,16 @@ spec:
       TODO: this needs to be in the reconciler -- not per-chart.
       */}}
       automountServiceAccountToken: false
+      {{- with .Values.runtimeClassName }}
+      runtimeClassName: {{ . | quote }}
+      {{- else }}
       {{- /*
-      Root in the tenant's containers maps to an unprivileged host uid.
+      Root in the tenant's containers maps to an unprivileged host uid. Only on
+      the default runtime: gVisor doesn't support pod user namespaces, and runs
+      each sandbox in its own user namespace instead.
       */}}
       hostUsers: false
+      {{- end }}
       {{- with .Values.nodePool }}
       {{- /*
       Prefer the pool's nodes without requiring them, so the app still runs

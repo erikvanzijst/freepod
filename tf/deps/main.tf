@@ -71,6 +71,12 @@ module "system" {
   depends_on = [module.certmanager]
 }
 
+# Cluster singleton shared by dev and prod: the sandboxed container runtime.
+module "sandbox" {
+  source    = "./sandbox"
+  node_pool = "tenant"
+}
+
 module "mailer" {
   source        = "./mailer"
   namespace     = kubernetes_namespace.mailer.metadata[0].name

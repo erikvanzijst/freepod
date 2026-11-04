@@ -79,9 +79,10 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/appstudio
-  chart_version: 0.2.19
+  chart_version: 0.2.20
   system_values:
     nodePool: tenant
+    runtimeClassName: gvisor
     auth:
       enabled: true
       access: listed

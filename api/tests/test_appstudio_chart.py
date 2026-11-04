@@ -267,3 +267,31 @@ def test_user_values_cannot_widen_access():
     assert template["system_values"]["auth"] == {"enabled": True, "access": "listed"}
     with pytest.raises(CaelusException):
         validate_user_values({"hostname": "studio-alice.freepod.app", "auth": {"access": "anyone"}}, template["values_schema"])
+
+
+def test_without_a_runtime_class_the_pod_runs_in_its_own_user_namespace():
+    pod = next(d for d in _render() if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
+
+    assert pod["hostUsers"] is False
+    assert "runtimeClassName" not in pod
+
+
+def test_a_sandboxed_pod_names_its_runtime_class_and_no_user_namespace():
+    """gVisor doesn't support pod user namespaces: a pod asking for both never starts."""
+    docs = _render(runtimeClassName="gvisor")
+    pod = next(d for d in docs if d["kind"] == "StatefulSet")["spec"]["template"]["spec"]
+
+    assert pod["runtimeClassName"] == "gvisor"
+    assert "hostUsers" not in pod
+
+
+@pytest.mark.parametrize("runtime", ["", "runc", "gvisor"])
+def test_a_tenant_cannot_choose_the_runtime(runtime):
+    from app.services.errors import CaelusException
+    from app.services.template_values import validate_user_values
+
+    catalog = yaml.safe_load((ROOT / "products" / "catalog" / "appstudio" / "appstudio.yaml").read_text())
+    with pytest.raises(CaelusException):
+        validate_user_values(
+            {"hostname": "studio.example", "runtimeClassName": runtime}, catalog["template"]["values_schema"]
+        )

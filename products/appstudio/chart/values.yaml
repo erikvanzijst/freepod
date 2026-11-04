@@ -74,6 +74,10 @@ resources:
 
 nodePool: ""
 
+# The RuntimeClass the pod runs under, such as `gvisor`; empty uses the
+# default runtime. Set by the catalog.
+runtimeClassName: ""
+
 # Injected per deployment by the Caelus reconciler.
 caelus:
   releaseId: ""

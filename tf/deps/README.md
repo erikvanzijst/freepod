@@ -21,6 +21,9 @@ independent state and does not use Terraform workspaces.
 - `monitoring` namespace with the cluster-wide observability stack (Loki +
   Promtail, Prometheus + node-exporter + kube-state-metrics + Alertmanager,
   Grafana) — see [Monitoring stack](#monitoring-stack).
+- The `gvisor` RuntimeClass (`sandbox/`): tenant-code pods that name it run
+  inside a gVisor sandbox on the tenant node pool — see
+  [Sandboxed runtime](#sandboxed-runtime).
 - `caelus-tls` namespace (`tls/`) holding the platform certificate and the
   `TLSStore/default` Traefik serves from. One certificate covers `freepod.eu`
   and the tenant domains `freepod.app` and `dev.freepod.app`, with their
@@ -182,6 +185,65 @@ Two settings that look optional but are not, both in
   true; setting the client attribute alone makes PKCE mandatory at Keycloak
   and fails every Grafana login. Enable both together or neither. (The
   oauth2-proxy clients *do* require PKCE and set the matching flag.)
+
+## Sandboxed runtime
+
+`sandbox/` declares the `gvisor` RuntimeClass. A pod that sets
+`runtimeClassName: gvisor` runs inside a gVisor sandbox: a user-space kernel
+between its containers and the host's. Charts opt in through their
+`runtimeClassName` system value, which the catalog sets. The class pins its pods
+to the `caelus.dev/node-pool=tenant` nodes, the only ones with the runtime, and
+declares a fixed 32Mi / 10m overhead for the sandbox itself. While no tenant-pool
+node is schedulable, sandboxed pods stay Pending; they never fall back to another
+node.
+
+Spec: [tenant-sandbox-runtime](../../openspec/specs/tenant-sandbox-runtime/spec.md)
+· Rationale:
+[gvisor-tenant-sandbox](../../openspec/changes/gvisor-tenant-sandbox/design.md)
+
+### Node setup
+
+The runtime lives on the node, outside Terraform. A rebuilt tenant-pool node
+needs these before any sandboxed pod can start there.
+
+1. Install a pinned gVisor release (the tarball holds `runsc`,
+   `containerd-shim-runsc-v1` and `gvisor-bin/`; keep them side by side):
+
+   ```bash
+   URL=https://storage.googleapis.com/gvisor/releases/release/20261026/x86_64
+   curl -fsSLO $URL/gvisor.tar.zstd && curl -fsSLO $URL/gvisor.tar.zstd.sha512
+   sha512sum -c gvisor.tar.zstd.sha512
+   sudo tar --zstd -xf gvisor.tar.zstd -C /usr/local/bin
+   ```
+
+2. Register it with k3s's containerd by extending the generated config, in
+   `/var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl`:
+
+   ```toml
+   {{ template "base" . }}
+
+   [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc]
+     runtime_type = "io.containerd.runsc.v1"
+
+   [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc.options]
+     TypeUrl = "io.containerd.runsc.v1.options"
+     ConfigPath = "/etc/containerd/runsc.toml"
+   ```
+
+3. Match the kubelet's systemd cgroup driver, in `/etc/containerd/runsc.toml`,
+   so each sandbox is accounted to its pod's cgroup:
+
+   ```toml
+   [runsc_config]
+     systemd-cgroup = "true"
+   ```
+
+4. `sudo systemctl restart k3s-agent`. Running containers survive the restart.
+   Check with `runsc --version` and by finding the `runsc` runtime in
+   `/var/lib/rancher/k3s/agent/etc/containerd/config.toml`.
+
+To upgrade, extract a newer release over the old one. A running sandbox keeps
+the binary it started with until its pod restarts.
 
 ## Keycloak configuration
 

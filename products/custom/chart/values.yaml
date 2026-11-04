@@ -106,6 +106,11 @@ relationalStorage:
 # schedules the pod like any other.
 nodePool: ""
 
+# The RuntimeClass the app pod runs under, such as `gvisor` for a sandbox. A
+# system value like `objectStorage` above; empty uses the cluster's default
+# runtime.
+runtimeClassName: ""
+
 # Injected per deployment by the Caelus reconciler. These defaults let the chart
 # render standalone (helm lint / helm template with no --set).
 caelus:
