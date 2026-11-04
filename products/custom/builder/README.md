@@ -338,18 +338,26 @@ the Railpack base images if this is a new registry or a new Railpack version:
 ./scripts/mirror-railpack-images.sh prod
 ```
 
-## Node prerequisites
+## Runtime and node prerequisites
 
-One node-level setting is required and **is not captured by Terraform**; a
-rebuilt node without it fails every build.
+Builds run where `build_runtime_class` in Terraform says.
 
-1. `/etc/sysctl.d/99-buildkit-userns.conf` — `kernel.apparmor_restrict_unprivileged_userns=0`.
-   Ubuntu 24.04 ships this at `1`, which transitions any unconfined process
-   calling `userns_create` into a restrictive AppArmor profile that then denies
-   `CAP_SYS_ADMIN` in the new namespace. Setting the pod to
-   `appArmorProfile: Unconfined` does **not** help — the transition fires *from*
-   the unconfined profile.
-
-The Job additionally needs both `seccompProfile: Unconfined` and
-`appArmorProfile: Unconfined` — these cover the *container* profile blocking
-`mount`/`unshare`, which is a separate mechanism from the host sysctl above.
+- **In the gVisor sandbox** (`gvisor`): the sandbox handles BuildKit's user
+  namespace and mounts itself, so the Job keeps the default seccomp and AppArmor
+  profiles, its namespace is Pod Security `baseline`, and the node needs nothing
+  beyond the runtime (see [Sandboxed runtime](../../../tf/deps/README.md#sandboxed-runtime)).
+  `/tmp` is an `emptyDir`, because the sandbox would otherwise serve it from
+  memory. The usage meter reads the sandbox's emulated cgroup v1 counters, which
+  count the build's processes and not the sandbox, and takes the largest sampled
+  working set as the peak, since that tree keeps none.
+- **On the default runtime** (empty): the Job needs both `seccompProfile:
+  Unconfined` and `appArmorProfile: Unconfined`, which cover the *container*
+  profile blocking `mount`/`unshare`, and its namespace is `privileged`. One
+  node-level setting is also required and **is not captured by Terraform**; a
+  rebuilt node without it fails every such build:
+  `/etc/sysctl.d/99-buildkit-userns.conf` with
+  `kernel.apparmor_restrict_unprivileged_userns=0`. Ubuntu 24.04 ships this at
+  `1`, which transitions any unconfined process calling `userns_create` into a
+  restrictive AppArmor profile that then denies `CAP_SYS_ADMIN` in the new
+  namespace. Setting the pod to `appArmorProfile: Unconfined` does **not**
+  help: the transition fires *from* the unconfined profile.
