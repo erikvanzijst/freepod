@@ -599,7 +599,8 @@ func (b *broker) userinfo(w http.ResponseWriter, r *http.Request) {
 
 // oidcLogout is RP-initiated logout: it always ends the Keycloak session, and
 // returns to the app only on the evidence of an ID token this provider issued
-// to it (D9).
+// to it (D9). Keycloak's confirmation names the app the token or client_id
+// identifies; naming one is no reason to return to it.
 func (b *broker) oidcLogout(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 	if err := r.ParseForm(); err != nil {
@@ -607,27 +608,41 @@ func (b *broker) oidcLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := r.Form
-	var s logoutState
-	if uri, state := p.Get("post_logout_redirect_uri"), p.Get("state"); uri != "" && len(state) <= maxStateLen {
-		if aud, ok := b.oidc.signer.verifyHint(b.loginURL, p.Get("id_token_hint")); ok && aud == p.Get("client_id") {
-			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-			defer cancel()
-			client, ok, err := b.store.ssoClient(ctx, aud)
-			if err != nil {
-				b.internal(w, "looking up OIDC client", err)
-				return
-			}
-			if ok && client.allowsPostLogout(uri) {
-				s = logoutState{URI: uri, State: state}
-			}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	clientID := p.Get("client_id")
+	aud, hinted := b.oidc.signer.verifyHint(b.loginURL, p.Get("id_token_hint"))
+	if hinted && clientID == "" {
+		clientID = aud
+	}
+	var client ssoClient
+	if clientID != "" {
+		c, ok, err := b.store.ssoClient(ctx, clientID)
+		switch {
+		case err != nil && hinted:
+			b.internal(w, "looking up OIDC client", err)
+			return
+		case err != nil:
+			b.log.Warn("signing out without the app's name", "client", clientID, "err", err)
+		case ok:
+			client = c
 		}
+	}
+	var s logoutState
+	if uri, state := p.Get("post_logout_redirect_uri"), p.Get("state"); uri != "" && len(state) <= maxStateLen &&
+		hinted && aud == p.Get("client_id") && client.ID == aud && client.allowsPostLogout(uri) {
+		s = logoutState{URI: uri, State: state}
 	}
 	sealed, err := b.keys.seal("logout", s, logoutTTL, b.now())
 	if err != nil {
 		b.internal(w, "sealing logout state", err)
 		return
 	}
-	target, err := b.auth.endSessionURL(sealed, b.loginURL+"/signed-out")
+	var brand appBrand
+	if client.ID != "" {
+		brand = b.brand(ctx, client.ID, client.Hostname)
+	}
+	target, err := b.auth.endSessionURL(sealed, b.loginURL+"/signed-out", brand)
 	if err != nil {
 		b.log.Error("identity provider unavailable", "err", err)
 		b.errorPage(w, http.StatusServiceUnavailable, "Sign-out is temporarily unavailable", "Something on our side isn't answering. Please try again in a moment.")

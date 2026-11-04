@@ -29,7 +29,9 @@ type memStore struct {
 	consents    map[[2]string][]string
 	codes       map[string]memCode
 	// clients are SSO-enabled deployments by ID, as their template declares them.
-	clients   map[string]memClient
+	clients map[string]memClient
+	// clientErr fails every ssoClient read.
+	clientErr error
 	oidcCodes map[string]memOIDCCode
 	// signIns are keyed by Keycloak session and deployment, ended holds when
 	// each Keycloak session ended.
@@ -186,6 +188,9 @@ func (m *memStore) purgeExpiredCodes(context.Context) (int64, error) { return 0,
 func (m *memStore) ssoClient(_ context.Context, id string) (ssoClient, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.clientErr != nil {
+		return ssoClient{}, false, m.clientErr
+	}
 	mc, ok := m.clients[id]
 	if !ok {
 		return ssoClient{}, false, nil

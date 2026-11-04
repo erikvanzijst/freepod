@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -80,5 +82,62 @@ func TestOIDCSignInIsBranded(t *testing.T) {
 	g.authorize(authorizeQuery(depWiki, wikiCallback))
 	if g.auth.params.brand != (appBrand{Host: wiki}) {
 		t.Fatalf("%+v", g.auth.params.brand)
+	}
+}
+
+func TestKeycloakLogoutCarriesTheBrand(t *testing.T) {
+	p := newStubIdP(t)
+	u, _ := p.auth().endSessionURL("s", "https://login.example/signed-out", appBrand{Host: "wiki.example"})
+	q, _ := url.ParseQuery(u[strings.Index(u, "?")+1:])
+	if q.Get(brandParam) != (appBrand{Host: "wiki.example"}).sign("s") {
+		t.Fatalf("end-session URL %s", u)
+	}
+}
+
+func TestHeaderSignOutIsBranded(t *testing.T) {
+	g := newBrokerRig(t)
+	g.st.products["dep-milk"] = product{Name: "Milk", Slug: "milk"}
+	g.logout(milk, "/")
+	if g.auth.logoutBrand != (appBrand{Name: "Milk", Host: milk}) {
+		t.Fatalf("%+v", g.auth.logoutBrand)
+	}
+}
+
+func TestOIDCSignOutIsBranded(t *testing.T) {
+	root := "https://" + wiki + "/"
+	for name, tc := range map[string]struct {
+		params func(hint string) url.Values
+		want   appBrand
+	}{
+		"by its ID token": {func(hint string) url.Values {
+			return url.Values{"client_id": {depWiki}, "id_token_hint": {hint}, "post_logout_redirect_uri": {root}}
+		}, appBrand{Name: "Wiki", Host: wiki}},
+		"by the token alone": {func(hint string) url.Values {
+			return url.Values{"id_token_hint": {hint}}
+		}, appBrand{Name: "Wiki", Host: wiki}},
+		"by client_id alone": {func(string) url.Values {
+			return url.Values{"client_id": {depWiki}}
+		}, appBrand{Name: "Wiki", Host: wiki}},
+		"unknown client": {func(string) url.Values {
+			return url.Values{"client_id": {"0b7f8d2e-4c1a-4e5b-9a3d-6f2e1c0b9aff"}}
+		}, appBrand{}},
+		"no client": {func(string) url.Values { return url.Values{} }, appBrand{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			g := newProviderRig(t)
+			g.st.products[depWiki] = product{Name: "Wiki", Slug: "wiki"}
+			g.endSession(tc.params(g.redeem(depWiki, wikiCallback).IDToken))
+			if g.auth.logoutBrand != tc.want {
+				t.Fatalf("%+v", g.auth.logoutBrand)
+			}
+		})
+	}
+}
+
+func TestOIDCSignOutSurvivesAFailedClientLookup(t *testing.T) {
+	g := newProviderRig(t)
+	g.st.clientErr = errors.New("database down")
+	if w := g.do("GET", "/oidc/logout?"+url.Values{"client_id": {depWiki}}.Encode(), nil); w.Code != http.StatusFound || g.auth.endSessions != 1 {
+		t.Fatalf("%d endSessions=%d", w.Code, g.auth.endSessions)
 	}
 }

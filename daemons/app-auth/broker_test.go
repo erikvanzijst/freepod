@@ -18,6 +18,7 @@ type fakeAuth struct {
 	err         error
 	endSessions int
 	params      authParams // of the last authorization request
+	logoutBrand appBrand   // of the last end-session request
 }
 
 func (f *fakeAuth) authURL(state, nonce, verifier string, p authParams) (string, error) {
@@ -25,8 +26,9 @@ func (f *fakeAuth) authURL(state, nonce, verifier string, p authParams) (string,
 	return "https://keycloak.example/auth?" + url.Values{"state": {state}}.Encode(), nil
 }
 
-func (f *fakeAuth) endSessionURL(state, postLogoutRedirect string) (string, error) {
+func (f *fakeAuth) endSessionURL(state, postLogoutRedirect string, brand appBrand) (string, error) {
 	f.endSessions++
+	f.logoutBrand = brand
 	return "https://keycloak.example/logout?" + url.Values{"state": {state}, "post_logout_redirect_uri": {postLogoutRedirect}}.Encode(), nil
 }
 

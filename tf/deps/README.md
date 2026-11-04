@@ -390,10 +390,12 @@ type's `template.ftl`.
 
 A sign-in that app-auth starts for an app leads with that app: its name and
 icon, or for a `custom` app its hostname, with "on Freepod" beneath, and the
-verification and password reset emails of that flow name it too. app-auth
-passes the app in a signed `freepod_app` authorization parameter, which
-Keycloak keeps on the authentication session for every page and email of the
-flow. `keycloak/provider/` replaces Keycloak's FreeMarker login and email
+verification and password reset emails of that flow name it too, as does the
+logout confirmation when the app signs out. app-auth passes the app in a
+signed `freepod_app` parameter on the authorization and logout requests.
+Keycloak keeps an authorization request's on the authentication session for
+every page and email of the flow; the provider notes a logout request's on its
+logout session itself. `keycloak/provider/` replaces Keycloak's FreeMarker login and email
 providers with subclasses that verify it, with a key derived from the
 requesting client's secret, and expose it to templates as `freepodApp`.
 Unsigned or forged values are ignored, so any other sign-in looks as before.
@@ -406,7 +408,7 @@ Those classes are Keycloak internals, not a public SPI (Keycloak logs
   jars and runs its signature check (CI builds the image on every push);
 - a diff of `login/template.ftl` against the new `keycloak.v2/login/template.ftl`
   (in `lib/lib/main/org.keycloak.keycloak-themes-<version>.jar`);
-- a look at an app-branded sign-in, register and reset page and both emails.
+- a look at an app-branded sign-in, register, reset and logout page and both emails.
 
 ### How it's deployed (production)
 
@@ -424,7 +426,7 @@ tag is never re-pushed: every theme or base-image change takes the next build
 number. Build, push and roll out:
 
 ```bash
-./scripts/build-images.sh 26.8.1-3 --keycloak  # build + push ghcr.io/<owner>/freepod/keycloak
+./scripts/build-images.sh 26.8.1-4 --keycloak  # build + push ghcr.io/<owner>/freepod/keycloak
 # set keycloak_image in variables.tf to the new tag, then:
 cd tf/deps && terraform apply -target=module.keycloak
 ```

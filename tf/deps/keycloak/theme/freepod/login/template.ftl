@@ -1,5 +1,5 @@
 <#-- keycloak.v2's template.ftl (26.8.1), plus the app header and hosted-on line when
-     the sign-in is for an app (freepodApp, from the freepod login provider). -->
+     the sign-in or logout is for an app (freepodApp, from the freepod login provider). -->
 <#import "field.ftl" as field>
 <#import "footer.ftl" as loginFooter>
 <#import "theme-resources.ftl" as themeResourceTags>
@@ -26,6 +26,7 @@
 </#macro>
 
 <#macro registrationLayout bodyClass="" displayInfo=false displayMessage=true displayRequiredFields=false>
+<#assign fpLogout = (pageId!"") == "logout-confirm">
 <!DOCTYPE html>
 <html class="${properties.kcHtmlClass!}" lang="${lang}"<#if realm.internationalizationEnabled> dir="${(locale.rtl)?then('rtl','ltr')}"</#if>>
 
@@ -40,7 +41,7 @@
             <meta name="${meta?split('==')[0]}" content="${meta?split('==')[1]}"/>
         </#list>
     </#if>
-    <title><#if freepodApp??>${msg("freepodAppLoginTitle", freepodApp.label)}<#else>${title!}</#if></title>
+    <title><#if freepodApp??>${msg(fpLogout?then("freepodAppLogoutTitle", "freepodAppLoginTitle"), freepodApp.label)}<#else>${title!}</#if></title>
     <#if themeResources?? && themeResources.favicons?has_content>
         <@themeResourceTags.renderFavicons themeResources.favicons url.resourcesPath />
     <#else>
@@ -299,7 +300,7 @@
         </div>
     </main>
     <#if freepodApp??>
-    <p class="fp-app-hosted">${msg("freepodAppHosted", freepodApp.label)}</p>
+    <p class="fp-app-hosted">${msg(fpLogout?then("freepodAppHostedLogout", "freepodAppHosted"), freepodApp.label)}</p>
     </#if>
   </div>
 </div>

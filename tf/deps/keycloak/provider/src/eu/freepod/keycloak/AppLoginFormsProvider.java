@@ -18,7 +18,7 @@ public class AppLoginFormsProvider extends FreeMarkerLoginFormsProvider {
     protected void createCommonAttributes(Theme theme, Locale locale, Properties messagesBundle,
             UriBuilder baseUriBuilder, LoginFormsPages page) {
         super.createCommonAttributes(theme, locale, messagesBundle, baseUriBuilder, page);
-        AppContext.App app = AppContext.from(authenticationSession);
+        AppContext.App app = AppContext.from(session, authenticationSession);
         if (app != null) attributes.put(AppContext.ATTRIBUTE, app);
     }
 }
