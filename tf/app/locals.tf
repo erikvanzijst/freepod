@@ -24,6 +24,10 @@ locals {
 
   ns_builds = local.is_prod_workspace ? "caelus-builds" : "caelus-builds-dev"
 
+  # Builds run in the gVisor sandbox (tf/deps/sandbox). The builds namespace's
+  # Pod Security level follows: a sandboxed build needs no lifted profiles.
+  build_runtime_class = local.is_prod_workspace ? "" : "gvisor"
+
   # The tenant registry (authenticated-tenant-registry D2). The ClusterIPs come
   # from the service CIDR's low band, which dynamic allocation leaves alone.
   ns_registry           = local.is_prod_workspace ? "caelus-registry" : "caelus-registry-dev"

@@ -876,6 +876,33 @@ def test_the_job_manifest_carries_the_security_posture(settings):
     assert pod["securityContext"]["appArmorProfile"]["type"] == "Unconfined"
 
 
+def test_without_a_runtime_class_the_build_runs_on_the_default_runtime(settings):
+    pod = build_job_manifest(
+        build_id=uuid4(), user_id=7, artifact_url="https://x/y", settings=settings
+    )["spec"]["template"]["spec"]
+
+    assert "runtimeClassName" not in pod
+    assert all(v["name"] != "tmp" for v in pod["volumes"])
+
+
+def test_a_sandboxed_build_keeps_the_default_profiles_and_a_disk_backed_tmp(settings):
+    """gVisor handles BuildKit's user namespace itself, and would otherwise keep /tmp in memory."""
+    pod = build_job_manifest(
+        build_id=uuid4(),
+        user_id=7,
+        artifact_url="https://x/y",
+        settings=settings.model_copy(update={"build_runtime_class": "gvisor"}),
+    )["spec"]["template"]["spec"]
+
+    assert pod["runtimeClassName"] == "gvisor"
+    assert pod["securityContext"]["seccompProfile"]["type"] == "RuntimeDefault"
+    assert pod["securityContext"]["appArmorProfile"]["type"] == "RuntimeDefault"
+    assert pod["securityContext"]["runAsUser"] == 1000
+    assert {"name": "tmp", "emptyDir": {}} in pod["volumes"]
+    (build,) = [c for c in pod["containers"] if c["name"] == "build"]
+    assert {"name": "tmp", "mountPath": "/tmp"} in build["volumeMounts"]
+
+
 def test_the_job_manifest_runs_the_egress_gate_first(settings):
     manifest = build_job_manifest(
         build_id=uuid4(), user_id=7, artifact_url="https://x/y", settings=settings

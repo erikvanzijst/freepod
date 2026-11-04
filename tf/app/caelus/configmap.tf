@@ -48,6 +48,7 @@ resource "kubernetes_config_map" "api" {
     CAELUS_BUILDS_NAMESPACE    = var.builds_namespace
     CAELUS_BUILD_MAX_IN_FLIGHT = tostring(var.build_max_in_flight)
     CAELUS_BUILD_NODE_POOL     = var.build_node_pool
+    CAELUS_BUILD_RUNTIME_CLASS = var.build_runtime_class
 
     CAELUS_REGISTRY_HOST         = var.registry_host
     CAELUS_REGISTRY_TOKEN_ISSUER = var.registry_token_issuer

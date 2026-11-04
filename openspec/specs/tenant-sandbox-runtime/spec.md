@@ -108,8 +108,8 @@ not its memory, as they do on the default runtime.
 ### Requirement: Tenant-code products run sandboxed
 
 The `custom` product and App Studio SHALL run their tenant pods under the
-`gvisor` runtime. Builds, curated product charts, and platform workloads SHALL
-remain on the default runtime.
+`gvisor` runtime. Curated product charts and platform workloads SHALL remain on
+the default runtime.
 
 #### Scenario: A custom app is deployed
 
@@ -123,8 +123,34 @@ remain on the default runtime.
 
 #### Scenario: Other workloads are unchanged
 
-- **WHEN** a build Job, a curated product, or the tenant database cluster runs
+- **WHEN** a curated product or the tenant database cluster runs
 - **THEN** its pods have no `runtimeClassName`
+
+### Requirement: Builds run in the environment's build runtime
+
+A build Job SHALL run under the RuntimeClass its environment configures for
+builds. When that is the sandboxed runtime, the build pod SHALL keep the default
+seccomp and AppArmor profiles, SHALL stage `/tmp` on a disk-backed volume, and
+its namespace SHALL enforce Pod Security `baseline`. When none is configured, the
+build pod SHALL run on the default runtime with both profiles `Unconfined` in a
+`privileged` namespace.
+
+#### Scenario: Sandboxed build
+
+- **WHEN** the environment configures `gvisor` for builds and a build starts
+- **THEN** its pod runs under `gvisor` with `RuntimeDefault` seccomp and AppArmor
+  profiles and an `emptyDir` at `/tmp`
+
+#### Scenario: Build on the default runtime
+
+- **WHEN** the environment configures no build runtime and a build starts
+- **THEN** its pod has no `runtimeClassName` and both profiles are `Unconfined`
+
+#### Scenario: A sandboxed build still reports its usage
+
+- **WHEN** a sandboxed build finishes
+- **THEN** it reports its CPU-seconds, memory byte-seconds and peak memory,
+  measured from the sandbox's own accounting of the build's processes
 
 ### Requirement: Sandboxed pods keep network isolation
 

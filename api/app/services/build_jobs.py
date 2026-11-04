@@ -50,6 +50,9 @@ BUILDKIT_SIZE_LIMIT = "6Gi"
 
 WORK_VOLUME = "work"
 BUILDKIT_VOLUME = "buildkit"
+# gVisor serves an unmounted /tmp from the sandbox's memory; this keeps it on
+# disk and inside the ephemeral-storage limit, as on the default runtime.
+TMP_VOLUME = "tmp"
 
 # The node label and taint key naming a pool of nodes reserved for tenant code.
 NODE_POOL_LABEL = "caelus.dev/node-pool"
@@ -143,11 +146,15 @@ def build_job_manifest(
     - ``serviceAccountName`` is the permissionless builder account and
       ``automountServiceAccountToken`` is false, so there is no Kubernetes
       credential in the pod even by accident.
-    - ``seccompProfile`` and ``appArmorProfile`` are ``Unconfined`` because
-      rootless BuildKit must create a user namespace and mount inside it, which
-      the container's default profiles block. This is why the namespace runs
-      under Pod Security ``privileged``; the pod is still unprivileged, running
-      as uid 1000 with no host mounts and no host network.
+    - With ``build_runtime_class`` set, the pod runs in that sandbox (gVisor),
+      which handles BuildKit's user namespace and mounts itself, so both
+      container profiles stay ``RuntimeDefault`` and ``/tmp`` gets a disk-backed
+      volume instead of the sandbox's memory-backed one.
+    - Without it, ``seccompProfile`` and ``appArmorProfile`` are ``Unconfined``,
+      because rootless BuildKit must create a user namespace and mount inside
+      it, which the default profiles block on the host kernel. Either way the pod
+      is unprivileged, running as uid 1000 with no host mounts and no host
+      network.
     - ``backoffLimit: 0`` — a failed build is terminal and is never retried
       automatically. Recovery is creating a new build.
     - The egress gate runs first, so no build step runs before the namespace's
@@ -164,6 +171,8 @@ def build_job_manifest(
 
     name = job_name(build_id)
     capability = build_capability(build_id=build_id, user_id=user_id, settings=settings)
+    sandboxed = bool(settings.build_runtime_class)
+    profile = "RuntimeDefault" if sandboxed else "Unconfined"
     manifest = {
         "apiVersion": "batch/v1",
         "kind": "Job",
@@ -195,8 +204,8 @@ def build_job_manifest(
                     "securityContext": {
                         "runAsUser": 1000,
                         "runAsGroup": 1000,
-                        "seccompProfile": {"type": "Unconfined"},
-                        "appArmorProfile": {"type": "Unconfined"},
+                        "seccompProfile": {"type": profile},
+                        "appArmorProfile": {"type": profile},
                     },
                     "containers": [
                         {
@@ -246,6 +255,11 @@ def build_job_manifest(
     }
     if settings.build_node_pool:
         manifest["spec"]["template"]["spec"].update(node_pool_scheduling(settings.build_node_pool))
+    if sandboxed:
+        pod = manifest["spec"]["template"]["spec"]
+        pod["runtimeClassName"] = settings.build_runtime_class
+        pod["containers"][0]["volumeMounts"].append({"name": TMP_VOLUME, "mountPath": "/tmp"})
+        pod["volumes"].append({"name": TMP_VOLUME, "emptyDir": {}})
     # Builds run tenant code with network access, and are created by kubectl
     # rather than Helm, so the post-renderer never sees them.
     egress_gate.inject(

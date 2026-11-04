@@ -215,6 +215,12 @@ variable "dns_cluster_ip" {
   default     = "10.43.0.10"
 }
 
+variable "build_runtime_class" {
+  description = "RuntimeClass build pods run under, such as gvisor. Empty runs them on the default runtime with both container profiles lifted."
+  type        = string
+  default     = ""
+}
+
 variable "build_node_pool" {
   description = "Node pool builds prefer: nodes labeled and tainted caelus.dev/node-pool=<pool>. Empty schedules builds like any other pod."
   type        = string

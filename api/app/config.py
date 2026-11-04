@@ -317,6 +317,11 @@ class CaelusSettings(BaseSettings):
     # schedules them like any other pod.
     build_node_pool: str = ""
 
+    # The RuntimeClass build pods run under, such as `gvisor` for a sandbox.
+    # Empty runs them on the default runtime, which needs both container
+    # profiles lifted for rootless BuildKit.
+    build_runtime_class: str = ""
+
     # Largest project archive accepted, enforced by Garage itself through the
     # presigned POST policy's content-length-range rather than by the client or
     # a proxy body limit.

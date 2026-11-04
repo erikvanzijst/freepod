@@ -92,9 +92,11 @@ CACHE_TAG = "latest"
 DIGEST_PREFIX = "sha256:"
 DIGEST_HEX_LEN = 64
 
-# The container is its own cgroup v2 root, so its accounting covers every
-# process the build runs — BuildKit's included — and nothing a build step can
-# write to.
+# The container is its own cgroup root, so its accounting covers every process
+# the build runs — BuildKit's included — and nothing a build step can write to.
+# On the default runtime that is the kernel's cgroup v2. In a gVisor sandbox it
+# is the sandbox's own emulated cgroup v1 tree, which counts the build's
+# processes and not the sandbox itself.
 CGROUP_ROOT = Path("/sys/fs/cgroup")
 
 # How often working set is sampled. Builds last about a minute, so this is what
@@ -593,17 +595,28 @@ def _stat_value(path: Path, key: str) -> int:
 
 
 def read_cpu_seconds(cgroup: Path) -> float:
-    return _stat_value(cgroup / "cpu.stat", "usage_usec") / 1_000_000
+    if (cgroup / "cpu.stat").exists():
+        return _stat_value(cgroup / "cpu.stat", "usage_usec") / 1_000_000
+    return int((cgroup / "cpuacct" / "cpuacct.usage").read_text()) / 1_000_000_000
 
 
 def read_working_set(cgroup: Path) -> int:
-    """Memory in use minus reclaimable file cache, as the kubelet defines it."""
+    """Memory in use minus reclaimable file cache, as the kubelet defines it.
+
+    The emulated v1 tree has no ``memory.stat``; its usage already leaves out the
+    page cache, which lives outside the sandbox.
+    """
+    if not (cgroup / "memory.current").exists():
+        return int((cgroup / "memory" / "memory.usage_in_bytes").read_text())
     current = int((cgroup / "memory.current").read_text())
     inactive_file = _stat_value(cgroup / "memory.stat", "inactive_file")
     return max(current - inactive_file, 0)
 
 
-def read_memory_peak(cgroup: Path) -> int:
+def read_memory_peak(cgroup: Path) -> int | None:
+    """The kernel's high-water mark, or None where the cgroup keeps none (v1)."""
+    if not (cgroup / "memory.peak").exists() and (cgroup / "memory").is_dir():
+        return None
     return int((cgroup / "memory.peak").read_text())
 
 
@@ -614,6 +627,7 @@ def _utc_timestamp(moment: datetime) -> str:
 class UsageMeter:
     """Measures this container's run: CPU and peak memory from the cgroup at the
     end, and working set integrated into byte-seconds by a background thread.
+    Where the cgroup keeps no peak, the peak is the largest working set sampled.
 
     Any failed read yields no report at all rather than a partial one: the
     worker estimates a build that reported nothing, and a silently low integral
@@ -637,6 +651,7 @@ class UsageMeter:
         self._thread: threading.Thread | None = None
         self._last: tuple[float, int] | None = None
         self._byte_seconds = 0.0
+        self._max_working_set = 0
         self._failed = False
         self._started_at: datetime | None = None
 
@@ -663,6 +678,7 @@ class UsageMeter:
                 then, previous = self._last
                 self._byte_seconds += (previous + working_set) / 2 * (now - then)
             self._last = (now, working_set)
+            self._max_working_set = max(self._max_working_set, working_set)
 
     def finish(self) -> dict | None:
         """Stop sampling and return the report, or None if anything was unreadable."""
@@ -678,6 +694,8 @@ class UsageMeter:
             memory_peak = read_memory_peak(self._cgroup)
         except (OSError, ValueError):
             return None
+        if memory_peak is None:
+            memory_peak = self._max_working_set
         return {
             "cpu_seconds": round(cpu_seconds, 3),
             "memory_byte_seconds": round(self._byte_seconds),

@@ -447,6 +447,50 @@ def test_a_stat_file_missing_its_key_is_an_error(tmp_path):
         build.read_cpu_seconds(root)
 
 
+def _cgroup_v1(root: Path, *, cpu_ns: int = 12_400_000_000, usage: int = 193_000_000) -> Path:
+    """The emulated cgroup v1 tree a gVisor sandbox presents: no v2 files, no peak."""
+    (root / "cpuacct").mkdir(parents=True, exist_ok=True)
+    (root / "memory").mkdir(exist_ok=True)
+    (root / "cpuacct" / "cpuacct.usage").write_text(f"{cpu_ns}\n")
+    (root / "memory" / "memory.usage_in_bytes").write_text(f"{usage}\n")
+    (root / "memory" / "memory.limit_in_bytes").write_text("6442450944\n")
+    return root
+
+
+def test_in_a_sandbox_cpu_is_read_from_cpuacct_in_seconds(tmp_path):
+    assert build.read_cpu_seconds(_cgroup_v1(tmp_path, cpu_ns=12_400_000_000)) == 12.4
+
+
+def test_in_a_sandbox_the_working_set_is_the_memory_usage(tmp_path):
+    assert build.read_working_set(_cgroup_v1(tmp_path, usage=193_000_000)) == 193_000_000
+
+
+def test_in_a_sandbox_there_is_no_kernel_peak(tmp_path):
+    assert build.read_memory_peak(_cgroup_v1(tmp_path)) is None
+
+
+def test_in_a_sandbox_the_peak_is_the_largest_working_set_sampled(tmp_path):
+    root = _cgroup_v1(tmp_path / "cg", cpu_ns=5_000_000_000)
+    usage = root / "memory" / "memory.usage_in_bytes"
+    clock = iter([0.0, 2.0, 4.0, 6.0])
+    walls = iter([datetime(2026, 11, 4, 18, 0, 0, tzinfo=UTC), datetime(2026, 11, 4, 18, 0, 6, tzinfo=UTC)])
+    meter = build.UsageMeter(root, interval=3600, clock=lambda: next(clock), wall=lambda: next(walls))
+    usage.write_text("100\n")
+    meter.start()
+    usage.write_text("700\n")
+    meter.sample()
+    usage.write_text("300\n")
+    meter.sample()
+    usage.write_text("0\n")
+
+    report = meter.finish()
+
+    assert report["cpu_seconds"] == 5.0
+    assert report["memory_peak_bytes"] == 700
+    # Trapezoids: (100+700)/2*2 + (700+300)/2*2 + (300+0)/2*2
+    assert report["memory_byte_seconds"] == 800 + 1000 + 300
+
+
 class _Script:
     """Scripted clock and working-set readings for driving a meter by hand."""
 

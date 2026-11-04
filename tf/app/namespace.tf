@@ -16,20 +16,19 @@ resource "kubernetes_namespace" "login" {
 }
 
 # Where per-build Jobs run. This is the one namespace in the platform that
-# executes untrusted tenant code, and — uncomfortably but correctly — it is
-# also the one that must NOT be under a restrictive Pod Security Standard.
+# executes untrusted tenant code.
 #
-# Rootless BuildKit needs to create a user namespace and mount inside it, which
-# the container's own seccomp and AppArmor profiles block. Lifting them
-# requires setting both profiles to `Unconfined` on the pod, and Pod Security
-# `baseline` explicitly forbids that (it bans an explicit Unconfined seccomp
-# profile and any AppArmor override). So `privileged` is the only level under
-# which a build pod can be admitted at all.
+# Rootless BuildKit needs to create a user namespace and mount inside it. In the
+# gVisor sandbox (local.build_runtime_class) the sandbox handles both itself, so
+# build pods keep their default seccomp and AppArmor profiles and the namespace
+# runs under `baseline`. `restricted` is out of reach: BuildKit's newuidmap
+# needs privilege escalation. On the default runtime, lifting the profiles
+# requires `Unconfined`, which `baseline` forbids, so the namespace is
+# `privileged`.
 #
-# `privileged` here is a statement about *admission*, not about the pod: build
+# Either way that is a statement about *admission*, not about the pod: build
 # pods run as uid 1000, are not `privileged: true`, mount no host paths, and do
-# not use host networking. What actually contains them is elsewhere and does
-# not depend on PSA:
+# not use host networking. What else contains them does not depend on PSA:
 #
 #   - rootless BuildKit, so nothing in the pod runs as real root on the node;
 #   - a per-build pod lifetime, so `--oci-worker-no-process-sandbox` only ever
@@ -48,7 +47,7 @@ resource "kubernetes_namespace" "builds" {
       name        = local.ns_builds
       environment = local.environment
 
-      "pod-security.kubernetes.io/enforce"         = "privileged"
+      "pod-security.kubernetes.io/enforce"         = local.build_runtime_class == "" ? "privileged" : "baseline"
       "pod-security.kubernetes.io/enforce-version" = "latest"
     }
   }
