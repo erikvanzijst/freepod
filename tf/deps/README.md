@@ -129,7 +129,9 @@ all Caelus environments (it is *not* duplicated per env). Modules:
   node-exporter for node CPU/mem/net/disk, kube-state-metrics for workload
   state, and Alertmanager), plus **Grafana** (mirrors the homelab layout). A
   forked `prometheus/scrape_configs.yaml` drops high-cardinality control-plane
-  histogram buckets for the single node — **reconcile it when bumping the chart
+  histogram buckets for the single node, and takes per-container CPU and memory
+  usage from the kubelet's `/metrics/resource` instead of cAdvisor, so OpenCost
+  also meters gVisor-sandboxed pods — **reconcile it when bumping the chart
   version**.
 - `uptime/` — one CronJob per [healthchecks.io](https://healthchecks.io) check,
   every minute: it requests the check's public URL through the public edge
