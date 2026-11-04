@@ -8,6 +8,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.jboss.logging.Logger;
 import org.keycloak.models.ClientModel;
+import org.keycloak.models.KeycloakSession;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.util.JsonSerialization;
 
@@ -15,10 +16,11 @@ import org.keycloak.util.JsonSerialization;
  * The app a sign-in is for, as app-auth vouches for it.
  *
  * app-auth adds {@code freepod_app=<b64url(json)>.<b64url(hmac)>} to its
- * authorization request. Keycloak keeps unrecognized request parameters as
- * client notes on the authentication session, so the value lasts for every
- * page and email of that flow. Anyone can put the parameter on a URL, so a
- * value without a valid signature is ignored.
+ * authorization and logout requests. Keycloak keeps an authorization request's
+ * unrecognized parameters as client notes on the authentication session, so
+ * the value lasts for every page and email of that flow; a logout keeps none,
+ * so its value is taken from the request and noted here. Anyone can put the
+ * parameter on a URL, so a value without a valid signature is ignored.
  *
  * The signing key is derived from the requesting client's secret, which
  * app-auth already holds: each environment's client signs with its own key,
@@ -46,6 +48,18 @@ public final class AppContext {
         public String getHost() { return host; }
         public String getIcon() { return icon; }
         public String getLabel() { return name != null ? name : host; }
+    }
+
+    /** As {@link #from(AuthenticationSessionModel)}, noting a value on the request on the way. */
+    static App from(KeycloakSession keycloak, AuthenticationSessionModel session) {
+        if (session != null && session.getClientNote(NOTE) == null && keycloak.getContext().getUri() != null) {
+            String value = keycloak.getContext().getUri().getQueryParameters().getFirst(PARAM);
+            ClientModel client = session.getClient();
+            if (value != null && client != null && !client.isPublicClient() && verify(client.getSecret(), value) != null) {
+                session.setClientNote(NOTE, value);
+            }
+        }
+        return from(session);
     }
 
     static App from(AuthenticationSessionModel session) {

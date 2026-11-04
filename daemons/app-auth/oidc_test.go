@@ -202,7 +202,7 @@ func TestOIDCExchange(t *testing.T) {
 
 func TestOIDCEndSessionURL(t *testing.T) {
 	p := newStubIdP(t)
-	got, err := p.auth().endSessionURL("sealed-state", "https://login.example/signed-out")
+	got, err := p.auth().endSessionURL("sealed-state", "https://login.example/signed-out", appBrand{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestOIDCEndSessionURL(t *testing.T) {
 	q := u.Query()
 	if u.Scheme+"://"+u.Host != p.srv.URL || u.Path != "/logout" || q.Get("ui_locales") != "en" ||
 		q.Get("client_id") != "freepod-apps-dev" || q.Get("state") != "sealed-state" ||
-		q.Get("post_logout_redirect_uri") != "https://login.example/signed-out" || q.Has("id_token_hint") {
+		q.Get("post_logout_redirect_uri") != "https://login.example/signed-out" || q.Has("id_token_hint") || q.Has(brandParam) {
 		t.Fatalf("end-session URL %s", got)
 	}
 }

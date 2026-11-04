@@ -54,8 +54,8 @@ or the dashboard, signs the browser out of every app it used: header apps
 within seconds, and OIDC apps that declare `auth.oidc.backchannelLogoutPath`
 through one logout token each, sent in the background and never retried.
 
-**Keycloak branding.** Every sign-in tells Keycloak which app it is for, in a
-signed `freepod_app` parameter: a catalog app by its product name and icon (the
+**Keycloak branding.** Every sign-in and sign-out tells Keycloak which app it
+is for, in a signed `freepod_app` parameter: a catalog app by its product name and icon (the
 icon served from `APP_AUTH_PLATFORM_URL`, optional), a `custom` app by its
 hostname. Keycloak's Freepod provider shows it on that flow's pages and emails
 ([`tf/deps/keycloak/provider`](../../tf/deps/keycloak/provider)). Without the

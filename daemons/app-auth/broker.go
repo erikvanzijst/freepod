@@ -88,7 +88,7 @@ type authParams struct {
 type authenticator interface {
 	authURL(state, nonce, verifier string, p authParams) (string, error)
 	exchange(ctx context.Context, code, verifier, nonce string) (identity, error)
-	endSessionURL(state, postLogoutRedirect string) (string, error)
+	endSessionURL(state, postLogoutRedirect string, brand appBrand) (string, error)
 	// verifyLogout checks a back-channel logout token and returns the
 	// session it ends.
 	verifyLogout(ctx context.Context, raw string, now time.Time) (string, error)
@@ -330,7 +330,8 @@ func (b *broker) logout(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	if _, ok := b.eligible(ctx, w, host); !ok {
+	app, ok := b.eligible(ctx, w, host)
+	if !ok {
 		return
 	}
 	state, err := b.keys.seal("logout", logoutState{Host: host, RD: safeReturnPath(q.Get("rd"))}, logoutTTL, b.now())
@@ -338,7 +339,7 @@ func (b *broker) logout(w http.ResponseWriter, r *http.Request) {
 		b.internal(w, "sealing logout state", err)
 		return
 	}
-	target, err := b.auth.endSessionURL(state, b.loginURL+"/signed-out")
+	target, err := b.auth.endSessionURL(state, b.loginURL+"/signed-out", b.brand(ctx, app.ID, host))
 	if err != nil {
 		b.log.Error("identity provider unavailable", "err", err)
 		b.errorPage(w, http.StatusServiceUnavailable, "Sign-out is temporarily unavailable", "Something on our side isn't answering. Please try again in a moment.")
@@ -518,7 +519,7 @@ func (a *oidcAuth) authURL(state, nonce, verifier string, p authParams) (string,
 
 // endSessionURL builds Keycloak's RP-initiated logout request from the
 // discovered end_session_endpoint.
-func (a *oidcAuth) endSessionURL(state, postLogoutRedirect string) (string, error) {
+func (a *oidcAuth) endSessionURL(state, postLogoutRedirect string, brand appBrand) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if _, _, err := a.config(ctx); err != nil {
@@ -544,6 +545,9 @@ func (a *oidcAuth) endSessionURL(state, postLogoutRedirect string) (string, erro
 	q.Set("client_id", a.clientID)
 	q.Set("post_logout_redirect_uri", postLogoutRedirect)
 	q.Set("state", state)
+	if v := brand.sign(a.clientSecret); v != "" {
+		q.Set(brandParam, v)
+	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
