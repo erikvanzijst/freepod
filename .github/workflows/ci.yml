@@ -139,6 +139,21 @@ jobs:
               (cd "$d" && go vet ./... && go test ./...)
             done
 
+  # The Keycloak image compiles its login provider against the base image's own
+  # jars and checks the signature vectors app-auth signs, so a Keycloak bump
+  # that breaks the provider fails here rather than at rollout. Built, never
+  # pushed: the image is published by hand (scripts/build-images.sh --keycloak).
+  keycloak-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Build the Keycloak image
+        run: docker build tf/deps/keycloak
+
   publish-images:
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-latest

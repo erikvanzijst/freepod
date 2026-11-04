@@ -101,6 +101,8 @@ type store interface {
 	eligible(ctx context.Context, host string) (app headerApp, ok bool, err error)
 	// accessList returns a deployment's owner and access list entries.
 	accessList(ctx context.Context, deploymentID string) (accessList, error)
+	// product returns the catalog product a deployment's applied release runs.
+	product(ctx context.Context, deploymentID string) (product, error)
 	// bindEntry ties an unbound entry to subject, and reports whether this
 	// call did.
 	bindEntry(ctx context.Context, entryID, subject, name string) (bool, error)
@@ -190,6 +192,18 @@ func (s *pgStore) eligible(ctx context.Context, host string) (headerApp, bool, e
 	}
 	app.Listed = access != "anyone"
 	return app, true, nil
+}
+
+func (s *pgStore) product(ctx context.Context, deploymentID string) (product, error) {
+	var p product
+	err := s.pool.QueryRow(ctx, `
+		SELECT p.name, coalesce(p.slug, ''), coalesce(p.rel_icon_path, '')
+		  FROM deployment d
+		  JOIN deployment_release r        ON r.id = d.applied_release_id
+		  JOIN product_template_version t  ON t.id = r.template_id
+		  JOIN product p                   ON p.id = t.product_id
+		 WHERE d.id = $1::uuid`, deploymentID).Scan(&p.Name, &p.Slug, &p.IconPath)
+	return p, err
 }
 
 func (s *pgStore) accessList(ctx context.Context, deploymentID string) (accessList, error) {

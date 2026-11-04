@@ -268,7 +268,10 @@ func (b *broker) authorize(w http.ResponseWriter, r *http.Request) {
 		b.internal(w, "sealing flow", err)
 		return
 	}
-	target, err := b.auth.authURL(f.State, f.OIDCNonce, f.Verifier, authParams{prompt: strings.Join(kcPrompt, " "), maxAge: maxAge})
+	target, err := b.auth.authURL(f.State, f.OIDCNonce, f.Verifier, authParams{
+		prompt: strings.Join(kcPrompt, " "), maxAge: maxAge,
+		brand: b.brand(r.Context(), client.ID, client.Hostname),
+	})
 	if err != nil {
 		b.log.Error("identity provider unavailable", "err", err)
 		fail("temporarily_unavailable", "")

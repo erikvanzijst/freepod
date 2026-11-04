@@ -53,7 +53,8 @@ GRANT USAGE ON SCHEMA public TO caelus_app_auth;
 -- granted.
 GRANT SELECT (id, hostname, status, applied_release_id, user_id) ON TABLE deployment TO caelus_app_auth;
 GRANT SELECT (id, template_id, values_json) ON TABLE deployment_release TO caelus_app_auth;
-GRANT SELECT (id, system_values_json) ON TABLE product_template_version TO caelus_app_auth;
+GRANT SELECT (id, product_id, system_values_json) ON TABLE product_template_version TO caelus_app_auth;
+GRANT SELECT (id, name, slug, rel_icon_path) ON TABLE product TO caelus_app_auth;
 
 -- Access: a `listed` deployment admits its owner, recognized by the Keycloak
 -- subject their record is bound to (by email while it is unbound), and its

@@ -54,6 +54,13 @@ or the dashboard, signs the browser out of every app it used: header apps
 within seconds, and OIDC apps that declare `auth.oidc.backchannelLogoutPath`
 through one logout token each, sent in the background and never retried.
 
+**Keycloak branding.** Every sign-in tells Keycloak which app it is for, in a
+signed `freepod_app` parameter: a catalog app by its product name and icon (the
+icon served from `APP_AUTH_PLATFORM_URL`, optional), a `custom` app by its
+hostname. Keycloak's Freepod provider shows it on that flow's pages and emails
+([`tf/deps/keycloak/provider`](../../tf/deps/keycloak/provider)). Without the
+product, a sign-in goes ahead unbranded.
+
 Spec: [app-auth-verifier](../../openspec/specs/app-auth-verifier/spec.md),
 [app-auth-broker](../../openspec/specs/app-auth-broker/spec.md),
 [app-auth-chart-contract](../../openspec/specs/app-auth-chart-contract/spec.md),
@@ -69,7 +76,7 @@ Rationale: [app-authentication](../../openspec/changes/archive/2026-09-28-app-au
 
 ## Coupling
 
-This service is coupled to three things outside its directory, deliberately and
+This service is coupled to four things outside its directory, deliberately and
 each with a test that fails when one side moves:
 
 1. **The charts' middlewares** (`templates/app-auth.yaml` in the `custom` and
@@ -88,6 +95,10 @@ each with a test that fails when one side moves:
    `tf/app/caelus/app-auth-bootstrap.sql` grants the `caelus_app_auth` role
    exactly the columns they name. `store_test.go` runs against the migrated test
    database as that role, created by that file.
+4. **Keycloak's Freepod provider**, which verifies `freepod_app` with a key
+   derived from this broker's Keycloak client secret (`brand.go`).
+   `brand_test.go` and the provider's `VectorCheck`, run by the Keycloak image
+   build, pin the same vectors.
 
 ## Keys
 

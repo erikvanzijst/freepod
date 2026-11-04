@@ -521,7 +521,7 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 		"update ended sessions":      `UPDATE app_auth_ended_session SET ended_at = ended_at`,
 		"read release build ids":     `SELECT build_id FROM deployment_release LIMIT 1`,
 		"read template chart refs":   `SELECT chart_ref FROM product_template_version LIMIT 1`,
-		"read products":              `SELECT name FROM product LIMIT 1`,
+		"read product listings":      `SELECT description FROM product LIMIT 1`,
 		"insert access entries":      `INSERT INTO app_access_entry (id, deployment_id, email, created_at) VALUES (gen_random_uuid(), '` + dep + `', 'x@example.com', now())`,
 		"change an entry's email":    `UPDATE app_access_entry SET email = email`,
 		"delete access entries":      `DELETE FROM app_access_entry`,
@@ -537,9 +537,10 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 	}
 
 	allowed := map[string]string{
-		"read the owner":       `SELECT d.user_id, u.email, u.keycloak_subject FROM deployment d JOIN "user" u ON u.id = d.user_id LIMIT 1`,
-		"read access entries":  `SELECT id, email, subject, name, created_at, bound_at FROM app_access_entry LIMIT 1`,
-		"bind an access entry": `UPDATE app_access_entry SET subject = subject, name = name, bound_at = bound_at WHERE false`,
+		"read the owner":        `SELECT d.user_id, u.email, u.keycloak_subject FROM deployment d JOIN "user" u ON u.id = d.user_id LIMIT 1`,
+		"read a product's name": `SELECT t.product_id, p.name, p.slug, p.rel_icon_path FROM product_template_version t JOIN product p ON p.id = t.product_id LIMIT 1`,
+		"read access entries":   `SELECT id, email, subject, name, created_at, bound_at FROM app_access_entry LIMIT 1`,
+		"bind an access entry":  `UPDATE app_access_entry SET subject = subject, name = name, bound_at = bound_at WHERE false`,
 		"write sign-ins": `INSERT INTO app_auth_sign_in (keycloak_sid, deployment_id, subject, sid, signed_in_at)
 			VALUES ('kc-` + f.unique + `', '` + dep + `', 's', 'sid', now())
 			ON CONFLICT (keycloak_sid, deployment_id) DO UPDATE SET signed_in_at = excluded.signed_in_at`,
@@ -869,5 +870,22 @@ func TestSignOutRetention(t *testing.T) {
 	lifespan, err := time.ParseDuration(string(m[1]))
 	if err != nil || lifespan != signInRetention {
 		t.Errorf("sign-ins are kept %v, but a Keycloak session lasts up to %s", signInRetention, m[1])
+	}
+}
+
+func TestProduct(t *testing.T) {
+	f := newFixture(t)
+	st := f.store(rolePool(t))
+	ctx := context.Background()
+	dep := f.deployment("p-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
+	f.exec(`UPDATE product SET rel_icon_path = 'icons/t.png' WHERE id = $1`, f.productID)
+	got, err := st.product(ctx, dep)
+	want := product{Name: "app-auth-test-" + f.unique, Slug: "app-auth-test-" + f.unique, IconPath: "icons/t.png"}
+	if err != nil || got != want {
+		t.Fatalf("%+v, %v", got, err)
+	}
+	other := f.deploymentOf(f.otherProductID, "q-"+f.unique+"-erik.freepod.app", "provisioned", authOn, "")
+	if got, err := st.product(ctx, other); err != nil || got != (product{Name: "app-auth-other-" + f.unique}) {
+		t.Fatalf("product without slug or icon: %+v, %v", got, err)
 	}
 }
