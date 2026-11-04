@@ -36,7 +36,7 @@ module "keycloak" {
 # applied until Keycloak is actually serving.
 #
 # Realm email is deliberately NOT wired from var.smtp_* here. Those are the
-# mailer relay's own upstream purelymail credentials (see module.mailer below);
+# mailer relay's own upstream Scaleway TEM credentials (see module.mailer below);
 # the realm sends through the relay instead and defaults to it.
 module "keycloak_config" {
   source = "./keycloak-config"

@@ -52,11 +52,11 @@ keycloak_admin_password = "replace-with-actual-password"
 google_client_id     = "....apps.googleusercontent.com"
 google_client_secret = "GOCSPX-..."
 
-# Mailer relay's upstream SMTP account (purelymail)
-smtp_host     = "smtp.example.com"
+# Mailer relay's upstream SMTP account (Scaleway Transactional Email)
+smtp_host     = "smtp.tem.scaleway.com"
 smtp_port     = "587"
-smtp_username = "relay@example.com"
-smtp_password = "replace-with-actual-password"
+smtp_username = "<scaleway-project-id>"
+smtp_password = "<scaleway-api-secret-key>"
 
 # Inbound mail: the catch-all mailbox and its IMAP password hash
 # (docker run --rm -i foxcpp/maddy:0.9.6 hash, then type the password)

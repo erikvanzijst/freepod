@@ -10,7 +10,7 @@ resource "kubernetes_config_map" "smtp_config" {
     RELAY_USER     = var.smtp_username
     RELAY_PASSWORD = var.smtp_password
     # Longer than the 4d queue ttl, so delay warnings are never sent:
-    # Purelymail refuses the null sender they use.
+    # Scaleway TEM refuses the null sender they use.
     OPENSMTPD_BOUNCE_WARN = "5d"
   }
 }
