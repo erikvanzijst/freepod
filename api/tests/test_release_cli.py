@@ -11,7 +11,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.models import (
     BuildORM,
@@ -38,8 +38,7 @@ def world(cli_runner):
     """The acting user, a deployment, and releases 1 (succeeded) and 2 (queued)."""
 
     with Session(get_engine()) as session:
-        user = UserORM(email=CLI_EMAIL)
-        session.add(user)
+        user = session.exec(select(UserORM).where(UserORM.email == CLI_EMAIL)).one()
         product = ProductORM(name="p", description="d")
         session.add(product)
         session.commit()

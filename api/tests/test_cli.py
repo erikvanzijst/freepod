@@ -8,7 +8,7 @@ from PIL import Image
 
 from app.db import session_scope
 
-from app.models import DeploymentORM, DeploymentReconcileJobORM
+from app.models import DeploymentORM, DeploymentReconcileJobORM, UserORM
 from app.services.jobs import JobService
 from app.services import templates as template_service, reconcile as reconcile_service
 from tests.conftest import CURRENT_TOS_VERSION, create_free_plan_template
@@ -1396,12 +1396,25 @@ def test_cli_auth_via_env_var(cli_runner):
 def test_cli_auth_as_user_override(cli_runner, monkeypatch):
     """--as-user flag overrides CAELUS_USER_EMAIL."""
     runner, app = cli_runner
-    # Even though CAELUS_USER_EMAIL=cli-test@example.com, --as-user wins
-    result = runner.invoke(app, ["--as-user", "override@example.com", "list-users"])
-    assert result.exit_code == 0
-    users = _parse_yaml_stdout(result)
-    emails = [u["email"] for u in users]
-    assert "override@example.com" in emails
+    with session_scope() as session:
+        session.add(UserORM(email="override@example.com", is_admin=True))
+        session.commit()
+    # Even though CAELUS_USER_EMAIL=cli-test@example.com (not an admin),
+    # --as-user wins, so the admin-only --all is allowed.
+    result = runner.invoke(app, ["--as-user", "override@example.com", "list-deployments", "--all"])
+    assert result.exit_code == 0, result.output
+    assert runner.invoke(app, ["list-deployments", "--all"]).exit_code != 0
+
+
+def test_cli_unknown_acting_user_is_refused_and_not_created(cli_runner):
+    """The CLI only acts as an existing user; it never creates one."""
+    runner, app = cli_runner
+    result = runner.invoke(app, ["--as-user", "22", "list-users"])
+    assert result.exit_code == 1
+    assert "No user with email '22'" in result.output
+    with session_scope() as session:
+        emails = session.exec(select(UserORM.email)).all()
+    assert emails == ["cli-test@example.com"]
 
 
 def test_cli_auth_missing_email_errors(cli_runner, monkeypatch):

@@ -49,14 +49,10 @@ def _project(tmp_path):
 
 @pytest.fixture
 def acting_user(cli_runner):
-    """The user the CLI acts as, created the way the CLI would create it."""
+    """The user the CLI acts as, seeded by `cli_runner`."""
 
     with Session(get_engine()) as session:
-        user = UserORM(email=CLI_EMAIL)
-        session.add(user)
-        session.commit()
-        session.refresh(user)
-        return user.id
+        return session.exec(select(UserORM).where(UserORM.email == CLI_EMAIL)).one().id
 
 
 def _deployment(user_id: int):
