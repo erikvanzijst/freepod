@@ -54,12 +54,11 @@ SCHEMA = {
 
 
 def _user(session: Session, email: str, *, is_admin: bool = False) -> int:
-    user = UserORM(
-        email=email,
-        is_admin=is_admin,
-        handle=handle_for(email),
-        tos_accepted_version=CURRENT_TOS_VERSION,
-    )
+    user = session.exec(select(UserORM).where(UserORM.email == email)).one_or_none()
+    user = user or UserORM(email=email)
+    user.is_admin = is_admin
+    user.handle = handle_for(email)
+    user.tos_accepted_version = CURRENT_TOS_VERSION
     session.add(user)
     session.commit()
     session.refresh(user)

@@ -105,9 +105,9 @@ def _main(
 
 
 def _require_cli_user(session: Session) -> UserORM:
-    """Resolve the CLI user email to a UserORM, auto-creating if needed.
+    """Resolve the CLI user email to an existing live UserORM.
 
-    Exits with code 1 when no email is configured.
+    Exits with code 1 when no email is configured or no live user holds it.
     """
     if not _cli_user_email:
         typer.echo(
@@ -127,10 +127,8 @@ def _require_cli_user(session: Session) -> UserORM:
     ).one_or_none()
 
     if user is None:
-        user = UserORM(email=email)
-        session.add(user)
-        session.commit()
-        session.refresh(user)
+        typer.echo(f"Error: No user with email {email!r}.", err=True)
+        raise typer.Exit(code=1)
 
     return user
 

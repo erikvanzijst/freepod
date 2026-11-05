@@ -359,15 +359,21 @@ def db_session(test_database):
 
 
 @pytest.fixture()
-def cli_runner(test_database, monkeypatch):
-    """The `caelus` CLI, pointed at the same clean test database.
+def cli_runner(test_database, db_session, monkeypatch):
+    """The `caelus` CLI, pointed at the same clean test database, acting as a
+    seeded `cli-test@example.com`.
 
     No `importlib.reload(app.db)` any more: `CAELUS_DATABASE_URL` is pinned to
     the test database for the whole process at conftest import, and the engine
     is built lazily, so the CLI resolves the right database on its own.
+
+    `caelus` never creates its acting user, so it is seeded here, after
+    `db_session`'s reset so no later fixture wipes it.
     """
-    _reset(test_database)
     monkeypatch.setenv("CAELUS_USER_EMAIL", "cli-test@example.com")
+    with Session(test_database.engine) as session:
+        session.add(UserORM(email="cli-test@example.com"))
+        session.commit()
 
     # Same reason as `_hostname_settings` above, for the reconcile: the
     # gitignored `.env.local` sets values on a developer's machine that are

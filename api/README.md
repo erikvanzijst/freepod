@@ -172,7 +172,9 @@ caelus --as-user bob@example.com list-users
 ```
 
 Commands that require user context exit with code 1 and a clear error
-when neither is configured.
+when neither is configured, or when no live user holds that email. The CLI
+never creates its acting user: users come from signing in, or from
+`create-user` run as an existing user.
 
 Note this is an **operator** mechanism, not authentication: the CLI talks to
 the database directly and simply asserts who it is acting as. It must run
