@@ -1,3 +1,8 @@
+- version: "3.3.6"
+  notes: |-
+    A small privacy fix.
+
+    - Smart search and face recognition no longer send anonymous telemetry data to Microsoft
 - version: "3.3.5"
   notes: |-
     A maintenance and security update.
