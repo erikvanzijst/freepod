@@ -26,7 +26,7 @@ locals {
 
   # Builds run in the gVisor sandbox (tf/deps/sandbox). The builds namespace's
   # Pod Security level follows: a sandboxed build needs no lifted profiles.
-  build_runtime_class = local.is_prod_workspace ? "" : "gvisor"
+  build_runtime_class = "gvisor"
 
   # The tenant registry (authenticated-tenant-registry D2). The ClusterIPs come
   # from the service CIDR's low band, which dynamic allocation leaves alone.
