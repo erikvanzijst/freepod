@@ -71,7 +71,6 @@ def oidc_secret_name(deployment: DeploymentORM) -> str:
 
 OIDC_SECRET_COMPONENT = "oidc"
 
-
 VARS_SECRET_COMPONENT = "vars"
 
 
@@ -116,10 +115,10 @@ class DeploymentReconciler:
     """Reconcile a single deployment state against Kubernetes/Helm."""
 
     def __init__(
-        self,
-        *,
-        session: Session,
-        provisioner: Provisioner | None = None,
+            self,
+            *,
+            session: Session,
+            provisioner: Provisioner | None = None,
     ) -> None:
         self._session = session
         self._provisioner = provisioner or default_provisioner
@@ -188,7 +187,7 @@ class DeploymentReconciler:
 
     @staticmethod
     def _with_release_output(
-        message: str, deployment: DeploymentORM, release: DeploymentReleaseORM
+            message: str, deployment: DeploymentORM, release: DeploymentReleaseORM
     ) -> str:
         """Append the failed release's own output to the error the user will see.
 
@@ -271,7 +270,7 @@ class DeploymentReconciler:
 
     @staticmethod
     def _record_release_outcome(
-        release: DeploymentReleaseORM, result: ReconcileResult
+            release: DeploymentReleaseORM, result: ReconcileResult
     ) -> None:
         """Write the release's outcome, once.
 
@@ -305,7 +304,7 @@ class DeploymentReconciler:
             raise IntegrityException("Desired template is missing loaded product relationship")
 
     def _reconcile_apply(
-        self, deployment: DeploymentORM, release: DeploymentReleaseORM
+            self, deployment: DeploymentORM, release: DeploymentReleaseORM
     ) -> ReconcileResult:
         template = deployment.desired_template
         assert template is not None
@@ -406,7 +405,7 @@ class DeploymentReconciler:
         )
 
     def _ensure_object_storage(
-        self, deployment: DeploymentORM
+            self, deployment: DeploymentORM
     ) -> object_storage.ObjectStorageCredentials | None:
         """Provision the deployment's bucket and publish its credentials.
 
@@ -451,7 +450,7 @@ class DeploymentReconciler:
         return credentials
 
     def _ensure_database(
-        self, deployment: DeploymentORM
+            self, deployment: DeploymentORM
     ) -> relational_storage.DatabaseCredentials | None:
         """Provision the deployment's database and publish its credentials.
 
@@ -517,7 +516,7 @@ class DeploymentReconciler:
         return name
 
     def _ensure_oidc_secret(
-        self, deployment: DeploymentORM, template: ProductTemplateVersionORM
+            self, deployment: DeploymentORM, template: ProductTemplateVersionORM
     ) -> str | None:
         """Publish an SSO-enabled deployment's OIDC client credentials. Returns the Secret's name, or None.
 
@@ -572,7 +571,7 @@ class DeploymentReconciler:
             )
 
     def _ensure_vars_secret(
-        self, deployment: DeploymentORM, release: DeploymentReleaseORM
+            self, deployment: DeploymentORM, release: DeploymentReleaseORM
     ) -> str | None:
         """Publish a release's vars as a Secret. Returns its name, or None.
 
@@ -618,16 +617,16 @@ class DeploymentReconciler:
             )
 
     def _build_merged_values(
-        self,
-        deployment: DeploymentORM,
-        template: ProductTemplateVersionORM,
-        *,
-        release: DeploymentReleaseORM,
-        storage: object_storage.ObjectStorageCredentials | None = None,
-        database: relational_storage.DatabaseCredentials | None = None,
-        vars_secret: str | None = None,
-        pull_secret: str | None = None,
-        oidc_secret: str | None = None,
+            self,
+            deployment: DeploymentORM,
+            template: ProductTemplateVersionORM,
+            *,
+            release: DeploymentReleaseORM,
+            storage: object_storage.ObjectStorageCredentials | None = None,
+            database: relational_storage.DatabaseCredentials | None = None,
+            vars_secret: str | None = None,
+            pull_secret: str | None = None,
+            oidc_secret: str | None = None,
     ) -> dict:
         template_values.validate_user_values(deployment.user_values_json, template.values_schema_json)
         system_overrides = self._build_system_overrides(
@@ -647,15 +646,15 @@ class DeploymentReconciler:
 
     @classmethod
     def _build_system_overrides(
-        cls,
-        deployment: DeploymentORM,
-        *,
-        release: DeploymentReleaseORM,
-        storage: object_storage.ObjectStorageCredentials | None = None,
-        database: relational_storage.DatabaseCredentials | None = None,
-        vars_secret: str | None = None,
-        pull_secret: str | None = None,
-        oidc_secret: str | None = None,
+            cls,
+            deployment: DeploymentORM,
+            *,
+            release: DeploymentReleaseORM,
+            storage: object_storage.ObjectStorageCredentials | None = None,
+            database: relational_storage.DatabaseCredentials | None = None,
+            vars_secret: str | None = None,
+            pull_secret: str | None = None,
+            oidc_secret: str | None = None,
     ) -> dict | None:
         """Combine all system-controlled value overrides under the ``caelus`` namespace.
 
@@ -665,17 +664,17 @@ class DeploymentReconciler:
         """
         overrides: dict = {}
         for part in (
-            cls._build_plan_overrides(deployment),
-            cls._build_ingress_overrides(deployment),
-            cls._build_owner_overrides(deployment),
-            cls._build_object_storage_overrides(deployment, storage),
-            cls._build_database_overrides(deployment, database),
-            cls._build_vars_overrides(vars_secret),
-            cls._build_release_overrides(release),
-            cls._build_ssh_overrides(),
-            cls._build_app_auth_overrides(),
-            cls._build_registry_overrides(pull_secret),
-            cls._build_oidc_overrides(deployment, oidc_secret),
+                cls._build_plan_overrides(deployment),
+                cls._build_ingress_overrides(deployment),
+                cls._build_owner_overrides(deployment),
+                cls._build_object_storage_overrides(deployment, storage),
+                cls._build_database_overrides(deployment, database),
+                cls._build_vars_overrides(vars_secret),
+                cls._build_release_overrides(release),
+                cls._build_ssh_overrides(),
+                cls._build_app_auth_overrides(),
+                cls._build_registry_overrides(pull_secret),
+                cls._build_oidc_overrides(deployment, oidc_secret),
         ):
             if part:
                 overrides = template_values.deep_merge(overrides, part)
@@ -749,8 +748,8 @@ class DeploymentReconciler:
 
     @staticmethod
     def _build_object_storage_overrides(
-        deployment: DeploymentORM,
-        storage: object_storage.ObjectStorageCredentials | None,
+            deployment: DeploymentORM,
+            storage: object_storage.ObjectStorageCredentials | None,
     ) -> dict | None:
         """Project object-storage *references* into the ``caelus.objectStorage`` namespace.
 
@@ -784,8 +783,8 @@ class DeploymentReconciler:
 
     @staticmethod
     def _build_database_overrides(
-        deployment: DeploymentORM,
-        database: relational_storage.DatabaseCredentials | None,
+            deployment: DeploymentORM,
+            database: relational_storage.DatabaseCredentials | None,
     ) -> dict | None:
         """Project database *references* into the ``caelus.database`` namespace.
 
@@ -852,7 +851,7 @@ class DeploymentReconciler:
         host = hostname.lower()
         tenant_domain = settings.tenant_domain
         is_wildcard = bool(tenant_domain) and (
-            host == tenant_domain or host.endswith(f".{tenant_domain}")
+                host == tenant_domain or host.endswith(f".{tenant_domain}")
         )
         tls: dict = {"wildcard": is_wildcard}
         if not is_wildcard:
