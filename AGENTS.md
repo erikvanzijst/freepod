@@ -234,7 +234,7 @@ This repository is a monorepo with:
   [parking-page](openspec/specs/parking-page/spec.md),
   [cli-power](openspec/specs/cli-power/spec.md),
   [deployment-power-ui](openspec/specs/deployment-power-ui/spec.md) ·
-  Rationale: [stop-and-start-deployments](openspec/changes/stop-and-start-deployments/design.md)
+  Rationale: [stop-and-start-deployments](openspec/changes/archive/2026-11-06-stop-and-start-deployments/design.md)
 - **"Sign in with Freepod" is an edge feature any chart can render, served by
   `daemons/app-auth/`** (Go): a Traefik forward-auth verifier and a broker on
   `login.<domain>`, the only party that talks to Keycloak for tenant apps (one

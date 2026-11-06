@@ -87,7 +87,7 @@ function readyStatus(d: Deployment): DeploymentView['status'] {
   const desired = d.power?.desired ?? 'running'
   const applied = d.power?.applied ?? 'running'
   if (desired === 'stopped' && applied === 'stopped') {
-    return { label: 'Stopped', tone: 'muted', hint: 'Its data is kept. Start it to run it again.', progress: false }
+    return { label: 'Stopped', tone: 'muted', hint: 'This app is stopped. Click start to bring it back online.', progress: false }
   }
   if (desired === 'stopped') return { label: 'Stopping', tone: 'busy', progress: true }
   if (applied === 'stopped') return { label: 'Starting', tone: 'busy', progress: true }

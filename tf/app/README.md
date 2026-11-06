@@ -288,7 +288,7 @@ stop fails its reconcile.
 
 Spec: [parking-page](../../openspec/specs/parking-page/spec.md),
 [deployment-power-reconciliation](../../openspec/specs/deployment-power-reconciliation/spec.md) ·
-Rationale: [stop-and-start-deployments](../../openspec/changes/stop-and-start-deployments/design.md)
+Rationale: [stop-and-start-deployments](../../openspec/changes/archive/2026-11-06-stop-and-start-deployments/design.md)
 
 ## Tenant image registry (`caelus-registry` / `caelus-registry-dev`)
 

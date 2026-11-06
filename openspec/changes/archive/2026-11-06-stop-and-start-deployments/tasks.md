@@ -110,7 +110,7 @@
   - a WebSocket to a foreign host is refused;
   - `settings.domain` empty passes everything;
   - `/healthz` and `/api/openapi.json` on a foreign host get the parking response.
-- [ ] 5.2 Run the full `api/` suite (`uv run --no-sync pytest`, repo default `-n 8`). Verify it is green, with every existing test still passing behind the guard.
+- [x] 5.2 Run the full `api/` suite (`uv run --no-sync pytest`, repo default `-n 8`). Verify it is green, with every existing test still passing behind the guard.
 
 ## 6. Infrastructure
 
