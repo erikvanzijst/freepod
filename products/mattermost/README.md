@@ -255,9 +255,20 @@ What a version upgrade has to review beyond the tag in
 `upstream` block detects new releases on the Team Edition image.
 
 - **Release notes:** the changelogs in Mattermost's documentation, one page per
-  major (`docs.mattermost.com/product-overview/mattermost-v11-changelog.html`).
-  The `mattermost/mattermost` GitHub releases carry the same versions as
-  `vX.Y.Z` tags, but little detail.
+  major (`docs.mattermost.com/product-overview/mattermost-v12-changelog.html`),
+  built from `docs/main/product-overview/mattermost-vN-changelog.mdx` in
+  `mattermost/mattermost` (the old `mattermost/docs` repository stops at v11).
+  The GitHub release bodies are one line, and `CHANGELOG.md` only links to the
+  docs.
+- **Release notes before release day:** a feature release's tag and image can
+  ship days to weeks before its official release day, while its notes reach the
+  docs page only around that day. Until then they are on an open pull request
+  in `mattermost/mattermost` that adds a `## Release vX.Y` section to that
+  `.mdx` file. Find it with `gh pr list -R mattermost/mattermost --state open
+  --search "vX.Y.Z in:title"` (the full version; `vX.Y` doesn't match), confirm
+  that it changes the file (`gh pr view <n> --json files,headRefName`), and read
+  the file at its head branch through `raw.githubusercontent.com`. The branch
+  name is not a fixed pattern. Patch releases go straight to `master`.
 - **Release lifecycle:** monthly feature releases, plus an Extended Support
   Release every nine months that is supported for twelve. v11.7 is the current
   ESR, supported until 2027-05-15. This catalog tracks the latest stable release

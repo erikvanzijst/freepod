@@ -1,3 +1,13 @@
+- version: "12.1.0"
+  notes: |-
+    A feature release with a better message editor and easier downloads.
+
+    - The rich text editor now supports Markdown images and pasted Markdown
+    - "Download all" in the media gallery saves every attachment as one zip file
+    - Direct messages show an Out of Office notice when the recipient has automatic replies on
+    - The help menu opens documentation bundled with the server
+    - Drafts sent from the Drafts panel no longer reappear after a reload
+    - Chrome and Edge now need version 156 or newer, Firefox 153 or newer
 - version: "12.0.2"
   notes: |-
     A maintenance release with security fixes.
