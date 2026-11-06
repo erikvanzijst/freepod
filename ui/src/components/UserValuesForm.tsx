@@ -6,6 +6,7 @@ import {
   FormControl,
   FormControlLabel,
   FormHelperText,
+  MenuItem,
   Stack,
   TextField,
   Typography,
@@ -43,6 +44,8 @@ export interface SchemaField {
   minimum?: number
   maximum?: number
   default?: unknown
+  /** The allowed values, offered as a dropdown. */
+  enum?: unknown[]
   /** For an `array`: the type of its items. Only `string` items are editable. */
   itemsType?: string
   required: boolean
@@ -147,6 +150,7 @@ export function flattenSchema(
       minimum: propSchema.minimum as number | undefined,
       maximum: propSchema.maximum as number | undefined,
       default: propSchema.default,
+      enum: Array.isArray(propSchema.enum) ? propSchema.enum : undefined,
       itemsType: (propSchema.items as Record<string, unknown> | undefined)?.type as string | undefined,
       required: requiredPaths.includes(currentPath),
     })
@@ -258,11 +262,6 @@ function coerceVar(value: string, type: string): unknown {
   return value
 }
 
-/** The root property a flattened field path belongs to. */
-function rootKey(path: string): string {
-  return path.split('.')[0]
-}
-
 interface UserValuesFormProps {
   valuesSchemaJson: Record<string, unknown> | null
   initialValuesJson?: Record<string, unknown> | null
@@ -343,10 +342,10 @@ export function UserValuesForm({
   const hiddenKey = [...conditionals.hidden].sort().join('\n')
   const requiredKey = [...conditionals.required].sort().join('\n')
   const shownFields = useMemo(() => {
-    const hidden = new Set(hiddenKey.split('\n'))
+    const hidden = hiddenKey ? hiddenKey.split('\n') : []
     const required = new Set(requiredKey.split('\n'))
     return fields
-      .filter((field) => !hidden.has(rootKey(field.path)))
+      .filter((field) => !hidden.some((h) => field.path === h || field.path.startsWith(`${h}.`)))
       .map((field) => (required.has(field.path) ? { ...field, required: true } : field))
   }, [fields, hiddenKey, requiredKey])
 
@@ -489,6 +488,27 @@ export function UserValuesForm({
     }
   }
 
+  // Options are keyed by index, so a numeric enum submits its number rather
+  // than the string a select holds. "Not set" removes the value altogether:
+  // an empty string is not one of the options and would fail validation.
+  const handleEnumChange = (path: string, options: unknown[], selected: string) => {
+    if (selected === '') {
+      setFormData((prev) => {
+        const next = { ...prev }
+        delete next[path]
+        return next
+      })
+      setFieldErrors((prev) => {
+        if (!prev[path]) return prev
+        const next = { ...prev }
+        delete next[path]
+        return next
+      })
+      return
+    }
+    handleChange(path, options[Number(selected)], 'enum')
+  }
+
   if (fields.length === 0) {
     return null
   }
@@ -564,6 +584,36 @@ export function UserValuesForm({
                   ...(readOnly ? { input: { readOnly: true } } : {}),
                 }}
               />
+            </FormControl>
+          )
+        }
+
+        if (field.enum && field.type !== 'boolean') {
+          const options = field.enum
+          const index = options.findIndex((option) => option === formData[field.path])
+          return (
+            <FormControl key={field.path} fullWidth error={!!fieldErrors[field.path]}>
+              <TextField
+                select
+                label={field.title || field.path}
+                helperText={fieldErrors[field.path] || field.description}
+                value={index === -1 ? '' : String(index)}
+                onChange={(e) => handleEnumChange(field.path, options, e.target.value)}
+                required={field.required}
+                error={!!fieldErrors[field.path]}
+                disabled={readOnly}
+              >
+                {!field.required && (
+                  <MenuItem value="">
+                    <em>Not set</em>
+                  </MenuItem>
+                )}
+                {options.map((option, i) => (
+                  <MenuItem key={i} value={String(i)}>
+                    {String(option)}
+                  </MenuItem>
+                ))}
+              </TextField>
             </FormControl>
           )
         }

@@ -95,4 +95,48 @@ describe('evaluateConditionals', () => {
     const none = evaluateConditionals(ajv, null, {})
     expect([...none.hidden, ...none.required]).toEqual([])
   })
+
+  describe('inside an object property', () => {
+    const custom = {
+      properties: {
+        hostname: { type: 'string' },
+        auth: {
+          type: 'object',
+          properties: {
+            enabled: { type: 'boolean' },
+            access: { enum: ['anyone', 'listed'] },
+            public: { type: 'array', items: { type: 'string' } },
+            note: { type: 'string' },
+          },
+          if: { properties: { enabled: { const: true } }, required: ['enabled'] },
+          then: { properties: { access: {}, public: {} }, required: ['note'] },
+        },
+      },
+    }
+
+    it("evaluates the object's own value and hides its fields by path", () => {
+      expect(evaluate(custom, { auth: { enabled: false } })).toEqual({
+        hidden: ['auth.access', 'auth.note', 'auth.public'],
+        required: [],
+      })
+      expect(evaluate(custom, { auth: { enabled: true } })).toEqual({
+        hidden: [],
+        required: ['auth.note'],
+      })
+    })
+
+    it('evaluates an absent object as empty', () => {
+      expect(evaluate(custom, {}).hidden).toEqual(['auth.access', 'auth.note', 'auth.public'])
+    })
+
+    it("never hides a property its object's required names", () => {
+      const schema = {
+        properties: { auth: { ...custom.properties.auth, required: ['access'] } },
+      }
+      expect(evaluate(schema, { auth: { enabled: false } }).hidden).toEqual([
+        'auth.note',
+        'auth.public',
+      ])
+    })
+  })
 })

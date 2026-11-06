@@ -70,7 +70,7 @@ The admin template UI MUST use the label "System values" instead of "Default val
   them as `system_values_json`
 
 ### Requirement: The preview reflects the schema's conditionals
-The live deploy dialog preview SHALL show, hide and require fields by the root
+The live deploy dialog preview SHALL show, hide and require fields by the
 conditionals of the schema in the editor, as the deploy form does. It SHALL re-evaluate
 them whenever the editor holds a new valid schema and whenever the admin changes a
 field in the preview.

@@ -74,6 +74,18 @@ template:
               type: string
               minLength: 1
               maxLength: 256
+        # Only names access and public, so the deploy form shows them while
+        # sign-in is on; a value sent with sign-in off is still accepted.
+        if:
+          properties:
+            enabled:
+              const: true
+          required:
+          - enabled
+        then:
+          properties:
+            access: {}
+            public: {}
         additionalProperties: false
     required:
     - hostname

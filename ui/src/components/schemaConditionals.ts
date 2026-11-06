@@ -2,7 +2,7 @@ import type Ajv2020 from 'ajv/dist/2020'
 
 type JsonObject = Record<string, unknown>
 
-/** Which root properties a schema's conditionals hide or require right now. */
+/** Which fields, by dotted path, a schema's conditionals hide or require right now. */
 export interface ConditionalFields {
   hidden: Set<string>
   required: Set<string>
@@ -58,13 +58,14 @@ function branches(ajv: Ajv2020, schema: JsonObject, document: JsonObject): Branc
 }
 
 /**
- * Evaluate a schema's root conditionals against the document a submission
- * would form. Supported: root `if`/`then`/`else`, the same inside root
- * `allOf` entries, and root `dependentRequired`.
+ * Evaluate a schema's conditionals against the document a submission would
+ * form. Supported, at the root and inside every object property: `if`/`then`/
+ * `else`, the same inside `allOf` entries, and `dependentRequired`. An object
+ * property's conditionals are evaluated against that object's own value.
  *
- * A root property a branch mentions (in its `required` or `properties`) is
- * shown only while such a branch applies, unless the root `required` names
- * it; one no branch mentions is always shown. An applying branch's `required`
+ * A property a branch mentions (in its `required` or `properties`) is shown
+ * only while such a branch applies, unless its object's `required` names it;
+ * one no branch mentions is always shown. An applying branch's `required`
  * makes its properties required.
  */
 export function evaluateConditionals(
@@ -74,20 +75,37 @@ export function evaluateConditionals(
 ): ConditionalFields {
   const hidden = new Set<string>()
   const required = new Set<string>()
-  if (!schema) return { hidden, required }
+  if (schema) evaluateObject(ajv, schema, document, '', hidden, required)
+  return { hidden, required }
+}
 
+function evaluateObject(
+  ajv: Ajv2020,
+  schema: JsonObject,
+  document: JsonObject,
+  prefix: string,
+  hidden: Set<string>,
+  required: Set<string>,
+): void {
+  const path = (name: string) => (prefix ? `${prefix}.${name}` : name)
   const found = branches(ajv, schema, document)
   const alwaysShown = new Set(names(schema.required))
   const shown = new Set<string>()
   for (const { mentions, requires, applies } of found) {
     if (!applies) continue
     mentions.forEach((name) => shown.add(name))
-    requires.forEach((name) => required.add(name))
+    requires.forEach((name) => required.add(path(name)))
   }
   for (const { mentions } of found) {
     for (const name of mentions) {
-      if (!shown.has(name) && !alwaysShown.has(name)) hidden.add(name)
+      if (!shown.has(name) && !alwaysShown.has(name)) hidden.add(path(name))
     }
   }
-  return { hidden, required }
+
+  if (!isObject(schema.properties)) return
+  for (const [name, child] of Object.entries(schema.properties)) {
+    if (!isObject(child) || !isObject(child.properties)) continue
+    const value = document[name]
+    evaluateObject(ajv, child, isObject(value) ? value : {}, path(name), hidden, required)
+  }
 }

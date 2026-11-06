@@ -627,6 +627,130 @@ describe('string list fields', () => {
   })
 })
 
+describe('enum fields', () => {
+  const enumSchema = {
+    type: 'object',
+    properties: {
+      auth: {
+        type: 'object',
+        properties: {
+          enabled: { type: 'boolean', title: 'Sign in with Freepod' },
+          access: { type: 'string', title: 'Who can sign in', enum: ['anyone', 'listed'] },
+        },
+      },
+      replicas: { type: 'integer', title: 'Replicas', enum: [1, 2, 3] },
+    },
+    required: ['replicas'],
+  }
+
+  it('renders an enum as a dropdown of its values', async () => {
+    render(<UserValuesForm valuesSchemaJson={enumSchema} onChange={vi.fn()} />, { wrapper: Wrapper })
+    const select = screen.getByRole('combobox', { name: 'Who can sign in' })
+    expect(screen.queryByRole('textbox', { name: 'Who can sign in' })).not.toBeInTheDocument()
+    fireEvent.mouseDown(select)
+    const options = (await screen.findAllByRole('option')).map((o) => o.textContent)
+    expect(options).toEqual(['Not set', 'anyone', 'listed'])
+  })
+
+  it('offers no empty option for a required enum', async () => {
+    render(<UserValuesForm valuesSchemaJson={enumSchema} onChange={vi.fn()} />, { wrapper: Wrapper })
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Replicas/ }))
+    const options = (await screen.findAllByRole('option')).map((o) => o.textContent)
+    expect(options).toEqual(['1', '2', '3'])
+  })
+
+  it('prefills the stored value and submits a selection with its schema type', async () => {
+    const onChange = vi.fn()
+    render(
+      <UserValuesForm
+        valuesSchemaJson={enumSchema}
+        initialValuesJson={{ auth: { enabled: true, access: 'anyone' }, replicas: 1 }}
+        onChange={onChange}
+      />,
+      { wrapper: Wrapper },
+    )
+    expect(screen.getByRole('combobox', { name: 'Who can sign in' })).toHaveTextContent('anyone')
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Who can sign in' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'listed' }))
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Replicas/ }))
+    fireEvent.click(await screen.findByRole('option', { name: '3' }))
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenLastCalledWith({ auth: { enabled: true, access: 'listed' }, replicas: 3 })
+    })
+  })
+
+  it('drops the value when set back to Not set', async () => {
+    const onChange = vi.fn()
+    render(
+      <UserValuesForm
+        valuesSchemaJson={enumSchema}
+        initialValuesJson={{ auth: { enabled: true, access: 'listed' }, replicas: 2 }}
+        onChange={onChange}
+      />,
+      { wrapper: Wrapper },
+    )
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Who can sign in' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Not set' }))
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenLastCalledWith({ auth: { enabled: true }, replicas: 2 })
+    })
+  })
+})
+
+describe('conditionals inside an object', () => {
+  // The shape of the custom product's `auth` block.
+  const schema = {
+    type: 'object',
+    properties: {
+      auth: {
+        type: 'object',
+        properties: {
+          enabled: { type: 'boolean', title: 'Sign in with Freepod' },
+          access: { type: 'string', title: 'Who can sign in', enum: ['anyone', 'listed'] },
+          public: { type: 'array', title: 'Public paths', items: { type: 'string' } },
+        },
+        if: { properties: { enabled: { const: true } }, required: ['enabled'] },
+        then: { properties: { access: {}, public: {} } },
+        additionalProperties: false,
+      },
+    },
+  }
+
+  it('shows the sign-in settings only while sign-in is checked', async () => {
+    render(<UserValuesForm valuesSchemaJson={schema} onChange={vi.fn()} />, { wrapper: Wrapper })
+    expect(screen.queryByLabelText('Public paths')).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Who can sign in' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Sign in with Freepod'))
+    expect(await screen.findByLabelText('Public paths')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Who can sign in' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Sign in with Freepod'))
+    await waitFor(() => expect(screen.queryByLabelText('Public paths')).not.toBeInTheDocument())
+  })
+
+  it('does not submit the hidden settings once sign-in is unchecked', async () => {
+    const onChange = vi.fn()
+    render(
+      <UserValuesForm
+        valuesSchemaJson={schema}
+        initialValuesJson={{ auth: { enabled: true, access: 'listed', public: ['^/$'] } }}
+        onChange={onChange}
+      />,
+      { wrapper: Wrapper },
+    )
+    expect(await screen.findByLabelText('Public paths')).toHaveValue('^/$')
+    fireEvent.click(screen.getByLabelText('Sign in with Freepod'))
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenLastCalledWith({ auth: { enabled: false } })
+    })
+  })
+})
+
 describe('UserValuesForm conditionals', () => {
   const nextcloudSchema = {
     $schema: 'https://json-schema.org/draft/2020-12/schema',

@@ -60,11 +60,14 @@ The `DeployDialogContent` component MUST accept an optional `initialHostname` pr
 - **THEN** the submit button reads "Save"
 
 ### Requirement: The deploy form shows a conditional field only while its branch applies
-The deploy form SHALL read the schema's root `if`/`then`/`else`, the same inside root
-`allOf` entries, and root `dependentRequired`. A root property a branch mentions, in
-its `required` or `properties`, SHALL be shown only while such a branch applies, unless
-the root `required` names it. A property no branch mentions SHALL always be shown. A
-`dependentRequired` entry SHALL apply while its trigger is present.
+The deploy form SHALL read `if`/`then`/`else`, the same inside `allOf` entries, and
+`dependentRequired`, both at the schema's root and inside every object property. An
+object property's conditionals SHALL be evaluated against that object's value, an
+absent one as empty. A property a branch mentions, in its `required` or `properties`,
+SHALL be shown only while such a branch applies, unless its object's `required` names
+it. A property no branch mentions SHALL always be shown. A hidden object property SHALL
+hide every field under it. A `dependentRequired` entry SHALL apply while its trigger
+is present.
 
 #### Scenario: Sign-in on hides the admin password
 - **WHEN** a schema declares the chart value `auth.enabled` (default `true`) and the
@@ -78,15 +81,22 @@ the root `required` names it. A property no branch mentions SHALL always be show
 - **THEN** the password field appears, marked required
 - **AND** re-checking the checkbox hides it again
 
-#### Scenario: A property the root requires
-- **WHEN** a branch mentions a property the root `required` names
+#### Scenario: A property its object requires
+- **WHEN** a branch mentions a property its object's `required` names
 - **THEN** the field is shown whether or not the branch applies
+
+#### Scenario: Sign-in settings inside the auth object
+- **WHEN** the object property `auth` declares `enabled`, `access` and `public`, with
+  an `if` requiring `enabled` to be `true` whose `then` declares `access` and `public`
+- **AND** the form renders with the checkbox unchecked
+- **THEN** neither the access nor the public paths field is shown
+- **AND** checking the checkbox shows both
 
 ### Requirement: Conditions are evaluated against the document a submission would form
 The form SHALL evaluate each `if` with the JSON Schema validator it uses for
 client-side validation, against one document holding the chart values and the vars it
 would submit, vars typed as the platform coerces them. A field SHALL be marked required
-when the root `required` or an applying branch's `required` names it.
+when its object's `required` or an applying branch's `required` names it.
 
 #### Scenario: A boolean var read by a condition
 - **WHEN** an `if` requires the boolean var `SIGNUPS` to be `true`
