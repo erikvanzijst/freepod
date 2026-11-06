@@ -14,7 +14,7 @@ service:
   httpPort: 80
 
 # Admin console at /admin. Platform-operated, not a tenant feature: it is always
-# enabled because the bootstrap Job needs it, and the token is never shown to the
+# enabled because the owner-invite hook needs it, and the token is never shown to the
 # user. Leaving it in their hands would let them edit config into
 # /data/config.json, which overrides the environment and detaches the instance
 # from this chart.
@@ -24,17 +24,15 @@ admin:
   token: ""
   # Serve 403 for /admin at the Ingress (templates/admin-block.yaml), so the
   # console is not reachable from the internet at all and the token is not the
-  # only thing guarding it. The bootstrap Job is unaffected — it reaches
-  # vaultwarden through the ClusterIP Service, which does not pass the Ingress.
+  # only thing guarding it. The owner-invite hook is unaffected — it reaches
+  # vaultwarden on 127.0.0.1 inside the pod, which does not pass the Ingress.
   # Turn off only to debug an instance through the public URL.
   blockAtIngress: true
 
-# First-user bootstrap (templates/bootstrap-job.yaml).
+# First-user bootstrap: the vaultwarden container's postStart hook
+# (templates/vaultwarden.yaml).
 bootstrap:
-  image:
-    repository: docker.io/curlimages/curl
-    tag: "8.11.1"
-  # Must stay well inside the reconciler's 300s helm timeout, which also covers
+  # How long the hook waits for vaultwarden to answer /alive. Must stay well inside the reconciler's 300s helm timeout, which also covers
   # image pull and PVC binding for the app itself.
   readyTimeoutSeconds: 120
 
@@ -121,7 +119,7 @@ caelus:
   ingress:
     enabled: false
     tls: {}
-  # Owner's email; the bootstrap Job invites this address. Always injected by the
+  # Owner's email; the postStart hook invites this address. Always injected by the
   # reconciler in a real deployment — the empty default only lets `helm template`
   # get far enough to report the missing value.
   owner: {}
