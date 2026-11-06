@@ -13,6 +13,8 @@ import type { VarSubmission } from './UserValuesForm'
 import { DatabasePanel } from './DatabasePanel'
 import { SftpAccessPanel } from './SftpAccessPanel'
 import { AccessPanel } from './AccessPanel'
+import { DeploymentPowerControls } from './deployment/DeploymentPowerControls'
+import { powerChanging, powerLabel } from './deployment/deploymentView'
 
 interface DeploymentDialogProps {
   deployment: Deployment | null
@@ -66,7 +68,7 @@ export function DeploymentDialog({ deployment: initialDeployment, onClose }: Dep
     refetchInterval: (query) => {
       if (query.state.error) return false
       const d = query.state.data
-      return d && isTransitionalStatus(d.status) ? 1000 : false
+      return d && (isTransitionalStatus(d.status) || powerChanging(d)) ? 1000 : false
     },
   })
 
@@ -222,6 +224,7 @@ export function DeploymentDialog({ deployment: initialDeployment, onClose }: Dep
           <MetadataRow label="Last reconciliation" value={formatLocalIso(deployment.last_reconcile_at)} />
           <MetadataRow label="Current template" value={deployment.applied_template ? `#${deployment.applied_template.id}` : '—'} />
           <MetadataRow label="Status" value={deployment.status ?? '—'} />
+          <MetadataRow label="Power" value={powerLabel(deployment)} />
         </Box>
         <AccessPanel deployment={deployment} />
         <SftpAccessPanel userId={deployment.user_id} deploymentId={deployment.id} />
@@ -247,6 +250,10 @@ export function DeploymentDialog({ deployment: initialDeployment, onClose }: Dep
             onCancel={() => setConfirmingDelete(false)}
           />
         )}
+        <DeploymentPowerControls
+          deployment={deployment}
+          onUpdated={(updated) => queryClient.setQueryData(['deployment', updated.user_id, updated.id], updated)}
+        />
         <Box sx={{ flex: 1 }} />
         <Button variant="outlined" onClick={onClose}>Cancel</Button>
         <Button

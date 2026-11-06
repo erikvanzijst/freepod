@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Deployment } from '../../api/types'
-import { deploymentView } from './deploymentView'
+import { deploymentView, powerLabel } from './deploymentView'
 
 function deployment(overrides: Partial<Deployment> = {}): Deployment {
   return {
@@ -169,5 +169,25 @@ describe('deploymentView power', () => {
       canStart: false,
     })
     expect(deploymentView(deployment({ status }))).toMatchObject({ canStop: false, canStart: false })
+  })
+})
+
+describe('powerLabel', () => {
+  const power = (desired: 'running' | 'stopped', applied: 'running' | 'stopped', reason: 'manual' | 'payment' | null = null) =>
+    ({ power: { desired, applied, reason } }) as Partial<Deployment>
+
+  it.each([
+    [power('running', 'running'), 'Running'],
+    [power('stopped', 'running', 'manual'), 'Stopping'],
+    [power('stopped', 'stopped', 'manual'), 'Stopped'],
+    [power('running', 'stopped'), 'Starting'],
+    [power('stopped', 'stopped', 'payment'), 'Stopped (payment)'],
+    [power('stopped', 'running', 'payment'), 'Stopping (payment)'],
+  ] as const)('%o reads as %s', (overrides, label) => {
+    expect(powerLabel(deployment(overrides))).toBe(label)
+  })
+
+  it('reads the power whatever the status', () => {
+    expect(powerLabel(deployment({ status: 'error', ...power('stopped', 'stopped', 'manual') }))).toBe('Stopped')
   })
 })

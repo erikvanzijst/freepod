@@ -7,12 +7,16 @@ import type { Deployment, Product, ProductTemplate } from '../api/types'
 const getDeploymentMock = vi.fn()
 const listTemplatesMock = vi.fn()
 const updateDeploymentMock = vi.fn()
+const stopDeploymentMock = vi.fn()
+const startDeploymentMock = vi.fn()
 
 vi.mock('../api/endpoints', () => ({
   getDeployment: (...args: unknown[]) => getDeploymentMock(...args),
   listTemplates: (...args: unknown[]) => listTemplatesMock(...args),
   updateDeployment: (...args: unknown[]) => updateDeploymentMock(...args),
   deleteDeployment: vi.fn(),
+  stopDeployment: (...args: unknown[]) => stopDeploymentMock(...args),
+  startDeployment: (...args: unknown[]) => startDeploymentMock(...args),
   getDeploymentSftp: vi.fn().mockResolvedValue(null),
   getDeploymentDatabase: vi.fn().mockResolvedValue(null),
   getMyHandle: vi.fn().mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' }),
@@ -113,6 +117,8 @@ describe('DeploymentDialog', () => {
     getDeploymentMock.mockReset()
     listTemplatesMock.mockReset()
     updateDeploymentMock.mockReset()
+    stopDeploymentMock.mockReset()
+    startDeploymentMock.mockReset()
   })
 
   it('upgrades against the canonical schema without needing the stored secret', async () => {
@@ -163,5 +169,52 @@ describe('DeploymentDialog', () => {
 
     expect(await screen.findByRole('button', { name: 'Up to date' })).toBeDisabled()
     expect(listTemplatesMock).not.toHaveBeenCalled()
+  })
+
+  describe('power', () => {
+    const upToDate = () => {
+      const d = makeDeployment({ ...canonicalTemplate })
+      d.user_values_json = { host: 'prism.fred.freepod.eu', admin: { username: 'fred' } }
+      return d
+    }
+
+    it("stops the owner's deployment after confirming", async () => {
+      const deployment = upToDate()
+      const stopping = { ...deployment, power: { desired: 'stopped' as const, applied: 'running' as const, reason: 'manual' as const } }
+      getDeploymentMock.mockResolvedValueOnce(deployment).mockResolvedValue(stopping)
+      stopDeploymentMock.mockResolvedValue(stopping)
+
+      renderWithQuery(<DeploymentDialog deployment={deployment} onClose={vi.fn()} />)
+
+      expect(screen.getByText('Running')).toBeInTheDocument()
+      fireEvent.click(await screen.findByRole('button', { name: 'Stop' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Stop app' }))
+
+      await waitFor(() => expect(stopDeploymentMock).toHaveBeenCalledWith(3, deployment.id))
+      expect(await screen.findByRole('button', { name: 'Stopping...' })).toBeDisabled()
+      expect(screen.getByText('Stopping')).toBeInTheDocument()
+    })
+
+    it('starts a deployment its owner stopped', async () => {
+      const stopped = { ...upToDate(), power: { desired: 'stopped' as const, applied: 'stopped' as const, reason: 'manual' as const } }
+      getDeploymentMock.mockResolvedValue(stopped)
+      startDeploymentMock.mockResolvedValue({ ...stopped, power: { desired: 'running', applied: 'stopped', reason: null } })
+
+      renderWithQuery(<DeploymentDialog deployment={stopped} onClose={vi.fn()} />)
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Start' }))
+      await waitFor(() => expect(startDeploymentMock).toHaveBeenCalledWith(3, stopped.id))
+    })
+
+    it('offers neither for a stop for payment, and names the reason', async () => {
+      const stopped = { ...upToDate(), power: { desired: 'stopped' as const, applied: 'stopped' as const, reason: 'payment' as const } }
+      getDeploymentMock.mockResolvedValue(stopped)
+
+      renderWithQuery(<DeploymentDialog deployment={stopped} onClose={vi.fn()} />)
+
+      expect(await screen.findByText('Stopped (payment)')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
+    })
   })
 })

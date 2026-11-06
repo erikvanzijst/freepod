@@ -83,15 +83,41 @@ export function powerChanging(d: Deployment): boolean {
   return Boolean(d.power && d.power.desired !== d.power.applied)
 }
 
-function readyStatus(d: Deployment): DeploymentView['status'] {
+export type PowerPhase = 'running' | 'stopping' | 'stopped' | 'starting'
+
+/** Where a deployment's power stands, a change still being applied included. */
+export function powerPhase(d: Deployment): PowerPhase {
   const desired = d.power?.desired ?? 'running'
   const applied = d.power?.applied ?? 'running'
-  if (desired === 'stopped' && applied === 'stopped') {
-    return { label: 'Stopped', tone: 'muted', hint: 'This app is stopped. Click start to bring it back online.', progress: false }
+  if (desired === 'stopped') return applied === 'stopped' ? 'stopped' : 'stopping'
+  return applied === 'stopped' ? 'starting' : 'running'
+}
+
+const POWER_LABELS: Record<PowerPhase, string> = {
+  running: 'Running',
+  stopping: 'Stopping',
+  stopped: 'Stopped',
+  starting: 'Starting',
+}
+
+/** The power phase in words, naming the reason of a stop other than the owner's own. */
+export function powerLabel(d: Deployment): string {
+  const label = POWER_LABELS[powerPhase(d)]
+  const reason = d.power?.desired === 'stopped' ? d.power.reason : null
+  return reason && reason !== 'manual' ? `${label} (${reason})` : label
+}
+
+function readyStatus(d: Deployment): DeploymentView['status'] {
+  switch (powerPhase(d)) {
+    case 'stopped':
+      return { label: 'Stopped', tone: 'muted', hint: 'This app is stopped. Click start to bring it back online.', progress: false }
+    case 'stopping':
+      return { label: 'Stopping', tone: 'busy', progress: true }
+    case 'starting':
+      return { label: 'Starting', tone: 'busy', progress: true }
+    case 'running':
+      return { label: 'Running', tone: 'ok', progress: false }
   }
-  if (desired === 'stopped') return { label: 'Stopping', tone: 'busy', progress: true }
-  if (applied === 'stopped') return { label: 'Starting', tone: 'busy', progress: true }
-  return { label: 'Running', tone: 'ok', progress: false }
 }
 
 function supportRequest(d: Deployment): string {

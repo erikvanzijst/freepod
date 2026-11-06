@@ -8,6 +8,7 @@ import { useAuth } from '../state/AuthContext'
 import type { Deployment } from '../api/types'
 import { formatLocalIso, parseUtc } from '../utils/formatDate'
 import { DeploymentDialog } from './DeploymentDialog'
+import { powerLabel } from './deployment/deploymentView'
 
 const columns: GridColDef<Deployment>[] = [
   {
@@ -65,6 +66,12 @@ const columns: GridColDef<Deployment>[] = [
     field: 'status',
     headerName: 'Status',
     width: 110,
+  },
+  {
+    field: 'power',
+    headerName: 'Power',
+    width: 150,
+    valueGetter: (_value, row) => powerLabel(row),
   },
   {
     field: 'up_to_date',

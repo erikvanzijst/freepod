@@ -13,10 +13,12 @@ export function powerRefusal(error: unknown, action: 'stop' | 'start'): string {
   return `Couldn't ${action} the app. Try again shortly.`
 }
 
-/** Stop and start a deployment from its row; the listing follows the change. */
-export function useDeploymentPower(userId: number, deployment: Deployment) {
+/** Stop and start a deployment; the owner's listing follows the change, and
+ * `onUpdated` lets another view (the admin dialog) follow it too. */
+export function useDeploymentPower(userId: number, deployment: Deployment, onUpdated?: (updated: Deployment) => void) {
   const queryClient = useQueryClient()
   const onSuccess = (updated: Deployment) => {
+    onUpdated?.(updated)
     queryClient.setQueryData<Deployment[]>(['deployments', userId], (items) =>
       items?.map((item) => (item.id === updated.id ? updated : item)),
     )
