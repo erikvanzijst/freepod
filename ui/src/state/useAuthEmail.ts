@@ -10,15 +10,12 @@ export function clearStoredAuthHeaders(): void {
   }
 }
 
-// Local development stands in for the edge, which sends the Keycloak subject
-// with the email. Deriving it from the email keeps each typed address one
-// stable account, as one Keycloak account would be.
-export function devSubject(email: string): string {
-  return `dev:${email.trim().toLowerCase()}`
-}
-
+// Local development stands in for the edge with the email alone. Without a
+// subject the API resolves the caller by email and binds nothing, which also
+// reaches an account already bound to its real Keycloak subject, as on the dev
+// database.
 function identityHeaders(email: string): AuthHeaders {
-  return { 'X-Auth-Request-Email': email, 'X-Auth-Request-User': devSubject(email) }
+  return { 'X-Auth-Request-Email': email }
 }
 
 export function getStoredAuthHeaders(): AuthHeaders {
@@ -28,9 +25,9 @@ export function getStoredAuthHeaders(): AuthHeaders {
     if (!raw) return {}
     const parsed = JSON.parse(raw)
     if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      const headers = parsed as AuthHeaders
-      const email = headers['X-Auth-Request-Email']
-      return email && !headers['X-Auth-Request-User'] ? identityHeaders(email) : headers
+      // Only the email is kept, so a subject stored by an earlier version is dropped.
+      const email = (parsed as AuthHeaders)['X-Auth-Request-Email']
+      return email ? identityHeaders(email) : {}
     }
   } catch {
     // corrupted value — ignore

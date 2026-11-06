@@ -7,35 +7,29 @@ const KEY = 'caelus.auth.headers'
 afterEach(() => window.localStorage.clear())
 
 describe('useAuthHeaders', () => {
-  it('sends a subject derived from the email', () => {
+  it('sends the email alone, so the API resolves the caller by email', () => {
     const { result } = renderHook(() => useAuthHeaders())
 
     act(() => result.current.setEmail('Alice@Example.com'))
 
-    expect(getStoredAuthHeaders()).toEqual({
-      'X-Auth-Request-Email': 'Alice@Example.com',
-      'X-Auth-Request-User': 'dev:alice@example.com',
-    })
+    expect(getStoredAuthHeaders()).toEqual({ 'X-Auth-Request-Email': 'Alice@Example.com' })
   })
 
-  it('gives an address the same subject every time it is entered', () => {
+  it('forgets the email when it is cleared', () => {
     const { result } = renderHook(() => useAuthHeaders())
 
     act(() => result.current.setEmail('alice@example.com'))
-    const first = getStoredAuthHeaders()['X-Auth-Request-User']
     act(() => result.current.setEmail(''))
-    expect(getStoredAuthHeaders()).toEqual({})
-    act(() => result.current.setEmail('alice@example.com'))
 
-    expect(getStoredAuthHeaders()['X-Auth-Request-User']).toBe(first)
+    expect(getStoredAuthHeaders()).toEqual({})
   })
 
-  it('adds the subject to headers stored before it existed', () => {
-    window.localStorage.setItem(KEY, JSON.stringify({ 'X-Auth-Request-Email': 'bob@example.com' }))
+  it('drops a subject stored by an earlier version', () => {
+    window.localStorage.setItem(
+      KEY,
+      JSON.stringify({ 'X-Auth-Request-Email': 'bob@example.com', 'X-Auth-Request-User': 'dev:bob@example.com' }),
+    )
 
-    expect(getStoredAuthHeaders()).toEqual({
-      'X-Auth-Request-Email': 'bob@example.com',
-      'X-Auth-Request-User': 'dev:bob@example.com',
-    })
+    expect(getStoredAuthHeaders()).toEqual({ 'X-Auth-Request-Email': 'bob@example.com' })
   })
 })
