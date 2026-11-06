@@ -28,7 +28,7 @@ a hostname change alters the pod template and Helm rolls the pod automatically.
 
 {{/*
 Admin console token. The console is a platform-operated surface, not a tenant
-one: it exists so the bootstrap Job can invite the owner, and it is deliberately
+one: it exists so the postStart hook can invite the owner, and it is deliberately
 never surfaced to the user. Its config editor writes /data/config.json, which
 overrides the environment and would detach the instance from this chart.
 

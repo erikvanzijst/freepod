@@ -250,25 +250,12 @@
     },
     "bootstrap": {
       "type": "object",
-      "description": "First-user bootstrap Job",
+      "description": "First-user bootstrap: the vaultwarden container's postStart hook that invites the owner",
       "properties": {
-        "image": {
-          "type": "object",
-          "properties": {
-            "repository": {
-              "type": "string",
-              "minLength": 1
-            },
-            "tag": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "additionalProperties": false
-        },
         "readyTimeoutSeconds": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "description": "Seconds the postStart hook waits for vaultwarden to answer /alive before failing the container start"
         }
       },
       "additionalProperties": false

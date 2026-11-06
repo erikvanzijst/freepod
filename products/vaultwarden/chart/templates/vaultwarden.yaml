@@ -85,7 +85,7 @@ spec:
             {{- end }}
             - name: SIGNUPS_VERIFY
               value: {{ .Values.signups.verify | quote }}
-            # Hardwired on, not a knob: the bootstrap Job invites the owner, and
+            # Hardwired on, not a knob: the postStart hook invites the owner, and
             # an invited user can only complete registration while this is true.
             # It is also how an owner adds family members from the web vault
             # (Organization -> Members -> Invite) now that /admin is off limits.
@@ -136,10 +136,82 @@ spec:
             - name: LOG_LEVEL
               value: {{ . | quote }}
             {{- end }}
+            - name: OWNER_EMAIL
+              value: {{ required "vaultwarden: caelus.owner.email is required to invite the first user" .Values.caelus.owner.email | quote }}
+            - name: READY_TIMEOUT
+              value: {{ .Values.bootstrap.readyTimeoutSeconds | quote }}
             {{- range $key, $val := .Values.extraEnv }}
             - name: {{ $key }}
               value: {{ $val | quote }}
             {{- end }}
+          # Seeds the first account. A fresh vaultwarden has no users and creates
+          # none, and signups are closed by default, so without this the instance
+          # would deploy perfectly and be impossible to log into. It invites
+          # OWNER_EMAIL through the admin API; vaultwarden emails the owner a link
+          # where they choose their master password. This is why the admin console
+          # is enabled with a token the user never sees.
+          #
+          # Runs on every container start because the invite is idempotent (a
+          # repeat answers 409). Probes wait for the hook, and a failing hook
+          # restarts the container, which retries it; on install or upgrade a
+          # persistent failure keeps the pod un-Ready and the release rolls back.
+          # A postStart hook's own output is discarded, so the script writes to
+          # the main process's stdout to reach the container log.
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -eu
+                  - -c
+                  - |
+                    exec >>/proc/1/fd/1 2>&1
+                    VW=http://127.0.0.1:8080
+                    # /alive does not depend on the web vault being enabled.
+                    waited=0
+                    until curl -sf -o /dev/null "$VW/alive"; do
+                      if [ "$waited" -ge "$READY_TIMEOUT" ]; then
+                        echo "bootstrap: vaultwarden did not become ready within ${READY_TIMEOUT}s"
+                        exit 1
+                      fi
+                      sleep 1
+                      waited=$((waited + 1))
+                    done
+
+                    # The admin API is cookie-authenticated: POST the plaintext
+                    # token to /admin for a VW_ADMIN session. A bearer header
+                    # does not work.
+                    tmp=$(mktemp -d)
+                    trap 'rm -rf "$tmp"' EXIT
+                    if ! curl -sf -o /dev/null -c "$tmp/jar" -X POST "$VW/admin" \
+                      --data-urlencode "token=$ADMIN_TOKEN"; then
+                      echo "bootstrap: admin login failed; cannot invite $OWNER_EMAIL"
+                      exit 1
+                    fi
+
+                    code=$(curl -s -o "$tmp/body" -w '%{http_code}' -b "$tmp/jar" \
+                      -X POST "$VW/admin/invite" \
+                      -H 'Content-Type: application/json' \
+                      -d "{\"email\":\"$OWNER_EMAIL\"}")
+
+                    case "$code" in
+                      2??) echo "bootstrap: invited $OWNER_EMAIL"; exit 0 ;;
+                      409) echo "bootstrap: $OWNER_EMAIL already invited or registered; nothing to do"; exit 0 ;;
+                    esac
+
+                    # A non-2xx can still mean the account was created and only
+                    # the notification email failed. The owner can then finish at
+                    # /#/register with this address, so warn rather than fail.
+                    if curl -sf -b "$tmp/jar" "$VW/admin/users" | grep -qF "$OWNER_EMAIL"; then
+                      echo "bootstrap: WARNING: invite returned $code but $OWNER_EMAIL exists;"
+                      echo "the invitation email likely failed to send. The owner can"
+                      echo "complete registration at $DOMAIN/#/register with that address."
+                      exit 0
+                    fi
+
+                    echo "bootstrap: invite failed with HTTP $code"
+                    cat "$tmp/body"
+                    exit 1
           # Vaultwarden also serves a lighter /alive; switching is a candidate
           # once it has been confirmed against a running instance.
           livenessProbe:

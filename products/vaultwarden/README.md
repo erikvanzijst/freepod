@@ -15,18 +15,18 @@ one template per resource, every setting a first-class value.
 
 See `values.yaml` for the full set. Notable entries:
 
-| Value                | Default           | Notes                                                                                                 |
-|----------------------|-------------------|-------------------------------------------------------------------------------------------------------|
-| `image.tag`          | `1.37.1`          | Pinned so the app version is Caelus-owned and overridable through system values.                      |
-| `signups.allowed`    | `false`           | Open registration off by default; these vaults are internet-facing.                                   |
-| `signups.verify`     | `true`            | `SIGNUPS_VERIFY`. Rendering fails if set without `smtp.enabled`.                                      |
-| `admin.token`        | `""`              | Blank generates a 20-character token on first install. Never shown to the user — see § Admin console. |
-| `bootstrap.image`    | `curlimages/curl` | Image for the first-user invite Job.                                                                  |
-| `caelus.owner.email` | injected          | Reconciler-supplied; the invitation target.                                                           |
-| `storage.data.size`  | `1Gi`             | Overridden by `caelus.plan.storageSize` when the deployment has a plan.                               |
-| `proxy.ipHeader`     | `X-Real-IP`       | `IP_HEADER` — see § Client IP below.                                                                  |
-| `resources`          | `{}`              | Left empty deliberately: a wrong limit OOM-kills a password vault.                                    |
-| `extraEnv`           | `{}`              | String-valued escape hatch for settings not modeled yet.                                              |
+| Value                           | Default     | Notes                                                                                                 |
+|---------------------------------|-------------|-------------------------------------------------------------------------------------------------------|
+| `image.tag`                     | `1.37.1`    | Pinned so the app version is Caelus-owned and overridable through system values.                      |
+| `signups.allowed`               | `false`     | Open registration off by default; these vaults are internet-facing.                                   |
+| `signups.verify`                | `true`      | `SIGNUPS_VERIFY`. Rendering fails if set without `smtp.enabled`.                                      |
+| `admin.token`                   | `""`        | Blank generates a 20-character token on first install. Never shown to the user — see § Admin console. |
+| `bootstrap.readyTimeoutSeconds` | `120`       | How long the owner-invite hook waits for `/alive`.                                                    |
+| `caelus.owner.email`            | injected    | Reconciler-supplied; the invitation target.                                                           |
+| `storage.data.size`             | `1Gi`       | Overridden by `caelus.plan.storageSize` when the deployment has a plan.                               |
+| `proxy.ipHeader`                | `X-Real-IP` | `IP_HEADER` — see § Client IP below.                                                                  |
+| `resources`                     | `{}`        | Left empty deliberately: a wrong limit OOM-kills a password vault.                                    |
+| `extraEnv`                      | `{}`        | String-valued escape hatch for settings not modeled yet.                                              |
 
 The `features` block carries vaultwarden's own defaults (web vault, sends, emergency access,
 password hints, org creation, email change). They are surfaced so they can be tightened
@@ -58,16 +58,19 @@ an instance and that environment variables should be used — which is what this
 A fresh vaultwarden has **no accounts and seeds none**, and open registration is off, so without
 help a new deployment would run perfectly and be impossible to log into.
 
-`templates/bootstrap-job.yaml` closes that gap. After install it invites `caelus.owner.email`
-through the admin API, and vaultwarden emails the owner a link where they choose their master
+A `postStart` hook on the vaultwarden container (`templates/vaultwarden.yaml`) closes that gap.
+It invites `caelus.owner.email` through the admin API, and vaultwarden emails the owner a link where they choose their master
 password. The user supplies nothing at deploy time — no admin token to invent, no window during
 which a stranger could claim the first account.
 
-The Job:
+The hook:
 
-- runs as a `post-install,post-upgrade` hook, because a repeat invite returns **409 "User already
-  exists"**. That idempotency means a failed first attempt self-heals on the next reconcile instead
-  of needing manual repair;
+- runs on every container start, because a repeat invite returns **409 "User already exists"**.
+  It is not a Helm hook: catalog charts render none, so a stopped deployment at zero replicas runs
+  nothing. A failing hook restarts the container, which retries it; on install or upgrade a
+  persistent failure keeps the pod un-Ready, so the release rolls back. Probes start only once the
+  hook has finished;
+- writes its outcome to the container log, prefixed `bootstrap:`;
 - waits on `/alive` (vaultwarden's own health endpoint, which unlike `/` does not depend on the web
   vault being enabled) for `bootstrap.readyTimeoutSeconds`, kept well inside the reconciler's 300s
   helm timeout;
@@ -76,19 +79,19 @@ The Job:
   Argon2-hashed, because the server verifies against the hash;
 - treats a non-2xx as a **warning** if `/admin/users` shows the address anyway. That is the
   "account created but the notification email failed" case: the owner can still finish at
-  `/#/register`, so a mail hiccup does not fail the release of an otherwise healthy vault;
-- talks to the ClusterIP Service, never the Ingress, so blocking `/admin` at the edge would not
-  affect it.
+  `/#/register`, so a mail hiccup does not fail the start of an otherwise healthy vault;
+- talks to `127.0.0.1:8080` inside the pod, never the Ingress, so blocking `/admin` at the edge
+  does not affect it. It uses the `curl` in the vaultwarden image.
 
 `INVITATIONS_ALLOWED` is hardwired to `true` rather than exposed as a value: an invited user can
-only complete registration while it holds, so both this Job and an owner adding family members
+only complete registration while it holds, so both this hook and an owner adding family members
 depend on it.
 
 ## Admin console
 
 **The admin console is platform-operated, not a tenant feature.** It is always enabled, and the
 token is generated (20 characters), stored only in the `<release>-admin` Secret, and never shown to
-the user. It exists so the bootstrap Job can invite the owner.
+the user. It exists so the owner-invite hook can invite the owner.
 
 This is deliberate on both counts:
 
@@ -119,8 +122,8 @@ That second Ingress carries `spec.tls` but deliberately **no** cert-manager anno
 ingress-shim names the Certificate after the secret, so a second annotated Ingress would contend
 for the same Certificate resource. `ingress.yaml` owns issuance; this one only consumes the cert.
 
-The bootstrap Job is unaffected — it reaches vaultwarden through the ClusterIP Service, which never
-passes the Ingress. Operator access to `/admin` is via `kubectl port-forward`, with the token from
+The owner-invite hook is unaffected — it reaches vaultwarden on `127.0.0.1`, which never passes the
+Ingress. Operator access to `/admin` is via `kubectl port-forward`, with the token from
 the `<release>-admin` Secret.
 
 What tenants give up with `/admin`: server-level user invites, removing a user's 2FA,
@@ -147,9 +150,8 @@ Two details worth knowing:
   so a pod-wide `runAsNonRoot` would break it. The app container keeps the full
   hardening; the pod keeps `fsGroup` and `seccompProfile`.
 - **The Service selector names the app pod explicitly.** The library's default
-  instance-only selector would also match the bootstrap Job's pod, which does
-  not listen on 2222, so the Service would publish a dead endpoint for as long
-  as that Job exists.
+  instance-only selector would match any other pod of the release, including
+  ones that do not listen on 2222.
 
 **Backup caveat:** `ENABLE_DB_WAL` is on, so a naive copy of `db.sqlite3` alone can be
 inconsistent — the `-wal` file is part of the state. For a guaranteed-consistent personal
@@ -204,7 +206,6 @@ been audited. That is the next hardening step, not an oversight.
 | Secret (admin token) | `<release>-admin`       |
 | Ingress              | `<release>-ingress`     |
 | SSH Service          | `<release>-ssh`         |
-| Job (bootstrap hook) | `<release>-bootstrap`   |
 
 The Deployment uses `strategy: Recreate`: with a single RWO volume, a rolling update would
 deadlock because the new pod cannot mount the PVC the old one still holds.

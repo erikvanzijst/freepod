@@ -272,6 +272,7 @@ _XDIST_GROUPS = {
     "helm_charts": {
         "test_appstudio_chart",
         "test_bookstack_chart",
+        "test_chart_hook_ban",
         "test_chart_release_label_contract",
         "test_chart_rollout_strategy",
         "test_custom_chart",

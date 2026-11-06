@@ -1,8 +1,8 @@
 {{- /*
 Takes /admin off the public internet.
 
-Costs the bootstrap Job nothing: it reaches vaultwarden through the ClusterIP
-Service, and only the Ingress is public.
+Costs the owner-invite hook nothing: it reaches vaultwarden on 127.0.0.1 inside
+the pod, and only the Ingress is public.
 
 Mechanism: a second, more specific Ingress rule for /admin carrying an
 ipAllowList Middleware scoped to loopback, which no real client can match, so
