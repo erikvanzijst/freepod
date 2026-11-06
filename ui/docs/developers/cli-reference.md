@@ -523,6 +523,20 @@ Print the packaged skill to stdout.
 Use it for an agent `install` does not support, or to read the skill
 before installing it.
 
+## `freepod start`
+
+```
+freepod start [OPTIONS]
+```
+
+Start this project's stopped deployment.
+
+Waits until it runs again.
+
+| Option | Description |
+| --- | --- |
+| `--no-wait` | return once the platform has accepted the change instead of waiting for it |
+
 ## `freepod stop`
 
 ```
@@ -534,20 +548,6 @@ Power down this deployment, keeping all of its data.
 The pod is stopped and the deployment no longer consumes any CPU or RAM. Its address shows a "stopped" page.
 Run `freepod start` to start it back up; a `freepod deploy` leaves it stopped.
 Waits until the stop has been applied.
-
-| Option | Description |
-| --- | --- |
-| `--no-wait` | return once the platform has accepted the change instead of waiting for it |
-
-## `freepod start`
-
-```
-freepod start [OPTIONS]
-```
-
-Start this project's stopped deployment.
-
-Waits until it runs again.
 
 | Option | Description |
 | --- | --- |

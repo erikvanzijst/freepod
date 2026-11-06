@@ -542,10 +542,10 @@ _NO_WAIT_POWER = click.option(
 @_NO_WAIT_POWER
 @click.pass_obj
 def stop(context: Context, no_wait: bool) -> None:
-    """Stop this project's deployment, keeping all of its data.
+    """Power down this deployment, keeping all of its data.
 
-    Nothing runs while it is stopped, and its address shows a "stopped" page.
-    Only `freepod start` runs it again; a `freepod deploy` leaves it stopped.
+    The pod is stopped and the deployment no longer consumes any CPU or RAM. Its address shows a "stopped" page.
+    Run `freepod start` to start it back up; a `freepod deploy` leaves it stopped.
     Waits until the stop has been applied.
     """
     _power(context, power_module.STOPPED, no_wait)
