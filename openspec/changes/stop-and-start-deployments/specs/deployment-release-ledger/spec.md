@@ -2,7 +2,7 @@
 
 ### Requirement: A power change is not a release
 
-Stopping, pausing or starting a deployment SHALL NOT create a release. A reconcile whose desired release is already the deployment's applied release SHALL apply the deployment's desired power without claiming that release, and SHALL write none of its columns. A power change's outcome SHALL be recorded in the power ledger instead.
+Stopping or starting a deployment SHALL NOT create a release. A reconcile whose desired release is already the deployment's applied release SHALL apply the deployment's desired power without claiming that release, and SHALL write none of its columns. A power change's outcome SHALL be recorded in the power ledger instead.
 
 #### Scenario: Stopping a deployment
 

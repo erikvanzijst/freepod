@@ -16,7 +16,7 @@ Stopping and starting a deployment on request: the REST endpoints and their `cae
 
 ### Requirement: A deployment can be started
 
-`POST /api/users/{user_id}/deployments/{deployment_id}/start` SHALL start a stopped or paused deployment: in one transaction it SHALL record a `running` power row with reason `manual`, point the desired power at it, and enqueue a reconcile. It SHALL answer with the deployment read.
+`POST /api/users/{user_id}/deployments/{deployment_id}/start` SHALL start a stopped deployment: in one transaction it SHALL record a `running` power row with reason `manual`, point the desired power at it, and enqueue a reconcile. It SHALL answer with the deployment read.
 
 #### Scenario: Starting a stopped deployment
 
@@ -51,7 +51,7 @@ When a reconcile for the deployment is already queued or running, stop and start
 
 ### Requirement: Power requests are idempotent
 
-A stop for a deployment whose desired power is already `stopped`, or a start for one whose desired power is already `running`, SHALL record nothing, enqueue nothing and answer with the deployment read, whether or not the earlier change has been applied yet. A stop for a paused deployment SHALL record a stop, because it changes the state.
+A stop for a deployment whose desired power is already `stopped`, or a start for one whose desired power is already `running`, SHALL record nothing, enqueue nothing and answer with the deployment read, whether or not the earlier change has been applied yet.
 
 #### Scenario: Stopping twice
 
@@ -66,7 +66,7 @@ A stop for a deployment whose desired power is already `stopped`, or a start for
 
 ### Requirement: Start lifts only stops the caller may lift
 
-Start SHALL run a deployment whose desired power is `paused`, or `stopped` with reason `manual`. A deployment stopped for any other reason, such as `payment`, SHALL be refused with `409` and code `not_startable`, and SHALL record nothing.
+Start SHALL run a deployment whose desired power is `stopped` with reason `manual`. A deployment stopped for any other reason, such as `payment`, SHALL be refused with `409` and code `not_startable`, and SHALL record nothing.
 
 #### Scenario: A deployment stopped for payment
 

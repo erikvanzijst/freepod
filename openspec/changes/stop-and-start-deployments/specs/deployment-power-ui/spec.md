@@ -9,7 +9,7 @@ How the dashboard shows a deployment's power state and lets its owner stop and s
 A `ready` deployment's status label SHALL be:
 - **Stopped** when its desired and applied power are both `stopped`;
 - **Stopping** while its desired power is `stopped` and its applied power is `running`;
-- **Starting** while its desired power is `running` and its applied power is not.
+- **Starting** while its desired power is `running` and its applied power is `stopped`.
 
 Stopping and Starting SHALL show progress. Statuses other than `ready` SHALL keep their existing labels.
 
@@ -44,7 +44,7 @@ A `ready` deployment whose desired power is `running` SHALL offer a **Stop** act
 
 ### Requirement: A stopped app can be started from its row
 
-A `ready` deployment whose desired power is not `running` SHALL offer a **Start** action in place of Stop, unless it was stopped for a reason the owner cannot lift. Start SHALL request the start without confirmation.
+A `ready` deployment whose desired power is `stopped` SHALL offer a **Start** action in place of Stop, unless it was stopped for a reason the owner cannot lift. Start SHALL request the start without confirmation.
 
 #### Scenario: Starting an app
 

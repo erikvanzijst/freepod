@@ -1,6 +1,6 @@
 ## Purpose
 
-How a deployment's power is recorded: whether its workloads are running, paused or stopped. It covers an append-only ledger of power changes, the desired and applied pointers on the deployment, and what deployment reads expose of it.
+How a deployment's power is recorded: whether its workloads run or are stopped. It covers an append-only ledger of power changes, the desired and applied pointers on the deployment, and what deployment reads expose of it.
 
 ## ADDED Requirements
 
@@ -19,27 +19,29 @@ Every power change SHALL be recorded as a new row in a power ledger. A row SHALL
 - **THEN** a second row records state `running` with reason `manual`
 - **AND** the first row is unchanged
 
-### Requirement: Power has three states
+### Requirement: Power has two states
 
-A power row's state SHALL be one of `running`, `paused` and `stopped`, enforced by the database. `paused` means the app is not running and a visitor's request starts it. `stopped` means the app is not running and only an explicit start runs it again. No separate flag SHALL qualify a state.
+A power row's state SHALL be either `running` or `stopped`, enforced by the database. `stopped` means no workload of the deployment runs and only an explicit start runs it again. Pausing when idle is not a power state: it is a property of a running deployment, observed at runtime, and is recorded nowhere in the ledger.
 
 #### Scenario: An unknown state is rejected
 
-- **WHEN** a power row is written with a state outside the set
+- **WHEN** a power row is written with a state other than `running` or `stopped`
 - **THEN** the database rejects the write
 
 ### Requirement: The reason is one of a closed set
 
-A power row's reason SHALL be one of `manual`, `idle`, `payment`, `traffic` and `release`, enforced by the database. Reasons that no component produces yet SHALL still be accepted by the schema, so that later phases add producers without a migration.
+A power row's reason SHALL be either `manual` or `payment`, enforced by the database.
+- `manual` covers an owner, administrator or operator action, in either direction.
+- `payment` is reserved for stopping a deployment in payment arrears. No component produces it yet, but the schema SHALL accept it, so that the later phase adds a producer without a migration.
 
 #### Scenario: An unknown reason is rejected
 
-- **WHEN** a power row is written with a reason outside the set
+- **WHEN** a power row is written with a reason other than `manual` or `payment`
 - **THEN** the database rejects the write
 
 ### Requirement: The reconciler records each power row's outcome once
 
-A power row's outcome, when work began, when it ended and any error, SHALL be written by the reconciler. The start time SHALL be written only if not already set, so that a re-run after a worker died records when work first began. The end time and error SHALL be written once.
+A power row's outcome SHALL be written by the reconciler: when work began, when it ended, and any error. The start time SHALL be written only if not already set, so that a re-run after a worker died records when work first began. The end time and the error SHALL each be written once.
 
 #### Scenario: A stop is applied
 
@@ -51,9 +53,14 @@ A power row's outcome, when work began, when it ended and any error, SHALL be wr
 - **WHEN** the reconcile applying a stop fails
 - **THEN** the power row records when it ended and why
 
+#### Scenario: A reclaimed reconcile
+
+- **WHEN** a worker dies while applying a stop, and another worker reclaims the job and finishes it
+- **THEN** the power row's start time is the time the first worker began
+
 ### Requirement: The deployment points at its desired and applied power
 
-A deployment SHALL carry two nullable references into the power ledger: the power it desires and the power it is running. A null reference SHALL mean `running`, so that a deployment that was never stopped or paused needs no power row. A power change SHALL move only the desired reference; only a successful reconcile SHALL move the applied reference to the desired one.
+A deployment SHALL carry two nullable references into the power ledger: the power it desires and the power it is running. A null reference SHALL mean `running`, so that a deployment that was never stopped needs no power row. A power change SHALL move only the desired reference. Only a successful reconcile SHALL move the applied reference to the desired one.
 
 #### Scenario: A deployment that was never stopped
 
@@ -79,9 +86,14 @@ Adding power SHALL NOT require writing a row for any existing deployment. Every 
 - **WHEN** the migration that introduces the power ledger has run
 - **THEN** no power rows exist and every existing deployment reads as running
 
-### Requirement: Deployment reads expose desired and applied power
+### Requirement: Deployment reads expose desired and applied power from the database only
 
-Every deployment read, single and listed, SHALL include a `power` object with the desired state, the applied state, and the desired row's reason (null when the desired state is `running`). It SHALL be readable across a listing without a query per deployment.
+Every deployment read, single and listed, SHALL include a `power` object with:
+- the desired state;
+- the applied state;
+- the desired row's reason, null when the desired state is `running`.
+
+These fields SHALL come from the database alone, and a listing SHALL read them without a query per deployment. No field of a deployment read, single or listed, SHALL require a call to the Kubernetes API.
 
 #### Scenario: A stopped deployment
 
@@ -97,6 +109,11 @@ Every deployment read, single and listed, SHALL include a `power` object with th
 
 - **WHEN** a deployment has never been stopped, or has been started again and the start applied
 - **THEN** its read reports desired `running` and applied `running`, with no reason
+
+#### Scenario: Listing many deployments
+
+- **WHEN** an owner lists their deployments
+- **THEN** every deployment's power is included, and the listing makes no call to the Kubernetes API
 
 ### Requirement: Power rows are removed with their deployment
 
