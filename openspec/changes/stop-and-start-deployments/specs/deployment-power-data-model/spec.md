@@ -77,6 +77,16 @@ A deployment SHALL carry two nullable references into the power ledger: the powe
 - **WHEN** the reconcile applying a power change fails
 - **THEN** the applied reference is unchanged, because the atomic rollback restored the previous power
 
+### Requirement: A failed power change is finished
+
+When the reconcile applying a power change fails, the desired reference SHALL be moved back to the applied reference, so that the failed row is never pointed at again and its outcome stays as first written. This is the only way the desired reference moves other than through a power change.
+
+#### Scenario: After a failed stop
+
+- **WHEN** the reconcile applying a stop fails
+- **THEN** the desired and applied references both name the power the deployment was running
+- **AND** the failed `stopped` row keeps its end time and error
+
 ### Requirement: Existing deployments are running without a backfill
 
 Adding power SHALL NOT require writing a row for any existing deployment. Every deployment that exists when the ledger is introduced SHALL read as running.

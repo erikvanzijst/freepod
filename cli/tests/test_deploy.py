@@ -1412,3 +1412,45 @@ def test_releasing_without_a_build_sends_no_build_reference(make_api, tmp_path):
     release(api, state, IMAGE, poll=0, echo=lambda _m: None)
 
     assert "build_id" not in platform.bodies["update"]
+
+
+def _stopped(**kwargs):
+    record = deployment(**kwargs)
+    record["power"] = {"desired": "stopped", "applied": "stopped", "reason": "manual"}
+    return record
+
+
+def test_deploying_to_a_stopped_deployment_says_it_stays_stopped(make_api, tmp_path):
+    platform = Platform(
+        reads=[_stopped(status="ready", generation=3), _stopped(status="ready", generation=4)],
+        update=_stopped(status="provisioning", generation=4),
+    )
+    project_at(
+        tmp_path,
+        values={"hostname": "myapp-erik.freepod.app"},
+        pointer={"id": deployment()["id"], "name": "custom-d8dtx4"},
+    )
+    messages = []
+
+    run(make_api, platform, tmp_path, echo=messages.append)
+
+    said = "\n".join(messages)
+    assert "stays stopped" in said and "freepod start" in said
+    assert not [p for m, p in platform.calls if m == "POST" and p.endswith("/start")]
+
+
+def test_deploying_to_a_running_deployment_says_nothing_about_power(make_api, tmp_path):
+    platform = Platform(
+        reads=[deployment(status="ready", generation=3), deployment(status="ready", generation=4)],
+        update=deployment(status="provisioning", generation=4),
+    )
+    project_at(
+        tmp_path,
+        values={"hostname": "myapp-erik.freepod.app"},
+        pointer={"id": deployment()["id"], "name": "custom-d8dtx4"},
+    )
+    messages = []
+
+    run(make_api, platform, tmp_path, echo=messages.append)
+
+    assert "stopped" not in "\n".join(messages)

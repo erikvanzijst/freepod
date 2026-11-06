@@ -226,6 +226,17 @@ export interface Deployment {
   applied_release?: DeploymentRelease | null
   /** Sign in with Freepod as the serving release has it; null before anything serves. */
   auth?: DeploymentAuth | null
+  power: DeploymentPower
+}
+
+export type PowerState = 'running' | 'stopped'
+
+/** Desired and applied differ while a stop or start is in progress. */
+export interface DeploymentPower {
+  desired: PowerState
+  applied: PowerState
+  /** Why the desired power is `stopped`; null while it is `running`. */
+  reason?: 'manual' | 'payment' | null
 }
 
 export interface DeploymentAuth {

@@ -274,6 +274,7 @@ _XDIST_GROUPS = {
         "test_bookstack_chart",
         "test_chart_hook_ban",
         "test_chart_release_label_contract",
+        "test_chart_stopped_render",
         "test_chart_rollout_strategy",
         "test_custom_chart",
         "test_custom_ssh_sidecar",
@@ -349,6 +350,15 @@ def _hermetic_hostname_settings(monkeypatch):
         "app.services.hostnames.get_settings",
         lambda: CaelusSettings(domain="", _env_file=None),
     )
+
+
+@pytest.fixture(autouse=True)
+def _parking_guard_off(monkeypatch):
+    """The parking guard reads ``domain`` too, and a configured one would park
+    every TestClient request (``Host: testserver``). Its own tests set one."""
+    from app.config import CaelusSettings
+
+    monkeypatch.setattr("app.parking.get_settings", lambda: CaelusSettings(domain="", _env_file=None))
 
 
 @pytest.fixture

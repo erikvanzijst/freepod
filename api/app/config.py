@@ -110,6 +110,11 @@ class CaelusSettings(BaseSettings):
     # serves; the SSH sidecar's is reused because tenant nodes already hold it.
     egress_gate_image: str = "ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2"
     egress_gate_deadline_seconds: int = 60
+    # Where a stopped deployment's hostname is routed: this environment's API
+    # Service, which answers with the parking page (parking-page). Empty
+    # refuses every stopped render.
+    parking_host: str = ""
+    parking_port: int = 8000
     sftp_host: str = "freepod.eu"
     sftp_port: int = 22
 

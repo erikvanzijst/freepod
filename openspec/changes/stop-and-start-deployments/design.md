@@ -122,6 +122,7 @@ on success:  applied_release_id = release.id (if rollout)
              applied_power_id = desired_power_id
              power.ended_at = now (if power_change)
 on failure:  status = error, last_error; power.ended_at, power.error (if power_change);
+             desired_power_id = applied_power_id (if power_change);
              release outcome only if rollout
 ```
 
@@ -130,6 +131,16 @@ on failure:  status = error, last_error; power.ended_at, power.error (if power_c
 - **Lease reclaim** still sees `applied ≠ desired` and claims again, write-if-null.
 - **The `power` reason.** The power service functions enqueue jobs with a new reason, `power` (`JOB_REASON_POWER`). It is informational only, because the reconciler never branches on the reason.
 - **The worker needs no change.** A failed power reconcile returns `status = error`, and the worker marks the job failed.
+- **A failed power change is finished.** When a reconcile with a power change fails, the reconciler moves `desired_power_id` back to `applied_power_id`, in the same transaction that writes the row's `ended_at` and `error` and sets `status = error`.
+  - **It matches the cluster.** `--atomic` has rolled the release back to the applied power, so desired, applied and the cluster agree.
+  - **"Written once" holds.** Each power row gets exactly one outcome, and the failed row stays in the ledger as the record of the attempt.
+  - **The owner's way out works as expected.** The owner recovers from `error` by deploying, and that deploy renders in the applied power. A stop that failed never takes effect later as a side effect of an unrelated deploy. A failed start reverts to the `stopped` row, so the deploy renders stopped and the deployment stays stopped.
+  - **Retrying is a new request.** Once the deployment is `ready` again, the owner stops or starts it again, which writes a fresh row.
+  - **The dashboard shows the failure.** With desired equal to applied and status `error`, it shows the existing error label and `last_error`, not a Stopping or Starting that never ends.
+  - **Lease reclaim is unaffected.** A worker that dies records no outcome, so the reclaimed job still sees desired ≠ applied and carries on.
+  - **A failed combined reconcile** records the failure on both rows. The desired power reverts, and the desired release stays pointed at the failed release, as for any failed rollout.
+  - **Who moves the pointer.** The power service moves `desired_power_id` forward; only a failed reconcile moves it back, and only to `applied_power_id`.
+  - **Rejected alternatives:** retrying the old row on the next reconcile, which rewrites its outcome, loses the first failure and stops the app by surprise; and having the reconciler insert a retry row, which would make the reconciler create intent, something it never does for releases either.
 - **When the power row's outcome is recorded.** Only when `desired_power_id` is set and differs from `applied_power_id`. A rollout to a deployment that is already stopped leaves the power row as it was.
 - **Rollouts to a stopped deployment** are rendered stopped and recorded as succeeded without the new version booting. A broken release surfaces at the next start, as a failed start with Helm's error and an atomic rollback. That is preferred over starting every stopped deployment on every rollout.
 
@@ -385,8 +396,14 @@ where id = :desired_power_id and started_at is null;
 update deployment_power set ended_at = :now, error = :error  -- error null on success
 where id = :desired_power_id;
 
--- Success only. On failure applied_power_id stays: --atomic restored it.
+-- Success only.
 update deployment set applied_power_id = desired_power_id where id = :deployment_id;
+
+-- Failure only, in the same transaction as the outcome and status = 'error'.
+-- --atomic restored the applied power, so the failed change is finished: the
+-- desired pointer goes back to what is running, and the failed row is never
+-- pointed at again.
+update deployment set desired_power_id = applied_power_id where id = :deployment_id;
 ```
 
 ### Read model

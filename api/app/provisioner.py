@@ -11,6 +11,7 @@ from app import post_render
 from app.config import get_settings
 from app.network_policy import TENANT_NAMESPACE_LABELS, tenant_network_policies
 from app.proc import AdapterCommandError, CommandRunner, run_command
+from app.services.errors import IntegrityException
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +182,30 @@ class KubeAdapter:
                 error_message=error_message,
             )
 
+    def scale_running_workloads_to_zero(self, namespace: str) -> list[str]:
+        """Scale every Deployment and StatefulSet above 0 replicas down to 0.
+
+        `kubectl scale` writes no field owner, so Helm's ownership of a
+        stopped render's 0 stands. Returns what it scaled.
+        """
+        result = run_command(
+            ["kubectl", "get", "deployments,statefulsets", "-n", namespace, "-o", "json"],
+            runner=self._runner,
+            error_message=f"Failed to list workloads in namespace {namespace}",
+        )
+        scaled = []
+        for item in json.loads(result.stdout).get("items", []):
+            if ((item.get("spec") or {}).get("replicas") or 0) <= 0:
+                continue
+            target = f"{item['kind'].lower()}/{item['metadata']['name']}"
+            run_command(
+                ["kubectl", "scale", target, "-n", namespace, "--replicas=0"],
+                runner=self._runner,
+                error_message=f"Failed to scale {target} to 0 in namespace {namespace}",
+            )
+            scaled.append(target)
+        return scaled
+
     def delete_object(self, *, kind: str, namespace: str, name: str, error_message: str) -> None:
         """Delete one object by name; matching nothing is success.
 
@@ -232,7 +257,13 @@ class HelmAdapter:
         atomic: bool,
         wait: bool,
         hostname: str | None = None,
+        render: str = post_render.RENDER_NORMAL,
+        parking_host: str = "",
+        parking_port: int = 8000,
     ) -> HelmReleaseOperationResult:
+        if render == post_render.RENDER_STOPPED and not parking_host:
+            # Rather than render an Ingress that points nowhere.
+            raise IntegrityException("A stopped render needs the parking address; set CAELUS_PARKING_HOST")
         logger.info(
             "Applying Helm release '%s' in namespace '%s' (chart=%s version=%s digest=%s)",
             release_name,
@@ -262,9 +293,16 @@ class HelmAdapter:
                 "--post-renderer-args", f"--image={settings.egress_gate_image}",
                 "--post-renderer-args",
                 f"--deadline-seconds={settings.egress_gate_deadline_seconds}",
+                "--post-renderer-args", f"--release={release_name}",
             ])
             if hostname:
                 cmd.extend(["--post-renderer-args", f"--hostname={hostname}"])
+            if render == post_render.RENDER_STOPPED:
+                cmd.extend([
+                    "--post-renderer-args", f"--render={render}",
+                    "--post-renderer-args", f"--parking-host={parking_host}",
+                    "--post-renderer-args", f"--parking-port={parking_port}",
+                ])
             if atomic:
                 cmd.append("--atomic")
             if wait:
@@ -559,6 +597,9 @@ class Provisioner:
         atomic: bool,
         wait: bool,
         hostname: str | None = None,
+        render: str = post_render.RENDER_NORMAL,
+        parking_host: str = "",
+        parking_port: int = 8000,
     ) -> HelmReleaseOperationResult:
         return self.helm.helm_upgrade_install(
             release_name=release_name,
@@ -571,7 +612,18 @@ class Provisioner:
             atomic=atomic,
             wait=wait,
             hostname=hostname,
+            render=render,
+            parking_host=parking_host,
+            parking_port=parking_port,
         )
+
+    def sweep_stopped_workloads(self, *, namespace: str) -> list[str]:
+        """After a stopped render, make sure nothing in the namespace runs,
+        whatever scaled it (deployment-power-reconciliation)."""
+        scaled = self.kube.scale_running_workloads_to_zero(namespace)
+        if scaled:
+            logger.info("Scaled %s to 0 in namespace %s after a stopped render", ", ".join(scaled), namespace)
+        return scaled
 
     def helm_uninstall(
         self,

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Box, Button, Collapse, LinearProgress, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, Collapse, LinearProgress, Stack, Typography } from '@mui/material'
 import ExpandMoreRounded from '@mui/icons-material/ExpandMoreRounded'
 import TuneRounded from '@mui/icons-material/TuneRounded'
 import FolderOutlined from '@mui/icons-material/FolderOutlined'
@@ -8,6 +8,8 @@ import MenuBookRounded from '@mui/icons-material/MenuBookRounded'
 import DeleteOutlineRounded from '@mui/icons-material/DeleteOutlineRounded'
 import PeopleOutlineRounded from '@mui/icons-material/PeopleOutlineRounded'
 import LockOutlined from '@mui/icons-material/LockOutlined'
+import StopCircleOutlined from '@mui/icons-material/StopCircleOutlined'
+import PlayCircleOutlined from '@mui/icons-material/PlayCircleOutlined'
 import { fg, line } from '../landing/landingTokens'
 import AppIcon from '../apppage/AppIcon'
 import { CopyButton } from '../CopyButton'
@@ -15,6 +17,8 @@ import { deploymentView, toneColor } from './deploymentView'
 import { ProblemNotice, StatusLine, OpenButton, type DeploymentCardProps } from './DeploymentParts'
 import { useDeploymentAccess } from './useDeploymentAccess'
 import { AccessDialog } from '../access/AccessDialog'
+import { StopAppDialog } from './StopAppDialog'
+import { useDeploymentPower } from './useDeploymentPower'
 
 /** A deployment as a row like the catalog's; it expands in place to everything else about the app. */
 export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDelete }: DeploymentCardProps) {
@@ -22,6 +26,8 @@ export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDel
   const [open, setOpen] = useState(Boolean(view.problem))
   const [accessOpen, setAccessOpen] = useState(false)
   const access = useDeploymentAccess(userId, deployment, open)
+  const power = useDeploymentPower(userId, deployment)
+  const [confirmStop, setConfirmStop] = useState(false)
 
   const facts = [
     { label: 'Plan', value: view.planLine },
@@ -71,6 +77,7 @@ export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDel
         <Stack spacing={2.5} sx={{ pl: { xs: 1, sm: 10 }, pr: 1, pb: 3 }}>
           {view.status.hint && <Typography sx={{ fontSize: 14, color: fg.muted }}>{view.status.hint}</Typography>}
           {view.problem && <ProblemNotice problem={view.problem} />}
+          {power.error && <Alert severity="warning">{power.error}</Alert>}
 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(5, auto)' }, justifyContent: 'start', columnGap: 5, rowGap: 2 }}>
             {view.address && (
@@ -112,6 +119,16 @@ export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDel
               <Button variant="outlined" size="small" startIcon={<MenuBookRounded />} href={view.docsUrl} target="_blank" rel="noreferrer">Docs</Button>
             )}
             <Box sx={{ flex: 1 }} />
+            {view.canStop && (
+              <Button size="small" startIcon={<StopCircleOutlined />} disabled={power.pending} onClick={() => setConfirmStop(true)}>
+                Stop
+              </Button>
+            )}
+            {view.canStart && (
+              <Button size="small" startIcon={<PlayCircleOutlined />} disabled={power.pending} onClick={power.start}>
+                Start
+              </Button>
+            )}
             {view.canRemove && (
               <Button size="small" startIcon={<DeleteOutlineRounded />} disabled={deletePending} onClick={() => onDelete(deployment)} sx={{ color: toneColor.problem }}>
                 {deletePending ? 'Removing…' : 'Remove app'}
@@ -121,6 +138,17 @@ export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDel
         </Stack>
       </Collapse>
       {access.dialogs}
+      {confirmStop && (
+        <StopAppDialog
+          appName={view.appName}
+          address={view.address}
+          onCancel={() => setConfirmStop(false)}
+          onConfirm={() => {
+            setConfirmStop(false)
+            power.stop()
+          }}
+        />
+      )}
       {accessOpen && (
         <AccessDialog userId={userId} deploymentId={deployment.id} hostname={deployment.hostname} appName={view.appName} onClose={() => setAccessOpen(false)} />
       )}

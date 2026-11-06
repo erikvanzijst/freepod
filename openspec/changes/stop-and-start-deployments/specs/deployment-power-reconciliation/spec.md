@@ -117,9 +117,10 @@ A render with running power SHALL produce the chart's manifests exactly as the p
 
 ### Requirement: The reconciler records the power outcome
 
-On success, a reconcile SHALL point the deployment's applied power at its desired power and record the desired power row's end time. On failure, it SHALL:
+On success, a reconcile SHALL point the deployment's applied power at its desired power and record the desired power row's end time. On failure, it SHALL, in one transaction:
 - leave the applied power unchanged;
-- record the error on the desired power row;
+- record the end time and the error on the desired power row;
+- point the deployment's desired power back at its applied power;
 - set the deployment's status to `error` with the failure as its last error, as a failed rollout does.
 
 #### Scenario: A stop is applied
@@ -130,7 +131,21 @@ On success, a reconcile SHALL point the deployment's applied power at its desire
 #### Scenario: A stop fails
 
 - **WHEN** a stop reconcile fails and Helm rolls back
-- **THEN** the applied power still names the running power, the status is `error`, and the power row records the error
+- **THEN** the applied power still names the running power, the desired power names it too, the status is `error`, and the power row records the error
+
+### Requirement: A failed power change is never applied later
+
+A reconcile SHALL NOT apply a power change whose reconcile has already failed, and SHALL NOT write a failed power row's outcome again. The owner recovers a deployment in `error` by deploying, which renders it in the power it was running.
+
+#### Scenario: Deploying after a failed stop
+
+- **WHEN** a stop has failed and the owner deploys to recover the deployment
+- **THEN** the release is applied with a normal render, the deployment ends `ready` and running, and the failed power row's end time and error are unchanged
+
+#### Scenario: Deploying after a failed start
+
+- **WHEN** a start of a stopped deployment has failed and the owner deploys to recover it
+- **THEN** the release is applied with a stopped render and the deployment ends `ready` and stopped
 
 ### Requirement: A power change and a release apply in one render
 

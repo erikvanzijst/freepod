@@ -36,6 +36,10 @@ export interface DeploymentView {
   openable: boolean
   canEdit: boolean
   canRemove: boolean
+  /** Offered while the app is ready and meant to be running. */
+  canStop: boolean
+  /** Offered while the app is ready and stopped by its owner. */
+  canStart: boolean
   /** Who can sign in, in words; absent unless Sign in with Freepod is on. */
   signIn?: string
   /** Whether the owner keeps the list of who can sign in (`auth.access: listed`). */
@@ -64,7 +68,7 @@ function status(d: Deployment): DeploymentView['status'] {
       if (desired && applied && desired !== applied) return { label: `Updating to ${desired}`, tone: 'busy', progress: true }
       return { label: 'Applying changes', tone: 'busy', progress: true }
     case 'ready':
-      return { label: 'Running', tone: 'ok', progress: false }
+      return readyStatus(d)
     case 'error':
       return { label: 'Needs attention', tone: 'problem', progress: false }
     case 'deleting':
@@ -72,6 +76,22 @@ function status(d: Deployment): DeploymentView['status'] {
     default:
       return { label: 'Unknown', tone: 'muted', progress: false }
   }
+}
+
+/** Whether a stop or start is still being applied. */
+export function powerChanging(d: Deployment): boolean {
+  return Boolean(d.power && d.power.desired !== d.power.applied)
+}
+
+function readyStatus(d: Deployment): DeploymentView['status'] {
+  const desired = d.power?.desired ?? 'running'
+  const applied = d.power?.applied ?? 'running'
+  if (desired === 'stopped' && applied === 'stopped') {
+    return { label: 'Stopped', tone: 'muted', hint: 'Its data is kept. Start it to run it again.', progress: false }
+  }
+  if (desired === 'stopped') return { label: 'Stopping', tone: 'busy', progress: true }
+  if (applied === 'stopped') return { label: 'Starting', tone: 'busy', progress: true }
+  return { label: 'Running', tone: 'ok', progress: false }
 }
 
 function supportRequest(d: Deployment): string {
@@ -143,6 +163,8 @@ export function deploymentView(d: Deployment): DeploymentView {
     openable,
     canEdit: d.status === 'ready' || d.status === 'error',
     canRemove: d.status !== 'deleting' && d.status !== 'deleted',
+    canStop: d.status === 'ready' && (d.power?.desired ?? 'running') === 'running',
+    canStart: d.status === 'ready' && d.power?.desired === 'stopped' && d.power.reason === 'manual',
     signIn: signIn(d, appName),
     listed: Boolean(d.auth?.enabled && d.auth.access === 'listed'),
   }

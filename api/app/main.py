@@ -31,6 +31,7 @@ from app.api.util import register_exception_handlers
 from app.db import get_session
 from app.logging_config import configure_logging
 from app.origin_guard import OriginGuard
+from app.parking import ParkingGuard
 from app.client_version_gate import ClientVersionGate
 from app.config import get_settings
 from app.services.var_crypto import verify_keyring
@@ -81,8 +82,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(OriginGuard, trusted_origins=_BROWSER_ORIGINS)
-# Added last so it runs first: an outdated CLI is refused before anything else.
 app.add_middleware(ClientVersionGate)
+# Added last so it runs first: a request for any host but the platform's own
+# (a stopped app's, routed here) never reaches anything else.
+app.add_middleware(ParkingGuard)
 
 
 @app.get("/", include_in_schema=False)

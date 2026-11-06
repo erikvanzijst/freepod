@@ -15,6 +15,7 @@ function deployment(overrides: Partial<Deployment> = {}): Deployment {
     name: 'immich-x1',
     namespace: 'ns',
     status: 'ready',
+    power: { desired: 'running', applied: 'running' },
     generation: 1,
     ...overrides,
   }
@@ -122,5 +123,51 @@ describe('deploymentView docs', () => {
 
   it('has no docs for a product outside the catalog', () => {
     expect(deploymentView(withSlug(null)).docsUrl).toBeNull()
+  })
+})
+
+describe('deploymentView power', () => {
+  const power = (desired: 'running' | 'stopped', applied: 'running' | 'stopped', reason: 'manual' | 'payment' | null = null) =>
+    ({ power: { desired, applied, reason } }) as Partial<Deployment>
+
+  it.each([
+    [power('stopped', 'stopped', 'manual'), 'Stopped', 'muted', false],
+    [power('stopped', 'running', 'manual'), 'Stopping', 'busy', true],
+    [power('running', 'stopped'), 'Starting', 'busy', true],
+    [power('running', 'running'), 'Running', 'ok', false],
+  ] as const)('%o reads as %s', (overrides, label, tone, progress) => {
+    const view = deploymentView(deployment(overrides))
+    expect(view.status).toMatchObject({ label, tone, progress })
+  })
+
+  it('keeps the existing labels while not ready', () => {
+    expect(deploymentView(deployment({ status: 'error', ...power('stopped', 'stopped', 'manual') })).status.label).toBe(
+      'Needs attention',
+    )
+    expect(deploymentView(deployment({ status: 'provisioning', generation: 3, ...power('stopped', 'stopped', 'manual') })).status.label).toBe(
+      'Applying changes',
+    )
+  })
+
+  it('offers Stop on a ready app meant to be running', () => {
+    expect(deploymentView(deployment(power('running', 'running')))).toMatchObject({ canStop: true, canStart: false })
+    expect(deploymentView(deployment(power('running', 'stopped')))).toMatchObject({ canStop: true, canStart: false })
+  })
+
+  it('offers Start in place of Stop on an app its owner stopped', () => {
+    expect(deploymentView(deployment(power('stopped', 'stopped', 'manual')))).toMatchObject({ canStop: false, canStart: true })
+    expect(deploymentView(deployment(power('stopped', 'running', 'manual')))).toMatchObject({ canStop: false, canStart: true })
+  })
+
+  it('offers neither for a stop the owner cannot lift', () => {
+    expect(deploymentView(deployment(power('stopped', 'stopped', 'payment')))).toMatchObject({ canStop: false, canStart: false })
+  })
+
+  it.each(['error', 'provisioning', 'pending', 'deleting'] as const)('offers neither while %s', (status) => {
+    expect(deploymentView(deployment({ status, ...power('stopped', 'stopped', 'manual') }))).toMatchObject({
+      canStop: false,
+      canStart: false,
+    })
+    expect(deploymentView(deployment({ status }))).toMatchObject({ canStop: false, canStart: false })
   })
 })

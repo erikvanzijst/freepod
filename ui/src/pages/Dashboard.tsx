@@ -16,7 +16,7 @@ import {
 } from '../api/endpoints'
 import type { Deployment } from '../api/types'
 import { useAuth } from '../state/AuthContext'
-import { isTransitionalStatus } from '../utils/deploymentStatus'
+import { listingRefetchInterval } from '../utils/deploymentStatus'
 import { DeployDialog } from '../components/DeployDialog'
 import { ConfirmDeleteDialog } from '../components/ConfirmDeleteDialog'
 import { PageHeading } from '../components/PageHeading'
@@ -50,10 +50,7 @@ function Dashboard() {
     queryKey: ['deployments', user?.id],
     queryFn: () => listDeployments(user!.id),
     enabled: Boolean(user?.id),
-    refetchInterval: (query) => {
-      const items = query.state.data ?? []
-      return items.some((deployment) => isTransitionalStatus(deployment.status)) ? 3000 : false
-    },
+    refetchInterval: (query) => listingRefetchInterval(query.state.data ?? []),
   })
 
   const deleteDeploymentMutation = useMutation({

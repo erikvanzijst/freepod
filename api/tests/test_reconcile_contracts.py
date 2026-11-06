@@ -25,7 +25,7 @@ def test_deployment_statuses_are_complete_and_unique() -> None:
 
 def test_job_statuses_and_reasons_are_complete_and_unique() -> None:
     assert set(c.JOB_STATUSES) == {"queued", "running", "done", "failed"}
-    assert set(c.JOB_REASONS) == {"create", "update", "delete"}
+    assert set(c.JOB_REASONS) == {"create", "update", "delete", "power"}
     assert len(c.JOB_STATUSES) == len(set(c.JOB_STATUSES))
     assert len(c.JOB_REASONS) == len(set(c.JOB_REASONS))
 

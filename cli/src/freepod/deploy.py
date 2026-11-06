@@ -868,6 +868,12 @@ def release(
             f"  The platform recorded: {final.get('last_error') or 'no error message'}"
         )
 
+    from .power import stopped_notice  # power imports delete, which imports this module
+
+    notice = stopped_notice(final)
+    if notice:
+        echo(notice)
+
     live = address(final)
     if live is None:
         raise FreepodError(

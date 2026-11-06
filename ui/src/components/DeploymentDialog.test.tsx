@@ -101,6 +101,7 @@ function makeDeployment(applied: ProductTemplate): Deployment {
     desired_template: applied,
     applied_template: { ...applied, product },
     status: 'ready',
+    power: { desired: 'running', applied: 'running' },
     generation: 1,
     created_at: '2026-09-20T00:00:00Z',
     user: { id: 3, email: 'fred@example.com', is_admin: false, created_at: '2026-01-01T00:00:00Z' },

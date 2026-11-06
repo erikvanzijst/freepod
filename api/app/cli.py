@@ -38,6 +38,7 @@ from app.models import (
     VarsWrite,
 )
 from app.services import (
+    power as power_service,
     templates as template_service,
     deployments as deployment_service,
     products as product_service,
@@ -51,7 +52,7 @@ from app.services import (
     var_crypto,
     vars as vars_service,
 )
-from app.services.errors import CaelusException
+from app.services.errors import CaelusException, CodedException
 from pydantic import ValidationError as PydanticValidationError
 from app.services.usage import report as usage_report
 from app.services.reconcile_constants import (
@@ -943,6 +944,41 @@ def delete_deployment(user_id: int, deployment_id: UUID) -> None:
         except CaelusException as e:
             _exit_for_domain_error(e)
         _echo_yaml_entity(deployment)
+
+
+def _power_command(change, *, user_id: int, deployment_id: UUID) -> None:
+    with session_scope() as session:
+        _require_cli_user(session)
+        try:
+            # No actor: a change made through `caelus` is a platform action.
+            deployment = change(session, user_id=user_id, deployment_id=deployment_id, actor_user_id=None)
+        except CodedException as e:
+            logger.warning("CLI command failed with domain error: %s", e)
+            typer.echo(f"Error ({e.code}): {e}", err=True)
+            raise typer.Exit(code=1)
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        _echo_yaml_entity(deployment)
+
+
+@app.command("stop-deployment")
+def stop_deployment(
+    *,
+    user_id: int = typer.Option(..., "--user-id"),
+    deployment_id: UUID = typer.Option(..., "--deployment-id"),
+) -> None:
+    """Stop a ready deployment, keeping its data; only a start runs it again."""
+    _power_command(power_service.stop_deployment, user_id=user_id, deployment_id=deployment_id)
+
+
+@app.command("start-deployment")
+def start_deployment(
+    *,
+    user_id: int = typer.Option(..., "--user-id"),
+    deployment_id: UUID = typer.Option(..., "--deployment-id"),
+) -> None:
+    """Start a deployment stopped with reason `manual`."""
+    _power_command(power_service.start_deployment, user_id=user_id, deployment_id=deployment_id)
 
 
 @app.command("update-deployment")

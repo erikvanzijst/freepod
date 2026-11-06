@@ -36,6 +36,11 @@ resource "kubernetes_config_map" "api" {
     CAELUS_TENANT_DB_POOLER_NAMESPACE = var.namespace
     CAELUS_TENANT_DB_POOLER_POD_LABEL = local.tenant_pooler_app_label
 
+    # Where a stopped deployment's hostname is routed: this environment's own
+    # API, which answers it with the parking page (parking-page spec).
+    CAELUS_PARKING_HOST = "${kubernetes_service.api.metadata[0].name}.${var.namespace}.svc.cluster.local"
+    CAELUS_PARKING_PORT = "8000"
+
     # The quota ladder's threshold mails. The relay is a tf/deps singleton that
     # accepts unauthenticated mail from in-cluster namespaces, so there is no
     # credential to carry.

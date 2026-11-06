@@ -66,6 +66,7 @@ const makeDeployment = (userId: number): Deployment => {
     name: `dep-${depSeq}`,
     namespace: `user-${userId}`,
     status: 'ready',
+    power: { desired: 'running', applied: 'running' },
   }
 }
 

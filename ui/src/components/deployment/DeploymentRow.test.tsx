@@ -7,10 +7,14 @@ import { DeploymentRow } from './DeploymentRow'
 
 const getDeploymentDatabaseMock = vi.fn()
 const getDeploymentSftpMock = vi.fn()
+const stopDeploymentMock = vi.fn()
+const startDeploymentMock = vi.fn()
 
 vi.mock('../../api/endpoints', () => ({
   getDeploymentDatabase: (...args: unknown[]) => getDeploymentDatabaseMock(...args),
   getDeploymentSftp: (...args: unknown[]) => getDeploymentSftpMock(...args),
+  stopDeployment: (...args: unknown[]) => stopDeploymentMock(...args),
+  startDeployment: (...args: unknown[]) => startDeploymentMock(...args),
 }))
 
 const DETAILS: DeploymentDatabase = {
@@ -38,6 +42,7 @@ function deployment(status: Deployment['status']): Deployment {
     name: 'app',
     namespace: 'ns',
     status,
+    power: { desired: 'running', applied: 'running' },
     generation: 2,
   }
 }
@@ -179,5 +184,63 @@ describe('DeploymentRow sign-in', () => {
     expand()
     expect(screen.getByRole('button', { name: 'Access' })).toBeInTheDocument()
     await waitFor(() => expect(getDeploymentDatabaseMock).toHaveBeenCalled())
+  })
+})
+
+
+describe('DeploymentRow power actions', () => {
+  function renderPower(power: Deployment['power']) {
+    getDeploymentDatabaseMock.mockRejectedValue(new ApiError('no database', 404))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    const dep = { ...deployment('ready'), power }
+    render(
+      <QueryClientProvider client={client}>
+        <DeploymentRow deployment={dep} userId={1} deletePending={false} onEdit={vi.fn()} onDelete={vi.fn()} />
+      </QueryClientProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { expanded: false }))
+    return dep
+  }
+
+  beforeEach(() => {
+    stopDeploymentMock.mockReset()
+    startDeploymentMock.mockReset()
+  })
+
+  it('stops once the owner confirms', async () => {
+    const dep = renderPower({ desired: 'running', applied: 'running' })
+    stopDeploymentMock.mockResolvedValue({ ...dep, power: { desired: 'stopped', applied: 'running', reason: 'manual' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent('Its data is kept')
+    expect(dialog).toHaveTextContent('app.example.test')
+    fireEvent.click(screen.getByRole('button', { name: 'Stop app' }))
+    await waitFor(() => expect(stopDeploymentMock).toHaveBeenCalledWith(1, 'd1'))
+    expect(startDeploymentMock).not.toHaveBeenCalled()
+  })
+
+  it('requests nothing when the owner cancels', async () => {
+    renderPower({ desired: 'running', applied: 'running' })
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(stopDeploymentMock).not.toHaveBeenCalled()
+  })
+
+  it('starts a stopped app without asking', async () => {
+    const dep = renderPower({ desired: 'stopped', applied: 'stopped', reason: 'manual' })
+    startDeploymentMock.mockResolvedValue({ ...dep, power: { desired: 'running', applied: 'stopped', reason: null } })
+    expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    await waitFor(() => expect(startDeploymentMock).toHaveBeenCalledWith(1, 'd1'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shows a refusal in the row', async () => {
+    renderPower({ desired: 'running', applied: 'running' })
+    stopDeploymentMock.mockRejectedValue(new ApiError('A deployment job is already queued or running', 409))
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop app' }))
+    expect(await screen.findByText(/busy with another change/)).toBeInTheDocument()
   })
 })

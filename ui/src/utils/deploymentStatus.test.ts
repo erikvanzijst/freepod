@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { isTransitionalStatus, statusColor } from './deploymentStatus'
+import type { Deployment, PowerState } from '../api/types'
+import { isTransitionalStatus, listingRefetchInterval, statusColor } from './deploymentStatus'
 
 describe('deployment status helpers', () => {
   it('maps known statuses to UI colors', () => {
@@ -16,5 +17,24 @@ describe('deployment status helpers', () => {
     expect(isTransitionalStatus('ready')).toBe(false)
     expect(isTransitionalStatus('deleted')).toBe(false)
     expect(isTransitionalStatus('error')).toBe(false)
+  })
+})
+
+describe('listingRefetchInterval', () => {
+  const dep = (status: Deployment['status'], desired: PowerState, applied: PowerState) =>
+    ({ id: 'd1', status, power: { desired, applied } }) as Deployment
+
+  it('polls while a stop is being applied, and stops once it is', () => {
+    expect(listingRefetchInterval([dep('ready', 'running', 'running')])).toBe(false)
+    expect(listingRefetchInterval([dep('ready', 'stopped', 'running')])).toBe(3000)
+    expect(listingRefetchInterval([dep('ready', 'stopped', 'stopped')])).toBe(false)
+  })
+
+  it('polls while a start is being applied', () => {
+    expect(listingRefetchInterval([dep('ready', 'running', 'stopped')])).toBe(3000)
+  })
+
+  it('still polls for transitional statuses', () => {
+    expect(listingRefetchInterval([dep('ready', 'running', 'running'), dep('provisioning', 'running', 'running')])).toBe(3000)
   })
 })

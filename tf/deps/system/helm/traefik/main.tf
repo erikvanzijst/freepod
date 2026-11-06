@@ -20,6 +20,12 @@ resource "helm_release" "traefik" {
   chart      = "traefik"
   version    = var.traefik_chart_version
 
+  # Stopped deployments rely on two kubernetesIngress settings (deployment-power-
+  # reconciliation spec): allowExternalNameServices, set in the values, carries
+  # their hostname to the parking page; and the chart's default
+  # allowEmptyServices: true makes a router whose Service has no ready endpoints
+  # answer 503 instead of 404. Kept here rather than in the values file, where a
+  # comment would change the release's values.
   values = [
     templatefile("${path.module}/values.yaml.tftpl", {
       haproxy_edge_ip                 = var.haproxy_edge_ip
