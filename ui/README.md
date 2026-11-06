@@ -24,9 +24,10 @@ npm install
 npm run dev
 ```
 
-Optional API URL override:
+The dev server proxies `/api` to the API on port 8000, so the browser sees one
+origin. To call an API elsewhere instead:
 ```bash
-VITE_API_URL=http://localhost:8000 npm run dev
+VITE_API_URL=https://dev.freepod.eu/api npm run dev
 ```
 
 Build:
@@ -120,7 +121,7 @@ Spec: [admin-product-detail](../openspec/specs/admin-product-detail/spec.md),
 [admin-users-panel](../openspec/specs/admin-users-panel/spec.md)
 
 ## API And Query Notes
-- API base URL: `VITE_API_URL` or default `http://localhost:8000`.
+- API base URL: `VITE_API_URL`, `/api` by default (same origin; proxied to port 8000 in development).
 - `requestJson` always sends `Content-Type: application/json`.
 - `204` responses map to `null`.
 - Error handling normalizes FastAPI `detail` values (including validation arrays) into readable messages. Errors throw `ApiError` (extends `Error`) with an `status` property carrying the HTTP status code.
