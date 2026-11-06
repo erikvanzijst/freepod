@@ -209,3 +209,53 @@ def test_kube_apply_manifest_raises_on_failure() -> None:
     with pytest.raises(AdapterCommandError) as exc_info:
         adapter.apply_manifest({"kind": "NetworkPolicy"}, error_message="apply failed")
     assert "apply failed" in str(exc_info.value)
+
+
+class _KubectlDouble:
+    """Answers `kubectl get deployments,statefulsets` with `items`, and fails
+    `kubectl scale` for the names in `failing`."""
+
+    def __init__(self, items: list[dict], failing: tuple[str, ...] = ()) -> None:
+        self.items = items
+        self.failing = failing
+        self.calls: list[list[str]] = []
+
+    def __call__(self, cmd: list[str]) -> subprocess.CompletedProcess[str]:
+        self.calls.append(cmd)
+        if cmd[:2] == ["kubectl", "get"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps({"items": self.items}), stderr="")
+        if cmd[:2] == ["kubectl", "scale"] and cmd[2] in self.failing:
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="forbidden")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+
+def _workload(kind: str, name: str, replicas: int | None) -> dict:
+    spec = {} if replicas is None else {"replicas": replicas}
+    return {"kind": kind, "metadata": {"name": name}, "spec": spec}
+
+
+def test_the_sweep_scales_only_running_workloads():
+    double = _KubectlDouble([
+        _workload("Deployment", "idle", 0),
+        _workload("Deployment", "web", 1),
+        _workload("StatefulSet", "db", 2),
+    ])
+    scaled = Provisioner(kube=KubeAdapter(runner=double)).sweep_stopped_workloads(namespace="ns")
+    assert scaled == ["deployment/web", "statefulset/db"]
+    assert double.calls == [
+        ["kubectl", "get", "deployments,statefulsets", "-n", "ns", "-o", "json"],
+        ["kubectl", "scale", "deployment/web", "-n", "ns", "--replicas=0"],
+        ["kubectl", "scale", "statefulset/db", "-n", "ns", "--replicas=0"],
+    ]
+
+
+def test_the_sweep_with_nothing_running_scales_nothing():
+    double = _KubectlDouble([_workload("Deployment", "idle", 0)])
+    assert Provisioner(kube=KubeAdapter(runner=double)).sweep_stopped_workloads(namespace="ns") == []
+    assert len(double.calls) == 1
+
+
+def test_a_failed_scale_fails_the_sweep():
+    double = _KubectlDouble([_workload("Deployment", "web", 1)], failing=("deployment/web",))
+    with pytest.raises(AdapterCommandError):
+        Provisioner(kube=KubeAdapter(runner=double)).sweep_stopped_workloads(namespace="ns")

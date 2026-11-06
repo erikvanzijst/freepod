@@ -9,6 +9,12 @@ Each pod template gets:
 - the deployment's hostname as the ``caelus.dev/hostname`` annotation, when it
   has one: operator-facing metadata only, which nothing selects on.
 
+With ``--render=stopped`` the release runs nothing (deployment-power-reconciliation):
+Deployments and StatefulSets go to 0 replicas, Jobs and CronJobs are suspended,
+HorizontalPodAutoscalers and bare Pods are dropped, and every Ingress rule for
+the deployment's own hostname is pointed at ``<release>-caelus-parking``, an
+appended ExternalName Service resolving to the parking page.
+
 Runs as the ``post-render`` plugin under ``api/helm-plugins/`` (``python -m
 app.post_render``): reads Helm's rendered manifests on stdin, writes them back
 on stdout.
@@ -19,7 +25,9 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from dataclasses import dataclass
 from itertools import takewhile
+import copy
 from typing import Any
 
 import yaml
@@ -28,6 +36,69 @@ from app import egress_gate
 
 PLUGIN_NAME = "post-render"
 HOSTNAME_ANNOTATION = "caelus.dev/hostname"
+RENDER_NORMAL = "normal"
+RENDER_STOPPED = "stopped"
+PARKING_SUFFIX = "-caelus-parking"
+
+
+@dataclass(frozen=True)
+class Stopped:
+    """What the stopped render needs to reroute the deployment's hostname."""
+
+    release: str
+    hostname: str | None
+    parking_host: str
+    parking_port: int
+
+    @property
+    def service_name(self) -> str:
+        return f"{self.release}{PARKING_SUFFIX}"
+
+
+def parking_service(stopped: Stopped) -> dict[str, Any]:
+    return {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {"name": stopped.service_name},
+        "spec": {
+            "type": "ExternalName",
+            "externalName": stopped.parking_host,
+            "ports": [{"name": "http", "port": stopped.parking_port, "protocol": "TCP"}],
+        },
+    }
+
+
+def _reroute_ingress(doc: dict[str, Any], stopped: Stopped) -> bool:
+    if not stopped.hostname:
+        return False
+    host = stopped.hostname.lower()
+    backend = {"service": {"name": stopped.service_name, "port": {"number": stopped.parking_port}}}
+    changed = False
+    for rule in (doc.get("spec") or {}).get("rules") or []:
+        if not isinstance(rule, dict) or str(rule.get("host") or "").lower() != host:
+            continue
+        for path in (rule.get("http") or {}).get("paths") or []:
+            path["backend"] = copy.deepcopy(backend)
+            changed = True
+    return changed
+
+
+def stop(doc: Any, stopped: Stopped) -> bool | None:
+    """Apply the stopped step to ``doc``: whether it changed, or None to drop it."""
+    if not isinstance(doc, dict):
+        return False
+    kind = doc.get("kind")
+    if kind in ("Deployment", "StatefulSet"):
+        doc.setdefault("spec", {})["replicas"] = 0
+        return True
+    if kind in ("Job", "CronJob"):
+        doc.setdefault("spec", {})["suspend"] = True
+        return True
+    if kind in ("HorizontalPodAutoscaler", "Pod"):
+        return None
+    if kind == "Ingress":
+        return _reroute_ingress(doc, stopped)
+    return False
 
 
 def pod_template(doc: Any) -> dict[str, Any] | None:
@@ -97,10 +168,20 @@ for _tag, _pattern in (
 _SEPARATOR = re.compile(r"^---[ \t]*$", re.MULTILINE)
 
 
-def render(manifests: str, gate: dict[str, Any], annotations: dict[str, str] | None = None) -> str:
-    """``manifests`` with every pod template rewritten.
+def _dump(doc: Any) -> str:
+    return yaml.safe_dump(doc, sort_keys=False, width=1 << 16)
 
-    Documents without a pod pass through byte for byte; only the rewritten ones
+
+def render(
+    manifests: str,
+    gate: dict[str, Any],
+    annotations: dict[str, str] | None = None,
+    stopped: Stopped | None = None,
+) -> str:
+    """``manifests`` with every pod template rewritten, and stopped when
+    ``stopped`` is given.
+
+    Untouched documents pass through byte for byte; only the rewritten ones
     are re-serialized, keeping their leading ``# Source:`` comments.
     """
     out: list[str] = []
@@ -108,11 +189,19 @@ def render(manifests: str, gate: dict[str, Any], annotations: dict[str, str] | N
         if not chunk.strip():
             continue
         doc = yaml.load(chunk, Loader=_Loader)
-        if rewrite(doc, gate, annotations):
+        changed = rewrite(doc, gate, annotations)
+        if stopped is not None:
+            stop_changed = stop(doc, stopped)
+            if stop_changed is None:
+                continue
+            changed = changed or stop_changed
+        if changed:
             lines = chunk.strip("\n").splitlines()
             head = list(takewhile(lambda line: line.startswith("#"), lines))
-            chunk = "\n".join([*head, yaml.safe_dump(doc, sort_keys=False, width=1 << 16)])
+            chunk = "\n".join([*head, _dump(doc)])
         out.append(chunk.strip("\n") + "\n")
+    if stopped is not None and stopped.hostname:
+        out.append(f"# Source: caelus post-render (stopped)\n{_dump(parking_service(stopped))}")
     return "".join(f"---\n{c}" for c in out)
 
 
@@ -121,10 +210,30 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--image", required=True, help="the egress gate's image")
     parser.add_argument("--deadline-seconds", type=int, required=True, help="the egress gate's deadline")
     parser.add_argument("--hostname")
+    parser.add_argument("--render", choices=(RENDER_NORMAL, RENDER_STOPPED), default=RENDER_NORMAL)
+    parser.add_argument("--release", required=True, help="the Helm release name; names the platform's objects")
+    parser.add_argument("--parking-host", help="the parking page's FQDN; required with --render=stopped")
+    parser.add_argument("--parking-port", type=int, help="the parking page's port; required with --render=stopped")
     args = parser.parse_args(argv)
+    stopped = None
+    if args.render == RENDER_STOPPED:
+        missing = [
+            flag for flag, value in (
+                ("--parking-host", args.parking_host),
+                ("--parking-port", args.parking_port),
+            ) if not value
+        ]
+        if missing:
+            parser.error(f"--render=stopped requires {', '.join(missing)}")
+        stopped = Stopped(
+            release=args.release,
+            hostname=args.hostname,
+            parking_host=args.parking_host,
+            parking_port=args.parking_port,
+        )
     gate = egress_gate.gate_container(image=args.image, deadline_seconds=args.deadline_seconds)
     annotations = {HOSTNAME_ANNOTATION: args.hostname} if args.hostname else None
-    sys.stdout.write(render(sys.stdin.read(), gate, annotations))
+    sys.stdout.write(render(sys.stdin.read(), gate, annotations, stopped))
 
 
 if __name__ == "__main__":

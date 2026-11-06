@@ -215,6 +215,26 @@ This repository is a monorepo with:
   Rationale:
   [product-upgrade-service](openspec/changes/archive/2026-09-17-product-upgrade-service/design.md),
   [ops/upgrader/README.md](ops/upgrader/README.md)
+- **A deployment is stopped or started beside its releases, not through
+  them.** Power is a second append-only ledger, `deployment_power`, with
+  nullable desired and applied pointers on the deployment (null is running),
+  changed only while the deployment is `ready`. The reconciler is a rollout
+  only when the applied release differs from the desired one; every apply
+  renders the desired power, so a release applied to a stopped deployment stays
+  stopped. The stopped render is a post-renderer mode (`--render=stopped`):
+  workloads at 0 replicas owned by Helm, then a sweep scales anything left to
+  0, and the deployment's own hostname is routed through a per-release
+  ExternalName Service to the environment's API, whose outermost middleware
+  (`app/parking.py`) answers every request for a host that is not the
+  platform's own with the 503 parking page and never reaches a route. Catalog
+  charts may render no Helm hooks. Spec:
+  [deployment-power-data-model](openspec/specs/deployment-power-data-model/spec.md),
+  [deployment-power-api](openspec/specs/deployment-power-api/spec.md),
+  [deployment-power-reconciliation](openspec/specs/deployment-power-reconciliation/spec.md),
+  [parking-page](openspec/specs/parking-page/spec.md),
+  [cli-power](openspec/specs/cli-power/spec.md),
+  [deployment-power-ui](openspec/specs/deployment-power-ui/spec.md) ·
+  Rationale: [stop-and-start-deployments](openspec/changes/stop-and-start-deployments/design.md)
 - **"Sign in with Freepod" is an edge feature any chart can render, served by
   `daemons/app-auth/`** (Go): a Traefik forward-auth verifier and a broker on
   `login.<domain>`, the only party that talks to Keycloak for tenant apps (one

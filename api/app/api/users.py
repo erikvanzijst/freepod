@@ -27,6 +27,7 @@ from app.services import deployment_logs as log_service
 from app.services import http_logs
 from app.services import log_stream
 from app.services import deployments as deployment_service, users as user_service
+from app.services import power as power_service
 from app.services.loki import LokiException, LokiQueryClient
 from app.services.mollie import PaymentProvider
 from app.util import amend_url
@@ -713,6 +714,104 @@ def update_deployment(
     deployment.user_id = user_id
     deployment.id = deployment_id
     return deployment_service.update_deployment(session, deployment)
+
+
+_POWER_RESPONSES = {
+    403: {"description": "Caller may only stop or start their own deployments."},
+    404: {"description": "No such deployment exists for this user."},
+    409: {
+        "description": "The deployment is not `ready` (code `deployment_not_ready`), was stopped "
+        "for a reason the caller cannot lift (code `not_startable`, start only), or an "
+        "operation is already in progress for it."
+    },
+}
+
+
+@router.post(
+    "/{user_id}/deployments/{deployment_id}/stop",
+    response_model=DeploymentRead,
+    summary="Stop a deployment",
+    response_description="The deployment, with desired power `stopped`.",
+    responses=_POWER_RESPONSES,
+)
+def stop_deployment_endpoint(
+    user_id: int = Path(..., description="ID of the user that owns the deployment."),
+    deployment_id: UUID = Path(..., description="UUID of the deployment to stop."),
+    current_user: UserORM = Depends(require_self),
+    session: Session = Depends(get_session),
+) -> DeploymentRead:
+    """Stop a deployment: nothing of it runs, and all of its data is kept.
+
+    ## Authorization
+    You may only stop your own deployments. Other requests receive `403 Forbidden`. The caller
+    is recorded as the stop's actor.
+
+    ## Parameters
+    - **user_id** — owner of the deployment.
+    - **deployment_id** — UUID of the deployment to stop.
+
+    ## Behavior
+    Accepted only for a `ready` deployment. The stop is applied in the
+    background: `power.desired` is `stopped` at once, and `power.applied`
+    follows when the reconcile finishes. While stopped, the deployment's
+    hostname answers `503` with a "stopped" page, and only a start runs it
+    again. Stopping a deployment whose desired power is already `stopped`
+    changes nothing and returns it as it stands.
+
+    ## Errors
+    - **403 Forbidden** — stopping another account's deployment without
+      administrator privileges.
+    - **404 Not Found** — no such deployment exists for this user.
+    - **409 Conflict** — code `deployment_not_ready` when the deployment is not
+      `ready`, or an operation is already in progress for this deployment.
+    """
+    return power_service.stop_deployment(
+        session, user_id=user_id, deployment_id=deployment_id, actor_user_id=current_user.id
+    )
+
+
+@router.post(
+    "/{user_id}/deployments/{deployment_id}/start",
+    response_model=DeploymentRead,
+    summary="Start a deployment",
+    response_description="The deployment, with desired power `running`.",
+    responses=_POWER_RESPONSES,
+)
+def start_deployment_endpoint(
+    user_id: int = Path(..., description="ID of the user that owns the deployment."),
+    deployment_id: UUID = Path(..., description="UUID of the deployment to start."),
+    current_user: UserORM = Depends(require_self),
+    session: Session = Depends(get_session),
+) -> DeploymentRead:
+    """Start a stopped deployment.
+
+    ## Authorization
+    You may only start your own deployments; administrators may start any
+    account's deployments. Other requests receive `403 Forbidden`. The caller
+    is recorded as the start's actor.
+
+    ## Parameters
+    - **user_id** — owner of the deployment.
+    - **deployment_id** — UUID of the deployment to start.
+
+    ## Behavior
+    Accepted only for a `ready` deployment stopped with reason `manual`. The
+    start is applied in the background: `power.desired` is `running` at once,
+    and `power.applied` follows when the reconcile finishes. Starting a
+    deployment whose desired power is already `running` changes nothing and
+    returns it as it stands.
+
+    ## Errors
+    - **403 Forbidden** — starting another account's deployment without
+      administrator privileges.
+    - **404 Not Found** — no such deployment exists for this user.
+    - **409 Conflict** — code `deployment_not_ready` when the deployment is not
+      `ready`, code `not_startable` when it was stopped for another reason than
+      `manual`, or an operation is already in progress for this deployment.
+    """
+    return power_service.start_deployment(
+        session, user_id=user_id, deployment_id=deployment_id, actor_user_id=current_user.id
+    )
 
 
 @router.delete(

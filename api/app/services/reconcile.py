@@ -9,6 +9,8 @@ from sqlmodel import Session
 
 from app.config import get_settings
 from app.models import DeploymentORM, DeploymentReleaseORM, ProductTemplateVersionORM
+from app.models.core import DeploymentPowerORM
+from app import post_render
 from app.provisioner import Provisioner, provisioner as default_provisioner
 from app.services import (
     deployment_logs,
@@ -31,6 +33,7 @@ from app.services.reconcile_constants import (
     DEPLOYMENT_STATUS_ERROR,
     DEPLOYMENT_STATUS_PENDING,
     DEPLOYMENT_STATUS_READY,
+    POWER_STATE_STOPPED,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,7 +73,6 @@ def oidc_secret_name(deployment: DeploymentORM) -> str:
 
 
 OIDC_SECRET_COMPONENT = "oidc"
-
 
 VARS_SECRET_COMPONENT = "vars"
 
@@ -116,10 +118,10 @@ class DeploymentReconciler:
     """Reconcile a single deployment state against Kubernetes/Helm."""
 
     def __init__(
-        self,
-        *,
-        session: Session,
-        provisioner: Provisioner | None = None,
+            self,
+            *,
+            session: Session,
+            provisioner: Provisioner | None = None,
     ) -> None:
         self._session = session
         self._provisioner = provisioner or default_provisioner
@@ -128,29 +130,43 @@ class DeploymentReconciler:
         """Reconcile once."""
         logger.info("Starting reconcile for deployment_id=%s", deployment_id)
         deployment = _get_deployment_orm(self._session, deployment_id=deployment_id)
+        # `release` is set only for a rollout, and `power` only for a power
+        # change: each is the row whose outcome this reconcile records.
         release: DeploymentReleaseORM | None = None
+        power: DeploymentPowerORM | None = None
+        values_release: DeploymentReleaseORM | None = None
         try:
-            # The reconciler creates no releases. It applies the one the request
-            # that asked for this rollout already recorded, and is
-            # level-triggered: it reads `desired_release_id` as it stands now,
-            # not as it stood when the request landed.
+            # The reconciler creates no releases and no power rows. It is
+            # level-triggered: it applies the desired release and power as the
+            # pointers stand now, not as they stood when the request landed,
+            # and decides from them, never from the job's reason.
             #
             # Nothing is claimed on the delete path -- an uninstall is not a
             # rollout of a release, and the desired release must not be marked
             # as having been applied by one.
             if deployment.deleted_at is None:
-                release = self._claim_desired_release(deployment)
+                values_release = self._desired_release(deployment)
+                if deployment.applied_release_id != values_release.id:
+                    release = self._claim_release(values_release)
+                if (
+                    deployment.desired_power_id is not None
+                    and deployment.desired_power_id != deployment.applied_power_id
+                ):
+                    power = self._claim_power(deployment)
             self._validate_input_state(deployment)
             if deployment.deleted_at is not None:
                 result = self._reconcile_delete(deployment)
             else:
-                assert release is not None
-                result = self._reconcile_apply(deployment, release)
+                assert values_release is not None
+                result = self._reconcile_apply(deployment, values_release)
         except Exception as exc:
             logger.exception("Reconcile failed for deployment_id=%s", deployment_id)
             last_error = str(exc)
-            if release is not None:
-                last_error = self._with_release_output(last_error, deployment, release)
+            # The output of whatever booted: the new release on a rollout, the
+            # serving one on a start.
+            started = release.started_at if release is not None else power.started_at if power is not None else None
+            if values_release is not None and started is not None:
+                last_error = self._with_release_output(last_error, deployment, values_release, started)
             result = ReconcileResult(
                 status=DEPLOYMENT_STATUS_ERROR,
                 applied_template_id=deployment.applied_template_id,
@@ -161,6 +177,17 @@ class DeploymentReconciler:
         # deployment's own status below.
         if release is not None:
             self._record_release_outcome(release, result)
+        if power is not None:
+            power.ended_at = result.last_reconcile_at or datetime.now(UTC)
+            power.error = result.last_error
+            self._session.add(power)
+            if result.status == DEPLOYMENT_STATUS_READY:
+                deployment.applied_power_id = power.id
+            else:
+                # A failed power change is finished: `--atomic` restored the
+                # applied power, so desired goes back to it and the failed row
+                # is never applied, or its outcome written, again.
+                deployment.desired_power_id = deployment.applied_power_id
         deployment.status = result.status
         deployment.applied_template_id = result.applied_template_id
         deployment.last_error = result.last_error
@@ -177,18 +204,19 @@ class DeploymentReconciler:
         self._session.refresh(deployment)
         logger.info(
             "Finished reconcile for deployment_id=%s status=%s applied_template_id=%s "
-            "release_id=%s helm_revision=%s",
+            "release_id=%s power_id=%s helm_revision=%s",
             deployment_id,
             result.status,
             result.applied_template_id,
             None if release is None else release.id,
+            None if power is None else power.id,
             result.helm_revision,
         )
         return result
 
     @staticmethod
     def _with_release_output(
-        message: str, deployment: DeploymentORM, release: DeploymentReleaseORM
+            message: str, deployment: DeploymentORM, release: DeploymentReleaseORM, started: datetime
     ) -> str:
         """Append the failed release's own output to the error the user will see.
 
@@ -211,9 +239,6 @@ class DeploymentReconciler:
         """
         settings = get_settings()
         try:
-            started = release.started_at
-            if started is None:
-                return message
             if started.tzinfo is None:
                 started = started.replace(tzinfo=UTC)
             target = deployment_logs.LogTarget(
@@ -245,7 +270,27 @@ class DeploymentReconciler:
             f"{tail}"
         )
 
-    def _claim_desired_release(self, deployment: DeploymentORM) -> DeploymentReleaseORM:
+    def _desired_release(self, deployment: DeploymentORM) -> DeploymentReleaseORM:
+        release = self._session.get(DeploymentReleaseORM, deployment.desired_release_id)
+        if release is None:
+            # Not a reachable state: `desired_release_id` is NOT NULL behind a
+            # foreign key. Loud rather than silently applying nothing.
+            raise IntegrityException("Deployment's desired release is missing")
+        return release
+
+    def _claim_power(self, deployment: DeploymentORM) -> DeploymentPowerORM:
+        """Mark the desired power row as started, committed before Helm runs
+        and write-if-null, for the same reasons as `_claim_release`."""
+        power = self._session.get(DeploymentPowerORM, deployment.desired_power_id)
+        if power is None:
+            raise IntegrityException("Deployment's desired power is missing")
+        if power.started_at is None:
+            power.started_at = datetime.now(UTC)
+            self._session.add(power)
+            self._session.commit()
+        return power
+
+    def _claim_release(self, release: DeploymentReleaseORM) -> DeploymentReleaseORM:
         """Mark the desired release as started, and commit that before Helm runs.
 
         Committed early on purpose. The point of `started_at` is that a worker
@@ -257,12 +302,11 @@ class DeploymentReconciler:
         *first* began rather than when the retry did. How many attempts there
         were is `deployment_reconcile_job.attempt`; it is not something to
         infer from here.
+
+        Only for a rollout, `applied_release_id != desired_release_id`: a
+        reconcile that only changes power re-renders the applied release and
+        writes none of its columns.
         """
-        release = self._session.get(DeploymentReleaseORM, deployment.desired_release_id)
-        if release is None:
-            # Not a reachable state: `desired_release_id` is NOT NULL behind a
-            # foreign key. Loud rather than silently applying nothing.
-            raise IntegrityException("Deployment's desired release is missing")
         if release.started_at is None:
             release.started_at = datetime.now(UTC)
             self._session.add(release)
@@ -271,14 +315,14 @@ class DeploymentReconciler:
 
     @staticmethod
     def _record_release_outcome(
-        release: DeploymentReleaseORM, result: ReconcileResult
+            release: DeploymentReleaseORM, result: ReconcileResult
     ) -> None:
         """Write the release's outcome, once.
 
         These three are never rewritten: a failed reconcile is terminal
         (`mark_job_failed` never re-enqueues), and a reclaimed job is by
         definition one that never wrote them. `started_at` is deliberately not
-        touched here -- see `_claim_desired_release`.
+        touched here -- see `_claim_release`.
         """
         release.ended_at = result.last_reconcile_at or datetime.now(UTC)
         release.error = result.last_error
@@ -305,7 +349,7 @@ class DeploymentReconciler:
             raise IntegrityException("Desired template is missing loaded product relationship")
 
     def _reconcile_apply(
-        self, deployment: DeploymentORM, release: DeploymentReleaseORM
+            self, deployment: DeploymentORM, release: DeploymentReleaseORM
     ) -> ReconcileResult:
         template = deployment.desired_template
         assert template is not None
@@ -348,6 +392,10 @@ class DeploymentReconciler:
             oidc_secret=oidc_secret,
         )
 
+        settings = get_settings()
+        desired_power = deployment.desired_power
+        stopped = desired_power is not None and desired_power.state == POWER_STATE_STOPPED
+        render = post_render.RENDER_STOPPED if stopped else post_render.RENDER_NORMAL
         outcome = self._provisioner.helm_upgrade_install(
             release_name=deployment.name,
             namespace=deployment.namespace,
@@ -359,7 +407,12 @@ class DeploymentReconciler:
             atomic=True,
             wait=True,
             hostname=deployment.hostname,
+            render=render,
+            parking_host=settings.parking_host,
+            parking_port=settings.parking_port,
         )
+        if stopped:
+            self._provisioner.sweep_stopped_workloads(namespace=deployment.namespace)
 
         # After Helm succeeds only: a rollback leaves the previous release's
         # Secret live, and reaping here would delete it.
@@ -406,7 +459,7 @@ class DeploymentReconciler:
         )
 
     def _ensure_object_storage(
-        self, deployment: DeploymentORM
+            self, deployment: DeploymentORM
     ) -> object_storage.ObjectStorageCredentials | None:
         """Provision the deployment's bucket and publish its credentials.
 
@@ -451,7 +504,7 @@ class DeploymentReconciler:
         return credentials
 
     def _ensure_database(
-        self, deployment: DeploymentORM
+            self, deployment: DeploymentORM
     ) -> relational_storage.DatabaseCredentials | None:
         """Provision the deployment's database and publish its credentials.
 
@@ -517,7 +570,7 @@ class DeploymentReconciler:
         return name
 
     def _ensure_oidc_secret(
-        self, deployment: DeploymentORM, template: ProductTemplateVersionORM
+            self, deployment: DeploymentORM, template: ProductTemplateVersionORM
     ) -> str | None:
         """Publish an SSO-enabled deployment's OIDC client credentials. Returns the Secret's name, or None.
 
@@ -572,7 +625,7 @@ class DeploymentReconciler:
             )
 
     def _ensure_vars_secret(
-        self, deployment: DeploymentORM, release: DeploymentReleaseORM
+            self, deployment: DeploymentORM, release: DeploymentReleaseORM
     ) -> str | None:
         """Publish a release's vars as a Secret. Returns its name, or None.
 
@@ -618,16 +671,16 @@ class DeploymentReconciler:
             )
 
     def _build_merged_values(
-        self,
-        deployment: DeploymentORM,
-        template: ProductTemplateVersionORM,
-        *,
-        release: DeploymentReleaseORM,
-        storage: object_storage.ObjectStorageCredentials | None = None,
-        database: relational_storage.DatabaseCredentials | None = None,
-        vars_secret: str | None = None,
-        pull_secret: str | None = None,
-        oidc_secret: str | None = None,
+            self,
+            deployment: DeploymentORM,
+            template: ProductTemplateVersionORM,
+            *,
+            release: DeploymentReleaseORM,
+            storage: object_storage.ObjectStorageCredentials | None = None,
+            database: relational_storage.DatabaseCredentials | None = None,
+            vars_secret: str | None = None,
+            pull_secret: str | None = None,
+            oidc_secret: str | None = None,
     ) -> dict:
         template_values.validate_user_values(deployment.user_values_json, template.values_schema_json)
         system_overrides = self._build_system_overrides(
@@ -647,15 +700,15 @@ class DeploymentReconciler:
 
     @classmethod
     def _build_system_overrides(
-        cls,
-        deployment: DeploymentORM,
-        *,
-        release: DeploymentReleaseORM,
-        storage: object_storage.ObjectStorageCredentials | None = None,
-        database: relational_storage.DatabaseCredentials | None = None,
-        vars_secret: str | None = None,
-        pull_secret: str | None = None,
-        oidc_secret: str | None = None,
+            cls,
+            deployment: DeploymentORM,
+            *,
+            release: DeploymentReleaseORM,
+            storage: object_storage.ObjectStorageCredentials | None = None,
+            database: relational_storage.DatabaseCredentials | None = None,
+            vars_secret: str | None = None,
+            pull_secret: str | None = None,
+            oidc_secret: str | None = None,
     ) -> dict | None:
         """Combine all system-controlled value overrides under the ``caelus`` namespace.
 
@@ -665,17 +718,17 @@ class DeploymentReconciler:
         """
         overrides: dict = {}
         for part in (
-            cls._build_plan_overrides(deployment),
-            cls._build_ingress_overrides(deployment),
-            cls._build_owner_overrides(deployment),
-            cls._build_object_storage_overrides(deployment, storage),
-            cls._build_database_overrides(deployment, database),
-            cls._build_vars_overrides(vars_secret),
-            cls._build_release_overrides(release),
-            cls._build_ssh_overrides(),
-            cls._build_app_auth_overrides(),
-            cls._build_registry_overrides(pull_secret),
-            cls._build_oidc_overrides(deployment, oidc_secret),
+                cls._build_plan_overrides(deployment),
+                cls._build_ingress_overrides(deployment),
+                cls._build_owner_overrides(deployment),
+                cls._build_object_storage_overrides(deployment, storage),
+                cls._build_database_overrides(deployment, database),
+                cls._build_vars_overrides(vars_secret),
+                cls._build_release_overrides(release),
+                cls._build_ssh_overrides(),
+                cls._build_app_auth_overrides(),
+                cls._build_registry_overrides(pull_secret),
+                cls._build_oidc_overrides(deployment, oidc_secret),
         ):
             if part:
                 overrides = template_values.deep_merge(overrides, part)
@@ -749,8 +802,8 @@ class DeploymentReconciler:
 
     @staticmethod
     def _build_object_storage_overrides(
-        deployment: DeploymentORM,
-        storage: object_storage.ObjectStorageCredentials | None,
+            deployment: DeploymentORM,
+            storage: object_storage.ObjectStorageCredentials | None,
     ) -> dict | None:
         """Project object-storage *references* into the ``caelus.objectStorage`` namespace.
 
@@ -784,8 +837,8 @@ class DeploymentReconciler:
 
     @staticmethod
     def _build_database_overrides(
-        deployment: DeploymentORM,
-        database: relational_storage.DatabaseCredentials | None,
+            deployment: DeploymentORM,
+            database: relational_storage.DatabaseCredentials | None,
     ) -> dict | None:
         """Project database *references* into the ``caelus.database`` namespace.
 
@@ -852,7 +905,7 @@ class DeploymentReconciler:
         host = hostname.lower()
         tenant_domain = settings.tenant_domain
         is_wildcard = bool(tenant_domain) and (
-            host == tenant_domain or host.endswith(f".{tenant_domain}")
+                host == tenant_domain or host.endswith(f".{tenant_domain}")
         )
         tls: dict = {"wildcard": is_wildcard}
         if not is_wildcard:

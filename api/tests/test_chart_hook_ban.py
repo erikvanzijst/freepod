@@ -36,7 +36,9 @@ INJECTED_VALUES = {
 }
 
 
-def _render_catalog(catalog_file, tmp_path) -> list[tuple[str, dict]]:
+def _render_catalog(catalog_file, tmp_path, *extra: str, env=None) -> list[tuple[str, dict]]:
+    """The chart a catalog file pins, rendered with its system values and
+    whatever the reconciler would inject; ``extra`` goes to ``helm template``."""
     document = yaml.safe_load(catalog_file.read_text())
     slug = document["product"]["slug"]
     values_file = tmp_path / "system-values.yaml"
@@ -48,7 +50,8 @@ def _render_catalog(catalog_file, tmp_path) -> list[tuple[str, dict]]:
     ]
     for key, value in {**MINIMUM_VALUES.get(slug, {}), **INJECTED_VALUES.get(slug, {})}.items():
         args += ["--set", f"{key}={value}"]
-    result = subprocess.run(args, capture_output=True, text=True)
+    args += extra
+    result = subprocess.run(args, capture_output=True, text=True, env=env)
     assert result.returncode == 0, f"{slug}: {result.stderr}"
     return _documents(result.stdout)
 

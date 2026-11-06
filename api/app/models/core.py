@@ -27,7 +27,13 @@ from sqlalchemy import (
 )
 
 from app.config import get_settings
-from app.services.reconcile_constants import DEPLOYMENT_STATUS_DELETED
+from app.services.reconcile_constants import (
+    DEPLOYMENT_STATUS_DELETED,
+    POWER_REASONS,
+    POWER_STATE_RUNNING,
+    POWER_STATE_STOPPED,
+    POWER_STATES,
+)
 
 
 def _utcnow() -> datetime:
@@ -698,6 +704,44 @@ class DeploymentORM(DeploymentBase, table=True):
             "foreign_keys": "DeploymentORM.desired_release_id",
         }
     )
+    # ── Power pointers ────────────────────────────────────────────────────
+    #
+    # Null means running, so neither needs a backfill or a deferred check:
+    # the power row is inserted first and the pointer moved after it.
+    # `use_alter` keeps the mutual reference out of the table dependency
+    # graph, as for the release pointers. The power service moves `desired`
+    # forward; the reconciler moves `applied` to it on success, and `desired`
+    # back to `applied` on failure.
+    desired_power_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(
+            Integer,
+            ForeignKey("deployment_power.id", name="fk_deployment_desired_power_id", use_alter=True),
+            nullable=True,
+        ),
+    )
+    applied_power_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(
+            Integer,
+            ForeignKey("deployment_power.id", name="fk_deployment_applied_power_id", use_alter=True),
+            nullable=True,
+        ),
+    )
+    desired_power: Optional["DeploymentPowerORM"] = Relationship(
+        sa_relationship_kwargs={
+            "viewonly": True,
+            "lazy": "joined",
+            "foreign_keys": "DeploymentORM.desired_power_id",
+        }
+    )
+    applied_power: Optional["DeploymentPowerORM"] = Relationship(
+        sa_relationship_kwargs={
+            "viewonly": True,
+            "lazy": "joined",
+            "foreign_keys": "DeploymentORM.applied_power_id",
+        }
+    )
     hostname: Optional[str] = Field(
         default=None, sa_column=Column(String(), nullable=True, index=True)
     )
@@ -735,6 +779,16 @@ class DeploymentORM(DeploymentBase, table=True):
         back_populates="deployments",
         sa_relationship_kwargs={"foreign_keys": "DeploymentORM.subscription_id", "lazy": "joined"},
     )
+
+    @property
+    def power(self) -> "DeploymentPowerRead":
+        desired = self.desired_power
+        applied = self.applied_power
+        return DeploymentPowerRead(
+            desired=desired.state if desired is not None else POWER_STATE_RUNNING,
+            applied=applied.state if applied is not None else POWER_STATE_RUNNING,
+            reason=desired.reason if desired is not None and desired.state == POWER_STATE_STOPPED else None,
+        )
 
     def payment_description(self) -> str:
         """The description used for Mollie payments MUST be unique per customer. So if a user has
@@ -798,6 +852,17 @@ class DeploymentAuthRead(SQLModel):
     listed_count: Optional[int] = None
 
 
+class DeploymentPowerRead(SQLModel):
+    """Whether the deployment's workloads run: what it asks for, and what the
+    last successful reconcile applied. Desired and applied differ while a
+    stop or start is in progress."""
+
+    desired: Literal["running", "stopped"]
+    applied: Literal["running", "stopped"]
+    # Why the desired power is `stopped`; null while it is `running`.
+    reason: Optional[Literal["manual", "payment"]] = None
+
+
 class DeploymentRead(DeploymentBase):
     id: UUID
     created_at: datetime
@@ -828,6 +893,7 @@ class DeploymentRead(DeploymentBase):
     pending: Optional[bool] = None
     # `None` when no release is serving yet.
     auth: Optional[DeploymentAuthRead] = None
+    power: DeploymentPowerRead
 
 
 class SftpCredentialsRead(SQLModel):
@@ -1047,6 +1113,39 @@ class DeploymentReleaseORM(DeploymentReleaseBase, table=True):
                 return ReleaseStatus.ABANDONED
             return ReleaseStatus.IN_FLIGHT
         return ReleaseStatus.FAILED if self.error else ReleaseStatus.SUCCEEDED
+
+
+def _in(column: str, values: tuple[str, ...]) -> str:
+    return f"{column} IN ({', '.join(repr(v) for v in values)})"
+
+
+class DeploymentPowerORM(SQLModel, table=True):
+    """One requested power change: append-only intent, and the reconciler's
+    outcome of applying it (deployment-power-data-model)."""
+
+    __tablename__ = "deployment_power"
+    __table_args__ = (
+        CheckConstraint(_in("state", POWER_STATES), name="ck_deployment_power_state"),
+        CheckConstraint(_in("reason", POWER_REASONS), name="ck_deployment_power_reason"),
+        Index("ix_deployment_power_deployment", "deployment_id", "id"),
+    )
+
+    id: Optional[int] = Field(default=None, sa_column=Column(Integer, primary_key=True))
+    deployment_id: UUID = Field(
+        sa_column=Column(Uuid, ForeignKey("deployment.id", ondelete="CASCADE"), nullable=False)
+    )
+    state: str = Field(sa_column=Column(String(), nullable=False))
+    reason: str = Field(sa_column=Column(String(), nullable=False))
+    # Null for the platform, which is also what `caelus` records.
+    actor_user_id: Optional[int] = Field(
+        default=None, sa_column=Column(Integer, ForeignKey("user.id"), nullable=True)
+    )
+    created_at: datetime = Field(default_factory=_utcnow, nullable=False)
+
+    # ── Written by the reconciler: started write-if-null, the rest once ───
+    started_at: Optional[datetime] = Field(default=None, nullable=True)
+    ended_at: Optional[datetime] = Field(default=None, nullable=True)
+    error: Optional[str] = Field(default=None, sa_column=Column(Text(), nullable=True))
 
 
 class DeploymentReleaseRead(DeploymentReleaseBase):

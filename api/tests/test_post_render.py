@@ -153,6 +153,7 @@ def test_helm_upgrade_always_post_renders():
     assert _post_renderer_args() == [
         f"--image={settings.egress_gate_image}",
         f"--deadline-seconds={settings.egress_gate_deadline_seconds}",
+        "--release=r",
     ]
 
 
@@ -205,6 +206,7 @@ def test_every_product_pod_is_rewritten_and_nothing_else_changes(chart):
         "--post-renderer", post_render.PLUGIN_NAME,
         "--post-renderer-args", "--image=gate:1",
         "--post-renderer-args", "--deadline-seconds=60",
+        "--post-renderer-args", "--release=r",
         "--post-renderer-args", f"--hostname={HOSTNAME}",
     )
     assert len(rendered) == len(plain)
@@ -223,3 +225,182 @@ def test_every_product_pod_is_rewritten_and_nothing_else_changes(chart):
             assert template["metadata"]["annotations"].pop(post_render.HOSTNAME_ANNOTATION) == HOSTNAME, name
         assert _normalized(after) == _normalized(before)
     assert pods, f"{chart} rendered no pod"
+
+
+# ── Stopped render ───────────────────────────────────────────────────────
+
+STOPPED = post_render.Stopped(
+    release="r", hostname=HOSTNAME, parking_host="caelus-api.caelus.svc.cluster.local", parking_port=8000
+)
+PARKING_BACKEND = {"service": {"name": "r-caelus-parking", "port": {"number": 8000}}}
+
+
+def _stopped(*docs) -> list[dict]:
+    manifests = "".join(f"---\n{yaml.safe_dump(d, sort_keys=False)}" for d in docs)
+    return [d for d in yaml.safe_load_all(post_render.render(manifests, GATE, HOST, STOPPED)) if d]
+
+
+def _ingress(*rules, **spec) -> dict:
+    return {
+        "apiVersion": "networking.k8s.io/v1",
+        "kind": "Ingress",
+        "metadata": {
+            "name": "i",
+            "annotations": {"traefik.ingress.kubernetes.io/router.middlewares": "ns-app-auth@kubernetescrd"},
+        },
+        "spec": {"rules": list(rules), **spec},
+    }
+
+
+def _rule(host: str, *services: str) -> dict:
+    return {
+        "host": host,
+        "http": {
+            "paths": [
+                {"path": f"/{s}", "pathType": "Prefix", "backend": {"service": {"name": s, "port": {"number": 80}}}}
+                for s in services
+            ]
+        },
+    }
+
+
+@pytest.mark.parametrize("kind", ["Deployment", "StatefulSet"])
+def test_stopped_workloads_have_zero_replicas(kind):
+    doc = {**_deployment(), "kind": kind}
+    doc["spec"]["replicas"] = 3
+    out = _stopped(doc)[0]
+    assert out["spec"]["replicas"] == 0
+    assert out["spec"]["template"]["spec"]["initContainers"][0] == GATE
+
+
+def test_stopped_sets_replicas_the_chart_left_out():
+    assert _stopped(_deployment())[0]["spec"]["replicas"] == 0
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        {**_deployment(), "kind": "Job"},
+        {"kind": "CronJob", "metadata": {"name": "c"}, "spec": {"jobTemplate": {"spec": _deployment()["spec"]}}},
+    ],
+    ids=["Job", "CronJob"],
+)
+def test_stopped_jobs_are_suspended(doc):
+    assert _stopped(doc)[0]["spec"]["suspend"] is True
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        {"apiVersion": "autoscaling/v2", "kind": "HorizontalPodAutoscaler", "metadata": {"name": "h"}, "spec": {}},
+        {"kind": "Pod", "metadata": {"name": "p"}, "spec": {"containers": [{"name": "app"}]}},
+    ],
+    ids=["HorizontalPodAutoscaler", "Pod"],
+)
+def test_stopped_drops_autoscalers_and_bare_pods(doc):
+    kinds = [d["kind"] for d in _stopped(doc, {"kind": "ConfigMap", "metadata": {"name": "c"}})]
+    assert kinds == ["ConfigMap", "Service"]
+
+
+def test_stopped_reroutes_every_path_of_the_own_host_only():
+    tls = [{"hosts": [HOSTNAME], "secretName": "t"}]
+    ingress = _ingress(
+        _rule(HOSTNAME.upper(), "web", "api"),
+        _rule(f"preview-{HOSTNAME}", "preview"),
+        tls=tls,
+    )
+    out = _stopped(ingress)[0]
+    own, other = out["spec"]["rules"]
+    assert [p["backend"] for p in own["http"]["paths"]] == [PARKING_BACKEND, PARKING_BACKEND]
+    assert [p["path"] for p in own["http"]["paths"]] == ["/web", "/api"]
+    assert other == _rule(f"preview-{HOSTNAME}", "preview")
+    assert out["spec"]["tls"] == tls
+    assert out["metadata"]["annotations"] == ingress["metadata"]["annotations"]
+
+
+def test_stopped_appends_the_parking_service():
+    service = _stopped({"kind": "ConfigMap", "metadata": {"name": "c"}})[-1]
+    assert service == {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {"name": "r-caelus-parking"},
+        "spec": {
+            "type": "ExternalName",
+            "externalName": "caelus-api.caelus.svc.cluster.local",
+            "ports": [{"name": "http", "port": 8000, "protocol": "TCP"}],
+        },
+    }
+
+
+def test_stopped_without_a_hostname_reroutes_nothing_and_adds_no_service():
+    stopped = post_render.Stopped(release="r", hostname=None, parking_host="p", parking_port=8000)
+    ingress = _ingress(_rule(HOSTNAME, "web"))
+    manifests = f"---\n{yaml.safe_dump(ingress, sort_keys=False)}"
+    out = [d for d in yaml.safe_load_all(post_render.render(manifests, GATE, None, stopped)) if d]
+    assert out == [ingress]
+
+
+def test_stopped_keeps_untouched_documents_byte_for_byte():
+    chunk = "# Source: c/templates/cm.yaml\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: c\ndata:\n  when: 2026-10-03\n"
+    out = post_render.render(f"---\n{chunk}", GATE, HOST, STOPPED)
+    assert out.startswith(f"---\n{chunk}---\n")
+
+
+def _main(argv: list[str], stdin: str, monkeypatch, capsys) -> str:
+    import io
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
+    post_render.main(argv)
+    return capsys.readouterr().out
+
+
+def test_the_default_render_is_the_normal_one(monkeypatch, capsys):
+    manifests = "".join(
+        f"---\n{yaml.safe_dump(d, sort_keys=False)}"
+        for d in (_deployment(), _ingress(_rule(HOSTNAME, "web")), {"kind": "Pod", "metadata": {"name": "p"}, "spec": {"containers": [{"name": "a"}]}})
+    )
+    base = ["--image=gate:1", "--deadline-seconds=60", "--release=r", f"--hostname={HOSTNAME}"]
+    default = _main(base, manifests, monkeypatch, capsys)
+    explicit = _main([*base, "--render=normal"], manifests, monkeypatch, capsys)
+    assert default == explicit == post_render.render(manifests, GATE, HOST)
+
+
+def test_every_render_requires_the_release(monkeypatch, capsys):
+    with pytest.raises(SystemExit) as exc:
+        _main(["--image=gate:1", "--deadline-seconds=60"], "", monkeypatch, capsys)
+    assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("missing", ["--parking-host=p", "--parking-port=8000"])
+def test_stopped_without_its_flags_is_a_usage_error(missing, monkeypatch, capsys):
+    flags = ["--parking-host=p", "--parking-port=8000"]
+    flags.remove(missing)
+    with pytest.raises(SystemExit) as exc:
+        _main(["--image=gate:1", "--deadline-seconds=60", "--release=r", "--render=stopped", *flags], "", monkeypatch, capsys)
+    assert exc.value.code == 2
+
+
+def test_helm_upgrade_passes_the_stopped_render():
+    args = _post_renderer_args(
+        hostname=HOSTNAME, render="stopped", parking_host="caelus-api.caelus.svc.cluster.local", parking_port=8000
+    )
+    assert args[-3:] == [
+        "--render=stopped",
+        "--parking-host=caelus-api.caelus.svc.cluster.local",
+        "--parking-port=8000",
+    ]
+
+
+def test_helm_upgrade_passes_the_release_to_every_render():
+    assert "--release=r" in _post_renderer_args(hostname=HOSTNAME, render="normal")
+
+
+def test_helm_upgrade_normal_render_passes_no_stopped_flags():
+    assert not [a for a in _post_renderer_args(hostname=HOSTNAME, render="normal") if a.startswith(("--render", "--parking"))]
+
+
+def test_helm_upgrade_refuses_a_stopped_render_without_a_parking_host():
+    from app.services.errors import IntegrityException
+
+    with pytest.raises(IntegrityException):
+        _post_renderer_args(hostname=HOSTNAME, render="stopped", parking_host="")

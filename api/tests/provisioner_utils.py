@@ -8,6 +8,7 @@ class FakeProvisioner:
         self.calls: list[tuple[str, dict]] = []
         self.raise_on_upgrade: Exception | None = None
         self.helm_revisions: dict[str, int] = {}
+        self.raise_on_sweep: Exception | None = None
 
     def ensure_namespace(self, *, name: str):
         self.calls.append(("ensure_namespace", {"name": name}))
@@ -32,6 +33,9 @@ class FakeProvisioner:
         atomic: bool,
         wait: bool,
         hostname: str | None = None,
+        render: str = "normal",
+        parking_host: str = "",
+        parking_port: int = 8000,
     ):
         self.calls.append(
             (
@@ -47,6 +51,9 @@ class FakeProvisioner:
                     "atomic": atomic,
                     "wait": wait,
                     "hostname": hostname,
+                    "render": render,
+                    "parking_host": parking_host,
+                    "parking_port": parking_port,
                 },
             )
         )
@@ -63,6 +70,12 @@ class FakeProvisioner:
             status="deployed",
             revision=self.helm_revisions[release_name],
         )
+
+    def sweep_stopped_workloads(self, *, namespace: str):
+        self.calls.append(("sweep_stopped_workloads", {"namespace": namespace}))
+        if self.raise_on_sweep is not None:
+            raise self.raise_on_sweep
+        return []
 
     def helm_uninstall(self, *, release_name: str, namespace: str, timeout: int, wait: bool):
         self.calls.append(

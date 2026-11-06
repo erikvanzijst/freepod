@@ -238,6 +238,16 @@ export function updateDeployment(
   })
 }
 
+/** Stop a ready deployment, keeping its data. Applied in the background. */
+export function stopDeployment(userId: number, deploymentId: string) {
+  return requestJson<Deployment>(`/users/${userId}/deployments/${deploymentId}/stop`, { method: 'POST' })
+}
+
+/** Start a deployment its owner stopped. Applied in the background. */
+export function startDeployment(userId: number, deploymentId: string) {
+  return requestJson<Deployment>(`/users/${userId}/deployments/${deploymentId}/start`, { method: 'POST' })
+}
+
 export function deleteDeployment(userId: number, deploymentId: string) {
   return requestJson<null>(`/users/${userId}/deployments/${deploymentId}`, {
     method: 'DELETE',

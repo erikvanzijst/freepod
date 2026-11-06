@@ -31,6 +31,7 @@ from . import history
 from . import keys as keys_module
 from . import logs as logs_module
 from . import objects as objects_module
+from . import power as power_module
 from . import project
 from . import releases as releases_module
 from . import s3 as s3_module
@@ -525,6 +526,52 @@ def delete(context: Context, assume_yes: bool, no_wait: bool) -> None:
             # One echo for progress and for the confirmation preamble alike.
             # `--quiet` silences both, which is why the question itself names
             # the deployment rather than relying on the lines above it.
+            echo=context.say,
+        )
+
+
+_NO_WAIT_POWER = click.option(
+    "--no-wait",
+    "no_wait",
+    is_flag=True,
+    help="return once the platform has accepted the change instead of waiting for it",
+)
+
+
+@cli.command()
+@_NO_WAIT_POWER
+@click.pass_obj
+def stop(context: Context, no_wait: bool) -> None:
+    """Power down this deployment, keeping all of its data.
+
+    The pod is stopped and the deployment no longer consumes any CPU or RAM. Its address shows a "stopped" page.
+    Run `freepod start` to start it back up; a `freepod deploy` leaves it stopped.
+    Waits until the stop has been applied.
+    """
+    _power(context, power_module.STOPPED, no_wait)
+
+
+@cli.command()
+@_NO_WAIT_POWER
+@click.pass_obj
+def start(context: Context, no_wait: bool) -> None:
+    """Start this project's stopped deployment.
+
+    Waits until it runs again.
+    """
+    _power(context, power_module.RUNNING, no_wait)
+
+
+def _power(context: Context, target: str, no_wait: bool) -> None:
+    session = context.session()
+    session.authenticate(interactive=False)
+    with context.client(session) as api:
+        power_module.change(
+            api,
+            context.env.name,
+            target,
+            wait=not no_wait,
+            timeout=wait_seconds(context.timeout, ROLLOUT_WAIT_SECONDS),
             echo=context.say,
         )
 

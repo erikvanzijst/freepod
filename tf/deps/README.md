@@ -230,13 +230,21 @@ needs these before any sandboxed pod can start there.
      ConfigPath = "/etc/containerd/runsc.toml"
    ```
 
-3. Match the kubelet's systemd cgroup driver, in `/etc/containerd/runsc.toml`,
-   so each sandbox is accounted to its pod's cgroup:
+3. Configure the sandbox in `/etc/containerd/runsc.toml`. `systemd-cgroup`
+   matches the kubelet's cgroup driver, so each sandbox is accounted to its
+   pod's cgroup. `allow-suid` makes exec honor setuid/setgid bits as Linux
+   does, which runsc otherwise ignores, so `sudo` and `su` work inside a
+   sandbox. Elevation stays within the sandbox, and a pod with
+   `allowPrivilegeEscalation: false` still cannot elevate.
 
    ```toml
    [runsc_config]
      systemd-cgroup = "true"
+     allow-suid = "true"
    ```
+
+   The shim reads this file for every new sandbox. A change takes effect when
+   a pod is recreated, without a restart of k3s.
 
 4. `sudo systemctl restart k3s-agent`. Running containers survive the restart.
    Check with `runsc --version` and by finding the `runsc` runtime in

@@ -68,6 +68,21 @@ The release marked `*` is the one serving traffic. After a failed release, that 
 
 There is no rollback command. Check out the previous version of the source and run `freepod deploy`.
 
+## Stopping and starting
+
+```bash
+freepod stop
+freepod start
+```
+
+`freepod stop` takes the project's deployment offline without deleting anything: nothing runs, its data, database, bucket and variables are kept, and its address answers with a "stopped" page and HTTP status `503`. It asks for no confirmation, because `freepod start` undoes it. Both commands wait until the change has been applied; `--no-wait` returns once Freepod has accepted it.
+
+A stopped deployment runs again only when you start it. `freepod deploy` to a stopped deployment releases the new version but leaves it stopped, so the new version first runs at the next `freepod start`.
+
+Only a deployment that is ready can be stopped or started. If its last release failed, a successful `freepod deploy` is needed first.
+
+A deployment can also be stopped and started from the [dashboard](app:/).
+
 ## Deleting a deployment
 
 ```bash

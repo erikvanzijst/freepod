@@ -276,6 +276,20 @@ Spec: [garage-object-store](../../openspec/specs/garage-object-store/spec.md),
 Rationale: [add-garage-object-store](../../openspec/changes/archive/2026-08-12-add-garage-object-store/design.md),
 [garage-per-environment](../../openspec/changes/archive/2026-10-07-garage-per-environment/design.md)
 
+## Parking page (`CAELUS_PARKING_HOST`)
+
+A stopped deployment's hostname is routed to its own environment's API, at
+`caelus-api.<namespace>.svc.cluster.local:8000` (set in `caelus/configmap.tf`
+for the API and the workers). The API answers any request whose `Host` is not
+`CAELUS_DOMAIN` with a 503 "stopped" page, before any route runs; loopback
+peers pass, so `kubectl port-forward` still reaches the API. A probe added to
+the API pod must send `Host: <domain>`. With `CAELUS_PARKING_HOST` unset, every
+stop fails its reconcile.
+
+Spec: [parking-page](../../openspec/specs/parking-page/spec.md),
+[deployment-power-reconciliation](../../openspec/specs/deployment-power-reconciliation/spec.md) ·
+Rationale: [stop-and-start-deployments](../../openspec/changes/stop-and-start-deployments/design.md)
+
 ## Tenant image registry (`caelus-registry` / `caelus-registry-dev`)
 
 Where builds push and tenant pods pull from: `registry:3.1.1`, one per

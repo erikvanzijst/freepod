@@ -31,9 +31,23 @@ JOB_STATUSES: tuple[str, ...] = (
 JOB_REASON_CREATE = "create"
 JOB_REASON_UPDATE = "update"
 JOB_REASON_DELETE = "delete"
+# Informational only: the reconciler decides from the pointers, never the reason.
+JOB_REASON_POWER = "power"
 
 JOB_REASONS: tuple[str, ...] = (
     JOB_REASON_CREATE,
     JOB_REASON_UPDATE,
     JOB_REASON_DELETE,
+    JOB_REASON_POWER,
 )
+
+POWER_STATE_RUNNING = "running"
+POWER_STATE_STOPPED = "stopped"
+
+POWER_STATES: tuple[str, ...] = (POWER_STATE_RUNNING, POWER_STATE_STOPPED)
+
+POWER_REASON_MANUAL = "manual"
+# Reserved for stopping a deployment in payment arrears; nothing produces it yet.
+POWER_REASON_PAYMENT = "payment"
+
+POWER_REASONS: tuple[str, ...] = (POWER_REASON_MANUAL, POWER_REASON_PAYMENT)
