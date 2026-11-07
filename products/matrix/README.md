@@ -35,6 +35,8 @@ helm template matrix ./products/matrix/chart --set serverName=matrix.app.example
 | `registration.tokenSecretRef.*` | Existing secret reference for token     | empty                              |
 | `federation.enabled`            | Enable federation behavior in Tuwunel   | `true`                             |
 | `trustedServers`                | Notary trusted key servers              | `["matrix.org"]`                   |
+| `wellKnownSupport.contacts`     | `/.well-known/matrix/support` contacts  | `{}`                               |
+| `wellKnownSupport.policies`     | Policy links in the same document       | `{}`                               |
 | `extraEnv`                      | Extra container env entries             | `[]`                               |
 | `elementWeb.enabled`            | Serve Element Web at `/`                | `true`                             |
 | `elementWeb.image.tag`          | Element Web image tag                   | `v1.12.28`                         |
@@ -64,6 +66,11 @@ The chart always injects:
 - `TUWUNEL_WELL_KNOWN__SERVER=<serverName>:443`
 
 This supports federation on a single hostname with TLS termination handled upstream.
+
+`wellKnownSupport` becomes `/.well-known/matrix/support` through env vars, which
+Tuwunel ranks above config files, including any a server admin layers in with
+`!admin server reload-config`. The tenant is that admin, so env is what keeps the
+platform's contacts in place.
 
 ## Element Web
 
@@ -118,6 +125,11 @@ Pitfalls:
   image includes one at `/etc/ssl/certs/ca-certificates.crt`.
 - The database pool defaults to 2048 workers; on a node whose
   `podPidsLimit` is at or below that, startup fails with `EAGAIN`.
+- A release that lets admins change `well_known` settings at runtime (stored
+  in the database rather than config), or that changes the env-over-file order,
+  would let a tenant replace the platform's support contacts. Check the release
+  notes for `well_known` and `config` changes, and after rollout confirm
+  `/.well-known/matrix/support` still lists `abuse@freepod.eu`.
 
 ## Build and publish
 

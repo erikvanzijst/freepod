@@ -34,6 +34,14 @@ federation:
 trustedServers:
   - matrix.org
 
+# Published at /.well-known/matrix/support. Keys are labels, published in
+# key order for contacts; an empty section answers 404.
+#   contacts:  <id>: {role, email_address, matrix_id}
+#   policies:  <id>: {version, translations: {<lang>: {name, url}}}
+wellKnownSupport:
+  contacts: {}
+  policies: {}
+
 tuwunel:
   maxRequestSize: 20000000
   queryOverTcpOnly: false

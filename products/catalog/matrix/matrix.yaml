@@ -94,10 +94,41 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/matrix
-  chart_version: 0.3.2
+  chart_version: 0.3.3
   system_values:
     image:
       tag: v1.9.4
+    # Freepod's contacts on every tenant server, so moderators elsewhere can
+    # reach the host before blocking *.freepod.app. Policy URLs always serve
+    # the latest text, which carries its own effective date.
+    wellKnownSupport:
+      contacts:
+        abuse:
+          role: m.role.admin
+          email_address: abuse@freepod.eu
+          matrix_id: "@erik:deprutser.be"
+        security:
+          role: m.role.security
+          email_address: security@freepod.eu
+      policies:
+        acceptable_use_policy:
+          version: current
+          translations:
+            en:
+              name: Freepod Acceptable Use Policy
+              url: https://freepod.eu/legal/aup
+        privacy_policy:
+          version: current
+          translations:
+            en:
+              name: Freepod Privacy Policy
+              url: https://freepod.eu/legal/privacy
+        terms_of_service:
+          version: current
+          translations:
+            en:
+              name: Freepod Terms of Service
+              url: https://freepod.eu/legal/terms
   values_schema:
     $schema: https://json-schema.org/draft/2020-12/schema
     title: matrix values

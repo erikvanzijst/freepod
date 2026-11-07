@@ -96,6 +96,57 @@
       },
       "minItems": 1
     },
+    "wellKnownSupport": {
+      "type": "object",
+      "properties": {
+        "contacts": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z0-9_]+$" },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "role": { "type": "string", "minLength": 1 },
+              "email_address": { "type": "string", "minLength": 3 },
+              "matrix_id": { "type": "string", "pattern": "^@[^:]+:.+$" }
+            },
+            "required": ["role"],
+            "anyOf": [
+              { "required": ["email_address"] },
+              { "required": ["matrix_id"] }
+            ],
+            "additionalProperties": false
+          }
+        },
+        "policies": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z0-9_]+$" },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "version": { "type": "string", "minLength": 1 },
+              "translations": {
+                "type": "object",
+                "propertyNames": { "pattern": "^[a-z]{2,3}$" },
+                "minProperties": 1,
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "url": { "type": "string", "pattern": "^https?://" }
+                  },
+                  "required": ["name", "url"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["version", "translations"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["contacts", "policies"],
+      "additionalProperties": false
+    },
     "tuwunel": {
       "type": "object",
       "properties": {
@@ -212,6 +263,7 @@
     "registration",
     "federation",
     "trustedServers",
+    "wellKnownSupport",
     "tuwunel",
     "elementWeb",
     "resources",

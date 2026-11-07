@@ -69,6 +69,32 @@ spec:
               value: {{ printf "https://%s" .Values.serverName | quote }}
             - name: TUWUNEL_WELL_KNOWN__SERVER
               value: {{ printf "%s:443" .Values.serverName | quote }}
+            # Set through env, which outranks any file a server admin layers in
+            # with `!admin server reload-config`.
+            {{- range $id, $contact := .Values.wellKnownSupport.contacts }}
+            {{- $prefix := printf "TUWUNEL_WELL_KNOWN__SUPPORT_CONTACT__%s" (upper $id) }}
+            - name: {{ printf "%s__ROLE" $prefix }}
+              value: {{ $contact.role | quote }}
+            {{- with $contact.email_address }}
+            - name: {{ printf "%s__EMAIL_ADDRESS" $prefix }}
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $contact.matrix_id }}
+            - name: {{ printf "%s__MATRIX_ID" $prefix }}
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range $id, $policy := .Values.wellKnownSupport.policies }}
+            {{- $prefix := printf "TUWUNEL_WELL_KNOWN__SUPPORT_POLICY__%s" (upper $id) }}
+            - name: {{ printf "%s__VERSION" $prefix }}
+              value: {{ $policy.version | quote }}
+            {{- range $lang, $doc := $policy.translations }}
+            - name: {{ printf "%s__POLICY_TRANSLATION__%s__NAME" $prefix (upper $lang) }}
+              value: {{ $doc.name | quote }}
+            - name: {{ printf "%s__POLICY_TRANSLATION__%s__URL" $prefix (upper $lang) }}
+              value: {{ $doc.url | quote }}
+            {{- end }}
+            {{- end }}
             {{- if $registrationEnabled }}
             - name: TUWUNEL_REGISTRATION_TOKEN
               valueFrom:
