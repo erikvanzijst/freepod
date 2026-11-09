@@ -4,7 +4,7 @@
 
 ### Requirement: Added people are invited by email
 
-When the owner adds an entry, the platform SHALL queue one `access.invitation` notification to the added address, in the same transaction as the addition, with a fixed message: that the owner, named by their email address, gave them access to the app at its address, and that they sign in there with a Freepod account using that email. The message SHALL contain no text the owner wrote. The addition SHALL NOT wait for the invitation to be delivered, and a failure to deliver SHALL NOT undo the addition.
+When the owner adds an entry, the platform SHALL queue one `access.invitation` notification to the added address in the same transaction, with a fixed message: the owner, named by their email address, gave them access to the app at its address, where they sign in with a Freepod account using that email. It SHALL contain no text the owner wrote. Delivery SHALL NOT delay or undo the addition.
 
 #### Scenario: Invitation
 
