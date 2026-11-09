@@ -8,6 +8,8 @@ container `command`, and pins its own exact version in `tf/app`.
 - [`app-auth/`](app-auth/README.md): "Sign in with Freepod", `app_auth_image`
 - [`bucket-exporter/`](bucket-exporter/README.md): bucket sizes from Garage,
   `bucket_exporter_image`
+- [`notifier/`](notifier/README.md): delivers the notification outbox,
+  `notifier_image`
 - [`ssh-auth/`](ssh-auth/README.md): the SSH auth resolver, `ssh_resolver_image`
 
 Spec: [daemons-image](../openspec/specs/daemons-image/spec.md)

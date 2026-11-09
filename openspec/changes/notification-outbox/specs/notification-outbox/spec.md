@@ -78,12 +78,17 @@ Each notification SHALL record as its origin the database role that queued it. A
 
 ### Requirement: A dedupe key queues a message once
 
-A producer MAY give a notification a dedupe key. At most one notification SHALL exist per kind and dedupe key, whatever its state. Notifications without a dedupe key SHALL never conflict with one another.
+A producer MAY give a notification a dedupe key. At most one notification SHALL exist per kind, dedupe key and recipient, whatever its state. Notifications without a dedupe key SHALL never conflict with one another.
 
 #### Scenario: Retried producer
 
-- **WHEN** a producer queues a notification with dedupe key `entry:42` and then queues it again with the same kind and key
+- **WHEN** a producer queues a notification with dedupe key `entry:42` and then queues it again with the same kind, key and recipient
 - **THEN** only the first is kept
+
+#### Scenario: Same key, other recipient
+
+- **WHEN** a producer queues one event to two recipients under the same kind and dedupe key
+- **THEN** both are kept
 
 #### Scenario: No key
 

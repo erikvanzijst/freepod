@@ -242,12 +242,6 @@ class CaelusSettings(BaseSettings):
     # rest return immediately, and a failed pass recovers in minutes.
     usage_worker_interval_seconds: float = 600.0
 
-    # The shared SMTP relay, for the quota ladder's threshold mails. Empty host
-    # means no mail is sent, which is what dev and the test suite run with.
-    smtp_host: str = ""
-    smtp_port: int = 25
-    smtp_from: str = ""
-
     # ── Deployment logs (Loki) ────────────────────────────────────────────
     loki_base_url: str = ""
     loki_query_timeout_seconds: float = 30.0

@@ -19,6 +19,7 @@ from app.config import CaelusSettings
 from app.models import (
     BillingInterval,
     DeploymentDatabaseORM,
+    NotificationORM,
     PlanORM,
     PlanTemplateVersionORM,
     ProductORM,
@@ -535,21 +536,12 @@ def test_a_reconcile_does_not_grant_an_over_quota_tenant_a_write_window(
     assert rs.get_record(session, deployment).quota_state == rs.QUOTA_READONLY
 
 
-@pytest.fixture
-def mail_sent(monkeypatch):
-    """The threshold marker records that a tenant was told, so it only moves
-    once the relay accepted the message."""
-    messages: list[dict] = []
-
-    def send_email(*, to, subject, body, html=None, settings=None):
-        messages.append({"to": to, "subject": subject})
-        return True
-
-    monkeypatch.setattr("app.services.relational_storage.mailer.send_email", send_email)
-    return messages
+def _quota_notices(session) -> list[NotificationORM]:
+    session.expire_all()
+    return list(session.exec(select(NotificationORM).where(NotificationORM.kind == "database.quota")).all())
 
 
-def test_measurements_and_thresholds_are_recorded(session, tenant_db, settings, mail_sent):
+def test_measurements_and_thresholds_are_recorded(session, tenant_db, settings):
     deployment = _deployment(session)
     rs.ensure_database(session, deployment, tenant_db=tenant_db, settings=settings)
 
@@ -578,7 +570,7 @@ def test_measurements_and_thresholds_are_recorded(session, tenant_db, settings, 
     assert record.warned_threshold is None and record.warned_at is None
 
 
-def test_a_reconcile_evaluation_records_no_threshold(session, tenant_db, settings, mail_sent):
+def test_a_reconcile_evaluation_records_no_threshold(session, tenant_db, settings):
     """`notify=False` must not consume the threshold either."""
     deployment = _deployment(session)
     rs.ensure_database(session, deployment, tenant_db=tenant_db, settings=settings)
@@ -587,30 +579,43 @@ def test_a_reconcile_evaluation_records_no_threshold(session, tenant_db, setting
     record = rs.get_record(session, deployment)
     assert record.quota_state == rs.QUOTA_WARNED
     assert record.warned_threshold is None
-    assert mail_sent == []
+    assert _quota_notices(session) == []
 
     _evaluate_at(session, deployment, tenant_db, settings, percent=85)
     assert rs.get_record(session, deployment).warned_threshold == 80
 
 
 @pytest.mark.parametrize("hostname", ["wiki-ana.freepod.app", None])
-def test_threshold_mail_names_the_deployment_and_links_the_dashboard(monkeypatch, hostname):
-    messages: list[dict] = []
-    def send_email(**kw):
-        messages.append(kw)
-        return True
-
-    monkeypatch.setattr("app.services.relational_storage.mailer.send_email", send_email)
-    deployment = SimpleNamespace(
-        id=uuid4(), name="wiki", hostname=hostname, user=SimpleNamespace(email="ana@example.com")
-    )
+def test_threshold_notice_names_the_deployment_and_links_the_dashboard(session, hostname):
+    owner = UserORM(email="ana@example.com")
+    session.add(owner)
+    session.commit()
+    deployment = SimpleNamespace(id=uuid4(), name="wiki_1", hostname=hostname, user_id=owner.id)
     settings = CaelusSettings(base_url="https://freepod.example")
     for threshold in (80, rs.READONLY_THRESHOLD):
         assert rs._notify_threshold(
-            deployment, threshold=threshold, size_bytes=900, allowance=1000, settings=settings
+            session, deployment, threshold=threshold, size_bytes=900, allowance=1000, settings=settings
         )
-    for mail in messages:
-        assert 'href="https://freepod.example"' in mail["html"]
-        assert "https://freepod.example" in mail["body"]
-        assert ("https://wiki-ana.freepod.app" in mail["body"]) == bool(hostname)
-        assert "wiki" in mail["html"]
+    session.commit()
+    notices = _quota_notices(session)
+    assert len(notices) == 2
+    for notice in notices:
+        assert notice.recipient_user_id == owner.id
+        assert (notice.action_label, notice.action_url) == ("Open your dashboard", "https://freepod.example")
+        assert notice.subject.startswith("wiki_1: ")
+        assert "wiki\\_1" in notice.body
+        assert ("<https://wiki-ana.freepod.app>" in notice.body) == bool(hostname)
+
+
+def test_a_plain_http_dashboard_is_not_linked(session):
+    owner = UserORM(email="ana@example.com")
+    session.add(owner)
+    session.commit()
+    deployment = SimpleNamespace(id=uuid4(), name="wiki", hostname=None, user_id=owner.id)
+    rs._notify_threshold(
+        session, deployment, threshold=80, size_bytes=900, allowance=1000,
+        settings=CaelusSettings(base_url="http://localhost:5173"),
+    )
+    session.commit()
+    [notice] = _quota_notices(session)
+    assert notice.action_url is None

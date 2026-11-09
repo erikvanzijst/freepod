@@ -9,7 +9,7 @@ The API sends its own mail: each sender formats a message and talks SMTP inline,
 - A `notification_outbox` table where a platform service deposits one message per recipient: a `kind`, the recipient (a Freepod user, or an address for someone without an account), a subject, an optional heading, a Markdown body, an optional action link, and the reason the recipient gets it.
 - A `notification_kind` table listing the kinds that may be queued, each marked as whether it could be unsubscribed from. The unsubscribe mechanism itself is not part of this change.
 - `origin` is set by the database to the role that inserted the row and cannot be supplied by the producer.
-- An optional dedupe key, unique per kind, so a producer that retries cannot queue the same message twice.
+- An optional dedupe key, unique per kind and recipient, so a producer that retries cannot queue the same message twice.
 - Each row moves from `pending` to exactly one of `sent`, `failed` or `suppressed`, with its attempts, its last error and the time it was sent.
 - A new Go daemon, `notifier`, in the daemons image. It wakes on a Postgres notification raised whenever a row becomes pending, sweeps on a timer as a fallback, renders the Markdown into Freepod's mail layout, and delivers through the shared SMTP relay. It retries a few times at once and then gives up. Where no relay is configured, it marks rows `suppressed`.
 - **BREAKING (internal)**: the API stops sending mail. Access-list invitations and the database quota notices are queued in the outbox, in the same transaction as the change that causes them. `app/services/mailer.py` and `app/services/mail_layout.py` are removed, along with the API's `CAELUS_SMTP_*` settings.
@@ -39,6 +39,5 @@ The API sends its own mail: each sender formats a message and talks SMTP inline,
   - a `caelus-notifier` deployment in the platform namespace;
   - the role's secret and bootstrap, run by the worker's init containers like app-auth's;
   - the SMTP host and sender address move from the API configmap to the notifier;
-  - the new image variable.
-  `scripts/rollout.sh` learns the new deployment.
+  - the new image variable, pinned like app-auth's, so `scripts/rollout.sh` does not restart it.
 - **Docs**: `AGENTS.md` architecture notes and `daemons/README.md`.

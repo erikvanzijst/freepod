@@ -19,7 +19,7 @@ from sqlmodel import Session, select
 
 from app.config import CaelusSettings, get_settings
 from app.models import DeploymentDatabaseORM, DeploymentDatabaseRead, DeploymentORM
-from app.services import mail_layout, mailer, var_crypto
+from app.services import notifications, var_crypto
 from app.services.errors import IntegrityException, NotFoundException
 from app.services.postgres_admin import PostgresAdminClient
 
@@ -504,10 +504,10 @@ def evaluate_quota_state(
     elif notify:
         threshold = _crossed_threshold(percent)
         if threshold is not None and threshold != record.warned_threshold:
-            # Recorded only once the mail is away, so a relay outage is retried
-            # on the next sweep instead of suppressing the one notification a
-            # tenant gets. A duplicate after a crash is the better failure.
+            # Recorded with the queued notice, in one transaction: delivery,
+            # and any failure of it, is the notifier's (notification-outbox D9).
             if _notify_threshold(
+                session,
                 deployment,
                 threshold=threshold,
                 size_bytes=size_bytes,
@@ -535,6 +535,7 @@ def evaluate_quota_state(
 
 
 def _notify_threshold(
+    session: Session,
     deployment: DeploymentORM,
     *,
     threshold: int,
@@ -542,62 +543,53 @@ def _notify_threshold(
     allowance: int,
     settings: CaelusSettings,
 ) -> bool:
-    """Mail the deployment's owner about a threshold. Returns whether it sent.
+    """Queue the owner's notice about a threshold. Returns whether it queued.
 
     No message at 150%: a deployment that gets there defeated the read-only
     setting after being told twice (design D8).
     """
-    owner = deployment.user
-    if owner is None or not owner.email:
+    if deployment.user_id is None:
         logger.warning(
-            "No owner address for deployment_id=%s; not sending the %s%% notice",
-            deployment.id,
-            threshold,
+            "No owner for deployment_id=%s; not queuing the %s%% notice", deployment.id, threshold
         )
         return False
 
+    md = notifications.md
     used = f"{size_bytes / 1024 ** 2:.0f} MB of {allowance / 1024 ** 2:.0f} MB"
-    named = deployment.name
+    named = md(deployment.name)
     if deployment.hostname:
-        named += f" at https://{deployment.hostname}"
+        named += f" at <https://{deployment.hostname}>"
     if threshold >= READONLY_THRESHOLD:
         subject = f"{deployment.name}: database is full and now read-only"
         heading = "Your database is full"
-        paragraphs = [
-            (
-                f"The database for {named} has reached its plan allowance "
-                f"({used}), and is now read-only: your application can still read its "
-                f"data, but writes will be refused."
-            ),
-            (
-                "To start writing again, move to a plan with a larger database "
-                "allowance from your dashboard, or contact support."
-            ),
-        ]
+        body = (
+            f"The database for {named} has reached its plan allowance ({md(used)}), and is now "
+            "read-only: your application can still read its data, but writes will be refused.\n\n"
+            "To start writing again, move to a plan with a larger database allowance from your "
+            "dashboard, or contact support."
+        )
     else:
         subject = f"{deployment.name}: database is {threshold}% full"
         heading = f"Your database is {threshold}% full"
-        paragraphs = [
-            (
-                f"The database for {named} is using {used}, which is over "
-                f"{threshold}% of its plan allowance."
-            ),
-            (
-                "At 100% the database becomes read-only and your application's writes "
-                "will be refused. You can move to a plan with a larger database "
-                "allowance from your dashboard."
-            ),
-        ]
-    body, html = mail_layout.compose(
+        body = (
+            f"The database for {named} is using {md(used)}, which is over {threshold}% of its "
+            "plan allowance.\n\n"
+            "At 100% the database becomes read-only and your application's writes will be "
+            "refused. You can move to a plan with a larger database allowance from your dashboard."
+        )
+    dashboard = settings.base_url
+    notifications.queue(
+        session,
+        kind="database.quota",
+        user_id=deployment.user_id,
+        subject=subject,
         heading=heading,
-        paragraphs=paragraphs,
-        button=mail_layout.Button("Open your dashboard", settings.base_url),
+        body=body,
+        # Local development serves the dashboard over plain HTTP, which an action may not link.
+        action=notifications.Action("Open your dashboard", dashboard) if dashboard.startswith("https://") else None,
         reason=f"You received this email because you own {deployment.name} on Freepod.",
     )
-
-    return mailer.send_email(
-        to=owner.email, subject=subject, body=body, html=html, settings=settings
-    )
+    return True
 
 
 def _apply_quota_state(

@@ -64,7 +64,8 @@ notification_outbox
   last_attempt_at  timestamp
   sent_at          timestamp
   error            text
-  unique (kind, dedupe_key)
+  unique (kind, dedupe_key, recipient_user_id, recipient_email)
+         nulls not distinct where dedupe_key is not null
   index (created_at) where state = 'pending'
 ```
 
@@ -92,7 +93,9 @@ The API and its workers share the schema owner's role, so their rows all carry t
 
 A producer inserts the row in the same transaction as the change that causes it. The message then exists exactly when the change commits, and the addition, binding or quota state change needs no separate "send after commit" step.
 
-A producer that sets a dedupe key inserts with `ON CONFLICT (kind, dedupe_key) DO NOTHING`, which needs no `SELECT` grant.
+A producer that sets a dedupe key inserts with `ON CONFLICT DO NOTHING`, without a conflict target. Naming the target needs `SELECT` on its columns, which producers don't have, and the only other unique key is the generated `id`, so the two behave the same.
+
+The key names an event, and the recipient is part of the unique index, so one event can reach several people under one key. `NULLS NOT DISTINCT` is needed because one recipient column is always NULL; the `WHERE dedupe_key IS NOT NULL` keeps keyless rows from ever conflicting. A person addressed once by user and once by address counts as two recipients; no producer does both.
 
 In the API, `app/services/notifications.py` offers:
 
@@ -148,11 +151,11 @@ The "change the two together" note about the Keycloak email theme moves with the
 
 ### D8. SMTP
 
-`net/smtp` to `SMTP_HOST:SMTP_PORT`, unauthenticated with no TLS, the same as `mailer.py` today. The relay authenticates upstream to Scaleway.
+`net/smtp` to `NOTIFIER_SMTP_HOST:NOTIFIER_SMTP_PORT`, unauthenticated with no TLS, the same as `mailer.py` today. The relay authenticates upstream to Scaleway.
 
 The message is built by hand: `multipart/alternative` with text, then HTML, both quoted-printable UTF-8; RFC 2047 encoded `Subject`; `From`, `To`, `Date` and `Message-ID`.
 
-An empty `SMTP_HOST` or `SMTP_FROM` means suppression. The sender logs this once at startup, and each row it reaches is marked `suppressed`.
+An empty `NOTIFIER_SMTP_HOST` or `NOTIFIER_SMTP_FROM` means suppression. The sender logs this once at startup, and each row it reaches is marked `suppressed`.
 
 ### D9. The quota notices treat queueing as sent
 

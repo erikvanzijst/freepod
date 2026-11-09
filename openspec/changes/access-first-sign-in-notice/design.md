@@ -32,7 +32,7 @@ UPDATE app_access_entry SET … WHERE id = $1 AND subject IS NULL RETURNING depl
   (no row → COMMIT, false; 23505 → ROLLBACK, false, as today)
 SELECT user_id, hostname FROM deployment WHERE id = <deployment_id>
 SAVEPOINT notice
-INSERT INTO notification_outbox (…) VALUES (…) ON CONFLICT (kind, dedupe_key) DO NOTHING
+INSERT INTO notification_outbox (…) VALUES (…) ON CONFLICT DO NOTHING
   (error → ROLLBACK TO SAVEPOINT notice, log a warning)
 COMMIT
 ```

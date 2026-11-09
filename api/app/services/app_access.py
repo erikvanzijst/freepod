@@ -40,7 +40,7 @@ from app.models import (
     ProductTemplateVersionORM,
 )
 from app.models.core import _utcnow
-from app.services import app_auth_oidc, mail_layout, mailer, template_values
+from app.services import app_auth_oidc, notifications, template_values
 from app.services.errors import (
     ConflictException,
     NotFoundException,
@@ -168,19 +168,12 @@ def normalize_email(email: str) -> str | None:
     return email if len(email) <= 254 and _EMAIL.match(email) else None
 
 
-@dataclass(frozen=True)
-class Invitation:
-    to: str
-    owner_email: str
-    hostname: str
-
-
-def add_entry(session: Session, deployment: DeploymentORM, email: str) -> tuple[AccessEntryRead, Invitation]:
-    """Add someone to a `listed` deployment's list and record their invitation.
+def add_entry(session: Session, deployment: DeploymentORM, email: str) -> AccessEntryRead:
+    """Add someone to a `listed` deployment's list and queue their invitation.
 
     The deployment row is locked for the transaction, so concurrent additions
-    cannot pass the bound together (D5). The caller sends the invitation once
-    this has committed (D6). `email` is already normalized.
+    cannot pass the bound together (D5). The invitation is queued in the same
+    transaction (D6). `email` is already normalized.
     """
     session.exec(select(DeploymentORM.id).where(DeploymentORM.id == deployment.id).with_for_update()).one()
     serving = _serving(session, deployment)
@@ -210,9 +203,30 @@ def add_entry(session: Session, deployment: DeploymentORM, email: str) -> tuple[
     entry = AppAccessEntryORM(deployment_id=deployment.id, email=email)
     session.add(entry)
     session.add(AppAccessInvitationORM(user_id=deployment.user_id))
+    _queue_invitation(session, to=email, owner_email=owner_email, hostname=deployment.hostname or "")
     session.commit()
     session.refresh(entry)
-    return _entry_read(entry), Invitation(to=email, owner_email=owner_email, hostname=deployment.hostname or "")
+    return _entry_read(entry)
+
+
+def _queue_invitation(session: Session, *, to: str, owner_email: str, hostname: str) -> None:
+    """The fixed invitation, which carries nothing the owner wrote (D6)."""
+    md = notifications.md
+    notifications.queue(
+        session,
+        kind="access.invitation",
+        email=to,
+        subject=f"You have been given access to {hostname}",
+        heading="You have been given access",
+        body=(
+            f"{md(owner_email)} gave you access to their app at {md(hostname)}.\n\n"
+            f"To use it, sign in there with a Freepod account that uses this email address, "
+            f"{md(to)}. If you do not have a Freepod account yet, you can create one when you sign in."
+        ),
+        action=notifications.Action("Open the app", f"https://{hostname}"),
+        reason=f"You received this email because {owner_email} added this address to their app. "
+        "If you don't know them, you can safely ignore it.",
+    )
 
 
 def _check_invitation_limit(session: Session, user_id: int) -> None:
@@ -230,33 +244,6 @@ def _check_invitation_limit(session: Session, user_id: int) -> None:
             f"You can invite more people after {until.strftime('%Y-%m-%d %H:%M')} UTC.",
             code="access_invitation_limit",
         )
-
-
-def invitation_text(invitation: Invitation) -> tuple[str, str, str]:
-    """The fixed invitation, which carries nothing the owner wrote (D6), as
-    (subject, plain text, HTML)."""
-    url = f"https://{invitation.hostname}"
-    subject = f"You have been given access to {invitation.hostname}"
-    text, html = mail_layout.compose(
-        heading="You have been given access",
-        paragraphs=[
-            f"{invitation.owner_email} gave you access to their app at {invitation.hostname}.",
-            (
-                f"To use it, sign in there with a Freepod account that uses this email address, "
-                f"{invitation.to}. If you do not have a Freepod account yet, you can create one "
-                "when you sign in."
-            ),
-        ],
-        button=mail_layout.Button("Open the app", url),
-        reason=f"You received this email because {invitation.owner_email} added this address "
-        "to their app. If you don't know them, you can safely ignore it.",
-    )
-    return subject, text, html
-
-
-def send_invitation(invitation: Invitation) -> None:
-    subject, text, html = invitation_text(invitation)
-    mailer.send_email(to=invitation.to, subject=subject, body=text, html=html)
 
 
 def sweep_invitations(session: Session) -> int:

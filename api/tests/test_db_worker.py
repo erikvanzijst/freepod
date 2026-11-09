@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import pytest
 from datetime import UTC, datetime, timedelta
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app import db_worker
 from app.config import CaelusSettings
+from app.models import NotificationORM
 from app.services import relational_storage as rs
 from app.services.errors import IntegrityException
 from tests import tenant_cluster
@@ -136,23 +137,27 @@ def test_a_deployment_awaiting_purge_is_left_alone(session, tenant_db, settings)
     )
 
 
-# ── Threshold mail ────────────────────────────────────────────────────────
+# ── Threshold notices ──────────────────────────────────────────────────────
 
 
 @pytest.fixture
-def sent(monkeypatch):
-    """Capture what would have gone to the relay."""
-    messages: list[dict] = []
+def sent(test_database):
+    """The quota notices queued so far, read on a session of their own."""
 
-    def send_email(*, to, subject, body, html=None, settings=None):
-        messages.append({"to": to, "subject": subject, "body": body})
-        return True
+    def read() -> list[NotificationORM]:
+        with Session(test_database.engine) as other:
+            return list(
+                other.exec(
+                    select(NotificationORM)
+                    .where(NotificationORM.kind == "database.quota")
+                    .order_by(NotificationORM.created_at)
+                ).all()
+            )
 
-    monkeypatch.setattr("app.services.relational_storage.mailer.send_email", send_email)
-    return messages
+    return read
 
 
-def test_a_deployment_hovering_above_a_threshold_is_mailed_once(
+def test_a_deployment_hovering_above_a_threshold_is_notified_once(
     session, tenant_db, settings, sent
 ):
     deployment = _deployment(session)
@@ -163,27 +168,27 @@ def test_a_deployment_hovering_above_a_threshold_is_mailed_once(
         for percent in (85, 87, 82):
             _sized(tenant_db, {credentials.database: percent}, allowance)
             db_worker.quota_tick(session, tenant_db=tenant_db, settings=settings)
-        assert len(sent) == 1
-        assert "80% full" in sent[0]["subject"]
-        assert sent[0]["to"] == deployment.user.email
+        assert len(sent()) == 1
+        assert "80% full" in sent()[0].subject
+        assert sent()[0].recipient_user_id == deployment.user_id
 
         # Crossing the next rung is news again.
         _sized(tenant_db, {credentials.database: 95}, allowance)
         db_worker.quota_tick(session, tenant_db=tenant_db, settings=settings)
-        assert len(sent) == 2
-        assert "90% full" in sent[1]["subject"]
+        assert len(sent()) == 2
+        assert "90% full" in sent()[1].subject
 
         # At the allowance the message says what changed for the application.
         _sized(tenant_db, {credentials.database: 101}, allowance)
         db_worker.quota_tick(session, tenant_db=tenant_db, settings=settings)
-        assert len(sent) == 3
-        assert "read-only" in sent[2]["subject"]
-        assert "read-only" in sent[2]["body"]
+        assert len(sent()) == 3
+        assert "read-only" in sent()[2].subject
+        assert "read-only" in sent()[2].body
 
         # And 150% is deliberately silent: the tenant has been told twice.
         _sized(tenant_db, {credentials.database: 160}, allowance)
         db_worker.quota_tick(session, tenant_db=tenant_db, settings=settings)
-        assert len(sent) == 3
+        assert len(sent()) == 3
         assert rs.get_record(session, deployment).quota_state == rs.QUOTA_BLOCKED
     finally:
         tenant_db.database_size_bytes = original  # type: ignore[method-assign]
@@ -201,38 +206,23 @@ def test_falling_back_to_ok_re_arms_the_ladder(session, tenant_db, settings, sen
     finally:
         tenant_db.database_size_bytes = original  # type: ignore[method-assign]
 
-    assert len(sent) == 2
+    assert len(sent()) == 2
 
 
-def test_an_unsent_mail_is_retried_rather_than_suppressed(
-    session, tenant_db, settings, monkeypatch
-):
-    """The suppression marker records that a tenant was told. A relay outage
-    means they were not."""
+def test_the_marker_commits_with_its_notice(session, tenant_db, settings, sent):
+    """The marker says a notice was queued; delivery is the notifier's."""
     deployment = _deployment(session)
     credentials = rs.ensure_database(session, deployment, tenant_db=tenant_db, settings=settings)
     allowance = rs.resolve_quota_bytes(deployment)
-
-    attempts: list[int] = []
-
-    def failing(*, to, subject, body, html=None, settings=None):
-        attempts.append(1)
-        return False
-
-    monkeypatch.setattr("app.services.relational_storage.mailer.send_email", failing)
     original = tenant_db.database_size_bytes
     try:
         _sized(tenant_db, {credentials.database: 85}, allowance)
         db_worker.quota_tick(session, tenant_db=tenant_db, settings=settings)
-        assert rs.get_record(session, deployment).warned_threshold is None
-
-        db_worker.quota_tick(session, tenant_db=tenant_db, settings=settings)
     finally:
         tenant_db.database_size_bytes = original  # type: ignore[method-assign]
 
-    assert len(attempts) == 2
-    # The quota state itself is recorded regardless of the relay.
-    assert rs.get_record(session, deployment).quota_state == rs.QUOTA_WARNED
+    assert rs.get_record(session, deployment).warned_threshold == 80
+    assert [n.state for n in sent()] == ["pending"]
 
 
 def test_a_reconcile_evaluation_sends_nothing(session, tenant_db, settings, sent):
@@ -247,7 +237,7 @@ def test_a_reconcile_evaluation_sends_nothing(session, tenant_db, settings, sent
     finally:
         tenant_db.database_size_bytes = original  # type: ignore[method-assign]
 
-    assert sent == []
+    assert sent() == []
 
 
 # ── Purge ─────────────────────────────────────────────────────────────────

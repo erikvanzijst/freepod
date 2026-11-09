@@ -285,6 +285,15 @@ This repository is a monorepo with:
   Spec: [daemons-image](openspec/specs/daemons-image/spec.md) · Rationale:
   [daemons-image](openspec/changes/archive/2026-10-07-daemons-image/design.md),
   [daemons/README.md](daemons/README.md)
+- **Platform services never send mail themselves; they queue it.** A producer
+  inserts one row per recipient in `notification_outbox`, in the transaction
+  that causes it, with a Markdown body whose interpolated values it escapes
+  (`app.services.notifications.md`). `daemons/notifier` is the only sender: it
+  wakes on the table's LISTEN channel, renders Freepod's mail layout, and
+  records each row as `sent`, `failed` or `suppressed`. Producer roles get
+  INSERT on the producer columns only; `origin` is the inserting role. Spec:
+  [notification-outbox](openspec/specs/notification-outbox/spec.md),
+  [notification-sender](openspec/specs/notification-sender/spec.md)
 - Authentication: all API endpoints require the `X-Auth-Request-Email` header
   (injected by oauth2-proxy in production, set by the frontend in local dev);
   the caller resolves to the user record bound to the Keycloak subject in
