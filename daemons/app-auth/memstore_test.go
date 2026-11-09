@@ -22,6 +22,9 @@ type memStore struct {
 	ownerSubjects map[string]string
 	entries       map[string][]accessEntry
 	names         map[string]string // entry id -> name it was bound with
+	// notices are the entries whose binding queued the owner's invitation
+	// accepted notice, in order.
+	notices []string
 	// accessErr fails every accessList read, as a database outage does.
 	accessErr error
 	// accessReads counts accessList calls.
@@ -111,6 +114,7 @@ func (m *memStore) bindEntry(_ context.Context, entryID, sub, name string) (bool
 				es[i].Subject = sub
 				m.entries[dep] = es
 				m.names[entryID] = name
+				m.notices = append(m.notices, entryID)
 				return true, nil
 			}
 		}

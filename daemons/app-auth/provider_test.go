@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1018,6 +1019,9 @@ func TestProviderListed(t *testing.T) {
 		g.st.recordConsent(context.Background(), "3f2a", depWiki, disclosedClaims)
 		w := g.returnFromIdP(g.authorize(authorizeQuery(depWiki, cb, "prompt", "none")))
 		oauthError(t, w, cb, "access_denied", "app-state")
+		if len(g.st.notices) != 0 {
+			t.Fatalf("a refused sign-in notified: %v", g.st.notices)
+		}
 	})
 
 	t.Run("listed person consents, gets a code, and is bound", func(t *testing.T) {
@@ -1035,6 +1039,13 @@ func TestProviderListed(t *testing.T) {
 		if e := g.st.entry(depWiki, "e-alice"); e.Subject != "3f2a" {
 			t.Fatalf("entry %+v", e)
 		}
+		if !slices.Equal(g.st.notices, []string{"e-alice"}) {
+			t.Fatalf("notices %v", g.st.notices)
+		}
+		g.codeFor(depWiki, cb)
+		if len(g.st.notices) != 1 {
+			t.Fatalf("a later sign-in notified again: %v", g.st.notices)
+		}
 	})
 
 	t.Run("consented person is bound without a consent page", func(t *testing.T) {
@@ -1050,6 +1061,9 @@ func TestProviderListed(t *testing.T) {
 		g := listedProvider(t)
 		g.auth.id.Email = "OWNER@example.com"
 		g.codeFor(depWiki, cb)
+		if len(g.st.notices) != 0 {
+			t.Fatalf("the owner's sign-in notified: %v", g.st.notices)
+		}
 	})
 
 	t.Run("bound owner signs in under a changed email", func(t *testing.T) {

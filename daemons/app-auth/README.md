@@ -31,7 +31,8 @@ API edits. It has three roles:
   asks for consent once per user and deployment, and hands the app host a
   single-use code bound to that host and to the browser that started signing
   in. Issuing a code ties an access list entry to the subject that first signs
-  in with it. `preview-<label>.<rest>` signs in as the deployment at
+  in with it, and queues the owner an `access.invitation_accepted` notice in the
+  notification outbox. `preview-<label>.<rest>` signs in as the deployment at
   `<label>.<rest>`. Keycloak posts its back-channel logouts to
   `POST /backchannel-logout`, inside the cluster.
 - **The provider** (also `:8081`, issuer `https://login.<domain>`) is an OpenID

@@ -75,4 +75,10 @@ GRANT SELECT, INSERT, DELETE ON TABLE app_auth_oidc_code TO caelus_app_auth;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE app_auth_sign_in TO caelus_app_auth;
 GRANT SELECT, INSERT, DELETE ON TABLE app_auth_ended_session TO caelus_app_auth;
 
+-- Telling an owner that someone they invited has signed in. Queue-only, and to
+-- Freepod users only: without recipient_email it cannot mail arbitrary
+-- addresses through the relay.
+GRANT INSERT (kind, recipient_user_id, subject, heading, body, action_label, action_url, reason, dedupe_key)
+    ON TABLE notification_outbox TO caelus_app_auth;
+
 COMMIT;
