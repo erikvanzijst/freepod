@@ -20,6 +20,7 @@ from app.models import (
     AppAccessEntryORM,
     AppAccessInvitationORM,
     DeploymentORM,
+    NotificationORM,
     ProductORM,
     ProductTemplateVersionORM,
     UserORM,
@@ -51,16 +52,20 @@ def _settings(monkeypatch):
 
 
 @pytest.fixture
-def sent(monkeypatch):
-    """Invitations, as the mailer would have sent them."""
-    mails: list[dict] = []
+def queued(test_database):
+    """The invitations queued so far, read on a session of their own."""
 
-    def send_email(**kwargs):
-        mails.append(kwargs)
-        return True
+    def read() -> list[NotificationORM]:
+        with Session(test_database.engine) as session:
+            return list(
+                session.exec(
+                    select(NotificationORM)
+                    .where(NotificationORM.kind == "access.invitation")
+                    .order_by(NotificationORM.created_at)
+                ).all()
+            )
 
-    monkeypatch.setattr("app.services.app_access.mailer.send_email", send_email)
-    return mails
+    return read
 
 
 @pytest.fixture
@@ -227,14 +232,14 @@ def test_unknown_deployment(user_client, db_session):
 # ── Adding ───────────────────────────────────────────────────────────────
 
 
-def test_owner_adds_someone(user_client, db_session, sent):
+def test_owner_adds_someone(user_client, db_session, queued):
     c, _ = user_client
     deployment = _deployment(db_session, _owner(db_session), system=LISTED)
     r = c.post(_url(deployment), json={"email": " Ana@Example.com "})
     assert r.status_code == 201, r.text
     assert r.json()["email"] == "ana@example.com" and r.json()["bound_at"] is None
     assert [e.email for e in db_session.exec(select(AppAccessEntryORM)).all()] == ["ana@example.com"]
-    assert len(sent) == 1
+    assert len(queued()) == 1
 
 
 @pytest.mark.parametrize("email", ["ana@", "@example.com", "ana", "ana@example", "ana @example.com", "a@b@example.com"])
@@ -330,26 +335,39 @@ def test_concurrent_additions_never_pass_the_bound(user_client, db_session, test
 # ── Invitations ──────────────────────────────────────────────────────────
 
 
-def test_invitation_is_fixed_text(user_client, db_session, sent):
+def test_invitation_is_fixed_text(user_client, db_session, queued):
     c, _ = user_client
     deployment = _deployment(db_session, _owner(db_session), system=LISTED, hostname="cloud-yourname.freepod.app")
     c.post(_url(deployment), json={"email": "ana@example.com"})
-    [mail] = sent
-    assert mail["to"] == "ana@example.com"
-    assert USER_EMAIL in mail["body"] and "https://cloud-yourname.freepod.app" in mail["body"]
-    assert "ana@example.com" in mail["body"]
-    assert 'href="https://cloud-yourname.freepod.app"' in mail["html"] and USER_EMAIL in mail["html"]
+    [invitation] = queued()
+    assert (invitation.recipient_email, invitation.recipient_user_id) == ("ana@example.com", None)
+    assert invitation.subject == "You have been given access to cloud-yourname.freepod.app"
+    assert invitation.body == (
+        f"{app_access.notifications.md(USER_EMAIL)} gave you access to their app at "
+        "cloud\\-yourname\\.freepod\\.app.\n\n"
+        "To use it, sign in there with a Freepod account that uses this email address, "
+        "ana\\@example\\.com. If you do not have a Freepod account yet, you can create one when you sign in."
+    )
+    assert (invitation.action_label, invitation.action_url) == ("Open the app", "https://cloud-yourname.freepod.app")
+    assert USER_EMAIL in invitation.reason
 
 
-def test_relay_failure_keeps_the_entry(user_client, db_session, monkeypatch):
+def test_relay_down_keeps_the_entry_and_its_queued_invitation(user_client, db_session, queued):
     c, _ = user_client
-    monkeypatch.setattr("app.services.app_access.mailer.send_email", lambda **kw: False)
     deployment = _deployment(db_session, _owner(db_session), system=LISTED)
     assert c.post(_url(deployment), json={"email": "ana@example.com"}).status_code == 201
     assert len(db_session.exec(select(AppAccessEntryORM)).all()) == 1
+    assert [i.state for i in queued()] == ["pending"]
 
 
-def test_invitation_limit(user_client, db_session, sent, _settings):
+def test_a_refused_addition_queues_nothing(user_client, db_session, queued):
+    c, _ = user_client
+    deployment = _deployment(db_session, _owner(db_session), system=LISTED)
+    assert c.post(_url(deployment), json={"email": USER_EMAIL}).status_code == 409
+    assert queued() == []
+
+
+def test_invitation_limit(user_client, db_session, queued, _settings):
     c, _ = user_client
     _settings.access_invitations_per_day = 3
     owner = _owner(db_session)
@@ -359,10 +377,10 @@ def test_invitation_limit(user_client, db_session, sent, _settings):
     r = c.post(_url(second), json={"email": "more@example.com"})
     assert r.status_code == 429 and r.json()["code"] == "access_invitation_limit"
     assert "UTC" in r.json()["detail"]
-    assert len(sent) == 3
+    assert len(queued()) == 3
 
 
-def test_removing_does_not_return_invitations(user_client, db_session, sent, _settings):
+def test_removing_does_not_return_invitations(user_client, db_session, _settings):
     c, _ = user_client
     _settings.access_invitations_per_day = 3
     deployment = _deployment(db_session, _owner(db_session), system=LISTED)
@@ -373,7 +391,7 @@ def test_removing_does_not_return_invitations(user_client, db_session, sent, _se
     assert r.status_code == 429
 
 
-def test_invitations_older_than_a_day_do_not_count(user_client, db_session, sent, _settings):
+def test_invitations_older_than_a_day_do_not_count(user_client, db_session, _settings):
     c, _ = user_client
     _settings.access_invitations_per_day = 1
     owner = _owner(db_session)

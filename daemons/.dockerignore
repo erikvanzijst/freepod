@@ -6,3 +6,4 @@ go.work.sum
 */app-auth
 */ssh-auth
 */bucket-exporter
+*/notifier

@@ -16,6 +16,8 @@ The models are split across three modules:
   - app_auth.py: AppAuthConsent, AppAuthCode -- written only by `daemons/app-auth/`;
                 AppAccessEntry, AppAccessInvitation -- the access lists of
                 `listed` deployments, written by the API.
+  - notification.py: NotificationKind, Notification -- the outbox platform
+                services queue messages in, delivered by `daemons/notifier/`.
   - usage.py:   UsageMetric, UsageSubject, UsageSample -- the usage ledger, plus
                 the enums naming its catalog dimensions; UsageRate, what each
                 quantity costs from when; and UsageReport, the priced read-back.
@@ -149,4 +151,10 @@ from app.models.app_auth import (  # noqa: F401,E402
     AppAuthCodeORM,
     AppAuthConsentORM,
     AppAuthOIDCCodeORM,
+)
+
+from app.models.notification import (  # noqa: F401,E402
+    NotificationKindORM,
+    NotificationORM,
+    NotificationState,
 )

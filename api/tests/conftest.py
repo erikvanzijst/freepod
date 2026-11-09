@@ -171,7 +171,8 @@ def _snapshot(engine: Engine) -> tuple[tuple[str, ...], tuple[str, ...]]:
 
     Restricted to the `public` schema: the migration tests create throwaway
     schemas in this same database and manage them themselves. `alembic_version`
-    is excluded so migration state survives between tests.
+    is excluded so migration state survives between tests, and so is
+    `notification_kind`, whose rows the migrations seed and every producer needs.
 
     Sequences come from `pg_sequences` rather than a hand-written list because
     `deployment_var.id` is GENERATED ALWAYS AS IDENTITY, not a serial, and a
@@ -184,7 +185,7 @@ def _snapshot(engine: Engine) -> tuple[tuple[str, ...], tuple[str, ...]]:
                 text(
                     "SELECT table_name FROM information_schema.tables "
                     "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' "
-                    "AND table_name <> 'alembic_version' "
+                    "AND table_name NOT IN ('alembic_version', 'notification_kind') "
                     "ORDER BY table_name"
                 )
             )
@@ -265,10 +266,16 @@ def test_database() -> TestDatabase:
 
 # Modules that share state per-worker databases do not isolate, each kept on one
 # worker by `--dist loadgroup`: `tenant_cluster` creates and drops `dpl_*` roles
-# and databases server-wide, and `helm_charts` runs `helm dependency build`,
-# which rewrites the vendored `charts/*.tgz` under `products/` in place.
+# and databases server-wide, and platform roles, and `helm_charts` runs `helm
+# dependency build`, which rewrites the vendored `charts/*.tgz` under
+# `products/` in place.
 _XDIST_GROUPS = {
-    "tenant_cluster": {"test_db_worker", "test_postgres_admin", "test_relational_storage"},
+    "tenant_cluster": {
+        "test_db_worker",
+        "test_notification_outbox",
+        "test_postgres_admin",
+        "test_relational_storage",
+    },
     "helm_charts": {
         "test_appstudio_chart",
         "test_bookstack_chart",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
 from sqlmodel import Session
 
 from app.db import get_session
@@ -77,7 +77,6 @@ def read_access(
 )
 def add_access(
     payload: AccessEntryCreate,
-    background: BackgroundTasks,
     user_id: int = Path(..., description="ID of the user that owns the deployment."),
     deployment_id: UUID = Path(..., description="UUID of the deployment."),
     current_user: UserORM = Depends(require_self),
@@ -92,8 +91,8 @@ def add_access(
     ## Behavior
     The address is stored in lower case. Whoever first signs in with a Freepod
     account using it is admitted, and from then on only that account. The
-    address receives one invitation email naming the owner and the app's
-    address; failing to send it does not undo the addition. Each owner may
+    address is sent one invitation email naming the owner and the app's
+    address; failing to deliver it does not undo the addition. Each owner may
     send a limited number of invitations a day, across all their deployments,
     and removing entries does not return them.
     """
@@ -102,9 +101,7 @@ def add_access(
     if email is None:
         raise InvalidInputException(f"{payload.email!r} is not a valid email address", code="access_invalid_email")
     deployment = deployment_service.get_deployment_orm(session, deployment_id=deployment_id, user_id=user_id)
-    entry, invitation = app_access.add_entry(session, deployment, email)
-    background.add_task(app_access.send_invitation, invitation)
-    return entry
+    return app_access.add_entry(session, deployment, email)
 
 
 @router.delete(

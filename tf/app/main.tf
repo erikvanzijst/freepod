@@ -117,6 +117,7 @@ module "caelus" {
   sshpiper_namespace      = kubernetes_namespace.sshpiper.metadata[0].name
   builds_namespace        = kubernetes_namespace.builds.metadata[0].name
   builder_image           = var.builder_image
+  notifier_image          = var.notifier_image
   build_runtime_class     = local.build_runtime_class
   sftp_host               = local.sftp_host
   sftp_port               = local.sftp_port

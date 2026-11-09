@@ -209,6 +209,11 @@ variable "builder_image" {
   type = string
 }
 
+variable "notifier_image" {
+  description = "Daemons image (daemons/) that the notifier runs from, pinned to an immutable version"
+  type        = string
+}
+
 variable "dns_cluster_ip" {
   description = "CoreDNS ClusterIP, allowed explicitly by the builds NetworkPolicy (k3s default)"
   type        = string

@@ -164,7 +164,7 @@ When the owner removes an entry tied to a subject from an `oidc` deployment that
 
 ### Requirement: Added people are invited by email
 
-When the owner adds an entry, the platform SHALL email the added address once, with a fixed message: that the owner, named by their email address, gave them access to the app at its address, and that they sign in there with a Freepod account using that email. The message SHALL contain no text the owner wrote. A failure to send SHALL NOT undo the addition.
+When the owner adds an entry, the platform SHALL queue one `access.invitation` notification to the added address in the same transaction, with a fixed message: the owner, named by their email address, gave them access to the app at its address, where they sign in with a Freepod account using that email. It SHALL contain no text the owner wrote. Delivery SHALL NOT delay or undo the addition.
 
 #### Scenario: Invitation
 
@@ -174,7 +174,12 @@ When the owner adds an entry, the platform SHALL email the added address once, w
 #### Scenario: Relay down
 
 - **WHEN** the mail relay is unavailable as the owner adds an entry
-- **THEN** the entry is added
+- **THEN** the entry is added, and its invitation is queued and ends `failed`
+
+#### Scenario: Addition refused
+
+- **WHEN** an addition is refused, for example because the list is full
+- **THEN** no invitation is queued
 
 ### Requirement: Invitations are limited per owner
 
