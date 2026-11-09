@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
@@ -132,7 +133,7 @@ func (f *fixture) exec(sql string, args ...any) {
 }
 
 func (f *fixture) store(pool *pgxpool.Pool) *pgStore {
-	return &pgStore{pool: pool}
+	return &pgStore{pool: pool, log: slog.New(slog.DiscardHandler), noticeKind: invitationAcceptedKind}
 }
 
 // deployment inserts a deployment whose applied release carries `values`, the
@@ -526,6 +527,11 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 		"change an entry's email":    `UPDATE app_access_entry SET email = email`,
 		"delete access entries":      `DELETE FROM app_access_entry`,
 		"read invitations":           `SELECT * FROM app_access_invitation LIMIT 1`,
+		"notify an address": `INSERT INTO notification_outbox (kind, recipient_email, subject, body, reason)
+			VALUES ('access.invitation_accepted', 'x@example.com', 's', 'b', 'r')`,
+		"read notifications":    `SELECT id FROM notification_outbox LIMIT 1`,
+		"change a notification": `UPDATE notification_outbox SET state = 'sent' WHERE false`,
+		"delete notifications":  `DELETE FROM notification_outbox WHERE false`,
 	}
 	for name, sql := range denied {
 		t.Run(name, func(t *testing.T) {
@@ -547,6 +553,10 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 		"read and delete sign-ins":       `DELETE FROM app_auth_sign_in WHERE keycloak_sid IN (SELECT keycloak_sid FROM app_auth_sign_in WHERE false)`,
 		"write ended sessions":           `INSERT INTO app_auth_ended_session (keycloak_sid, ended_at) VALUES ('kc-` + f.unique + `', now()) ON CONFLICT DO NOTHING`,
 		"read and delete ended sessions": `DELETE FROM app_auth_ended_session WHERE ended_at < (SELECT min(ended_at) FROM app_auth_ended_session)`,
+		"notify a user": fmt.Sprintf(`INSERT INTO notification_outbox
+			(kind, recipient_user_id, subject, heading, body, action_label, action_url, reason, dedupe_key)
+			VALUES ('access.invitation_accepted', %d, 's', 'h', 'b', 'a', 'https://x', 'r', 'role-test-%s')
+			ON CONFLICT DO NOTHING`, f.userID, f.unique),
 	}
 	t.Cleanup(func() {
 		f.admin.Exec(ctx, `DELETE FROM app_auth_ended_session WHERE keycloak_sid = $1`, "kc-"+f.unique)
@@ -888,4 +898,107 @@ func TestProduct(t *testing.T) {
 	if got, err := st.product(ctx, other); err != nil || got != (product{Name: "app-auth-other-" + f.unique}) {
 		t.Fatalf("product without slug or icon: %+v, %v", got, err)
 	}
+}
+
+func TestInvitationAcceptedNoticeIsQueued(t *testing.T) {
+	f := newFixture(t)
+	st := f.store(rolePool(t))
+	ctx := context.Background()
+	host := "n-" + f.unique + "-erik.freepod.app"
+	dep := f.deployment(host, "provisioned", authOn)
+	entry := func(email string) string {
+		var id string
+		if err := f.admin.QueryRow(ctx, `INSERT INTO app_access_entry (id, deployment_id, email, created_at)
+			VALUES (gen_random_uuid(), $1::uuid, $2, now()) RETURNING id::text`, dep, email).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	type row struct{ kind, origin, subject, body, actionURL, dedupe string }
+	notices := func() []row {
+		t.Helper()
+		rows, err := f.admin.Query(ctx, `SELECT kind, origin, subject, body, action_url, dedupe_key
+			FROM notification_outbox WHERE recipient_user_id = $1 AND kind = $2 ORDER BY created_at`,
+			f.userID, invitationAcceptedKind)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []row
+		for rows.Next() {
+			var r row
+			if err := rows.Scan(&r.kind, &r.origin, &r.subject, &r.body, &r.actionURL, &r.dedupe); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, r)
+		}
+		return out
+	}
+	bind := func(id, sub string) bool {
+		t.Helper()
+		bound, err := st.bindEntry(ctx, id, sub, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return bound
+	}
+
+	ana := entry("ana@example.org")
+	if !bind(ana, "s-ana-"+f.unique) {
+		t.Fatal("first binding refused")
+	}
+	n := notices()
+	want := invitationAcceptedNotice("ana@example.org", host)
+	if len(n) != 1 || n[0].origin != roleName || n[0].subject != want.Subject || n[0].body != want.Body ||
+		n[0].actionURL != "https://"+host || n[0].dedupe != "invitation-accepted:"+ana {
+		t.Fatalf("notices %+v", n)
+	}
+
+	t.Run("no notice when no binding happens", func(t *testing.T) {
+		if bind(ana, "s-ana-"+f.unique) || bind(ana, "s-other-"+f.unique) {
+			t.Fatal("rebound a bound entry")
+		}
+		if bind(entry("bo@example.org"), "s-ana-"+f.unique) { // 23505
+			t.Fatal("bound a second entry to one subject")
+		}
+		if len(notices()) != 1 {
+			t.Fatalf("notices %+v", notices())
+		}
+	})
+
+	t.Run("one notice for concurrent first sign-ins", func(t *testing.T) {
+		id := entry("cy@example.org")
+		var wg sync.WaitGroup
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() { defer wg.Done(); st.bindEntry(ctx, id, "s-cy-"+f.unique, "") }()
+		}
+		wg.Wait()
+		if len(notices()) != 2 {
+			t.Fatalf("notices %+v", notices())
+		}
+	})
+
+	t.Run("an entry added again notifies again", func(t *testing.T) {
+		f.exec(`DELETE FROM app_access_entry WHERE id = $1::uuid`, ana)
+		if !bind(entry("ana@example.org"), "s-ana-"+f.unique) {
+			t.Fatal("binding the new entry refused")
+		}
+		if len(notices()) != 3 {
+			t.Fatalf("notices %+v", notices())
+		}
+	})
+
+	t.Run("a refused notice still binds", func(t *testing.T) {
+		broken := *st
+		broken.noticeKind = "access.no_such_kind"
+		id := entry("dee@example.org")
+		if bound, err := broken.bindEntry(ctx, id, "s-dee-"+f.unique, "Dee"); err != nil || !bound {
+			t.Fatalf("bind = %v, %v", bound, err)
+		}
+		var sub string
+		f.admin.QueryRow(ctx, `SELECT coalesce(subject, '') FROM app_access_entry WHERE id = $1::uuid`, id).Scan(&sub)
+		if sub != "s-dee-"+f.unique || len(notices()) != 3 {
+			t.Fatalf("subject %q, notices %+v", sub, notices())
+		}
+	})
 }

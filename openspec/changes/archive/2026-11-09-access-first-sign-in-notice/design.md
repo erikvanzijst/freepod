@@ -37,7 +37,7 @@ INSERT INTO notification_outbox (…) VALUES (…) ON CONFLICT DO NOTHING
 COMMIT
 ```
 
-The binding and its notice commit together, and a binding that loses the race or rolls back queues nothing. The dedupe key `first-sign-in:<entry id>` makes a second insert for the same entry harmless. That can't happen through `WHERE subject IS NULL` today, but it costs nothing. A re-added entry has a new ID, so it notifies again, as the spec asks.
+The binding and its notice commit together, and a binding that loses the race or rolls back queues nothing. The dedupe key `invitation-accepted:<entry id>` makes a second insert for the same entry harmless. That can't happen through `WHERE subject IS NULL` today, but it costs nothing. A re-added entry has a new ID, so it notifies again, as the spec asks.
 
 The savepoint keeps sign-in independent of the notice. A missing kind, a missing grant or a broken constraint loses the notice, logged, and never refuses a person their access.
 
@@ -55,16 +55,18 @@ app-auth can then only notify people who have a Freepod account. If it were comp
 
 ### D4. Rollout order
 
-The migration seeding `access.first_sign_in` and the bootstrap grant run with the API's rollout (worker init containers). app-auth's new version is applied afterwards through `tf/app`.
+The migration seeding `access.invitation_accepted` and the bootstrap grant run with the API's rollout (worker init containers). app-auth's new version is applied afterwards through `tf/app`.
 
 Applied the other way around, the savepoint loses the notices of the bindings in between, and everything else keeps working.
 
 ### D5. The notice
 
-A fixed text in `daemons/app-auth/notice.go`. Every inserted value goes through an `mdEscape` that backslash-escapes ASCII punctuation, the same rule as the API's `md`.
+The kind is `access.invitation_accepted`, beside `access.invitation`: it names what the owner learns, not how app-auth sees it. A first sign-in is the acceptance, and the owner's own never notifies.
 
-- **subject:** `<email> signed in to <hostname>`
-- **heading:** `Someone you invited has signed in`
+A fixed text in `daemons/app-auth/notice.go`. Every value inserted into the Markdown body goes through an `mdEscape` that backslash-escapes ASCII punctuation, the same rule as the API's `md`. The subject, heading and reason are plain text and are not escaped.
+
+- **subject:** `<email> accepted your invitation to <hostname>`
+- **heading:** `Your invitation was accepted`
 - **body:** `<email>, whom you gave access to <hostname>, signed in to it for the first time. If the app creates accounts when people first sign in, it now knows them, so you can share with them or give them a role there.`
 - **action:** `Open the app` → `https://<hostname>`
 - **reason:** `You received this email because you own <hostname> on Freepod and gave <email> access to it.`
@@ -81,5 +83,5 @@ A fixed text in `daemons/app-auth/notice.go`. Every inserted value goes through 
 
 1. Merge after `notification-outbox` is live on the environment.
 2. Roll out the API, which runs the migration and the bootstrap grant. Then apply the new daemons version for app-auth.
-3. Verify on dev: invite a test address, sign in with it, and see one `access.first_sign_in` row from `caelus_app_auth` end `sent` to the owner. Sign in again and see no second row.
+3. Verify on dev: invite a test address, sign in with it, and see one `access.invitation_accepted` row from `caelus_app_auth` end `sent` to the owner. Sign in again and see no second row.
 4. Rollback: revert app-auth's image. The kind and the grant are harmless without it.

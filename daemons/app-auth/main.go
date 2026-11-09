@@ -112,7 +112,7 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
-	st := &pgStore{pool: pool}
+	st := &pgStore{pool: pool, log: log, noticeKind: invitationAcceptedKind}
 
 	v := &verifier{
 		keys: keys, store: st, loginURL: cfg.loginURL, now: time.Now, log: log,

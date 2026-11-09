@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -138,6 +139,9 @@ type store interface {
 // named here and nothing else.
 type pgStore struct {
 	pool *pgxpool.Pool
+	log  *slog.Logger
+	// noticeKind is invitationAcceptedKind; tests change it to make the outbox refuse.
+	noticeKind string
 }
 
 func openPool(ctx context.Context, dsn string, maxConns int32) (*pgxpool.Pool, error) {
@@ -228,15 +232,57 @@ func (s *pgStore) accessList(ctx context.Context, deploymentID string) (accessLi
 }
 
 func (s *pgStore) bindEntry(ctx context.Context, entryID, subject, name string) (bool, error) {
-	tag, err := s.pool.Exec(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+	var deploymentID, email string
+	err = tx.QueryRow(ctx, `
 		UPDATE app_access_entry SET subject = $2, name = $3, bound_at = `+nowUTC+`
-		 WHERE id = $1::uuid AND subject IS NULL`, entryID, subject, nullable(name))
+		 WHERE id = $1::uuid AND subject IS NULL
+		RETURNING deployment_id::text, email`, entryID, subject, nullable(name)).Scan(&deploymentID, &email)
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return false, nil
+	case errors.As(err, &pgErr) && pgErr.Code == "23505":
 		// Another entry of the deployment holds this subject already.
 		return false, nil
+	case err != nil:
+		return false, err
 	}
-	return err == nil && tag.RowsAffected() == 1, err
+	if err := s.queueInvitationAccepted(ctx, tx, entryID, deploymentID, email); err != nil {
+		s.log.Warn("invitation accepted notice lost", "entry", entryID, "err", err)
+	}
+	return true, tx.Commit(ctx)
+}
+
+// queueInvitationAccepted queues the owner's notice under a savepoint, so a refusal
+// loses the notice and never the binding (access-first-sign-in-notice D1).
+func (s *pgStore) queueInvitationAccepted(ctx context.Context, tx pgx.Tx, entryID, deploymentID, email string) error {
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer sp.Rollback(ctx)
+	var ownerID int64
+	var hostname string
+	if err := sp.QueryRow(ctx, `SELECT user_id, hostname FROM deployment WHERE id = $1::uuid`,
+		deploymentID).Scan(&ownerID, &hostname); err != nil {
+		return err
+	}
+	n := invitationAcceptedNotice(email, hostname)
+	if _, err := sp.Exec(ctx, `
+		INSERT INTO notification_outbox
+		  (kind, recipient_user_id, subject, heading, body, action_label, action_url, reason, dedupe_key)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT DO NOTHING`,
+		s.noticeKind, ownerID, n.Subject, n.Heading, n.Body, n.ActionLabel, n.ActionURL, n.Reason,
+		"invitation-accepted:"+entryID); err != nil {
+		return err
+	}
+	return sp.Commit(ctx)
 }
 
 func (s *pgStore) hasConsent(ctx context.Context, subject, deploymentID string, claims []string) (bool, error) {

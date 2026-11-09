@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -523,8 +524,8 @@ func TestBrokerListedStranger(t *testing.T) {
 	g.st.list("dep-milk", "e-bob", "bob@example.com", "")
 	w := g.returnFromIdP(g.start(milk))
 	refusedWith(t, w, milk, "alice@example.com", login+"/logout?host="+milk+"&rd=%2F")
-	if len(g.st.codes) != 0 || len(g.st.consents) != 0 {
-		t.Fatal("a stranger got a code or recorded consent")
+	if len(g.st.codes) != 0 || len(g.st.consents) != 0 || len(g.st.notices) != 0 {
+		t.Fatal("a stranger got a code, recorded consent or notified the owner")
 	}
 
 	t.Run("even with consent from an earlier, open release", func(t *testing.T) {
@@ -543,6 +544,9 @@ func TestBrokerListedOwnerWithEmptyList(t *testing.T) {
 	body := g.returnFromIdP(g.start(milk)).Body.String()
 	w := g.do("POST", "/consent", url.Values{"csrf": {formValue(t, body, "csrf")}, "decision": {"allow"}})
 	g.redeemable(w, milk)
+	if len(g.st.notices) != 0 {
+		t.Fatalf("the owner's sign-in notified: %v", g.st.notices)
+	}
 }
 
 func TestBrokerListedBoundOwner(t *testing.T) {
@@ -577,6 +581,16 @@ func TestBrokerListedFirstSignInBinds(t *testing.T) {
 	if e := g.st.entry("dep-milk", "e-alice"); e.Subject != "3f2a" || g.st.names["e-alice"] != "Alice" {
 		t.Fatalf("entry %+v", e)
 	}
+	if !slices.Equal(g.st.notices, []string{"e-alice"}) {
+		t.Fatalf("notices %v", g.st.notices)
+	}
+
+	t.Run("a later sign-in does not notify again", func(t *testing.T) {
+		g.redeemable(g.returnFromIdP(g.start(milk)), milk)
+		if len(g.st.notices) != 1 {
+			t.Fatalf("notices %v", g.st.notices)
+		}
+	})
 
 	t.Run("without a consent page", func(t *testing.T) {
 		g := listedRig(t)

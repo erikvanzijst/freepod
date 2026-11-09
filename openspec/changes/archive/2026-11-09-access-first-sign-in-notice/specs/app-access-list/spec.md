@@ -2,11 +2,11 @@
 
 ## ADDED Requirements
 
-### Requirement: The owner learns when someone first signs in
+### Requirement: The owner learns when an invitation is accepted
 
-When an entry is first tied to the account that signs in with it, the platform SHALL queue one `access.first_sign_in` notification to the deployment's owner, as a Freepod user. It SHALL name the entry's email and the app's address, and say that the app may now know the person. It SHALL contain no text the person or the owner wrote. Each entry SHALL cause at most one such notification.
+An invitation is accepted when its entry is first tied to the account that signs in with it. The platform SHALL then queue one `access.invitation_accepted` notification to the deployment's owner, as a Freepod user. It SHALL name the entry's email and the app's address, and say that the app may now know the person. It SHALL contain no text the person or the owner wrote. Each entry SHALL cause at most one such notification.
 
-#### Scenario: First sign-in
+#### Scenario: Invitation accepted
 
 - **WHEN** `ana@example.com` is on the list of `cloud-yourname.freepod.app`, unbound, and signs in to it for the first time
 - **THEN** the owner receives one email naming `ana@example.com` and `https://cloud-yourname.freepod.app`
@@ -38,7 +38,7 @@ When an entry is first tied to the account that signs in with it, the platform S
 
 ### Requirement: A lost notice does not refuse the sign-in
 
-If the first sign-in notice cannot be queued, the entry SHALL still be tied to the subject and the person SHALL still be admitted.
+If the notice of an accepted invitation cannot be queued, the entry SHALL still be tied to the subject and the person SHALL still be admitted.
 
 #### Scenario: Outbox refuses the notice
 
