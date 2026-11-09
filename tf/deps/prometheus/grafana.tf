@@ -194,6 +194,12 @@ resource "helm_release" "grafana" {
           "mx" = {
             json = file("${path.module}/dashboards/mx.json")
           }
+          # Vendored from grafana.com 24919 rather than fetched by gnetId: its
+          # selectors are rewritten to the production namespace and service,
+          # and a few broken queries fixed.
+          "postgres" = {
+            json = file("${path.module}/dashboards/postgres.json")
+          }
         }
       }
     })

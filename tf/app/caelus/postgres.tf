@@ -95,6 +95,48 @@ resource "kubernetes_deployment" "postgres" {
           }
         }
 
+        container {
+          image = local.postgres_exporter_image
+          name  = "postgres-exporter"
+
+          env {
+            name  = "DATA_SOURCE_URI"
+            value = "localhost:5432/${var.db_name}?sslmode=disable"
+          }
+
+          env {
+            name  = "DATA_SOURCE_USER"
+            value = "postgres_exporter"
+          }
+
+          env {
+            name = "DATA_SOURCE_PASS"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.postgres_exporter.metadata[0].name
+                key  = "POSTGRES_EXPORTER_PASSWORD"
+              }
+            }
+          }
+
+          port {
+            name           = "metrics"
+            container_port = 9187
+            protocol       = "TCP"
+          }
+
+          resources {
+            requests = {
+              memory = "32Mi"
+              cpu    = "10m"
+            }
+            limits = {
+              memory = "128Mi"
+              cpu    = "100m"
+            }
+          }
+        }
+
         volume {
           name = "postgres-data"
           persistent_volume_claim {
@@ -132,5 +174,28 @@ resource "kubernetes_service" "postgres" {
     }
 
     cluster_ip = "None"
+  }
+}
+
+resource "kubernetes_service" "postgres_metrics" {
+  metadata {
+    name      = "caelus-postgres-metrics"
+    namespace = var.namespace
+    annotations = {
+      "prometheus.io/scrape" = "true"
+      "prometheus.io/port"   = "9187"
+    }
+  }
+
+  spec {
+    selector = {
+      app = "caelus-postgres"
+    }
+
+    port {
+      name        = "metrics"
+      port        = 9187
+      target_port = "metrics"
+    }
   }
 }

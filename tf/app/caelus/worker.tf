@@ -36,9 +36,10 @@ resource "kubernetes_deployment" "worker" {
           # until some unrelated restart happened to pick it up.
           "checksum/tenant-bootstrap" = sha256(kubernetes_config_map.tenant_db_bootstrap.data["tenant-bootstrap.sql"])
           # Same reason as the line above, for the platform database's side.
-          "checksum/ssh-resolver-bootstrap" = sha256(kubernetes_config_map.ssh_resolver_bootstrap.data["ssh-resolver-bootstrap.sql"])
-          "checksum/app-auth-bootstrap"     = sha256(kubernetes_config_map.app_auth_bootstrap.data["app-auth-bootstrap.sql"])
-          "checksum/notifier-bootstrap"     = sha256(kubernetes_config_map.notifier_bootstrap.data["notifier-bootstrap.sql"])
+          "checksum/ssh-resolver-bootstrap"      = sha256(kubernetes_config_map.ssh_resolver_bootstrap.data["ssh-resolver-bootstrap.sql"])
+          "checksum/app-auth-bootstrap"          = sha256(kubernetes_config_map.app_auth_bootstrap.data["app-auth-bootstrap.sql"])
+          "checksum/notifier-bootstrap"          = sha256(kubernetes_config_map.notifier_bootstrap.data["notifier-bootstrap.sql"])
+          "checksum/postgres-exporter-bootstrap" = sha256(kubernetes_config_map.postgres_exporter_bootstrap.data["postgres-exporter-bootstrap.sql"])
         }
       }
 
@@ -256,6 +257,69 @@ resource "kubernetes_deployment" "worker" {
           }
         }
 
+        # The platform database's metrics sidecar role.
+        init_container {
+          name    = "postgres-exporter-db-bootstrap"
+          image   = "postgres:16-alpine"
+          command = ["/bin/sh", "-c"]
+          args = [
+            <<-EOT
+              set -e
+              echo 'Provisioning the postgres_exporter role...'
+              psql -q -v ON_ERROR_STOP=1 \
+                -v postgres_exporter_password="$POSTGRES_EXPORTER_PASSWORD" \
+                -f /postgres-exporter-bootstrap/postgres-exporter-bootstrap.sql
+              echo 'postgres_exporter role ready'
+            EOT
+          ]
+
+          env {
+            name  = "PGHOST"
+            value = "caelus-postgres.${var.namespace}.svc.cluster.local"
+          }
+
+          env {
+            name  = "PGPORT"
+            value = "5432"
+          }
+
+          env {
+            name  = "PGUSER"
+            value = var.db_user
+          }
+
+          env {
+            name  = "PGDATABASE"
+            value = var.db_name
+          }
+
+          env {
+            name = "PGPASSWORD"
+            value_from {
+              secret_key_ref {
+                name = "caelus-db"
+                key  = "password"
+              }
+            }
+          }
+
+          env {
+            name = "POSTGRES_EXPORTER_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.postgres_exporter.metadata[0].name
+                key  = "POSTGRES_EXPORTER_PASSWORD"
+              }
+            }
+          }
+
+          volume_mount {
+            name       = "postgres-exporter-bootstrap"
+            mount_path = "/postgres-exporter-bootstrap"
+            read_only  = true
+          }
+        }
+
         # Bootstraps the tenant PostgreSQL cluster: the PUBLIC revocations,
         # caelus_admin and its grants, and pgbouncer_auth with its lookup
         # function. Init containers run in order, so this follows `migrate`.
@@ -438,6 +502,13 @@ resource "kubernetes_deployment" "worker" {
           name = "notifier-bootstrap"
           config_map {
             name = kubernetes_config_map.notifier_bootstrap.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "postgres-exporter-bootstrap"
+          config_map {
+            name = kubernetes_config_map.postgres_exporter_bootstrap.metadata[0].name
           }
         }
       }

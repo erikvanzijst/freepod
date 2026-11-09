@@ -239,7 +239,7 @@ resource "kubernetes_deployment" "tenant_db" {
         # running, the pod leaves the Service above and every tenant loses its
         # database.
         container {
-          image = local.tenant_db_exporter_image
+          image = local.postgres_exporter_image
           name  = "postgres-exporter"
 
           env {
