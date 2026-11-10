@@ -7,6 +7,9 @@ metadata:
 data:
   POSTGRES_HOST: {{ .Release.Name }}-postgresql
   OVERWRITEPROTOCOL: "https"
+  # Nextcloud's own address outside a web request: links in mail and the
+  # federated cloud ID. Unset, it stays the installer's localhost.
+  OVERWRITECLIURL: {{ printf "https://%s" .Values.host | quote }}
   NEXTCLOUD_TRUSTED_DOMAINS: {{ .Values.host | quote }}
   NEXTCLOUD_DATA_DIR: /var/www/html/data
   {{- if .Values.trustedProxies }}

@@ -93,7 +93,7 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/nextcloud
-  chart_version: 0.2.9
+  chart_version: 0.2.10
   system_values:
     image:
       tag: 35.0.2-apache@sha256:89af7ee7a96ff5e9668280566209268ae6b2d02327f6ef6d56f6d68228cf9431

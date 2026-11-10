@@ -5,7 +5,7 @@ description: >-
   Freepod without touching the catalog chart: the Nextcloud Deployment plus a
   bundled PostgreSQL StatefulSet on the official postgres image.
 type: application
-version: 0.1.1
+version: 0.1.2
 appVersion: "34.0.2"
 keywords:
   - nextcloud
