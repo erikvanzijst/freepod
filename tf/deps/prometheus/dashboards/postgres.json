@@ -86,7 +86,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_static{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_static{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "{{short_version}}",
@@ -153,7 +153,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_max_connections{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_max_connections{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -238,7 +238,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_autovacuum{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_autovacuum{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -323,7 +323,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_fsync{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_fsync{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -390,7 +390,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_checkpoint_timeout_seconds{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_checkpoint_timeout_seconds{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -457,7 +457,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_max_locks_per_transaction{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_max_locks_per_transaction{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -524,7 +524,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_autovacuum_analyze_threshold{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_autovacuum_analyze_threshold{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -591,7 +591,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_autovacuum_vacuum_threshold{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_autovacuum_vacuum_threshold{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -658,7 +658,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_shared_buffers_bytes{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_shared_buffers_bytes{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -725,7 +725,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_work_mem_bytes{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_work_mem_bytes{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -792,7 +792,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_maintenance_work_mem_bytes{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_maintenance_work_mem_bytes{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -859,7 +859,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_wal_buffers_bytes{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_wal_buffers_bytes{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -926,7 +926,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_autovacuum_max_workers{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_autovacuum_max_workers{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -993,7 +993,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_autovacuum_naptime_seconds{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_autovacuum_naptime_seconds{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -1082,7 +1082,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "sum(pg_stat_activity_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}) / sum(pg_settings_max_connections{namespace=\"$namespace\", service=\"$server\"})",
+          "expr": "max without (instance, node) (sum(pg_stat_activity_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}) / sum(pg_settings_max_connections{namespace=\"$namespace\", service=\"$server\"}))",
           "format": "time_series",
           "instant": true,
           "legendFormat": "",
@@ -1186,7 +1186,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_stat_activity_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\", state=\"idle in transaction\"}",
+          "expr": "max without (instance, node) (pg_stat_activity_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\", state=\"idle in transaction\"})",
           "format": "time_series",
           "legendFormat": "{{datname}} — idle in tx",
           "refId": "A",
@@ -1196,7 +1196,7 @@
           }
         },
         {
-          "expr": "pg_stat_activity_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\", state=\"idle in transaction (aborted)\"}",
+          "expr": "max without (instance, node) (pg_stat_activity_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\", state=\"idle in transaction (aborted)\"})",
           "format": "time_series",
           "legendFormat": "{{datname}} — idle in tx (aborted)",
           "refId": "B",
@@ -1324,7 +1324,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "pg_settings_max_connections{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_settings_max_connections{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "legendFormat": "Max Connections",
           "refId": "C",
@@ -1334,7 +1334,7 @@
           }
         },
         {
-          "expr": "SUM(pg_stat_activity_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"})",
+          "expr": "max without (instance, node) (SUM(pg_stat_activity_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}))",
           "format": "time_series",
           "legendFormat": "Used",
           "refId": "A",
@@ -1344,7 +1344,7 @@
           }
         },
         {
-          "expr": "sum(pg_settings_max_connections{namespace=\"$namespace\", service=\"$server\"}) - sum(pg_stat_activity_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"})",
+          "expr": "max without (instance, node) (sum(pg_settings_max_connections{namespace=\"$namespace\", service=\"$server\"}) - sum(pg_stat_activity_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}))",
           "format": "time_series",
           "legendFormat": "Available",
           "refId": "B",
@@ -1459,7 +1459,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "sum by (state) (pg_stat_activity_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"})",
+          "expr": "max without (instance, node) (sum by (state) (pg_stat_activity_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}))",
           "format": "time_series",
           "legendFormat": "{{state}}",
           "refId": "A",
@@ -1566,7 +1566,7 @@
       "pluginVersion": "12.4.0-20082909961",
       "targets": [
         {
-          "expr": "max by (datname, state) (pg_stat_activity_max_tx_duration{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\", state!=\"idle\"} > 0)",
+          "expr": "max without (instance, node) (max by (datname, state) (pg_stat_activity_max_tx_duration{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\", state!=\"idle\"} > 0))",
           "format": "time_series",
           "legendFormat": "{{datname}} [{{state}}]",
           "refId": "A",
@@ -1637,7 +1637,7 @@
       },
       "targets": [
         {
-          "expr": "rate(pg_stat_database_xact_commit{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])",
+          "expr": "max without (instance, node) (rate(pg_stat_database_xact_commit{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m]))",
           "format": "time_series",
           "legendFormat": "{{datname}} commits",
           "refId": "A",
@@ -1647,7 +1647,7 @@
           }
         },
         {
-          "expr": "rate(pg_stat_database_xact_rollback{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])",
+          "expr": "max without (instance, node) (rate(pg_stat_database_xact_rollback{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m]))",
           "format": "time_series",
           "legendFormat": "{{datname}} rollbacks",
           "refId": "B",
@@ -1722,7 +1722,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (datname) (rate(pg_stat_database_blks_hit{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])) / (sum by (datname) (rate(pg_stat_database_blks_hit{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])) + sum by (datname) (rate(pg_stat_database_blks_read{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])))",
+          "expr": "max without (instance, node) (sum by (datname) (rate(pg_stat_database_blks_hit{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])) / (sum by (datname) (rate(pg_stat_database_blks_hit{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])) + sum by (datname) (rate(pg_stat_database_blks_read{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m]))))",
           "format": "time_series",
           "legendFormat": "{{datname}}",
           "refId": "A",
@@ -1780,7 +1780,7 @@
       },
       "targets": [
         {
-          "expr": "rate(pg_stat_database_tup_inserted{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])",
+          "expr": "max without (instance, node) (rate(pg_stat_database_tup_inserted{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m]))",
           "format": "time_series",
           "legendFormat": "{{datname}} inserts",
           "refId": "A",
@@ -1790,7 +1790,7 @@
           }
         },
         {
-          "expr": "rate(pg_stat_database_tup_updated{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])",
+          "expr": "max without (instance, node) (rate(pg_stat_database_tup_updated{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m]))",
           "format": "time_series",
           "legendFormat": "{{datname}} updates",
           "refId": "B",
@@ -1800,7 +1800,7 @@
           }
         },
         {
-          "expr": "rate(pg_stat_database_tup_deleted{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])",
+          "expr": "max without (instance, node) (rate(pg_stat_database_tup_deleted{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m]))",
           "format": "time_series",
           "legendFormat": "{{datname}} deletes",
           "refId": "C",
@@ -1810,7 +1810,7 @@
           }
         },
         {
-          "expr": "rate(pg_stat_database_tup_fetched{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])",
+          "expr": "max without (instance, node) (rate(pg_stat_database_tup_fetched{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m]))",
           "format": "time_series",
           "legendFormat": "{{datname}} fetches",
           "refId": "D",
@@ -1868,7 +1868,7 @@
       },
       "targets": [
         {
-          "expr": "rate(pg_stat_database_conflicts{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])",
+          "expr": "max without (instance, node) (rate(pg_stat_database_conflicts{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m]))",
           "format": "time_series",
           "legendFormat": "{{datname}} conflicts",
           "refId": "A",
@@ -1878,7 +1878,7 @@
           }
         },
         {
-          "expr": "rate(pg_stat_database_deadlocks{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])",
+          "expr": "max without (instance, node) (rate(pg_stat_database_deadlocks{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m]))",
           "format": "time_series",
           "legendFormat": "{{datname}} deadlocks",
           "refId": "B",
@@ -1952,7 +1952,7 @@
       },
       "targets": [
         {
-          "expr": "rate(pg_stat_database_temp_bytes{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m])",
+          "expr": "max without (instance, node) (rate(pg_stat_database_temp_bytes{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[5m]))",
           "format": "time_series",
           "legendFormat": "{{datname}}",
           "refId": "A",
@@ -2012,7 +2012,7 @@
       },
       "targets": [
         {
-          "expr": "pg_locks_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"} != 0",
+          "expr": "max without (instance, node) (pg_locks_count{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"} != 0)",
           "format": "time_series",
           "legendFormat": "{{datname}} — {{mode}}",
           "refId": "A",
@@ -2083,7 +2083,7 @@
       },
       "targets": [
         {
-          "expr": "topk(10, pg_stat_user_tables_n_dead_tup{namespace=\"$namespace\", service=\"$server\"} > 0)",
+          "expr": "max without (instance, node) (topk(10, pg_stat_user_tables_n_dead_tup{namespace=\"$namespace\", service=\"$server\"} > 0))",
           "format": "time_series",
           "legendFormat": "{{schemaname}}.{{relname}}",
           "refId": "A",
@@ -2141,7 +2141,7 @@
       },
       "targets": [
         {
-          "expr": "rate(pg_stat_user_tables_autovacuum_count{namespace=\"$namespace\", service=\"$server\"}[1h])",
+          "expr": "max without (instance, node) (rate(pg_stat_user_tables_autovacuum_count{namespace=\"$namespace\", service=\"$server\"}[1h]))",
           "format": "time_series",
           "legendFormat": "vacuum {{schemaname}}.{{relname}}",
           "refId": "A",
@@ -2151,7 +2151,7 @@
           }
         },
         {
-          "expr": "rate(pg_stat_user_tables_autoanalyze_count{namespace=\"$namespace\", service=\"$server\"}[1h])",
+          "expr": "max without (instance, node) (rate(pg_stat_user_tables_autoanalyze_count{namespace=\"$namespace\", service=\"$server\"}[1h]))",
           "format": "time_series",
           "legendFormat": "analyze {{schemaname}}.{{relname}}",
           "refId": "B",
@@ -2209,7 +2209,7 @@
       },
       "targets": [
         {
-          "expr": "topk(10, rate(pg_stat_user_tables_seq_scan{namespace=\"$namespace\", service=\"$server\"}[5m]) > 0)",
+          "expr": "max without (instance, node) (topk(10, rate(pg_stat_user_tables_seq_scan{namespace=\"$namespace\", service=\"$server\"}[5m]) > 0))",
           "format": "time_series",
           "legendFormat": "seq {{schemaname}}.{{relname}}",
           "refId": "A",
@@ -2219,7 +2219,7 @@
           }
         },
         {
-          "expr": "topk(10, rate(pg_stat_user_tables_idx_scan{namespace=\"$namespace\", service=\"$server\"}[5m]) > 0)",
+          "expr": "max without (instance, node) (topk(10, rate(pg_stat_user_tables_idx_scan{namespace=\"$namespace\", service=\"$server\"}[5m]) > 0))",
           "format": "time_series",
           "legendFormat": "idx {{schemaname}}.{{relname}}",
           "refId": "B",
@@ -2289,7 +2289,7 @@
       },
       "targets": [
         {
-          "expr": "pg_wal_size_bytes{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_wal_size_bytes{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "legendFormat": "WAL size",
           "refId": "A",
@@ -2347,7 +2347,7 @@
       },
       "targets": [
         {
-          "expr": "rate(pg_stat_bgwriter_buffers_alloc_total{namespace=\"$namespace\", service=\"$server\"}[5m])",
+          "expr": "max without (instance, node) (rate(pg_stat_bgwriter_buffers_alloc_total{namespace=\"$namespace\", service=\"$server\"}[5m]))",
           "format": "time_series",
           "legendFormat": "allocated",
           "refId": "A",
@@ -2357,7 +2357,7 @@
           }
         },
         {
-          "expr": "rate(pg_stat_bgwriter_buffers_clean_total{namespace=\"$namespace\", service=\"$server\"}[5m])",
+          "expr": "max without (instance, node) (rate(pg_stat_bgwriter_buffers_clean_total{namespace=\"$namespace\", service=\"$server\"}[5m]))",
           "format": "time_series",
           "legendFormat": "cleaned",
           "refId": "B",
@@ -2431,7 +2431,7 @@
       },
       "targets": [
         {
-          "expr": "pg_replication_lag_seconds{namespace=\"$namespace\", service=\"$server\"}",
+          "expr": "max without (instance, node) (pg_replication_lag_seconds{namespace=\"$namespace\", service=\"$server\"})",
           "format": "time_series",
           "legendFormat": "replication lag",
           "refId": "A",
@@ -2502,7 +2502,7 @@
       },
       "targets": [
         {
-          "expr": "pg_database_size_bytes{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}",
+          "expr": "max without (instance, node) (pg_database_size_bytes{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"})",
           "format": "time_series",
           "legendFormat": "{{datname}}",
           "refId": "A",
@@ -2560,7 +2560,7 @@
       },
       "targets": [
         {
-          "expr": "rate(pg_database_size_bytes{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[1h])",
+          "expr": "max without (instance, node) (rate(pg_database_size_bytes{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}[1h]))",
           "format": "time_series",
           "legendFormat": "{{datname}}",
           "refId": "A",
@@ -2572,6 +2572,284 @@
       ],
       "title": "Database Growth Rate",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 93
+      },
+      "id": 107,
+      "panels": [],
+      "title": "Table Size",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 200,
+      "type": "table",
+      "title": "Largest Tables",
+      "description": "The ten largest tables by data plus indexes (data includes TOAST). Platform only: the tenant cluster's exporter connects to `postgres`, which has no tables of its own.",
+      "gridPos": {
+        "h": 12,
+        "w": 12,
+        "x": 0,
+        "y": 94
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max without (instance, node) (sum by (schemaname, relname) (pg_stat_user_tables_table_size_bytes{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"} + pg_stat_user_tables_index_size_bytes{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}))",
+          "refId": "A",
+          "legendFormat": "{{schemaname}}.{{relname}}",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max without (instance, node) (sum by (schemaname, relname) (pg_stat_user_tables_table_size_bytes{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}))",
+          "refId": "B",
+          "legendFormat": "{{schemaname}}.{{relname}}",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max without (instance, node) (sum by (schemaname, relname) (pg_stat_user_tables_index_size_bytes{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}))",
+          "refId": "C",
+          "legendFormat": "{{schemaname}}.{{relname}}",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max without (instance, node) (sum by (schemaname, relname) (pg_stat_user_tables_n_live_tup{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"}))",
+          "refId": "D",
+          "legendFormat": "{{schemaname}}.{{relname}}",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "schemaname": true
+            },
+            "indexByName": {
+              "relname": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4
+            },
+            "renameByName": {
+              "schemaname": "Schema",
+              "relname": "Table",
+              "Value #A": "Total",
+              "Value #B": "Data",
+              "Value #C": "Indexes",
+              "Value #D": "Live rows"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Total",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "limit",
+          "options": {
+            "limitField": 10
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Data"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Indexes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Live rows"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic",
+                  "valueDisplayMode": "text"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 201,
+      "type": "timeseries",
+      "title": "Table Size Over Time (Top 10)",
+      "description": "Data plus indexes for the ten currently largest tables. Platform only: the tenant cluster's exporter connects to `postgres`, which has no tables of its own.",
+      "gridPos": {
+        "h": 12,
+        "w": 12,
+        "x": 12,
+        "y": 94
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max without (instance, node) (topk(10, sum by (schemaname, relname) (pg_stat_user_tables_table_size_bytes{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"} + pg_stat_user_tables_index_size_bytes{namespace=\"$namespace\", service=\"$server\", datname=~\"$datname\"})))",
+          "refId": "A",
+          "legendFormat": "{{schemaname}}.{{relname}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          },
+          "min": 0,
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "last",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "sortBy": "Last",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     }
   ],
   "preload": false,
