@@ -248,13 +248,13 @@ def test_a_concurrent_first_request_is_resolved_not_failed(client, db_session, m
     resolve = deps._resolve_user
     calls = []
 
-    def racing(session, email, subject):
+    def racing(session, email, subject, ip):
         if not calls:
             calls.append(1)
             _user(db_session, email, subject)
             session.add(UserORM(email=email, keycloak_subject=subject))
             session.commit()
-        return resolve(session, email, subject)
+        return resolve(session, email, subject, ip)
 
     monkeypatch.setattr(deps, "_resolve_user", racing)
 

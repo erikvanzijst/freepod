@@ -31,7 +31,7 @@ from app.models import (
 )
 from app.network_policy import deployment_namespace_labels
 from app.services.jobs import JobService
-from app.services import app_access, object_storage, relational_storage
+from app.services import admin_notices, app_access, object_storage, relational_storage
 from app.services import image_retention
 from app.services import ssh_keys as ssh_keys_service
 from app.services import subscriptions as subscription_service
@@ -508,6 +508,14 @@ def create_deployment(
         )
         session.add(mollie_payment)
 
+    admin_notices.deployment_created(
+        session,
+        deployment,
+        owner=user,
+        product=template.product.name,
+        plan_template=plan_template,
+        awaiting_payment=is_paid,
+    )
 
     try:
         session.flush()

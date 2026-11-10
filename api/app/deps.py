@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import Depends, Header, HTTPException, Path, status
+from fastapi import Depends, Header, HTTPException, Path, Request, status
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 from app.config import get_settings
 from app.db import get_session
 from app.models import UserORM
+from app.services import admin_notices
 from app.services.mollie import MolliePaymentProvider, PaymentProvider
 
 
@@ -24,7 +25,7 @@ def _address_taken() -> HTTPException:
     )
 
 
-def _resolve_user(session: Session, email: str, subject: str | None) -> UserORM:
+def _resolve_user(session: Session, email: str, subject: str | None, ip: str | None) -> UserORM:
     """The ladder of caller-identity-resolution: the record bound to the
     subject, then an unbound record holding the email (adopted), then a new
     record. A bound record is never reached by email, and no write may leave
@@ -51,12 +52,15 @@ def _resolve_user(session: Session, email: str, subject: str | None) -> UserORM:
 
     user = UserORM(email=email, keycloak_subject=subject)
     session.add(user)
+    session.flush()
+    admin_notices.account_created(session, user, ip=ip)
     session.commit()
     session.refresh(user)
     return user
 
 
 def get_current_user(
+    request: Request,
     x_auth_request_email: str | None = Header(None),
     x_auth_request_user: str | None = Header(None),
     session: Session = Depends(get_session),
@@ -69,15 +73,17 @@ def get_current_user(
 
     email = x_auth_request_email.strip().lower()
     subject = (x_auth_request_user or "").strip() or None
+    ip = request.client.host if request.client else None
     try:
-        return _resolve_user(session, email, subject)
+        return _resolve_user(session, email, subject, ip)
     except IntegrityError:
         # A concurrent first request created or bound the same record.
         session.rollback()
-        return _resolve_user(session, email, subject)
+        return _resolve_user(session, email, subject, ip)
 
 
 def get_optional_user(
+    request: Request,
     x_auth_request_email: str | None = Header(None),
     x_auth_request_user: str | None = Header(None),
     session: Session = Depends(get_session),
@@ -89,7 +95,7 @@ def get_optional_user(
     """
     if not x_auth_request_email:
         return None
-    return get_current_user(x_auth_request_email, x_auth_request_user, session)
+    return get_current_user(request, x_auth_request_email, x_auth_request_user, session)
 
 
 def require_admin(
