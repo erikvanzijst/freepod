@@ -77,6 +77,12 @@ def _secret_sources(container: dict) -> list[str]:
     return [s["secretRef"]["name"] for s in container["envFrom"] if "secretRef" in s]
 
 
+def test_nextcloud_knows_its_own_address_outside_a_request(tmp_path):
+    config = next(d for d in _render(tmp_path, {}) if d["kind"] == "ConfigMap" and d["metadata"]["name"] == "t-config")
+
+    assert config["data"]["OVERWRITECLIURL"] == "https://cloud.example.test"
+
+
 def test_the_catalog_asks_for_the_password_as_a_required_sensitive_var():
     schema = yaml.safe_load(CATALOG.read_text())["template"]["values_schema"]
     prop = schema["properties"][VAR]
