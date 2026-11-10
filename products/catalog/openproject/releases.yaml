@@ -1,3 +1,9 @@
+- version: "17.9.7"
+  notes: |-
+    A maintenance release with a speed fix and important security updates.
+
+    - Project overviews load faster, even with many members
+    - Includes 12 security fixes
 - version: "17.9.6"
   notes: |-
     Workflows and activity behave as expected again, with a security fix on top.
