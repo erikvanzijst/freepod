@@ -119,6 +119,7 @@ module "caelus" {
   builder_image           = var.builder_image
   notifier_image          = var.notifier_image
   build_runtime_class     = local.build_runtime_class
+  storage_classes         = local.storage_classes
   sftp_host               = local.sftp_host
   sftp_port               = local.sftp_port
 

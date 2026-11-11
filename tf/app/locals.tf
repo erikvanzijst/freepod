@@ -28,6 +28,10 @@ locals {
   # Pod Security level follows: a sandboxed build needs no lifted profiles.
   build_runtime_class = "gvisor"
 
+  # StorageClasses new deployments may be created on (deployment-storage-class
+  # D5): each environment only its own Ceph pool.
+  storage_classes = local.is_prod_workspace ? ["ceph-freepod"] : ["ceph-freepod-dev"]
+
   # The tenant registry (authenticated-tenant-registry D2). The ClusterIPs come
   # from the service CIDR's low band, which dynamic allocation leaves alone.
   ns_registry           = local.is_prod_workspace ? "caelus-registry" : "caelus-registry-dev"

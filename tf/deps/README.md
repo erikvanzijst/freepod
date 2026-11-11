@@ -84,6 +84,7 @@ alert_email_to         = "ops@example.com"              # Alertmanager recipient
 ceph_cluster_id = "<fsid>"
 ceph_monitors   = ["<host>:6789", "<host>:6789", "<host>:6789"]
 ceph_user_keys = {
+  "freepod"     = "<key>"
   "freepod-dev" = "<key>"
 }
 
@@ -201,14 +202,14 @@ Two settings that look optional but are not, both in
 
 `ceph-csi/` installs the [ceph-csi](https://github.com/ceph/ceph-csi) RBD driver
 against a Ceph cluster that runs outside Kubernetes. `main.tf` maps each
-StorageClass to an RBD pool and a cephx client scoped to that pool; the
-`ceph-freepod-dev` class provisions into `freepod-dev`. Volumes are ext4,
-mounted with `discard`, and can be expanded. The node plugin tolerates every
-taint, so volumes mount on the tenant pool too. `local-path` remains the
-cluster's default class.
+StorageClass to an RBD pool and a cephx client scoped to that pool:
+`ceph-freepod` provisions into `freepod`, `ceph-freepod-dev` into
+`freepod-dev`. Volumes are ext4, mounted with `discard`, and can be expanded.
+The node plugin tolerates every taint, so volumes mount on the tenant pool too.
+`local-path` remains the cluster's default class.
 
-Nodes map images with the kernel RBD client, which needs Linux 7.0 or newer:
-Ceph 20 issues `aes256k` cephx keys, which older kernels cannot load.
+Every node needs Linux 7.0 or newer and a shutdown unit that releases RBD
+volumes before the network stops: [ceph-csi/README.md](ceph-csi/README.md).
 
 ## Sandboxed runtime
 
