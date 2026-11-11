@@ -404,3 +404,133 @@ def test_helm_upgrade_refuses_a_stopped_render_without_a_parking_host():
 
     with pytest.raises(IntegrityException):
         _post_renderer_args(hostname=HOSTNAME, render="stopped", parking_host="")
+
+
+# ── Storage class (deployment-storage-class) ──────────────────────────────
+
+CLASS = "ceph-freepod"
+
+
+def _pvc(name: str = "data", **spec) -> dict:
+    return {
+        "apiVersion": "v1",
+        "kind": "PersistentVolumeClaim",
+        "metadata": {"name": name},
+        "spec": {"accessModes": ["ReadWriteOnce"], "resources": {"requests": {"storage": "1Gi"}}, **spec},
+    }
+
+
+def _mounting(kind: str = "Deployment", claim: str = "data", name: str = "app", **spec) -> dict:
+    doc = {
+        "apiVersion": "apps/v1",
+        "kind": kind,
+        "metadata": {"name": name},
+        "spec": {
+            "template": {
+                "spec": {
+                    "containers": [{"name": "app", "image": "app:1"}],
+                    "volumes": [{"name": "d", "persistentVolumeClaim": {"claimName": claim}}],
+                }
+            },
+            **spec,
+        },
+    }
+    if kind == "Deployment" and "strategy" not in spec:
+        doc["spec"]["strategy"] = {"type": "Recreate"}
+    if kind == "CronJob":
+        doc["spec"] = {"concurrencyPolicy": "Forbid", "jobTemplate": {"spec": {"template": doc["spec"]["template"]}}, **spec}
+    return doc
+
+
+def _database(**template_spec) -> dict:
+    return {
+        "apiVersion": "apps/v1",
+        "kind": "StatefulSet",
+        "metadata": {"name": "db"},
+        "spec": {
+            "replicas": 1,
+            "template": {"spec": {"containers": [{"name": "pg", "image": "postgres:17"}]}},
+            "volumeClaimTemplates": [
+                {"metadata": {"name": "pgdata"}, "spec": {"accessModes": ["ReadWriteOnce"], **template_spec}}
+            ],
+        },
+    }
+
+
+def _placed(*docs, **kwargs) -> list[dict]:
+    text = "".join(f"---\n{yaml.safe_dump(d, sort_keys=False)}" for d in docs)
+    return list(yaml.safe_load_all(post_render.render(text, GATE, storage_class=CLASS, **kwargs)))
+
+
+def test_a_standalone_claim_and_a_claim_template_are_placed():
+    pvc, _, database = _placed(_pvc(), _mounting(), _database())
+    assert pvc["spec"]["storageClassName"] == CLASS
+    assert pvc["spec"]["accessModes"] == ["ReadWriteOncePod"]
+    [template] = database["spec"]["volumeClaimTemplates"]
+    assert template["spec"]["storageClassName"] == CLASS
+    assert template["spec"]["accessModes"] == ["ReadWriteOncePod"]
+
+
+def test_a_charts_own_class_is_overridden():
+    [pvc] = _placed(_pvc(storageClassName="local-path"))
+    assert pvc["spec"]["storageClassName"] == CLASS
+
+
+def test_documents_without_claims_pass_through_byte_for_byte():
+    chunk = "# Source: c/templates/cm.yaml\napiVersion: v1\nkind: ConfigMap\nmetadata: {name: c}  # odd\n"
+    out = post_render.render(f"---\n{chunk}", GATE, storage_class=CLASS)
+    assert out == f"---\n{chunk}"
+
+
+@pytest.mark.parametrize(
+    "docs, named",
+    [
+        ([_pvc(), _mounting(), _mounting("CronJob", name="backup")], "data"),
+        ([_pvc(), _mounting(replicas=2)], "data"),
+        ([_pvc(), _mounting(strategy={"type": "RollingUpdate"})], "data"),
+        ([_pvc(), _mounting(strategy=None)], "data"),
+        ([_pvc(), _mounting("StatefulSet", replicas=2)], "data"),
+        ([_pvc(accessModes=["ReadWriteMany"])], "data"),
+        ([_database(accessModes=["ReadWriteOnce", "ReadOnlyMany"])], "pgdata"),
+    ],
+    ids=["two-pod-templates", "replicas", "rolling", "default-strategy", "statefulset-by-name", "rwx", "template-mode"],
+)
+def test_a_release_that_could_share_a_claim_is_refused(docs, named):
+    with pytest.raises(post_render.SharedClaim, match=repr(named)):
+        _placed(*docs)
+
+
+def test_a_claim_the_release_does_not_render_is_neither_checked_nor_rewritten():
+    [first, second] = _placed(_mounting(claim="existing", replicas=3), _mounting(claim="existing", name="other"))
+    assert first["spec"]["replicas"] == 3
+    assert second["spec"]["template"]["spec"]["volumes"][0]["persistentVolumeClaim"] == {"claimName": "existing"}
+
+
+def test_the_plugin_exits_non_zero_naming_the_claim(monkeypatch, capsys):
+    manifests = "".join(f"---\n{yaml.safe_dump(d)}" for d in (_pvc(), _mounting(replicas=2)))
+    with pytest.raises(SystemExit) as exc:
+        _main(["--image=gate:1", "--deadline-seconds=60", "--release=r", f"--storage-class={CLASS}"], manifests, monkeypatch, capsys)
+    assert exc.value.code == 1
+    assert "'data'" in capsys.readouterr().err
+
+
+def test_without_a_class_claims_and_templates_render_unchanged():
+    docs = (_pvc(), _mounting(), _database())
+    text = "".join(f"---\n{yaml.safe_dump(d, sort_keys=False)}" for d in docs)
+    out = list(yaml.safe_load_all(post_render.render(text, GATE)))
+    assert out[0] == _pvc()
+    assert out[2]["spec"]["volumeClaimTemplates"] == _database()["spec"]["volumeClaimTemplates"]
+
+
+def test_a_stopped_render_keeps_the_class():
+    pvc, _, database, _parking = _placed(_pvc(), _mounting(), _database(), stopped=STOPPED)
+    assert pvc["spec"]["storageClassName"] == CLASS
+    assert database["spec"]["replicas"] == 0
+    assert database["spec"]["volumeClaimTemplates"][0]["spec"]["accessModes"] == ["ReadWriteOncePod"]
+
+
+def test_helm_upgrade_passes_the_storage_class_only_when_set():
+    assert f"--storage-class={CLASS}" in _post_renderer_args(storage_class=CLASS)
+    assert not [a for a in _post_renderer_args() if a.startswith("--storage-class")]
+    stopped = _post_renderer_args(storage_class=CLASS, render="stopped", parking_host="p")
+    assert f"--storage-class={CLASS}" in stopped and "--render=stopped" in stopped

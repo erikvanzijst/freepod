@@ -72,6 +72,12 @@ variable "platform_domains" {
   type        = list(string)
 }
 
+variable "storage_classes" {
+  description = "StorageClasses a new deployment may be created on (CAELUS_STORAGE_CLASSES)"
+  type        = list(string)
+  default     = []
+}
+
 variable "legacy_tenant_redirects" {
   description = "Retired `<app>.<handle>.<domain>` hostnames that permanently redirect to `<app>-<handle>.<tenant_domain>`"
   type        = list(string)

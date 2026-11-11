@@ -410,6 +410,7 @@ class DeploymentReconciler:
             render=render,
             parking_host=settings.parking_host,
             parking_port=settings.parking_port,
+            storage_class=deployment.storage_class,
         )
         if stopped:
             self._provisioner.sweep_stopped_workloads(namespace=deployment.namespace)

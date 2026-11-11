@@ -330,3 +330,72 @@ def test_the_release_list_carries_no_vars(project):
     assert [entry["vars"] for entry in listed] == [None]
     # The single read does report it.
     assert project["client"].get(f"{base}/releases/1").json()["vars"] != {}
+
+
+# ── Storage class (openspec deployment-storage-class) ─────────────────────
+
+
+def _settle(project, deployment_id):
+    session = project["session"]
+    deployment_id = UUID(str(deployment_id))
+    jobs = JobService(session)
+    for job in session.exec(
+        select(DeploymentReconcileJobORM).where(
+            DeploymentReconcileJobORM.deployment_id == deployment_id,
+            DeploymentReconcileJobORM.status.in_(("queued", "running")),
+        )
+    ).all():
+        jobs.mark_job_done(job_id=job.id)
+    deployment = session.get(DeploymentORM, deployment_id)
+    deployment.status = DEPLOYMENT_STATUS_READY
+    deployment.applied_release_id = deployment.desired_release_id
+    session.add(deployment)
+    session.commit()
+
+
+def test_a_recorded_storage_class_survives_every_change(project, monkeypatch):
+    from app.config import get_settings
+    from app.models import UserORM
+
+    settings = get_settings().model_copy(update={"storage_classes": ["ceph-freepod"]})
+    monkeypatch.setattr("app.services.deployments.get_settings", lambda: settings)
+    session = project["session"]
+    owner = session.get(UserORM, project["user_id"])
+    owner.storage_class = "ceph-freepod"
+    session.add(owner)
+    session.commit()
+
+    client = project["client"]
+    created = _create(project).json()["deployment"]
+    dep_id = created["id"]
+    url = f"/api/users/{project['user_id']}/deployments/{dep_id}"
+    _ready(project, dep_id)
+
+    def recorded():
+        session.expire_all()
+        return session.get(DeploymentORM, UUID(dep_id)).storage_class
+
+    assert client.patch(f"{url}/vars/runtime", json={"vars": {"LOG_LEVEL": {"value": "trace"}}}).status_code == 200
+    assert recorded() == "ceph-freepod"
+
+    assert _update(project, dep_id, user_values_json={"host": "vault.example.test"}).status_code == 200
+    assert recorded() == "ceph-freepod"
+    _settle(project, dep_id)
+
+    moved_to = client.post(
+        f"/api/products/{project['product_id']}/templates",
+        json={"chart_ref": "registry.home/vaultish/", "chart_version": "1.0.1", "values_schema_json": SCHEMA},
+    ).json()["id"]
+    client.put(f"/api/products/{project['product_id']}", json={"template_id": moved_to})
+    moved = client.put(url, json={"desired_template_id": moved_to, "user_values_json": {"host": "vault.example.test"}})
+    assert moved.status_code == 200
+    assert recorded() == "ceph-freepod"
+    _settle(project, dep_id)
+
+    assert client.post(f"{url}/stop").status_code == 200
+    assert recorded() == "ceph-freepod"
+    _settle(project, dep_id)
+    assert client.post(f"{url}/start").status_code == 200
+    assert recorded() == "ceph-freepod"
+
+    assert "storage_class" not in client.get(url).json()

@@ -97,3 +97,14 @@ def test_the_file_session_pod_claims_only_the_storage_volume(tmp_path):
     ]
     claims = [v["persistentVolumeClaim"]["claimName"] for v in pod["volumes"] if "persistentVolumeClaim" in v]
     assert claims == ["storage"]
+
+
+def test_redis_clears_an_empty_lost_and_found_first(tmp_path):
+    """storage-chart-contract: redis:8's entrypoint skips its ownership fix while
+    a fresh volume's lost+found is there."""
+    [redis] = [d for d in _render(tmp_path, {}) if d["kind"] == "StatefulSet" and d["metadata"]["name"].endswith("-redis")]
+    pod = redis["spec"]["template"]["spec"]
+    [init] = pod["initContainers"]
+    assert init["image"] == pod["containers"][0]["image"]
+    assert init["command"] == ["sh", "-c", "rmdir /data/lost+found 2>/dev/null || true"]
+    assert init["volumeMounts"] == [{"name": "data", "mountPath": "/data"}]

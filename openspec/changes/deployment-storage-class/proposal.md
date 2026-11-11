@@ -35,10 +35,12 @@ read at render time.
   render mode, and requests `ReadWriteOncePod` for each of them.
   - It refuses to render a release where a claim could be mounted by more than
   one pod at a time.
-- The immich, immich-sso and openproject charts start their bundled Postgres on
-  a freshly formatted volume. Today they use the volume's root as the data
-  directory, and `initdb` refuses the `lost+found` directory that a new ext4
-  filesystem contains.
+- Charts start on a freshly formatted volume, whose root holds `lost+found` and
+  is writable by root only (local-path's directories are world-writable).
+  - The immich, immich-sso and openproject Postgres, and Docmost's Redis, get
+    an empty `lost+found` removed first: `initdb` refuses it, and Redis's
+    entrypoint then skips fixing its directory's ownership.
+  - Mattermost, whose server runs as a user other than root, gets an `fsGroup`.
 - Nodes release their RBD volumes before their network stops when they shut
   down cleanly. This is documented beside the ceph-csi module, because node OS
   configuration isn't managed by Terraform.
@@ -61,8 +63,9 @@ Out of scope, each a later change:
   volumes at render time.
 - `storage-chart-contract`: what a product chart must do for its volumes to run
   on any of the platform's StorageClasses: claims mounted by one pod, Deployments
-  that mount a claim replaced with `Recreate`, and data directories that start
-  on a freshly formatted filesystem.
+  that mount a claim replaced with `Recreate`, data directories that start on a
+  freshly formatted filesystem, and writers that are not root getting access
+  through `fsGroup`.
 
 ### Modified Capabilities
 
@@ -81,9 +84,9 @@ Out of scope, each a later change:
     through.
   - No API, CLI or UI field changes.
 - **Terraform:** `tf/app/caelus` sets the two settings per workspace.
-- **Charts:** immich, immich-sso and openproject get patch releases. The
-  curated products (immich, openproject) get new catalog templates. The
-  admin-authored immich-sso product gets a new template by hand.
+- **Charts:** immich, immich-sso, openproject, mattermost and docmost get patch
+  releases. The curated products get new catalog templates. The admin-authored
+  immich-sso product gets a new template by hand.
 - **Operations:**
   - A node unit that unmounts kubelet volumes while the network is still up,
     with a reboot drill on both nodes.

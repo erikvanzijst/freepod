@@ -82,6 +82,9 @@ class UserORM(UserBase, table=True):
     tos_accepted_version: Optional[str] = Field(default=None, nullable=True)
     tos_accepted_at: Optional[datetime] = Field(default=None, nullable=True)
     handle: Optional[str] = Field(default=None, nullable=True)
+    # Operator-set in SQL only; never read or written through the API
+    # (openspec deployment-storage-class).
+    storage_class: Optional[str] = Field(default=None, nullable=True)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
     deployments: list["DeploymentORM"] = Relationship(back_populates="user")
     subscriptions: list["SubscriptionORM"] = Relationship(
@@ -750,6 +753,8 @@ class DeploymentORM(DeploymentBase, table=True):
     user_values_json: Optional[dict[str, Any]] = Field(
         default=None, sa_column=Column(JSON, nullable=True)
     )
+    # Set at create, never through the API (openspec deployment-storage-class D1).
+    storage_class: Optional[str] = Field(default=None, nullable=True)
     status: str = Field(default="pending", nullable=False, index=True)
     generation: int = Field(default=1, nullable=False)
     last_error: Optional[str] = Field(default=None, sa_column=Column(Text(), nullable=True))

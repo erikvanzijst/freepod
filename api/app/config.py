@@ -45,6 +45,10 @@ class CaelusSettings(BaseSettings):
     platform_domains: list[str] = []
     reserved_handles: list[str] = []
 
+    # StorageClasses a new deployment may be created on (openspec
+    # deployment-storage-class D5).
+    storage_classes: list[str] = []
+
     # cert-manager ClusterIssuer used for per-app HTTP-01 certs on custom domains.
     # Override to a `-staging` issuer during rollout. Tenant hostnames do not use
     # this — they are served Traefik's default certificate.

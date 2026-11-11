@@ -71,3 +71,18 @@ def test_catalog_version_path_drives_the_mattermost_image(tmp_path):
 
 def test_an_overridden_tag_reaches_the_container(tmp_path):
     assert _mattermost_tags(tmp_path, {"mattermost": {"image": {"tag": "9.9.9"}}}) == {"9.9.9"}
+
+
+def test_the_server_pod_gets_write_access_through_its_fs_group(tmp_path):
+    """storage-chart-contract: the server runs as uid 2000, and a fresh volume's
+    root is writable by root only."""
+    values_file = tmp_path / "values.yaml"
+    values_file.write_text(yaml.safe_dump({"host": "mattermost.example.test", "caelus": {"plan": {"storageSize": "1Gi"}}}))
+    rendered = subprocess.run(
+        ["helm", "template", "t", str(CHART), "-f", str(values_file)], capture_output=True, text=True, check=True
+    ).stdout
+    [server] = [
+        d for d in yaml.safe_load_all(rendered)
+        if d and d["kind"] == "Deployment" and any(c["image"].startswith(REPOSITORY) for c in d["spec"]["template"]["spec"]["containers"])
+    ]
+    assert server["spec"]["template"]["spec"]["securityContext"] == {"fsGroup": 2000, "fsGroupChangePolicy": "OnRootMismatch"}

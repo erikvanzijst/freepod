@@ -35,12 +35,21 @@
     (`postgres:17`, the same path).
   - The other bundled databases already use a subdirectory, or the versioned
     layout under `/var/lib/postgresql`.
+  - Docmost's `redis:8` is affected too, differently: its entrypoint fixes the
+    data directory's ownership only when it holds nothing it doesn't recognize.
+    `lost+found` counts, so Redis, after dropping to its own user, can't write
+    (found on dev).
+- **Ownership on a fresh volume.** local-path creates each volume's directory
+  `0777`; a fresh ext4 volume's root is `root:root 0755`. A container that
+  writes as a user other than root and relies on the old mode can't write.
+  Mattermost (uid 2000, no `fsGroup`) is the one catalog chart that does
+  (found on dev); Docmost's app already sets `fsGroup: 1000`.
 
 ## Goals / Non-Goals
 
 **Goals:**
 - New deployments can land on Ceph, per environment and per account, with no
-  chart changes beyond the three Postgres fixes.
+  chart changes beyond the fresh-volume fixes (D6, D8).
 - Existing deployments render byte-for-byte as before.
 - A volume on Ceph can never have two writers.
 
@@ -90,8 +99,8 @@ For each, it sets `spec.storageClassName` to the class and `spec.accessModes` to
     charts not yet written and the admin-authored SSO variants.
   - It keeps the rule in one place, where the immutability argument (D1) is
     enforced.
-- **Charts don't need to know their class.** The one case where one did (the
-  Postgres data directory, D6) has a fix that is correct on every class.
+- **Charts don't need to know their class.** The cases where one did (D6, D8)
+  have fixes that are correct on every class.
 
 ### D3. `ReadWriteOncePod` on every claim of a class-bearing deployment
 
@@ -163,12 +172,12 @@ rewritten.
 - **When Ceph becomes the default** (a later change), the account column
   becomes redundant and can be dropped.
 
-### D6. The Postgres fix: remove an empty `lost+found` before Postgres starts
+### D6. Remove an empty `lost+found` before a program that minds it starts
 
-The immich, immich-sso and openproject Postgres pods get an init container. It
-uses the same image, runs as the image's default user (root, as the main
-container does before it drops privileges), and runs
-`rmdir <PGDATA>/lost+found 2>/dev/null || true`.
+The immich, immich-sso and openproject Postgres pods, and Docmost's Redis pod,
+get an init container. It uses the same image, runs as the image's default user
+(root, as the main container does before it drops privileges), and runs
+`rmdir <data dir>/lost+found 2>/dev/null || true`.
 
 | Volume | What happens |
 |---|---|
@@ -201,6 +210,9 @@ pod start removes it again if it's empty.
 - **Upstream's warning against mount points as `PGDATA`** guards against a
   failed mount silently initializing on the root filesystem. A pod whose volume
   fails to mount never starts, so that risk doesn't apply here.
+- **Redis:** with `lost+found` gone, the entrypoint's own ownership fix runs as
+  it does on local-path. Setting `SKIP_FIX_PERMS` instead would leave the root
+  unwritable.
 
 ### D7. Nodes unmount kubelet volumes before their network stops
 
@@ -229,6 +241,22 @@ as local disks.
     how every pod behaves across a reboot.
   - Relying on operators to stop pods before rebooting: unattended shutdowns,
     such as a hypervisor shutting its guests down, don't read runbooks.
+
+### D8. Writers that are not root get access through `fsGroup`
+
+Mattermost's pod gets `fsGroup: 2000` and `fsGroupChangePolicy: OnRootMismatch`,
+as Docmost's already has. The kubelet then gives the volume's root the group
+and group write before the pod starts. ceph-csi's RBD driver supports `fsGroup`.
+
+- **Existing deployments.** local-path volumes are `local` PersistentVolumes,
+  which the kubelet also applies `fsGroup` to. The first start on the new chart
+  relabels each volume whose root group differs, once; `OnRootMismatch` skips
+  it afterwards. The files stay owned by uid 2000.
+- **Rejected: make every volume root writable in the post-renderer**, with a
+  root init container that opens up the mode. It would need no chart changes,
+  but it adds a privileged step to every pod and hides a chart's assumption
+  instead of fixing it. The dev proof of every catalog product (Migration Plan
+  step 3) is what catches the next chart that relies on the old mode.
 
 ## Risks / Trade-offs
 
@@ -266,10 +294,11 @@ as local disks.
 1. **Release the API with the migration and an empty allowlist.** No account
    is flagged and every deployment records null, so nothing renders
    differently anywhere.
-2. **Publish the three chart patch releases.**
-   - immich and openproject: new curated templates through the catalog.
+2. **Publish the chart patch releases.**
+   - immich, openproject, mattermost and docmost: new curated templates through
+     the catalog.
    - immich-sso: a new admin-authored template.
-   - Move existing deployments to them; the fix is backward compatible.
+   - Move existing deployments to them; the fixes are backward compatible.
 3. **Dev.** Allow `ceph-freepod-dev` and flag the operator's dev account with
    it in SQL. From that account, create one deployment of every catalog
    product, plus immich-sso. For each:

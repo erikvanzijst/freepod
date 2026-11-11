@@ -220,6 +220,26 @@ resource "helm_release" "prometheus" {
                     summary     = "Pod crash looping"
                     description = "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is crash looping"
                   }
+                },
+
+                # local-path reports the node's filesystem for every claim, so
+                # only classes that enforce a claim's size are watched.
+                {
+                  alert = "VolumeFillingUp"
+                  expr  = <<-EOT
+                    kubelet_volume_stats_available_bytes{job="kubernetes-nodes"}
+                    / kubelet_volume_stats_capacity_bytes{job="kubernetes-nodes"} < 0.15
+                    and on (namespace, persistentvolumeclaim)
+                    kube_persistentvolumeclaim_info{storageclass!="local-path"}
+                    EOT
+                  for   = "15m"
+                  labels = {
+                    severity = "warning"
+                  }
+                  annotations = {
+                    summary     = "Volume filling up"
+                    description = "Claim {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} has {{ $value | humanizePercentage }} free"
+                  }
                 }
               ]
             },
