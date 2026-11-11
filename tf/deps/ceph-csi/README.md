@@ -26,16 +26,18 @@ containers and their mounts in place. Rationale:
 Install on every node:
 
 ```sh
-sudo tee /etc/systemd/system/k3s-release-volumes.service >/dev/null <<'EOF'
+sudo tee /etc/systemd/system/release-kubelet-volumes.service >/dev/null <<'EOF'
 [Unit]
 Description=Stop k3s pods and unmount their volumes before the network stops
 Wants=network-online.target
-After=network-online.target k3s.service k3s-agent.service
+After=network-online.target
+Before=k3s.service k3s-agent.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/true
+ExecStop=-/bin/sh -c 'pkill -9 -f /usr/local/bin/[c]ontainerd-shim-runsc-v1; pkill -9 runsc; for i in $$(seq 30); do pgrep runsc >/dev/null || break; sleep 1; done'
 ExecStop=/usr/local/bin/k3s-killall.sh
 TimeoutStopSec=180
 
@@ -43,13 +45,24 @@ TimeoutStopSec=180
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-sudo systemctl enable --now k3s-release-volumes.service
+sudo systemctl enable --now release-kubelet-volumes.service
 ```
 
-Units stop in the reverse of their start order, so this one stops before k3s
-and before the network. `k3s-killall.sh` stops k3s, kills the containers and
-unmounts everything under `/var/lib/kubelet/pods` and
-`/var/lib/kubelet/plugins`, CSI staging mounts included.
+Units stop in the reverse of their start order, so this one stops after k3s
+and before the network. k3s stops with `KillMode=process`, leaving its
+containers running; `k3s-killall.sh` then kills them and unmounts everything
+under `/var/lib/kubelet/pods` and `/var/lib/kubelet/plugins`, CSI staging
+mounts included. Ordered after k3s instead, the script's own `systemctl stop
+k3s-agent` would wait on the shutdown's queued stop of k3s, which waits on this
+unit: a deadlock until `TimeoutStopSec`. For the same reason the unit's name
+must not start with `k3s`: the script stops every `k3s*.service`, so it would
+stop the unit it runs in.
+
+The first `ExecStop` kills the gVisor pods: the script kills only shims under
+k3s's data directory, and gVisor's `containerd-shim-runsc-v1` is installed
+separately. A sandbox left running keeps its volumes busy, so they would not
+unmount until after the network stops. Its `-` lets a node without gVisor pods
+carry on.
 
 - **Orderly shutdown or reboot:** needs the unit. Without it, the shutdown
   hangs on the unmount.
