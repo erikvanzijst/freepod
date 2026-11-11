@@ -40,7 +40,7 @@ A Deployment that mounts a PersistentVolumeClaim SHALL use the `Recreate` strate
 
 ### Requirement: Data directories start on a freshly formatted volume
 
-A product chart's containers SHALL start on a freshly formatted volume, whose root holds a `lost+found` directory. A program that refuses a non-empty data directory SHALL use a subdirectory of the volume, or have an empty `lost+found` removed before it starts. Volumes that already hold data at their root SHALL keep being used as they are.
+A product chart's containers SHALL start on a freshly formatted volume, whose root holds a `lost+found` directory. A program that refuses a non-empty data directory, or that starts differently because of an entry it does not recognize there, SHALL use a subdirectory of the volume, or have an empty `lost+found` removed before it starts. Volumes that already hold data at their root SHALL keep being used as they are.
 
 #### Scenario: A new Immich deployment on block storage
 
@@ -52,7 +52,26 @@ A product chart's containers SHALL start on a freshly formatted volume, whose ro
 - **WHEN** an existing Immich or OpenProject deployment, whose Postgres data is at the volume root, moves to the chart version with this fix
 - **THEN** Postgres starts on its existing data, and no new cluster is initialized
 
+#### Scenario: A Redis whose entrypoint fixes ownership only on a clean directory
+
+- **WHEN** a Docmost deployment is created with a Redis volume whose root holds an empty `lost+found`
+- **THEN** the `lost+found` is removed before Redis starts, Redis takes ownership of its data directory, and it starts
+
 #### Scenario: A volume whose lost+found holds files
 
 - **WHEN** a filesystem check has left recovered files in `lost+found` on a volume that already holds a database
 - **THEN** the files are left in place, and the database starts on its existing data
+
+### Requirement: Writers that are not root get access from the pod
+
+A freshly formatted volume's root SHALL be assumed to be owned by root and writable by root only. A container that writes to a claim as a user other than root SHALL get write access from its pod's `fsGroup`, with `fsGroupChangePolicy: OnRootMismatch`, not from the mode the volume starts with.
+
+#### Scenario: Mattermost on block storage
+
+- **WHEN** a Mattermost deployment, whose server runs as uid 2000, is created on a freshly formatted data volume
+- **THEN** the server writes its files and installs its plugins
+
+#### Scenario: An existing deployment moves to a chart that adds fsGroup
+
+- **WHEN** an existing Mattermost deployment on local-path moves to the chart version with an `fsGroup`
+- **THEN** its existing files stay readable and writable by the server, and only a volume whose root group does not match is relabeled
