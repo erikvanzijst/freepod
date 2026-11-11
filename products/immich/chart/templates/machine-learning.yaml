@@ -50,6 +50,10 @@ spec:
               value: /cache/huggingface-xet
             - name: MPLCONFIGDIR
               value: /cache/matplotlib-config
+            # Upstream's default compose selects the v2 model exports since
+            # v3.4.0; unset, the service falls back to the original ones.
+            - name: MACHINE_LEARNING_MODEL_REVISION
+              value: v2
           livenessProbe:
             httpGet: { path: /ping, port: http }
             periodSeconds: 10

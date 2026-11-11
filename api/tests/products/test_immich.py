@@ -1,10 +1,11 @@
-"""The immich-sso chart is the catalog Immich chart until SSO is turned on.
+"""The Immich product: its catalog chart and the immich-sso sandbox copy.
 
-It is a sandbox copy, so without `auth.enabled` and `auth.protocol: oidc` it
-must render what the catalog
-chart renders, apart from waiting for Postgres before Immich starts, and nothing it does with SSO on may put the client secret into a
-rendered object. Shells out to a real `helm template`; skipped when helm is
-unavailable.
+Every Immich test lives in this file. The immich-sso chart is the catalog
+chart until SSO is turned on: without `auth.enabled` and `auth.protocol: oidc`
+it must render what the catalog chart renders, apart from waiting for Postgres
+before Immich starts, so a change to one chart is a change to both. With SSO
+on, nothing it renders may carry the client secret. Shells out to a real
+`helm template`; skipped when helm is unavailable.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import pytest
 import yaml
 
 
-PRODUCTS = Path(__file__).resolve().parents[2] / "products"
+PRODUCTS = Path(__file__).resolve().parents[3] / "products"
 CHART = PRODUCTS / "immich-sso" / "chart"
 CATALOG_CHART = PRODUCTS / "immich" / "chart"
 

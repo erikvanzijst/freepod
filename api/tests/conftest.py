@@ -268,7 +268,7 @@ def test_database() -> TestDatabase:
 # worker by `--dist loadgroup`: `tenant_cluster` creates and drops `dpl_*` roles
 # and databases server-wide, and platform roles, and `helm_charts` runs `helm
 # dependency build`, which rewrites the vendored `charts/*.tgz` under
-# `products/` in place.
+# `products/` in place. Every module under `tests/products/` joins `helm_charts`.
 _XDIST_GROUPS = {
     "tenant_cluster": {
         "test_db_worker",
@@ -288,7 +288,6 @@ _XDIST_GROUPS = {
         "test_discourse_chart",
         "test_discourse_sso_chart",
         "test_docmost_chart",
-        "test_immich_sso_chart",
         "test_lemmy_chart",
         "test_mattermost_chart",
         "test_nextcloud_chart",
@@ -304,6 +303,9 @@ _XDIST_GROUPS = {
 @pytest.hookimpl(tryfirst=True)  # before xdist reads the markers
 def pytest_collection_modifyitems(items):
     for item in items:
+        if item.module.__name__.startswith("tests.products."):
+            item.add_marker(pytest.mark.xdist_group("helm_charts"))
+            continue
         module = item.module.__name__.rsplit(".", 1)[-1]
         for group, modules in _XDIST_GROUPS.items():
             if module in modules:

@@ -384,10 +384,13 @@ Branch from a fresh `origin/master`: `upgrade/<slug>-<target-version>`.
 
 - `cd api && uv sync && uv run caelus catalog lint`. The lint needs no database
   and also validates `releases.yaml`.
-- If you changed a chart: `cd api && uv run pytest
-  tests/test_chart_release_label_contract.py`, `helm lint` and
-  `helm template t products/<slug>/chart --set host=example.test`, and read the
-  rendered output for the change you made.
+- If you changed a chart: `cd api && uv run pytest --noconftest -n 0
+  tests/products/test_<slug>.py tests/test_chart_release_label_contract.py`,
+  `helm lint` and `helm template t products/<slug>/chart --set
+  host=example.test`, and read the rendered output for the change you made.
+  `tests/products/test_<slug>.py` holds every test for the product; when it
+  doesn't exist yet, the product has no tests of its own. `--noconftest` skips
+  the suite's database, which these tests don't use.
 - CI runs once the runner opens the PR, after your session has ended. The
   *Verification* section lists what you ran here.
 

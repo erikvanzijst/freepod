@@ -50,6 +50,8 @@ spec:
               value: /cache/huggingface-xet
             - name: MPLCONFIGDIR
               value: /cache/matplotlib-config
+            - name: MACHINE_LEARNING_MODEL_REVISION
+              value: v2
           livenessProbe:
             httpGet: { path: /ping, port: http }
             periodSeconds: 10
