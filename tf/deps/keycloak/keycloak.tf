@@ -85,7 +85,7 @@ resource "kubernetes_deployment" "keycloak" {
           # pods start at once, without throttling it afterwards.
           resources {
             requests = {
-              cpu = "500m"
+              cpu = "100m"
             }
           }
 
