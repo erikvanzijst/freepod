@@ -91,16 +91,18 @@
 
 ## 7. Node shutdown drill (maintenance window, both environments affected)
 
-- [ ] 7.1 With a dev RBD volume mounted on the tenant node and no unit installed, reboot the node, ready to hard-reset it from the hypervisor. Record whether the shutdown hangs, and for how long.
+- [ ] 7.1 With a dev RBD volume mounted on the tenant node and no unit installed, reboot the node, ready to hard-reset it from the hypervisor. Record whether the shutdown hangs, and for how long. Skipped on purpose (2026-11-11): the hang is krbd waiting on its OSDs with no timeout, which is documented behavior, and proving it would mean taking down prod tenants on a node.
 - [ ] 7.2 Install the shutdown unit on both nodes, as documented in 5.3. Reboot each with RBD volumes mounted. Verify:
   - each shutdown completes without a hang;
   - every pod is running again afterwards, with its volume mounted.
 
+  Unit installed and enabled on both nodes from the README block, 2026-11-11. The reboots wait for a maintenance window.
+
 ## 8. Prod rollout
 
-- [ ] 8.1 Apply the catalog to prod and add the immich-sso template by hand. Move the prod immich, immich-sso, openproject, mattermost and docmost deployments to the new templates. Verify each Postgres starts on its existing data, and that Mattermost and Docmost still read and write theirs.
-- [ ] 8.2 Apply `tf/app` on prod with `storage_classes = ["ceph-freepod"]`. Verify a new deployment by an unflagged account records null.
-- [ ] 8.3 Flag the operator's account with `ceph-freepod` in SQL from the API pod. Create a deployment and verify that its claims are on `ceph-freepod` with `ReadWriteOncePod` and that the app serves.
+- [x] 8.1 Apply the catalog to prod and add the immich-sso template by hand. Move the prod immich, immich-sso, openproject, mattermost and docmost deployments to the new templates. Verify each Postgres starts on its existing data, and that Mattermost and Docmost still read and write theirs.
+- [x] 8.2 Apply `tf/app` on prod with `storage_classes = ["ceph-freepod"]`. Verify a new deployment by an unflagged account records null.
+- [x] 8.3 Flag the operator's account with `ceph-freepod` in SQL from the API pod. Create a deployment and verify that its claims are on `ceph-freepod` with `ReadWriteOncePod` and that the app serves.
 
 ## Workflow follow-up
 
