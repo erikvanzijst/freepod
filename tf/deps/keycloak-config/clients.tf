@@ -11,6 +11,8 @@ resource "keycloak_openid_client" "freepod_prod" {
   description = "oauth2-proxy client for ${var.prod_domain}. Managed in tf/deps; consumed by the prod workspace of tf/app."
   enabled     = true
 
+  full_scope_allowed = false
+
   access_type           = "CONFIDENTIAL"
   standard_flow_enabled = true
   implicit_flow_enabled = false
@@ -46,6 +48,8 @@ resource "keycloak_openid_client" "freepod_dev" {
   name        = "Freepod (development)"
   description = "oauth2-proxy client for ${var.dev_domain}. Access additionally requires membership of the freepod-dev group, enforced at the edge by oauth2-proxy allowed_groups."
   enabled     = true
+
+  full_scope_allowed = false
 
   access_type           = "CONFIDENTIAL"
   standard_flow_enabled = true
@@ -91,6 +95,8 @@ resource "keycloak_openid_client" "freepod_cli_prod" {
   name        = "Freepod CLI (production)"
   description = "Public client for external API clients targeting ${var.prod_domain}. Authorization code + PKCE over a loopback redirect, or the device authorization grant when headless."
   enabled     = true
+
+  full_scope_allowed = false
 
   access_type           = "PUBLIC"
   standard_flow_enabled = true
@@ -140,6 +146,8 @@ resource "keycloak_openid_client" "freepod_cli_dev" {
   description = "Public client for external API clients targeting ${var.dev_domain}. Access additionally requires membership of the freepod-dev group, enforced at the edge by oauth2-proxy allowed_groups."
   enabled     = true
 
+  full_scope_allowed = false
+
   access_type           = "PUBLIC"
   standard_flow_enabled = true
   implicit_flow_enabled = false
@@ -165,6 +173,8 @@ resource "keycloak_openid_client" "grafana" {
   name        = "Grafana"
   description = "Grafana OIDC client. Access requires membership of the freepod-observability group."
   enabled     = true
+
+  full_scope_allowed = false
 
   access_type           = "CONFIDENTIAL"
   standard_flow_enabled = true
@@ -206,6 +216,8 @@ resource "keycloak_openid_client" "freepod_apps_prod" {
   description = "app-auth broker at login.${var.prod_domain}; signs users in to tenant apps that opt in."
   enabled     = true
 
+  full_scope_allowed = false
+
   access_type           = "CONFIDENTIAL"
   standard_flow_enabled = true
   implicit_flow_enabled = false
@@ -237,6 +249,8 @@ resource "keycloak_openid_client" "freepod_apps_dev" {
   name        = "Sign in with Freepod (development)"
   description = "app-auth broker at login.${var.dev_domain}; signs users in to tenant apps that opt in."
   enabled     = true
+
+  full_scope_allowed = false
 
   access_type           = "CONFIDENTIAL"
   standard_flow_enabled = true
