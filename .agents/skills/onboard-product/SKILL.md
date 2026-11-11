@@ -157,8 +157,9 @@ been deployed on dev and used.
 
 The PR adds the chart, its README, the product's catalog folder, the app's
 user docs page `ui/docs/apps/products/<slug>.mdx` (see `AGENTS.md` § User
-Documentation; the docs build fails without one), and the test registrations
-from §1. The folder holds the catalog file, its icon, and the
+Documentation; the docs build fails without one), the test registrations
+from §1, and any tests of the product's own in `api/tests/products/test_<slug>.py`,
+the one file the upgrader runs for it. The folder holds the catalog file, its icon, and the
 app page's listing content: a one-sentence `tagline`, a Markdown
 `description`, `license`, `features`, `links`, and `screenshots` committed under
 `screenshots/`, each with a `credit` naming its source and license unless the
