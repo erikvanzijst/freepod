@@ -429,12 +429,17 @@ changes only with the Keycloak version, so without that hash browsers keep the
 old CSS for a month after a theme change. Fonts and images referenced from the
 CSS are not hashed: give a changed asset a new file name.
 
+The image also runs `kc.sh build`, with the provider, theme and Keycloak's
+build-time options (`KC_DB`, `KC_HEALTH_ENABLED`, the provider SPIs) in
+place, and the deployment runs `start --optimized`, so a container start
+does not rebuild the server. A new build-time option goes in the Dockerfile.
+
 Images are tagged `<Keycloak version>-<build>`, for example `26.8.1-1`, and a
 tag is never re-pushed: every theme or base-image change takes the next build
 number. Build, push and roll out:
 
 ```bash
-./scripts/build-images.sh 26.8.1-4 --keycloak  # build + push ghcr.io/<owner>/freepod/keycloak
+./scripts/build-images.sh 26.8.1-5 --keycloak  # build + push ghcr.io/<owner>/freepod/keycloak
 # set keycloak_image in variables.tf to the new tag, then:
 cd tf/deps && terraform apply -target=module.keycloak
 ```

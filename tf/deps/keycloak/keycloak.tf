@@ -77,7 +77,17 @@ resource "kubernetes_deployment" "keycloak" {
 
           image_pull_policy = "Always"
 
-          args = ["start"]
+          # Build-time options (KC_DB, KC_HEALTH_ENABLED) are baked into the
+          # image by its Dockerfile; set here, they must match.
+          args = ["start", "--optimized"]
+
+          # No CPU limit: a request keeps startup from being starved when many
+          # pods start at once, without throttling it afterwards.
+          resources {
+            requests = {
+              cpu = "500m"
+            }
+          }
 
           port {
             container_port = 8080

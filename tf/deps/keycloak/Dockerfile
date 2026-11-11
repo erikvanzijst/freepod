@@ -10,6 +10,9 @@
 # and email providers, so it is compiled against this exact base image's jars:
 # a Keycloak upgrade that changes what it overrides fails this build.
 #
+# The server is pre-built here, so the deployment runs `start --optimized`
+# instead of rebuilding it on every container start.
+#
 # Build + push with: ./scripts/build-images.sh <version>-<build> --keycloak
 # (see keycloak_image in variables.tf for the tag scheme).
 
@@ -52,7 +55,11 @@ FROM keycloak
 
 COPY --from=theme /theme /opt/keycloak/themes/freepod
 COPY --from=provider /freepod-keycloak.jar /opt/keycloak/providers/
-# Our providers replace Keycloak's own; build-time options, applied as the
-# server augments on start.
-ENV KC_SPI_LOGIN__PROVIDER=freepod \
+# Every build-time option the deployment uses belongs here: an optimized start
+# refuses one set to a different value at runtime. Our providers replace
+# Keycloak's own.
+ENV KC_DB=postgres \
+    KC_HEALTH_ENABLED=true \
+    KC_SPI_LOGIN__PROVIDER=freepod \
     KC_SPI_EMAIL_TEMPLATE__PROVIDER=freepod
+RUN /opt/keycloak/bin/kc.sh build
