@@ -1462,8 +1462,8 @@
     {
       "id": 25,
       "type": "timeseries",
-      "title": "Busiest images: write IOPS",
-      "description": "Image names are csi-vol-<id>; the PV's spec.csi.volumeAttributes.imageName maps one to its claim.",
+      "title": "Busiest volumes: write IOPS",
+      "description": "Per RBD image, named by its claim (namespace/claim); an image no claim owns shows its csi-vol name.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1481,8 +1481,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, rate(ceph_rbd_write_ops{pool=\"$pool\"}[$__rate_interval]))",
-          "legendFormat": "{{image}}",
+          "expr": "topk(10, (rate(ceph_rbd_write_ops{pool=\"$pool\"}[$__rate_interval])) * on (image) group_left (claim) label_join(label_replace(kube_persistentvolume_info{job=\"prometheus-kube-state-metrics\", csi_driver=\"rbd.csi.ceph.com\"} * on (persistentvolume) group_left (claim_namespace, name) kube_persistentvolume_claim_ref{job=\"prometheus-kube-state-metrics\"}, \"image\", \"csi-vol-$1\", \"csi_volume_handle\", \".*-([0-9a-f-]{36})$\"), \"claim\", \"/\", \"claim_namespace\", \"name\") or on (image) label_replace(rate(ceph_rbd_write_ops{pool=\"$pool\"}[$__rate_interval]), \"claim\", \"$1\", \"image\", \"(.*)\"))",
+          "legendFormat": "{{claim}}",
           "refId": "A",
           "range": true,
           "instant": false
@@ -1517,7 +1517,7 @@
     {
       "id": 26,
       "type": "timeseries",
-      "title": "Busiest images: read IOPS",
+      "title": "Busiest volumes: read IOPS",
       "description": "",
       "datasource": {
         "type": "prometheus",
@@ -1536,8 +1536,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, rate(ceph_rbd_read_ops{pool=\"$pool\"}[$__rate_interval]))",
-          "legendFormat": "{{image}}",
+          "expr": "topk(10, (rate(ceph_rbd_read_ops{pool=\"$pool\"}[$__rate_interval])) * on (image) group_left (claim) label_join(label_replace(kube_persistentvolume_info{job=\"prometheus-kube-state-metrics\", csi_driver=\"rbd.csi.ceph.com\"} * on (persistentvolume) group_left (claim_namespace, name) kube_persistentvolume_claim_ref{job=\"prometheus-kube-state-metrics\"}, \"image\", \"csi-vol-$1\", \"csi_volume_handle\", \".*-([0-9a-f-]{36})$\"), \"claim\", \"/\", \"claim_namespace\", \"name\") or on (image) label_replace(rate(ceph_rbd_read_ops{pool=\"$pool\"}[$__rate_interval]), \"claim\", \"$1\", \"image\", \"(.*)\"))",
+          "legendFormat": "{{claim}}",
           "refId": "A",
           "range": true,
           "instant": false
@@ -1572,8 +1572,8 @@
     {
       "id": 27,
       "type": "timeseries",
-      "title": "Image write latency",
-      "description": "Per-write latency as the cluster sees it, ten slowest images.",
+      "title": "Volume write latency",
+      "description": "Per-write latency as the cluster sees it, ten slowest volumes.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1591,8 +1591,8 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, rate(ceph_rbd_write_latency_sum{pool=\"$pool\"}[$__rate_interval]) / rate(ceph_rbd_write_latency_count{pool=\"$pool\"}[$__rate_interval]))",
-          "legendFormat": "{{image}}",
+          "expr": "topk(10, (rate(ceph_rbd_write_latency_sum{pool=\"$pool\"}[$__rate_interval]) / rate(ceph_rbd_write_latency_count{pool=\"$pool\"}[$__rate_interval])) * on (image) group_left (claim) label_join(label_replace(kube_persistentvolume_info{job=\"prometheus-kube-state-metrics\", csi_driver=\"rbd.csi.ceph.com\"} * on (persistentvolume) group_left (claim_namespace, name) kube_persistentvolume_claim_ref{job=\"prometheus-kube-state-metrics\"}, \"image\", \"csi-vol-$1\", \"csi_volume_handle\", \".*-([0-9a-f-]{36})$\"), \"claim\", \"/\", \"claim_namespace\", \"name\") or on (image) label_replace(rate(ceph_rbd_write_latency_sum{pool=\"$pool\"}[$__rate_interval]) / rate(ceph_rbd_write_latency_count{pool=\"$pool\"}[$__rate_interval]), \"claim\", \"$1\", \"image\", \"(.*)\"))",
+          "legendFormat": "{{claim}}",
           "refId": "A",
           "range": true,
           "instant": false
@@ -1611,7 +1611,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "ns",
           "custom": {
             "lineWidth": 1,
             "fillOpacity": 10,
@@ -1619,6 +1619,63 @@
             "stacking": {
               "mode": "none"
             }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 28,
+      "type": "bargauge",
+      "title": "Largest volumes: space used",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Space the files take on each mounted volume of this pool's class (kubelet volume stats), ten largest. Filesystem level: excludes ext4's own overhead, and a stopped deployment's volumes are not mounted, so they drop out.",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sort_desc(topk(10, max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{job=\"kubernetes-nodes\"}) * on (namespace, persistentvolumeclaim) group_left () max by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_info{storageclass=\"ceph-$pool\"})))",
+          "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
           }
         },
         "overrides": []
