@@ -42,3 +42,9 @@ variable "grafana_oidc_client_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "ceph_mgr_targets" {
+  description = "Ceph manager prometheus endpoints, `host:9283`, one per manager host. Empty skips the Ceph scrape job."
+  type        = list(string)
+  default     = []
+}

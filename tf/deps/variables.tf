@@ -130,3 +130,9 @@ variable "ceph_user_keys" {
   type        = map(string)
   sensitive   = true
 }
+
+variable "ceph_mgr_targets" {
+  description = "The Ceph cluster's manager prometheus endpoints, `host:9283` (use secrets.auto.tfvars)"
+  type        = list(string)
+  default     = []
+}

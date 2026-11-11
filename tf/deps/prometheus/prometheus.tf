@@ -100,14 +100,21 @@ resource "helm_release" "prometheus" {
         }
       }
 
-      extraScrapeConfigs = yamlencode([
+      extraScrapeConfigs = yamlencode(concat([
         {
           job_name = "prometheus-kube-state-metrics"
           static_configs = [{
             targets = ["prometheus-kube-state-metrics.${var.namespace}.svc.cluster.local:8080"]
           }]
         }
-      ])
+        ], length(var.ceph_mgr_targets) == 0 ? [] : [
+        {
+          # Every manager host: only the active one returns samples, a standby
+          # answers 200 with an empty body, so failover needs no reconfiguration.
+          job_name       = "ceph"
+          static_configs = [{ targets = var.ceph_mgr_targets }]
+        }
+      ]))
 
       # See: https://www.giffgaff.io/tech/monitoring-kubernetes-jobs
       serverFiles = {
@@ -262,6 +269,124 @@ resource "helm_release" "prometheus" {
                   annotations = {
                     summary     = "SSH edge down"
                     description = "The sshpiperd deployment in {{ $labels.namespace }} has no available replica. The environment's public SSH port is not being served."
+                  }
+                }
+              ]
+            },
+            {
+              # The external Ceph cluster. Three hosts, three copies: one host
+              # down is survivable but leaves no spare copy, and a pool that
+              # reaches its quota fails every write into it.
+              name = "ceph-alerts"
+              rules = [
+                {
+                  alert = "CephMetricsAbsent"
+                  expr  = "absent(ceph_health_status)"
+                  for   = "5m"
+                  labels = {
+                    severity = "critical"
+                  }
+                  annotations = {
+                    summary     = "No Ceph metrics"
+                    description = "Prometheus has no ceph_health_status: the cluster's active manager is unreachable or its prometheus module is off. Ceph itself may be fine, but nothing below can fire."
+                  }
+                },
+                {
+                  alert = "CephHealthError"
+                  expr  = "ceph_health_status == 2"
+                  for   = "5m"
+                  labels = {
+                    severity = "critical"
+                  }
+                  annotations = {
+                    summary     = "Ceph HEALTH_ERR"
+                    description = "Ceph reports HEALTH_ERR. Check `ceph health detail` on a storage node."
+                  }
+                },
+                {
+                  alert = "CephHealthCheck"
+                  expr  = "ceph_health_detail == 1"
+                  for   = "15m"
+                  labels = {
+                    severity = "warning"
+                  }
+                  annotations = {
+                    summary     = "Ceph health check {{ $labels.name }}"
+                    description = "Ceph health check {{ $labels.name }} ({{ $labels.severity }}) has been active for 15 minutes."
+                  }
+                },
+                {
+                  alert = "CephMonQuorumAtRisk"
+                  expr  = "count(ceph_mon_quorum_status == 1) < count(ceph_mon_metadata)"
+                  for   = "5m"
+                  labels = {
+                    severity = "critical"
+                  }
+                  annotations = {
+                    summary     = "Ceph monitor out of quorum"
+                    description = "{{ $value }} monitors are in quorum. Losing one more stops all Ceph IO."
+                  }
+                },
+                {
+                  alert = "CephOSDDown"
+                  expr  = "count(ceph_osd_up == 0) > 0"
+                  for   = "5m"
+                  labels = {
+                    severity = "critical"
+                  }
+                  annotations = {
+                    summary     = "Ceph OSD down"
+                    description = "{{ $value }} OSD(s) down. Data is served from the remaining copies; another failure stops IO on the affected placement groups."
+                  }
+                },
+                {
+                  alert = "CephPGsInactive"
+                  expr  = "sum(ceph_pg_total) - sum(ceph_pg_active) > 0"
+                  for   = "5m"
+                  labels = {
+                    severity = "critical"
+                  }
+                  annotations = {
+                    summary     = "Ceph placement groups inactive"
+                    description = "{{ $value }} placement groups are not active. IO to the volumes on them blocks."
+                  }
+                },
+                {
+                  # Ahead of Ceph's own nearfull (85%): with one OSD per host,
+                  # recovery has no other OSD in the host to spill onto.
+                  alert = "CephOSDNearlyFull"
+                  expr  = "ceph_osd_stat_bytes_used / ceph_osd_stat_bytes > 0.75"
+                  for   = "15m"
+                  labels = {
+                    severity = "warning"
+                  }
+                  annotations = {
+                    summary     = "Ceph OSD {{ $labels.ceph_daemon }} over 75% full"
+                    description = "{{ $labels.ceph_daemon }} is {{ $value | humanizePercentage }} full. Ceph stops writes cluster-wide at 95%."
+                  }
+                },
+                {
+                  alert = "CephPoolQuotaNearlyFull"
+                  expr  = "(ceph_pool_stored / (ceph_pool_quota_bytes > 0)) * on(pool_id) group_left(name) ceph_pool_metadata > 0.8"
+                  for   = "15m"
+                  labels = {
+                    severity = "warning"
+                  }
+                  annotations = {
+                    summary     = "Ceph pool {{ $labels.name }} over 80% of its quota"
+                    description = "Pool {{ $labels.name }} stores {{ $value | humanizePercentage }} of its quota. At 100% every write to its volumes fails."
+                  }
+                },
+                {
+                  alert = "CephPoolQuotaFull"
+                  expr  = "(ceph_pool_stored / (ceph_pool_quota_bytes > 0)) * on(pool_id) group_left(name) ceph_pool_metadata > 0.95"
+                  for   = "5m"
+                  labels = {
+                    severity = "critical"
+                  }
+                  annotations = {
+                    summary     = "Ceph pool {{ $labels.name }} at its quota"
+                    description = "Pool {{ $labels.name }} stores {{ $value | humanizePercentage }} of its quota. Raise it (`ceph osd pool set-quota`) or free space before writes fail."
                   }
                 }
               ]

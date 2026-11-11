@@ -200,6 +200,11 @@ resource "helm_release" "grafana" {
           "postgres" = {
             json = file("${path.module}/dashboards/postgres.json")
           }
+          # Ours: the external Ceph cluster. Cluster panels are shared; pool
+          # and image panels follow the pool selector, one pool per environment.
+          "ceph" = {
+            json = file("${path.module}/dashboards/ceph.json")
+          }
         }
       }
     })
