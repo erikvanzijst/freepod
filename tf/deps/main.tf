@@ -118,6 +118,7 @@ module "ceph_csi" {
   user_keys  = var.ceph_user_keys
 
   storage_classes = {
+    ceph-freepod     = { pool = "freepod", user_id = "freepod", reclaim_policy = "Delete" }
     ceph-freepod-dev = { pool = "freepod-dev", user_id = "freepod-dev", reclaim_policy = "Delete" }
   }
 }
