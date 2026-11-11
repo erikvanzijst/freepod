@@ -1,3 +1,15 @@
+locals {
+  chunks_cache_mb  = 512
+  results_cache_mb = 128
+
+  memcached_resources = {
+    for mb in [local.chunks_cache_mb, local.results_cache_mb] : mb => {
+      requests = { cpu = "50m", memory = "${floor((mb * 12 + 5) / 10)}Mi" }
+      limits   = { memory = "${floor((mb * 12 + 5) / 10)}Mi" }
+    }
+  }
+}
+
 resource "helm_release" "loki" {
   name      = "loki"
   namespace = var.namespace
@@ -80,13 +92,19 @@ resource "helm_release" "loki" {
       }
       # Shrink the memcached caches from their multi-node chart defaults
       # (chunks 8192MB, results 1024MB) to homelab scale. The defaults
-      # hold nearly the entire ~10Gi log store in RAM; the chart sets the
-      # pod's memory request/limit to allocatedMemory * ~1.2. Reclaims ~7.7Gi RAM.
+      # hold nearly the entire ~10Gi log store in RAM.
+      #
+      # Without `resources` the chart requests a fixed 500m CPU per cache, for
+      # a memcached that idles at a few millicores. Setting `resources`
+      # replaces the chart's whole computed block, so the memory request and
+      # limit repeat its formula: round(allocatedMemory * 1.2) MiB.
       chunksCache = {
-        allocatedMemory = 512
+        allocatedMemory = local.chunks_cache_mb
+        resources       = local.memcached_resources[local.chunks_cache_mb]
       }
       resultsCache = {
-        allocatedMemory = 128
+        allocatedMemory = local.results_cache_mb
+        resources       = local.memcached_resources[local.results_cache_mb]
       }
 
       # The gateway's required anti-affinity forbids two gateways per node, and
