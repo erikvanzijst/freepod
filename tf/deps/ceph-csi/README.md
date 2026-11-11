@@ -3,7 +3,7 @@
 The ceph-csi RBD driver, against a Ceph cluster that runs outside Kubernetes:
 one StorageClass, Secret and cephx client per pool (`main.tf` in `tf/deps`).
 Which class a deployment's volumes use is the platform's decision, per
-deployment: [deployment-storage-class](../../../openspec/changes/deployment-storage-class/specs/deployment-storage-class/spec.md).
+deployment: [deployment-storage-class](../../../openspec/specs/deployment-storage-class/spec.md).
 
 The driver needs two things from every node's OS, which Terraform does not
 manage.
@@ -21,7 +21,7 @@ kubelet mounts RBD filesystems without `_netdev`, so systemd unmounts them
 last, after the network is gone, and the unmount waits on unreachable OSDs
 forever. k3s's own units stop with `KillMode=process`, which leaves the
 containers and their mounts in place. Rationale:
-[design D7](../../../openspec/changes/deployment-storage-class/design.md).
+[design D7](../../../openspec/changes/archive/2026-11-11-deployment-storage-class/design.md).
 
 Install on every node:
 

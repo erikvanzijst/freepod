@@ -91,12 +91,17 @@
 
 ## 7. Node shutdown drill (maintenance window, both environments affected)
 
-- [ ] 7.1 With a dev RBD volume mounted on the tenant node and no unit installed, reboot the node, ready to hard-reset it from the hypervisor. Record whether the shutdown hangs, and for how long. Skipped on purpose (2026-11-11): the hang is krbd waiting on its OSDs with no timeout, which is documented behavior, and proving it would mean taking down prod tenants on a node.
-- [ ] 7.2 Install the shutdown unit on both nodes, as documented in 5.3. Reboot each with RBD volumes mounted. Verify:
+- [x] 7.1 With a dev RBD volume mounted on the tenant node and no unit installed, reboot the node, ready to hard-reset it from the hypervisor. Record whether the shutdown hangs, and for how long. Skipped on purpose (2026-11-11): the hang is krbd waiting on its OSDs with no timeout, which is documented behavior, and proving it would mean taking down prod tenants on a node.
+- [x] 7.2 Install the shutdown unit on both nodes, as documented in 5.3. Reboot each with RBD volumes mounted. Verify:
   - each shutdown completes without a hang;
   - every pod is running again afterwards, with its volume mounted.
 
-  Unit installed and enabled on both nodes from the README block, 2026-11-11. The reboots wait for a maintenance window.
+  Unit installed and enabled on both nodes from the README block, 2026-11-11. Two tenant-node reboots each hit the 180 s stop timeout but completed, with every pod back and its volumes mounted. They exposed three faults in the unit:
+  - an ordering deadlock with k3s;
+  - a name that `k3s-killall.sh` stops itself;
+  - gVisor sandboxes the script doesn't kill.
+
+  All three are fixed in the README and on both nodes. Ticked by the operator; the confirming reboots of both nodes are rescheduled.
 
 ## 8. Prod rollout
 

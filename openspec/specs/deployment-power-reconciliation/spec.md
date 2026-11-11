@@ -31,7 +31,7 @@ A stopped render SHALL:
 - set `spec.suspend` to true on every Job and CronJob;
 - omit every HorizontalPodAutoscaler and every bare Pod.
 
-It SHALL leave PersistentVolumeClaims, Secrets, ConfigMaps and the chart's Services as the chart renders them. The platform's other post-render steps, such as the egress gate, SHALL apply as in a normal render.
+It SHALL leave PersistentVolumeClaims, Secrets, ConfigMaps and the chart's Services as the chart renders them, apart from what the platform's other post-render steps change. Those steps, such as the egress gate and the deployment's storage class, SHALL apply as in a normal render.
 
 #### Scenario: A product with an in-chart database
 
@@ -42,6 +42,11 @@ It SHALL leave PersistentVolumeClaims, Secrets, ConfigMaps and the chart's Servi
 
 - **WHEN** the deployment is started
 - **THEN** every workload runs with the replica count its chart renders
+
+#### Scenario: Stopping a deployment that records a storage class
+
+- **WHEN** a deployment recording `ceph-freepod` is stopped
+- **THEN** its PersistentVolumeClaims and volume claim templates keep `ceph-freepod` and `ReadWriteOncePod`, exactly as in its normal render
 
 ### Requirement: Nothing runs once a stop is applied
 
