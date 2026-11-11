@@ -1,3 +1,10 @@
+- version: "2026.7.5"
+  notes: |-
+    The November 2026 maintenance release for the extended support line.
+
+    - Includes 37 security fixes
+    - Fixes an issue where Safari was not always recognized as such
+    - Notes in the review queue now stay with the item being reviewed
 - version: "2026.7.4"
   notes: |-
     The July 2026 extended support release, with its latest round of fixes.
