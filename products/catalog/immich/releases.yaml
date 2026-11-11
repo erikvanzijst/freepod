@@ -1,3 +1,16 @@
+- version: "3.4.0"
+  notes: |-
+    A big update with tags on your phone, smarter workflows and a batch of
+    security fixes.
+
+    - You can now add and edit tags directly from the mobile app
+    - Workflows can react to the text found in your photos and to camera
+      details that are missing or present
+    - JPEG XL photos are now supported
+    - Camera make and model names are shown more cleanly
+    - Large albums and shared links load faster
+    - A batch of security fixes tightens shared links, public pages and admin
+      actions
 - version: "3.3.6"
   notes: |-
     A small privacy fix.
