@@ -140,3 +140,8 @@ Pitfalls:
   (`TRANSFORMERS_CACHE`, `HF_XET_CACHE`, `MPLCONFIGDIR`). Since v3.2.0 the image
   also sets `HF_HOME=/cache/hf-cache` itself. If upstream adds a cache location
   outside `/cache`, it needs the same treatment.
+- Since v3.4.0 upstream's default compose sets
+  `MACHINE_LEARNING_MODEL_REVISION: v2` on the machine-learning service (the
+  newer model exports; unset means the original ones). The chart mirrors it in
+  `templates/machine-learning.yaml`; if upstream changes the revision, follow
+  it there.
