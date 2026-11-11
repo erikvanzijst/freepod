@@ -1,7 +1,7 @@
 {
   "uid": "freepod-usage-requests",
   "title": "Freepod: usage vs requests",
-  "description": "Actual CPU and memory consumption against what workloads reserve. Tenant namespaces are selected via kube_namespace_labels; the owner, product and environment labels are set by the reconciler. kube-state-metrics is scraped by two jobs, so every query against it pins one.",
+  "description": "Actual CPU and memory consumption against what workloads reserve. Tenant namespaces are selected via kube_namespace_labels{job=\"prometheus-kube-state-metrics\"}; the owner, product and environment labels are set by the reconciler. kube-state-metrics is scraped by two jobs, so every query against it pins one.",
   "tags": [
     "freepod",
     "capacity",

@@ -83,7 +83,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_status_ready{namespace=\"mx\", condition=\"true\"})",
+          "expr": "sum(kube_pod_status_ready{job=\"prometheus-kube-state-metrics\", namespace=\"mx\", condition=\"true\"})",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -568,7 +568,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "min(node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"} * on (node) group_left () (max by (node) (kube_pod_info{namespace=\"mx\"}) * 0 + 1))",
+          "expr": "min(node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"} * on (node) group_left () (max by (node) (kube_pod_info{job=\"prometheus-kube-state-metrics\", namespace=\"mx\"}) * 0 + 1))",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -642,7 +642,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"mx\"}[$__range]))",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{job=\"prometheus-kube-state-metrics\", namespace=\"mx\"}[$__range]))",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -1342,7 +1342,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_container_resource_requests{namespace=\"mx\", container=\"maddy\", resource=\"memory\"})",
+          "expr": "sum(kube_pod_container_resource_requests{job=\"prometheus-kube-state-metrics\", namespace=\"mx\", container=\"maddy\", resource=\"memory\"})",
           "legendFormat": "request",
           "refId": "B"
         },
@@ -1352,7 +1352,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_container_resource_limits{namespace=\"mx\", container=\"maddy\", resource=\"memory\"})",
+          "expr": "sum(kube_pod_container_resource_limits{job=\"prometheus-kube-state-metrics\", namespace=\"mx\", container=\"maddy\", resource=\"memory\"})",
           "legendFormat": "limit",
           "refId": "C"
         }

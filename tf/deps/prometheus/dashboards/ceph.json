@@ -1646,7 +1646,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sort_desc(topk(10, max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{job=\"kubernetes-nodes\"}) * on (namespace, persistentvolumeclaim) group_left () max by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_info{storageclass=\"ceph-$pool\"})))",
+          "expr": "sort_desc(topk(10, max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{job=\"kubernetes-nodes\"}) * on (namespace, persistentvolumeclaim) group_left () max by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_info{job=\"prometheus-kube-state-metrics\", storageclass=\"ceph-$pool\"})))",
           "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}",
           "refId": "A",
           "range": false,

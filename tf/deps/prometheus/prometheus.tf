@@ -52,6 +52,11 @@ resource "helm_release" "prometheus" {
       }
 
       kube-state-metrics = {
+        # Scraped by the static `prometheus-kube-state-metrics` job only. The
+        # annotation would add a second copy of every series to
+        # kubernetes-service-endpoints, where OpenCost's kube_* copies live too.
+        prometheusScrape = false
+
         # KSM emits no `*_labels` metric at all unless the keys are allowlisted
         # (opt-in since KSM 2.0). The reconciler sets these; see
         # app/network_policy.py. One series per namespace.
@@ -138,16 +143,16 @@ resource "helm_release" "prometheus" {
                     label_replace(
                       label_replace(
                         max(
-                          kube_job_status_start_time{job="kubernetes-service-endpoints"}
+                          kube_job_status_start_time{job="prometheus-kube-state-metrics"}
                           * ON(job_name,namespace) GROUP_RIGHT()
-                          kube_job_owner{owner_name!=""}
+                          kube_job_owner{job="prometheus-kube-state-metrics", owner_name!=""}
                         )
                         BY (job_name, owner_name, namespace)
                         == ON(owner_name) GROUP_LEFT()
                         max(
-                          kube_job_status_start_time{job="kubernetes-service-endpoints"}
+                          kube_job_status_start_time{job="prometheus-kube-state-metrics"}
                           * ON(job_name,namespace) GROUP_RIGHT()
-                          kube_job_owner{owner_name!=""}
+                          kube_job_owner{job="prometheus-kube-state-metrics", owner_name!=""}
                         )
                         BY (owner_name),
                       "job", "$1", "job_name", "(.+)"),
@@ -162,7 +167,7 @@ resource "helm_release" "prometheus" {
                       * ON(job) GROUP_LEFT()
                       label_replace(
                         label_replace(
-                          (kube_job_status_failed{job="kubernetes-service-endpoints"} != 0),
+                          (kube_job_status_failed{job="prometheus-kube-state-metrics"} != 0),
                           "job", "$1", "job_name", "(.+)"),
                         "cronjob", "$1", "owner_name", "(.+)")
                     EOT
@@ -211,7 +216,7 @@ resource "helm_release" "prometheus" {
                 # Pod in CrashLoopBackOff
                 {
                   alert = "PodCrashLooping"
-                  expr  = "kube_pod_container_status_waiting_reason{reason='CrashLoopBackOff'} > 0"
+                  expr  = "kube_pod_container_status_waiting_reason{job='prometheus-kube-state-metrics', reason='CrashLoopBackOff'} > 0"
                   for   = "2m"
                   labels = {
                     severity = "warning"
@@ -230,7 +235,7 @@ resource "helm_release" "prometheus" {
                     kubelet_volume_stats_available_bytes{job="kubernetes-nodes"}
                     / kubelet_volume_stats_capacity_bytes{job="kubernetes-nodes"} < 0.15
                     and on (namespace, persistentvolumeclaim)
-                    kube_persistentvolumeclaim_info{storageclass!="local-path"}
+                    kube_persistentvolumeclaim_info{job="prometheus-kube-state-metrics", storageclass!="local-path"}
                     EOT
                   for   = "15m"
                   labels = {
@@ -263,7 +268,7 @@ resource "helm_release" "prometheus" {
                 {
                   alert = "SshResolverNotReady"
                   expr  = <<-EOT
-                    kube_pod_container_status_ready{container="ssh-resolver"} == 0
+                    kube_pod_container_status_ready{job="prometheus-kube-state-metrics", container="ssh-resolver"} == 0
                     EOT
                   for   = "2m"
                   labels = {
@@ -280,7 +285,7 @@ resource "helm_release" "prometheus" {
                   # missing resolver takes the whole pod with it.
                   alert = "SshEdgeDown"
                   expr  = <<-EOT
-                    kube_deployment_status_replicas_available{deployment="sshpiper"} == 0
+                    kube_deployment_status_replicas_available{job="prometheus-kube-state-metrics", deployment="sshpiper"} == 0
                     EOT
                   for   = "2m"
                   labels = {
@@ -419,7 +424,7 @@ resource "helm_release" "prometheus" {
                   expr  = <<-EOT
                     job:kube_job_status_failed:sum
                     * ON(cronjob,namespace) GROUP_LEFT()
-                    (kube_cronjob_spec_suspend{job="kubernetes-service-endpoints"} == 0)
+                    (kube_cronjob_spec_suspend{job="prometheus-kube-state-metrics"} == 0)
                     EOT
                   for   = "2m"
                   labels = {
