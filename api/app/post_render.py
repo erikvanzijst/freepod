@@ -9,6 +9,10 @@ Each pod template gets:
 - the deployment's hostname as the ``caelus.dev/hostname`` annotation, when it
   has one: operator-facing metadata only, which nothing selects on.
 
+With ``--storage-class`` (deployment-storage-class), every PersistentVolumeClaim
+and StatefulSet claim template gets that class and ``ReadWriteOncePod``, and a
+release that could mount one of its claims from two pods at once is refused.
+
 With ``--render=stopped`` the release runs nothing (deployment-power-reconciliation):
 Deployments and StatefulSets go to 0 replicas, Jobs and CronJobs are suspended,
 HorizontalPodAutoscalers and bare Pods are dropped, and every Ingress rule for
@@ -25,6 +29,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from collections import defaultdict
 from dataclasses import dataclass
 from itertools import takewhile
 import copy
@@ -39,6 +44,12 @@ HOSTNAME_ANNOTATION = "caelus.dev/hostname"
 RENDER_NORMAL = "normal"
 RENDER_STOPPED = "stopped"
 PARKING_SUFFIX = "-caelus-parking"
+SINGLE_WRITER = "ReadWriteOnce"
+SINGLE_POD = "ReadWriteOncePod"
+
+
+class SharedClaim(ValueError):
+    """A release the storage step refuses (deployment-storage-class D4)."""
 
 
 @dataclass(frozen=True)
@@ -135,6 +146,87 @@ def rewrite(doc: Any, gate: dict[str, Any], annotations: dict[str, str] | None =
     return True
 
 
+def _name(obj: Any) -> str:
+    return str(((obj or {}).get("metadata") or {}).get("name") or "<unnamed>")
+
+
+def _claims(doc: Any) -> list[dict[str, Any]]:
+    """The claim objects ``doc`` renders: itself, or its claim templates."""
+    if not isinstance(doc, dict):
+        return []
+    if doc.get("kind") == "PersistentVolumeClaim":
+        return [doc]
+    if doc.get("kind") == "StatefulSet":
+        templates = (doc.get("spec") or {}).get("volumeClaimTemplates") or []
+        return [t for t in templates if isinstance(t, dict)]
+    return []
+
+
+def _count(value: Any) -> int:
+    return 1 if value is None else int(value)
+
+
+def _concurrency(doc: dict[str, Any]) -> str | None:
+    """Why ``doc`` may run more than one pod at once, or None."""
+    kind, spec = doc.get("kind"), doc.get("spec") or {}
+    what = f"{kind} {_name(doc)!r}"
+    if kind in ("Deployment", "StatefulSet", "ReplicaSet") and _count(spec.get("replicas")) > 1:
+        return f"{what}, which has {spec['replicas']} replicas"
+    if kind == "Deployment":
+        strategy = (spec.get("strategy") or {}).get("type") or "RollingUpdate"
+        if strategy != "Recreate":
+            return f"{what}, which uses the {strategy} strategy"
+    if kind == "DaemonSet":
+        return f"{what}, which runs a pod per node"
+    if kind == "CronJob":
+        policy = spec.get("concurrencyPolicy") or "Allow"
+        if policy != "Forbid":
+            return f"{what}, whose concurrencyPolicy is {policy}"
+        spec = ((spec.get("jobTemplate") or {}).get("spec")) or {}
+    if kind in ("Job", "CronJob") and _count(spec.get("parallelism")) > 1:
+        return f"{what}, whose parallelism is {spec['parallelism']}"
+    return None
+
+
+def refuse_shared_claims(docs: list[Any]) -> None:
+    """Raise ``SharedClaim`` when a claim the release renders could be mounted
+    by more than one pod at once. Claims it doesn't render aren't checked."""
+    rendered: set[str] = set()
+    for doc in docs:
+        for claim in _claims(doc):
+            modes = (claim.get("spec") or {}).get("accessModes") or []
+            if any(mode != SINGLE_WRITER for mode in modes):
+                raise SharedClaim(f"claim {_name(claim)!r} requests {', '.join(modes)}, not {SINGLE_WRITER}")
+            if doc.get("kind") == "PersistentVolumeClaim":
+                rendered.add(_name(claim))
+    mounts: dict[str, dict[int, dict[str, Any]]] = defaultdict(dict)
+    for doc in docs:
+        template = pod_template(doc)
+        if template is None:
+            continue
+        for volume in template["spec"].get("volumes") or []:
+            name = ((volume or {}).get("persistentVolumeClaim") or {}).get("claimName")
+            if name in rendered:
+                mounts[name][id(doc)] = doc
+    for name, workloads in mounts.items():
+        if len(workloads) > 1:
+            owners = ", ".join(f"{d.get('kind')} {_name(d)!r}" for d in workloads.values())
+            raise SharedClaim(f"claim {name!r} is mounted by more than one pod template: {owners}")
+        reason = _concurrency(next(iter(workloads.values())))
+        if reason:
+            raise SharedClaim(f"claim {name!r} is mounted by {reason}")
+
+
+def place(doc: Any, storage_class: str) -> bool:
+    """Give each of ``doc``'s claims the class and single-pod access; whether it has any."""
+    claims = _claims(doc)
+    for claim in claims:
+        spec = claim.setdefault("spec", {})
+        spec["storageClassName"] = storage_class
+        spec["accessModes"] = [SINGLE_POD]
+    return bool(claims)
+
+
 class _Loader(yaml.SafeLoader):
     """SafeLoader without the YAML 1.1 resolvers Helm's Go parser does not share.
 
@@ -177,19 +269,23 @@ def render(
     gate: dict[str, Any],
     annotations: dict[str, str] | None = None,
     stopped: Stopped | None = None,
+    storage_class: str | None = None,
 ) -> str:
-    """``manifests`` with every pod template rewritten, and stopped when
-    ``stopped`` is given.
+    """``manifests`` with every pod template rewritten, its claims placed on
+    ``storage_class`` when given, and stopped when ``stopped`` is given.
 
     Untouched documents pass through byte for byte; only the rewritten ones
     are re-serialized, keeping their leading ``# Source:`` comments.
     """
+    chunks = [chunk for chunk in _SEPARATOR.split(manifests) if chunk.strip()]
+    docs = [yaml.load(chunk, Loader=_Loader) for chunk in chunks]
+    if storage_class is not None:
+        refuse_shared_claims(docs)
     out: list[str] = []
-    for chunk in _SEPARATOR.split(manifests):
-        if not chunk.strip():
-            continue
-        doc = yaml.load(chunk, Loader=_Loader)
+    for chunk, doc in zip(chunks, docs):
         changed = rewrite(doc, gate, annotations)
+        if storage_class is not None:
+            changed = place(doc, storage_class) or changed
         if stopped is not None:
             stop_changed = stop(doc, stopped)
             if stop_changed is None:
@@ -214,6 +310,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--release", required=True, help="the Helm release name; names the platform's objects")
     parser.add_argument("--parking-host", help="the parking page's FQDN; required with --render=stopped")
     parser.add_argument("--parking-port", type=int, help="the parking page's port; required with --render=stopped")
+    parser.add_argument("--storage-class", help="the deployment's StorageClass, applied to every claim")
     args = parser.parse_args(argv)
     stopped = None
     if args.render == RENDER_STOPPED:
@@ -233,7 +330,11 @@ def main(argv: list[str] | None = None) -> None:
         )
     gate = egress_gate.gate_container(image=args.image, deadline_seconds=args.deadline_seconds)
     annotations = {HOSTNAME_ANNOTATION: args.hostname} if args.hostname else None
-    sys.stdout.write(render(sys.stdin.read(), gate, annotations, stopped))
+    try:
+        rendered = render(sys.stdin.read(), gate, annotations, stopped, args.storage_class)
+    except SharedClaim as refused:
+        parser.exit(1, f"{PLUGIN_NAME}: refusing to render on storage class {args.storage_class!r}: {refused}\n")
+    sys.stdout.write(rendered)
 
 
 if __name__ == "__main__":

@@ -266,3 +266,25 @@ def test_a_failed_sweep_fails_the_reconcile(db_session, ready):
     assert "scale" in deployment.last_error
     assert deployment.applied_power_id is None
     assert "scale" in _row(db_session, stop.id).error
+
+
+def test_the_recorded_storage_class_reaches_every_helm_run(db_session, ready):
+    deployment = _deployment(db_session)
+    deployment.storage_class = "ceph-freepod"
+    db_session.add(deployment)
+    db_session.commit()
+
+    _update(db_session)
+    [normal] = _helm(_reconcile(db_session))
+    assert normal["storage_class"] == "ceph-freepod"
+
+    _request(db_session, "stopped")
+    [stopped] = _helm(_reconcile(db_session))
+    assert stopped["render"] == "stopped"
+    assert stopped["storage_class"] == "ceph-freepod"
+
+
+def test_a_deployment_without_a_class_passes_none(db_session, ready):
+    _update(db_session)
+    [helm] = _helm(_reconcile(db_session))
+    assert helm["storage_class"] is None

@@ -338,6 +338,18 @@ def _allocate_namespace(session: Session, *, product_name: str, user_email: str)
     )
 
 
+def _choose_storage_class(owner: UserORM) -> str | None:
+    """The owner's class, refused unless the environment allows it
+    (openspec deployment-storage-class D5)."""
+    if owner.storage_class is None:
+        return None
+    if owner.storage_class not in get_settings().storage_classes:
+        raise ValidationException(
+            f"Storage class {owner.storage_class!r} is not allowed in this environment"
+        )
+    return owner.storage_class
+
+
 def create_deployment(
     session: Session,
     *,
@@ -393,6 +405,8 @@ def create_deployment(
         session, owner_id=payload.user_id, build_id=None, user_values=payload.user_values_json
     )
 
+    storage_class = _choose_storage_class(user)
+
     # Determine if this is a paid plan requiring payment.
     is_paid = payment_provider is not None and plan_template.price_cents > 0
 
@@ -429,6 +443,7 @@ def create_deployment(
             status=DEPLOYMENT_STATUS_PENDING if is_paid else DEPLOYMENT_STATUS_PROVISIONING,
             subscription_id=sub.id,
             desired_release_id=release_id,
+            storage_class=storage_class,
             # `build_id` and `vars` join `plan_template_id` here: all three are
             # request-only fields that the deployment row does not store. The
             # build lands on the release below; the vars land in their own

@@ -18,6 +18,7 @@ def test_default_values(monkeypatch):
     assert settings.tenant_domain == ""
     assert settings.platform_domains == []
     assert settings.reserved_handles == []
+    assert settings.storage_classes == []
 
 
 def test_retired_hostname_settings_are_gone():
@@ -41,6 +42,11 @@ def test_list_field_json_parsing(monkeypatch):
     settings = CaelusSettings(_env_file=None)
     assert settings.platform_domains == ["freepod.eu", "freepod.app"]
     assert settings.reserved_handles == ["www", "admin"]
+
+
+def test_storage_classes_json_parsing(monkeypatch):
+    monkeypatch.setenv("CAELUS_STORAGE_CLASSES", '["ceph-freepod-dev"]')
+    assert CaelusSettings(_env_file=None).storage_classes == ["ceph-freepod-dev"]
 
 
 def test_var_encryption_keys_are_comma_separated(monkeypatch):

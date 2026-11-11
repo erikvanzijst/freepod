@@ -36,6 +36,7 @@ class FakeProvisioner:
         render: str = "normal",
         parking_host: str = "",
         parking_port: int = 8000,
+        storage_class: str | None = None,
     ):
         self.calls.append(
             (
@@ -54,6 +55,7 @@ class FakeProvisioner:
                     "render": render,
                     "parking_host": parking_host,
                     "parking_port": parking_port,
+                    "storage_class": storage_class,
                 },
             )
         )

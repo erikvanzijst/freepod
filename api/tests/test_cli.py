@@ -1528,3 +1528,27 @@ def test_cli_update_product_without_icon_keeps_existing(cli_runner, tmp_path):
     updated = _parse_yaml_stdout(update_res)
     assert updated["description"] == "new desc"
     assert updated["icon_url"] == original_url
+
+
+def test_cli_create_deployment_takes_no_storage_class(cli_runner):
+    """openspec deployment-storage-class: the class never comes from the CLI."""
+    runner, app = cli_runner
+    result = runner.invoke(
+        app,
+        [
+            "create-deployment",
+            "--user-id", "1",
+            "--desired-template-id", "1",
+            "--plan-template-id", "1",
+            "--storage-class", "ceph-freepod",
+        ],
+    )
+    assert result.exit_code == 2
+    assert "--storage-class" in result.output
+
+
+def test_cli_reads_report_no_storage_class(cli_runner):
+    runner, app = cli_runner
+    assert runner.invoke(app, ["create-user", "sc-cli@example.com"]).exit_code == 0
+    user = _parse_yaml_stdout(runner.invoke(app, ["get-user", "1"]))
+    assert "storage_class" not in user

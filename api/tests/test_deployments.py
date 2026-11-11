@@ -609,3 +609,51 @@ def test_admin_list_deployments_forbidden_for_non_admin(user_client):
     client, _ = user_client
     resp = client.get("/api/deployments")
     assert resp.status_code == 403
+
+
+def test_a_storage_class_field_is_refused_on_create_and_update(client, db_session):
+    """openspec deployment-storage-class: the class never comes from a request."""
+    user_id = create_user(client, "sc-field@example.com")["id"]
+    dep_id = _create_deployment_for_user(client, db_session, user_id, "-sc-field")
+    deployment = db_session.get(DeploymentORM, dep_id)
+    count_before = len(db_session.exec(select(DeploymentORM)).all())
+
+    created = client.post(
+        f"/api/users/{user_id}/deployments",
+        json={
+            "desired_template_id": deployment.desired_template_id,
+            "plan_template_id": 1,
+            "storage_class": "ceph-freepod",
+        },
+    )
+    assert created.status_code == 422
+    assert len(db_session.exec(select(DeploymentORM)).all()) == count_before
+
+    _finish_create_job(db_session, dep_id)
+    updated = client.put(
+        f"/api/users/{user_id}/deployments/{dep_id}",
+        json={"desired_template_id": deployment.desired_template_id, "storage_class": "ceph-freepod"},
+    )
+    assert updated.status_code == 422
+    db_session.expire_all()
+    assert db_session.get(DeploymentORM, dep_id).storage_class is None
+
+
+def test_no_read_model_reports_a_storage_class(client, db_session, monkeypatch):
+    from app.config import get_settings
+
+    settings = get_settings().model_copy(update={"storage_classes": ["ceph-freepod"]})
+    monkeypatch.setattr("app.services.deployments.get_settings", lambda: settings)
+    user_id = create_user(client, "sc-read@example.com")["id"]
+    user = db_session.get(UserORM, user_id)
+    user.storage_class = "ceph-freepod"
+    db_session.add(user)
+    db_session.commit()
+    dep_id = _create_deployment_for_user(client, db_session, user_id, "-sc-read")
+
+    reads = [
+        client.get(f"/api/users/{user_id}/deployments/{dep_id}").json(),
+        *client.get(f"/api/users/{user_id}/deployments").json(),
+        client.get("/api/me").json(),
+    ]
+    assert all("storage_class" not in read for read in reads)

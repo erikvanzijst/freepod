@@ -57,7 +57,7 @@ def _host_values(slug: str) -> list[str]:
     return args
 
 
-def _post_render(render: str) -> list[str]:
+def _post_render(render: str, *extra: str) -> list[str]:
     return [
         "--post-renderer", post_render.PLUGIN_NAME,
         "--post-renderer-args", "--image=gate:1",
@@ -67,12 +67,13 @@ def _post_render(render: str) -> list[str]:
         "--post-renderer-args", f"--release={RELEASE}",
         "--post-renderer-args", f"--parking-host={PARKING_HOST}",
         "--post-renderer-args", "--parking-port=8000",
+        *[arg for value in extra for arg in ("--post-renderer-args", value)],
     ]
 
 
-def _render(catalog_file, tmp_path, render: str) -> list[dict]:
+def _render(catalog_file, tmp_path, render: str, *extra: str) -> list[dict]:
     slug = yaml.safe_load(catalog_file.read_text())["product"]["slug"]
-    docs = _render_catalog(catalog_file, tmp_path, *_host_values(slug), *_post_render(render), env=ENV)
+    docs = _render_catalog(catalog_file, tmp_path, *_host_values(slug), *_post_render(render, *extra), env=ENV)
     return [doc for _, doc in docs]
 
 
@@ -121,3 +122,15 @@ def test_app_studio_preview_keeps_its_backends(tmp_path):
     after = preview(_render(catalog_file, tmp_path, "stopped"))
     assert before, "App Studio rendered no preview Ingress"
     assert after == before
+
+
+@pytest.mark.parametrize("catalog_file", CATALOG_FILES, ids=lambda p: p.stem)
+def test_a_stopped_render_keeps_the_storage_class(catalog_file, tmp_path):
+    """deployment-storage-class: a stop never drops the class or the access mode."""
+    stopped = _render(catalog_file, tmp_path, "stopped", "--storage-class=ceph-freepod")
+    claims = [d["spec"] for d in stopped if d.get("kind") == "PersistentVolumeClaim"] + [
+        t["spec"] for d in stopped if d.get("kind") == "StatefulSet" for t in d["spec"].get("volumeClaimTemplates") or []
+    ]
+    for spec in claims:
+        assert spec["storageClassName"] == "ceph-freepod", catalog_file.stem
+        assert spec["accessModes"] == ["ReadWriteOncePod"], catalog_file.stem

@@ -260,6 +260,7 @@ class HelmAdapter:
         render: str = post_render.RENDER_NORMAL,
         parking_host: str = "",
         parking_port: int = 8000,
+        storage_class: str | None = None,
     ) -> HelmReleaseOperationResult:
         if render == post_render.RENDER_STOPPED and not parking_host:
             # Rather than render an Ingress that points nowhere.
@@ -297,6 +298,8 @@ class HelmAdapter:
             ])
             if hostname:
                 cmd.extend(["--post-renderer-args", f"--hostname={hostname}"])
+            if storage_class:
+                cmd.extend(["--post-renderer-args", f"--storage-class={storage_class}"])
             if render == post_render.RENDER_STOPPED:
                 cmd.extend([
                     "--post-renderer-args", f"--render={render}",
@@ -600,6 +603,7 @@ class Provisioner:
         render: str = post_render.RENDER_NORMAL,
         parking_host: str = "",
         parking_port: int = 8000,
+        storage_class: str | None = None,
     ) -> HelmReleaseOperationResult:
         return self.helm.helm_upgrade_install(
             release_name=release_name,
@@ -615,6 +619,7 @@ class Provisioner:
             render=render,
             parking_host=parking_host,
             parking_port=parking_port,
+            storage_class=storage_class,
         )
 
     def sweep_stopped_workloads(self, *, namespace: str) -> list[str]:
