@@ -52,6 +52,16 @@ spec:
         {{- include "docmost.componentSelector" (dict "root" . "name" "redis") | nindent 8 }}
     spec:
       automountServiceAccountToken: false
+      initContainers:
+        # storage-chart-contract: the entrypoint skips its ownership fix while a
+        # fresh volume's lost+found is there.
+        - name: lost-found
+          image: {{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          command: ["sh", "-c", "rmdir /data/lost+found 2>/dev/null || true"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
       containers:
         - name: redis
           image: {{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}

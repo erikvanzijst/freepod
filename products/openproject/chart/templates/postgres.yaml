@@ -58,6 +58,15 @@ spec:
         {{- include "openproject.componentSelector" (dict "root" . "name" "postgres") | nindent 8 }}
     spec:
       automountServiceAccountToken: false
+      initContainers:
+        # storage-chart-contract: initdb refuses a fresh volume's lost+found.
+        - name: lost-found
+          image: {{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          command: ["sh", "-c", "rmdir /var/lib/postgresql/data/lost+found 2>/dev/null || true"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
       containers:
         - name: postgres
           image: {{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}

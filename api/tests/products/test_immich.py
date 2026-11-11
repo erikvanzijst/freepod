@@ -314,3 +314,14 @@ def test_immich_waits_for_postgres_before_anything_else(tmp_path, values):
 
 def test_an_external_database_needs_no_wait(tmp_path):
     assert "initContainers" not in _server_pod(_render(tmp_path, {"postgresql": {"enabled": False}}))
+
+
+@pytest.mark.parametrize("chart", [CHART, CATALOG_CHART], ids=["immich-sso", "immich"])
+def test_postgres_clears_an_empty_lost_and_found_first(tmp_path, chart):
+    """storage-chart-contract: initdb refuses a fresh volume's lost+found."""
+    [db] = [d for d in _render(tmp_path, {}, chart) if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("-postgresql")]
+    pod = db["spec"]["template"]["spec"]
+    [init] = pod["initContainers"]
+    assert init["image"] == pod["containers"][0]["image"]
+    assert init["command"] == ["sh", "-c", "rmdir /var/lib/postgresql/data/lost+found 2>/dev/null || true"]
+    assert init["volumeMounts"] == [{"name": "data", "mountPath": "/var/lib/postgresql/data"}]
