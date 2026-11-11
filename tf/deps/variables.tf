@@ -114,3 +114,19 @@ variable "uptime_ping_urls" {
   type        = map(string)
   sensitive   = true
 }
+
+variable "ceph_cluster_id" {
+  description = "fsid of the external Ceph cluster backing the ceph-* StorageClasses (use secrets.auto.tfvars)"
+  type        = string
+}
+
+variable "ceph_monitors" {
+  description = "Its monitor addresses, `host:port` (use secrets.auto.tfvars)"
+  type        = list(string)
+}
+
+variable "ceph_user_keys" {
+  description = "Ceph client name (without `client.`) => cephx key, one client per pool (use secrets.auto.tfvars)"
+  type        = map(string)
+  sensitive   = true
+}

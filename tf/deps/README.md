@@ -21,6 +21,9 @@ independent state and does not use Terraform workspaces.
 - `monitoring` namespace with the cluster-wide observability stack (Loki +
   Promtail, Prometheus + node-exporter + kube-state-metrics + Alertmanager,
   Grafana) — see [Monitoring stack](#monitoring-stack).
+- `ceph-csi` namespace (`ceph-csi/`): the Ceph RBD CSI driver and one
+  StorageClass per pool on an external Ceph cluster — see
+  [Block storage](#block-storage).
 - The `gvisor` RuntimeClass (`sandbox/`): tenant-code pods that name it run
   inside a gVisor sandbox on the tenant node pool — see
   [Sandboxed runtime](#sandboxed-runtime).
@@ -75,6 +78,14 @@ letsencrypt_email    = "ops@example.com"
 # Monitoring stack
 grafana_admin_password = "replace-with-actual-password" # break-glass local admin
 alert_email_to         = "ops@example.com"              # Alertmanager recipient
+
+# Block storage: the external Ceph cluster (`ceph fsid`, monitor addresses) and
+# one cephx key per pool client (`ceph auth print-key client.<name>`)
+ceph_cluster_id = "<fsid>"
+ceph_monitors   = ["<host>:6789", "<host>:6789", "<host>:6789"]
+ceph_user_keys = {
+  "freepod-dev" = "<key>"
+}
 
 # Uptime heartbeats: healthchecks.io ping URL per check in main.tf's module.uptime
 uptime_ping_urls = {
@@ -185,6 +196,19 @@ Two settings that look optional but are not, both in
   true; setting the client attribute alone makes PKCE mandatory at Keycloak
   and fails every Grafana login. Enable both together or neither. (The
   oauth2-proxy clients *do* require PKCE and set the matching flag.)
+
+## Block storage
+
+`ceph-csi/` installs the [ceph-csi](https://github.com/ceph/ceph-csi) RBD driver
+against a Ceph cluster that runs outside Kubernetes. `main.tf` maps each
+StorageClass to an RBD pool and a cephx client scoped to that pool; the
+`ceph-freepod-dev` class provisions into `freepod-dev`. Volumes are ext4,
+mounted with `discard`, and can be expanded. The node plugin tolerates every
+taint, so volumes mount on the tenant pool too. `local-path` remains the
+cluster's default class.
+
+Nodes map images with the kernel RBD client, which needs Linux 7.0 or newer:
+Ceph 20 issues `aes256k` cephx keys, which older kernels cannot load.
 
 ## Sandboxed runtime
 

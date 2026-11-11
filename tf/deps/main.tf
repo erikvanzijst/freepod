@@ -16,6 +16,16 @@ resource "kubernetes_namespace" "mx" {
   }
 }
 
+resource "kubernetes_namespace" "ceph_csi" {
+  metadata {
+    name = "ceph-csi"
+    labels = {
+      # The node plugin maps and mounts RBD images on the host.
+      "pod-security.kubernetes.io/enforce" = "privileged"
+    }
+  }
+}
+
 resource "kubernetes_namespace" "monitoring" {
   metadata {
     name = "monitoring"
@@ -97,6 +107,19 @@ module "mx" {
   monitoring_namespace = kubernetes_namespace.monitoring.metadata[0].name
 
   depends_on = [module.certmanager]
+}
+
+# Replicated block storage on the external Ceph cluster, one StorageClass per pool.
+module "ceph_csi" {
+  source     = "./ceph-csi"
+  namespace  = kubernetes_namespace.ceph_csi.metadata[0].name
+  cluster_id = var.ceph_cluster_id
+  monitors   = var.ceph_monitors
+  user_keys  = var.ceph_user_keys
+
+  storage_classes = {
+    ceph-freepod-dev = { pool = "freepod-dev", user_id = "freepod-dev", reclaim_policy = "Delete" }
+  }
 }
 
 # --- Monitoring stack (cluster-wide observability) ---
