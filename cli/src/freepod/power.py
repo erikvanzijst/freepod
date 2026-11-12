@@ -60,8 +60,7 @@ def _refusal(response, target: str) -> FreepodError:
     detail = _json_detail(response) or response.text.strip()[:300]
     if code == CODE_UNDER_MAINTENANCE:
         return FreepodError(
-            "the deployment is stopped for platform maintenance and cannot be started now.\n"
-            "  It returns to how it was once the maintenance ends; try again later."
+            "the deployment is stopped for platform maintenance and cannot be started now."
         )
     if code == CODE_NOT_STARTABLE:
         return FreepodError(
