@@ -1,6 +1,7 @@
 import type { Deployment } from '../../api/types'
 import { resolveApiPath } from '../../api/client'
 import { ensureUrl } from '../../utils/format'
+import { underMaintenance } from '../../utils/deploymentStatus'
 import { formatEuro } from '../landing/usePricing'
 import { supportMailto } from '../../content/contact'
 
@@ -105,10 +106,6 @@ export function powerLabel(d: Deployment): string {
   const label = POWER_LABELS[powerPhase(d)]
   const reason = d.power?.desired === 'stopped' ? d.power.reason : null
   return reason && reason !== 'manual' ? `${label} (${reason})` : label
-}
-
-function underMaintenance(d: Deployment): boolean {
-  return d.power?.desired === 'stopped' && d.power.reason === 'maintenance'
 }
 
 function readyStatus(d: Deployment): DeploymentView['status'] {

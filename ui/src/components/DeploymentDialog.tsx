@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Deployment, Plan } from '../api/types'
 import { ApiError } from '../api/client'
 import { deleteDeployment, getDeployment, listTemplates, updateDeployment } from '../api/endpoints'
-import { isTransitionalStatus } from '../utils/deploymentStatus'
+import { isTransitionalStatus, underMaintenance } from '../utils/deploymentStatus'
 import { formatLocalIso, parseUtc } from '../utils/formatDate'
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog'
 import { DeployDialogContent } from './DeployDialogContent'
@@ -68,7 +68,9 @@ export function DeploymentDialog({ deployment: initialDeployment, onClose }: Dep
     refetchInterval: (query) => {
       if (query.state.error) return false
       const d = query.state.data
-      return d && (isTransitionalStatus(d.status) || powerChanging(d)) ? 1000 : false
+      if (!d) return false
+      if (isTransitionalStatus(d.status) || powerChanging(d)) return 1000
+      return underMaintenance(d) ? 10000 : false
     },
   })
 

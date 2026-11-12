@@ -21,8 +21,8 @@ describe('deployment status helpers', () => {
 })
 
 describe('listingRefetchInterval', () => {
-  const dep = (status: Deployment['status'], desired: PowerState, applied: PowerState) =>
-    ({ id: 'd1', status, power: { desired, applied } }) as Deployment
+  const dep = (status: Deployment['status'], desired: PowerState, applied: PowerState, reason?: 'maintenance') =>
+    ({ id: 'd1', status, power: { desired, applied, reason } }) as Deployment
 
   it('polls while a stop is being applied, and stops once it is', () => {
     expect(listingRefetchInterval([dep('ready', 'running', 'running')])).toBe(false)
@@ -36,5 +36,10 @@ describe('listingRefetchInterval', () => {
 
   it('still polls for transitional statuses', () => {
     expect(listingRefetchInterval([dep('ready', 'running', 'running'), dep('provisioning', 'running', 'running')])).toBe(3000)
+  })
+
+  it('keeps polling while under maintenance, until it is lifted', () => {
+    expect(listingRefetchInterval([dep('ready', 'stopped', 'stopped', 'maintenance')])).toBe(10000)
+    expect(listingRefetchInterval([dep('ready', 'running', 'running')])).toBe(false)
   })
 })
