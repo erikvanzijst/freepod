@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Moves existing deployments' volumes from local-path onto the environment's
 Ceph class, one deployment per run (migrate-deployment-storage). Run it in the
 reconcile worker's pod, which has helm, kubectl and the database:
