@@ -1,8 +1,8 @@
 locals {
-  # PostgreSQL 18.6, supported to 2030-11-14 (design D14). Pinned to the patch
+  # PostgreSQL 18.7, supported to 2030-11-14 (design D14). Pinned to the patch
   # release rather than `18-alpine`: which version the tenant cluster runs is a
   # decision, not whatever a moving tag resolved to the day a pod restarted.
-  tenant_db_image = "postgres:18.6-alpine"
+  tenant_db_image = "postgres:18.7-alpine"
 
   postgres_exporter_image = "quay.io/prometheuscommunity/postgres-exporter:v0.20.1"
 
