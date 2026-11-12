@@ -1,7 +1,8 @@
 # ceph-csi
 
 The ceph-csi RBD driver, against a Ceph cluster that runs outside Kubernetes:
-one StorageClass, Secret and cephx client per pool (`main.tf` in `tf/deps`).
+one StorageClass, Secret and cephx client per pool (`main.tf` in `tf/deps`),
+plus one VolumeSnapshotClass whose client, `freepod-snapshots`, reaches every pool.
 Which class a deployment's volumes use is the platform's decision, per
 deployment: [deployment-storage-class](../../../openspec/specs/deployment-storage-class/spec.md).
 

@@ -11,7 +11,7 @@ describe('legal document registry', () => {
   })
 
   it('parses the Terms of Service effective date', () => {
-    expect(LEGAL_DOCS.terms.version).toBe('2026-09-27')
+    expect(LEGAL_DOCS.terms.version).toBe('2026-11-16')
   })
 
   it('keeps the nav list and registry in sync', () => {

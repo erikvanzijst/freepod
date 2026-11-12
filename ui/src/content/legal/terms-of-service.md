@@ -2,7 +2,7 @@
 
 ---
 
-**Effective date:** 2026-09-27  
+**Effective date:** 2026-11-16  
 **Provider:** Freepod VZW  
 organised under the laws of Belgium, with registered office at
 `[REGISTERED ADDRESS]`, enterprise number `[BE 0xxx.xxx.xxx]`
@@ -163,14 +163,17 @@ specific Customer Content on request unless expressly stated in your plan.
 5.4 **No self-service restore.** The Service provides no backup, snapshot, or
 point-in-time restore that you can reach — not through the application, the
 CLI, or a support request. This applies to the database and the object storage
-provided with a deployment alike: if you delete or overwrite data, it is gone.
+provided with a deployment alike: if you delete or overwrite data, you cannot
+get it back.
 Section 5.1 is not boilerplate here; your own exports are the only copy you can
 rely on.
 
 5.5 **Retention after deletion.** When you delete a deployment, its access is
 revoked immediately and its data — both its database and its object storage —
-is destroyed after a retention period of **1 day**. We may change this period;
-the current value is the one published here.
+is destroyed after a retention period of **1 day**. Copies of its volumes in our
+operational backups (Section 5.3) are never restored and are deleted within
+**16 days** of the deletion. We may change these periods; the current values are
+the ones published here.
 
 ---
 

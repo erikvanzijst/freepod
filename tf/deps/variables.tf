@@ -126,7 +126,7 @@ variable "ceph_monitors" {
 }
 
 variable "ceph_user_keys" {
-  description = "Ceph client name (without `client.`) => cephx key, one client per pool (use secrets.auto.tfvars)"
+  description = "Ceph client name (without `client.`) => cephx key: one client per pool, plus `freepod-snapshots` for every pool (use secrets.auto.tfvars)"
   type        = map(string)
   sensitive   = true
 }
@@ -135,4 +135,38 @@ variable "ceph_mgr_targets" {
   description = "The Ceph cluster's manager prometheus endpoints, `host:9283` (use secrets.auto.tfvars)"
   type        = list(string)
   default     = []
+}
+
+variable "velero_s3_url" {
+  description = "S3 endpoint holding the backups (use secrets.auto.tfvars)"
+  type        = string
+}
+
+variable "velero_s3_access_key_id" {
+  description = "S3 access key for the backup bucket (use secrets.auto.tfvars)"
+  type        = string
+  sensitive   = true
+}
+
+variable "velero_s3_secret_access_key" {
+  description = "S3 secret key for the backup bucket (use secrets.auto.tfvars)"
+  type        = string
+  sensitive   = true
+}
+
+variable "velero_repo_password" {
+  description = "Encrypts the backup repository; without it the backups cannot be read (use secrets.auto.tfvars)"
+  type        = string
+  sensitive   = true
+}
+
+variable "velero_sse_c_key" {
+  description = "Exactly 32 bytes; the bucket encrypts backup metadata with it, and it is not stored there (use secrets.auto.tfvars)"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(var.velero_sse_c_key) == 32
+    error_message = "velero_sse_c_key must be exactly 32 bytes."
+  }
 }

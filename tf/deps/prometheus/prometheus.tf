@@ -245,6 +245,21 @@ resource "helm_release" "prometheus" {
                     summary     = "Volume filling up"
                     description = "Claim {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} has {{ $value | humanizePercentage }} free"
                   }
+                },
+                {
+                  alert = "BackupTooOld"
+                  expr  = <<-EOT
+                    time() - velero_backup_last_successful_timestamp{schedule="velero-nightly"} > 26 * 3600
+                    or absent(velero_backup_last_successful_timestamp{schedule="velero-nightly"})
+                    EOT
+                  for   = "30m"
+                  labels = {
+                    severity = "critical"
+                  }
+                  annotations = {
+                    summary     = "No successful nightly backup"
+                    description = "The last successful nightly Velero backup is more than 26 hours old, or Velero reports none."
+                  }
                 }
               ]
             },

@@ -27,3 +27,8 @@ variable "user_keys" {
   type        = map(string)
   sensitive   = true
 }
+
+variable "snapshot_user_id" {
+  description = "Ceph client (without `client.`) that snapshots volumes in every pool."
+  type        = string
+}
