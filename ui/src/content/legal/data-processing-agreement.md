@@ -117,7 +117,8 @@ Personal Data after the end of the provision of the Service, and delete existing
 copies, unless EU or Member-State law requires storage. This aligns with the
 Export Window and deletion terms in the Terms. A deleted deployment's database
 and object storage are destroyed after the retention period stated in the Terms
-(Section 5.5); the Processor operates no tenant-reachable backup or restore
+(Section 5.5), and copies in the Processor's operational backups within the
+period stated there; the Processor operates no tenant-reachable backup or restore
 facility, so return of Personal Data must be exported by the Customer before
 deletion.
 
@@ -194,8 +195,8 @@ long as Freepod processes Personal Data on the Customer's behalf.
   related processing of Personal Data contained therein, as necessary to provide
   the Service.
 - **Duration:** For the term of the Terms and until deletion or return of the
-  Personal Data in accordance with Section 3.8 (the Export Window and routine
-  backup cycles).
+  Personal Data in accordance with Section 3.8 (the Export Window and the
+  expiry of operational backups, Section 5.5 of the Terms).
 - **Frequency:** Continuous, for as long as the Instance exists.
 - **Nature of processing:** Storage, hosting, hosting-related computation,
   transmission, caching, backup, replication, restoration, deletion, and security
@@ -227,7 +228,8 @@ long as Freepod processes Personal Data on the Customer's behalf.
   or Article 10 basis, and for implementing any additional safeguards required.
 - **Retention:** Personal Data is retained while it remains in the Customer's
   Instance and during the Export Window after termination, after which it is
-  deleted in accordance with Section 3.8 and routine backup cycles, unless
+  deleted in accordance with Section 3.8 and the expiry of operational backups
+  (Section 5.5 of the Terms), unless
   applicable law requires longer retention. A deleted deployment's database and
   object storage are destroyed after the retention period in the Terms
   (Section 5.5), currently 1 day.
