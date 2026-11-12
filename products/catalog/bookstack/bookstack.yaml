@@ -98,7 +98,7 @@ template:
   chart_version: 0.1.7
   system_values:
     image:
-      tag: 26.9.2@sha256:6fb7869fa642900637429c10057fe89f6c256047aff1010242343686b200d1d5
+      tag: 26.9.3@sha256:630454c4f8951cc9e11af1f08fe2ae74d95cf21504e2bc668b87cc9747b04342
     smtp:
       host: smtp.mailer.svc.cluster.local
       port: 25

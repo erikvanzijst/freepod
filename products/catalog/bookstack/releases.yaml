@@ -1,3 +1,12 @@
+- version: "26.9.3"
+  notes: |-
+    A security release that closes four privacy gaps.
+
+    - Images and drawings on draft or trashed pages can no longer be accessed by others
+    - Your personal page drafts are no longer visible to other users
+    - Converting between books and chapters no longer deletes content in the recycle bin
+    - BookStack no longer reveals whether a page you cannot see exists
+    - Updated PHP packages
 - version: "26.9.2"
   notes: |-
     A security release that closes two privacy gaps.
