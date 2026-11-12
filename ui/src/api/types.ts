@@ -236,7 +236,7 @@ export interface DeploymentPower {
   desired: PowerState
   applied: PowerState
   /** Why the desired power is `stopped`; null while it is `running`. */
-  reason?: 'manual' | 'payment' | null
+  reason?: 'manual' | 'payment' | 'maintenance' | null
 }
 
 export interface DeploymentAuth {

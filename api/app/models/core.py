@@ -865,7 +865,7 @@ class DeploymentPowerRead(SQLModel):
     desired: Literal["running", "stopped"]
     applied: Literal["running", "stopped"]
     # Why the desired power is `stopped`; null while it is `running`.
-    reason: Optional[Literal["manual", "payment"]] = None
+    reason: Optional[Literal["manual", "payment", "maintenance"]] = None
 
 
 class DeploymentRead(DeploymentBase):

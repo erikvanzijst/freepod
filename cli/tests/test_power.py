@@ -146,6 +146,22 @@ def test_a_payment_stop_cannot_be_started_from_the_cli(make_api, tmp_path):
         run(make_api, platform, tmp_path, RUNNING)
 
 
+def test_a_maintenance_stop_cannot_be_started_from_the_cli(make_api, tmp_path):
+    project_at(tmp_path, pointer=POINTER)
+    platform = Platform(
+        [record("stopped", "stopped", reason="maintenance")],
+        answer=(
+            409,
+            {
+                "detail": "Deployment is under maintenance and cannot be started; try again later",
+                "code": "under_maintenance",
+            },
+        ),
+    )
+    with pytest.raises(FreepodError, match="(?s)platform maintenance.*try again later"):
+        run(make_api, platform, tmp_path, RUNNING)
+
+
 def test_a_busy_deployment_is_worth_retrying(make_api, tmp_path):
     project_at(tmp_path, pointer=POINTER)
     platform = Platform([record()], answer=(409, {"detail": "A deployment job is already queued or running"}))

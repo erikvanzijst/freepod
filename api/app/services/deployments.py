@@ -5,7 +5,7 @@ import logging
 from typing import Any, Callable
 from uuid import UUID, uuid4
 
-from sqlalchemy import update as sa_update
+from sqlalchemy import exists, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
@@ -29,10 +29,12 @@ from app.models import (
     UserORM,
     DeploymentUpdate,
 )
+from app.models.core import DeploymentPowerORM
 from app.network_policy import deployment_namespace_labels
 from app.services.jobs import JobService
 from app.services import admin_notices, app_access, object_storage, relational_storage
 from app.services import image_retention
+from app.services import power as power_service
 from app.services import ssh_keys as ssh_keys_service
 from app.services import subscriptions as subscription_service
 from app.services import template_values
@@ -55,6 +57,7 @@ from app.services.reconcile_constants import (
     JOB_REASON_DELETE,
     JOB_REASON_UPDATE,
     DEPLOYMENT_STATUS_DELETED,
+    POWER_REASON_MAINTENANCE,
 )
 from app.services.reconcile_naming import generate_deployment_name, generate_deployment_namespace
 from app.util import amend_url
@@ -774,6 +777,7 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
         user_id=update.user_id,
         deployment_id=update.id,
     )
+    power_service.refuse_under_maintenance(deployment, "updated")
     if update.desired_template_id < deployment.desired_template_id:
         raise IntegrityException("Can only upgrade to newer versions, not downgrade")
 
@@ -826,6 +830,10 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
         .where(
             DeploymentORM.id == update.id,
             DeploymentORM.status.in_([DEPLOYMENT_STATUS_READY, DEPLOYMENT_STATUS_ERROR]),
+            ~exists().where(
+                DeploymentPowerORM.id == DeploymentORM.desired_power_id,
+                DeploymentPowerORM.reason == POWER_REASON_MAINTENANCE,
+            ),
         )
         .values(
             desired_template_id=update.desired_template_id,
@@ -848,6 +856,8 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
         # The guard rejected the write, so no release is created: a rejected
         # update must leave nothing behind. Nothing has been inserted at this
         # point -- only the UPDATE ran, and it matched no rows.
+        session.expire(deployment)
+        power_service.refuse_under_maintenance(deployment, "updated")
         raise IntegrityException("Deployment is not in ready state")
 
     # Only now, and unconditionally distinct from any previous release: two

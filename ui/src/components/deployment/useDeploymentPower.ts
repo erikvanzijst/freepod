@@ -6,6 +6,7 @@ import type { Deployment } from '../../api/types'
 /** A refused stop or start, in the owner's words. */
 export function powerRefusal(error: unknown, action: 'stop' | 'start'): string {
   if (error instanceof ApiError && error.status === 409) {
+    if (error.code === 'under_maintenance') return "This app is under maintenance and can't be started right now."
     if (error.code === 'not_startable') return 'This app was stopped for payment and cannot be started here.'
     if (error.code === 'deployment_not_ready') return `This app can't be ${action === 'stop' ? 'stopped' : 'started'} until its current change finishes.`
     return 'This app is busy with another change. Try again shortly.'

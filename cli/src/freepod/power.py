@@ -25,6 +25,7 @@ STATUS_ERROR = "error"
 
 CODE_NOT_READY = "deployment_not_ready"
 CODE_NOT_STARTABLE = "not_startable"
+CODE_UNDER_MAINTENANCE = "under_maintenance"
 
 _VERB = {STOPPED: "stop", RUNNING: "start"}
 _DOING = {STOPPED: "Stopping", RUNNING: "Starting"}
@@ -57,6 +58,11 @@ def _refusal(response, target: str) -> FreepodError:
         payload = {}
     code = payload.get("code") if isinstance(payload, dict) else None
     detail = _json_detail(response) or response.text.strip()[:300]
+    if code == CODE_UNDER_MAINTENANCE:
+        return FreepodError(
+            "the deployment is stopped for platform maintenance and cannot be started now.\n"
+            "  It returns to how it was once the maintenance ends; try again later."
+        )
     if code == CODE_NOT_STARTABLE:
         return FreepodError(
             "the deployment is stopped for payment and cannot be started from the CLI.\n"

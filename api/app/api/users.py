@@ -658,7 +658,7 @@ def get_deployment_bucket(
         400: {"description": "`user_values_json` fails validation against the target template schema, `build_id` does not belong to the deployment, or (code `image_not_retained`) a referenced image is no longer retained."},
         403: {"description": "Caller may only update their own deployments."},
         404: {"description": "No such deployment exists for this user, or the target template does not exist."},
-        409: {"description": "Downgrade attempt, cross-product template, an operation is already in progress, or the deployment is not in a ready/error state."},
+        409: {"description": "Downgrade attempt, cross-product template, an operation is already in progress, the deployment is not in a ready/error state, or (code `under_maintenance`) the platform holds it for maintenance."},
     },
 )
 def update_deployment(
@@ -709,7 +709,9 @@ def update_deployment(
       resulting vars taken together, fail the target template's schema; the
       target version is older than the current one, the target template belongs
       to a different product, an operation is already in progress, or the
-      deployment is not in a `ready`/`error` state.
+      deployment is not in a `ready`/`error` state. Code `under_maintenance`
+      — the platform holds the deployment stopped for maintenance; retry once
+      it is lifted.
     """
     deployment.user_id = user_id
     deployment.id = deployment_id
@@ -721,8 +723,9 @@ _POWER_RESPONSES = {
     404: {"description": "No such deployment exists for this user."},
     409: {
         "description": "The deployment is not `ready` (code `deployment_not_ready`), was stopped "
-        "for a reason the caller cannot lift (code `not_startable`, start only), or an "
-        "operation is already in progress for it."
+        "for a reason the caller cannot lift (code `not_startable`, start only), is under "
+        "maintenance (code `under_maintenance`, start only), or an operation is already in "
+        "progress for it."
     },
 }
 
@@ -806,8 +809,10 @@ def start_deployment_endpoint(
       administrator privileges.
     - **404 Not Found** — no such deployment exists for this user.
     - **409 Conflict** — code `deployment_not_ready` when the deployment is not
-      `ready`, code `not_startable` when it was stopped for another reason than
-      `manual`, or an operation is already in progress for this deployment.
+      `ready`, code `under_maintenance` while the platform holds it stopped
+      for maintenance, code `not_startable` when it was stopped for another
+      reason than `manual`, or an operation is already in progress for this
+      deployment.
     """
     return power_service.start_deployment(
         session, user_id=user_id, deployment_id=deployment_id, actor_user_id=current_user.id

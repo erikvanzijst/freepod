@@ -127,7 +127,7 @@ describe('deploymentView docs', () => {
 })
 
 describe('deploymentView power', () => {
-  const power = (desired: 'running' | 'stopped', applied: 'running' | 'stopped', reason: 'manual' | 'payment' | null = null) =>
+  const power = (desired: 'running' | 'stopped', applied: 'running' | 'stopped', reason: 'manual' | 'payment' | 'maintenance' | null = null) =>
     ({ power: { desired, applied, reason } }) as Partial<Deployment>
 
   it.each([
@@ -163,6 +163,19 @@ describe('deploymentView power', () => {
     expect(deploymentView(deployment(power('stopped', 'stopped', 'payment')))).toMatchObject({ canStop: false, canStart: false })
   })
 
+  it.each([power('stopped', 'running', 'maintenance'), power('stopped', 'stopped', 'maintenance')])(
+    'shows maintenance and offers no action for %o',
+    (overrides) => {
+      const view = deploymentView(deployment(overrides))
+      expect(view.status).toMatchObject({ label: 'Maintenance', tone: 'waiting', progress: true })
+      expect(view).toMatchObject({ canStop: false, canStart: false, canEdit: false, canRemove: true })
+    },
+  )
+
+  it('offers no edit for a failed app under maintenance', () => {
+    expect(deploymentView(deployment({ status: 'error', ...power('stopped', 'stopped', 'maintenance') })).canEdit).toBe(false)
+  })
+
   it.each(['error', 'provisioning', 'pending', 'deleting'] as const)('offers neither while %s', (status) => {
     expect(deploymentView(deployment({ status, ...power('stopped', 'stopped', 'manual') }))).toMatchObject({
       canStop: false,
@@ -173,7 +186,7 @@ describe('deploymentView power', () => {
 })
 
 describe('powerLabel', () => {
-  const power = (desired: 'running' | 'stopped', applied: 'running' | 'stopped', reason: 'manual' | 'payment' | null = null) =>
+  const power = (desired: 'running' | 'stopped', applied: 'running' | 'stopped', reason: 'manual' | 'payment' | 'maintenance' | null = null) =>
     ({ power: { desired, applied, reason } }) as Partial<Deployment>
 
   it.each([
@@ -183,6 +196,7 @@ describe('powerLabel', () => {
     [power('running', 'stopped'), 'Starting'],
     [power('stopped', 'stopped', 'payment'), 'Stopped (payment)'],
     [power('stopped', 'running', 'payment'), 'Stopping (payment)'],
+    [power('stopped', 'stopped', 'maintenance'), 'Stopped (maintenance)'],
   ] as const)('%o reads as %s', (overrides, label) => {
     expect(powerLabel(deployment(overrides))).toBe(label)
   })
