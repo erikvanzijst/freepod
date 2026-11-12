@@ -107,7 +107,19 @@ export function powerLabel(d: Deployment): string {
   return reason && reason !== 'manual' ? `${label} (${reason})` : label
 }
 
+function underMaintenance(d: Deployment): boolean {
+  return d.power?.desired === 'stopped' && d.power.reason === 'maintenance'
+}
+
 function readyStatus(d: Deployment): DeploymentView['status'] {
+  if (underMaintenance(d)) {
+    return {
+      label: 'Maintenance',
+      tone: 'waiting',
+      hint: 'This app is offline for maintenance. It returns to how it was afterwards, usually within minutes.',
+      progress: true,
+    }
+  }
   switch (powerPhase(d)) {
     case 'stopped':
       return { label: 'Stopped', tone: 'muted', hint: 'This app is stopped. Click start to bring it back online.', progress: false }
@@ -187,7 +199,7 @@ export function deploymentView(d: Deployment): DeploymentView {
     versionLabel: version ? `v${version.replace(/^v/i, '')}` : undefined,
     since: shortDate(d.created_at),
     openable,
-    canEdit: d.status === 'ready' || d.status === 'error',
+    canEdit: (d.status === 'ready' || d.status === 'error') && !underMaintenance(d),
     canRemove: d.status !== 'deleting' && d.status !== 'deleted',
     canStop: d.status === 'ready' && (d.power?.desired ?? 'running') === 'running',
     canStart: d.status === 'ready' && d.power?.desired === 'stopped' && d.power.reason === 'manual',

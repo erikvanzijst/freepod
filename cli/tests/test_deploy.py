@@ -151,6 +151,7 @@ class Platform:
         update=None,
         update_status=200,
         update_detail=None,
+        update_code=None,
         hostname_usable=True,
         hostname_reason=None,
         image=IMAGE,
@@ -173,6 +174,7 @@ class Platform:
         self.update = update
         self.update_status = update_status
         self.update_detail = update_detail
+        self.update_code = update_code
         self.hostname_usable = hostname_usable
         self.hostname_reason = hostname_reason
         self.image = image
@@ -255,7 +257,10 @@ class Platform:
             if method == "PUT":
                 self.bodies["update"] = json.loads(request.content)
                 if self.update_detail is not None:
-                    return json_response(self.update_status, {"detail": self.update_detail})
+                    body = {"detail": self.update_detail}
+                    if self.update_code is not None:
+                        body["code"] = self.update_code
+                    return json_response(self.update_status, body)
                 updated = self.update or deployment(status="provisioning", generation=4)
                 if self.update_status == 200:
                     self.applied_generation = updated.get("generation", 0)
@@ -1165,6 +1170,24 @@ def test_a_release_conflict_surfaces_through_the_update(make_api, tmp_path):
 
     assert "49 → 51" in str(raised.value)
     assert "is a required property" in str(raised.value)
+
+
+def test_a_release_to_a_deployment_under_maintenance_is_worth_retrying(make_api, tmp_path):
+    platform = Platform(
+        catalog=[product(template=template(id=51, chart_version="0.2.0"))],
+        reads=[deployment(status="ready", generation=3, template_id=49)],
+        update_status=409,
+        update_detail="Deployment is under maintenance and cannot be updated; try again later",
+        update_code="under_maintenance",
+    )
+    project_at(tmp_path, pointer={"id": deployment()["id"], "name": "custom-d8dtx4"})
+
+    with pytest.raises(FreepodError) as raised:
+        run(make_api, platform, tmp_path)
+
+    assert "platform maintenance" in str(raised.value)
+    assert "worth retrying later" in str(raised.value)
+    assert "a re-run reuses it" in str(raised.value)
 
 
 def test_a_creation_conflict_is_read_the_same_way(make_api, tmp_path):

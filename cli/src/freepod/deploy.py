@@ -97,6 +97,8 @@ DETAIL_CROSS_PRODUCT = "Upgrade template must belong to the same product"
 DETAIL_NOT_CANONICAL = "Template is not the current canonical for this product"
 DETAIL_DUPLICATE = "Deployment already exists"
 
+CODE_UNDER_MAINTENANCE = "under_maintenance"
+
 
 def _log(message: str) -> None:
     print(message, file=sys.stderr)
@@ -546,7 +548,14 @@ def describe_conflict(
 def _conflict(
     response: httpx.Response, *, move: Optional[str] = None, built: bool = True
 ) -> FreepodError:
-    message, retryable = describe_conflict(_json_detail(response), move=move, built=built)
+    if _json_code(response) == CODE_UNDER_MAINTENANCE:
+        message, retryable = (
+            "the deployment is held for platform maintenance and accepts no release "
+            "until it ends.\n  This is worth retrying later.",
+            True,
+        )
+    else:
+        message, retryable = describe_conflict(_json_detail(response), move=move, built=built)
     if retryable and built:
         message = f"{message}\n  The image is already built; a re-run reuses it."
     return FreepodError(message)

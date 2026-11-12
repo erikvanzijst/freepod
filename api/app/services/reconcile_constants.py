@@ -49,5 +49,11 @@ POWER_STATES: tuple[str, ...] = (POWER_STATE_RUNNING, POWER_STATE_STOPPED)
 POWER_REASON_MANUAL = "manual"
 # Reserved for stopping a deployment in payment arrears; nothing produces it yet.
 POWER_REASON_PAYMENT = "payment"
+# Set and lifted only by an operator, while the platform works on the deployment.
+POWER_REASON_MAINTENANCE = "maintenance"
 
-POWER_REASONS: tuple[str, ...] = (POWER_REASON_MANUAL, POWER_REASON_PAYMENT)
+POWER_REASONS: tuple[str, ...] = (
+    POWER_REASON_MANUAL,
+    POWER_REASON_PAYMENT,
+    POWER_REASON_MAINTENANCE,
+)
