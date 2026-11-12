@@ -225,6 +225,47 @@ def test_quiet_waits_for_a_live_pod(ms, monkeypatch, snap):
         ms.quiet(snap, [ms.Claim("data", "1Gi", None, None)], 0)
 
 
+def _pv(name, deployment, phase, released=None):
+    annotations = {"caelus.dev/migration-claim": "data"}
+    if released:
+        annotations["caelus.dev/migration-released-at"] = released
+    return {
+        "metadata": {"name": name, "labels": {"caelus.dev/migration": deployment}, "annotations": annotations},
+        "spec": {"storageClassName": "local-path"},
+        "status": {"phase": phase},
+    }
+
+
+def test_kept_volumes_are_this_environments_and_unclaimed(ms, monkeypatch):
+    mine, theirs = str(uuid4()), str(uuid4())
+    volumes = [
+        _pv("old", mine, "Released", "2026-11-01T00:00:00+00:00"),
+        _pv("live-copy", mine, "Bound"),
+        _pv("reserved-copy", mine, "Available"),
+        _pv("other-env", theirs, "Released", "2026-11-01T00:00:00+00:00"),
+    ]
+    monkeypatch.setattr(ms, "items", lambda kind, **_: list(volumes))
+    monkeypatch.setattr(ms, "known_ids", lambda: {mine})
+
+    assert [v["metadata"]["name"] for v in ms.kept()] == ["old", "reserved-copy"]
+    assert [v["metadata"]["name"] for v in ms.kept(ms.UUID(mine))] == ["old", "reserved-copy"]
+    with pytest.raises(ms.Fail, match="in this environment"):
+        ms.kept(ms.UUID(theirs))
+
+
+def test_only_released_volumes_past_the_cutoff_expire(ms):
+    from datetime import datetime, UTC
+
+    volumes = [
+        _pv("old", "d", "Released", "2026-11-01T00:00:00+00:00"),
+        _pv("recent", "d", "Released", "2026-11-12T00:00:00+00:00"),
+        _pv("reserved", "d", "Available"),
+        _pv("unstamped", "d", "Released"),
+    ]
+    expired = ms.expired(volumes, datetime(2026, 11, 5, tzinfo=UTC))
+    assert [v["metadata"]["name"] for v in expired] == ["old"]
+
+
 def test_the_target_defaults_to_the_only_allowed_class(ms, monkeypatch):
     monkeypatch.setattr(ms, "get_settings", lambda: SimpleNamespace(storage_classes=["ceph-freepod-dev"]))
     assert ms.check_target(None) == "ceph-freepod-dev"

@@ -229,6 +229,14 @@ def deployments() -> Iterator[Snapshot]:
             yield _snapshot(session, row)
 
 
+def known_ids() -> set[str]:
+    """Every deployment id this environment's database holds, deleted ones too.
+    Volumes are cluster-wide, and another environment's runs label theirs the
+    same way."""
+    with session_scope() as session:
+        return {str(i) for i in session.exec(select(DeploymentORM.id)).all()}
+
+
 def set_storage_class(deployment_id: UUID, storage_class: str | None) -> None:
     with session_scope() as session:
         row = session.get(DeploymentORM, deployment_id)
@@ -682,6 +690,29 @@ def confirm(question: str, yes: bool) -> None:
 # ── Commands ─────────────────────────────────────────────────────────────
 
 
+def kept(deployment: UUID | None = None) -> list[dict[str, Any]]:
+    """This environment's volumes that runs labeled and no claim holds:
+    released old volumes and copies, and copies reserved but not yet switched to."""
+    ids = known_ids()
+    if deployment is not None:
+        if str(deployment) not in ids:
+            raise Fail(f"no deployment {deployment} in this environment")
+        ids = {str(deployment)}
+    return [
+        pv for pv in items("pv", selector=LABEL)
+        if meta(pv)["labels"][LABEL] in ids and pv["status"]["phase"] != "Bound"
+    ]
+
+
+def expired(volumes: list[dict[str, Any]], cutoff: datetime) -> list[dict[str, Any]]:
+    out = []
+    for pv in volumes:
+        released = meta(pv).get("annotations", {}).get(RELEASED_AT)
+        if pv["status"]["phase"] == "Released" and released and datetime.fromisoformat(released) <= cutoff:
+            out.append(pv)
+    return out
+
+
 def cmd_plan(args: argparse.Namespace) -> None:
     claims: dict[str, list[dict[str, Any]]] = {}
     for pvc in items("pvc"):
@@ -706,7 +737,7 @@ def cmd_plan(args: argparse.Namespace) -> None:
     print("\n".join(rows) if rows else "  none")
     if claimless:
         print(f"\n{claimless} deployment(s) without volumes record no class; migrate only records it for them.")
-    left = items("pv", selector=LABEL)
+    left = kept()
     if left:
         print("\nVolumes kept by earlier runs:")
         for pv in left:
@@ -831,15 +862,10 @@ def cmd_rollback(args: argparse.Namespace) -> None:
 
 
 def cmd_cleanup(args: argparse.Namespace) -> None:
-    cutoff = datetime.now(UTC) - timedelta(days=args.older_than)
-    doomed = []
-    for pv in items("pv", selector=LABEL):
-        released = meta(pv).get("annotations", {}).get(RELEASED_AT)
-        if pv["status"]["phase"] != "Released" or not released or datetime.fromisoformat(released) > cutoff:
-            continue
-        doomed.append(pv)
-        print(f"  {meta(pv)['name']:<42} {spec(pv).get('storageClassName'):<18} "
-              f"{meta(pv)['annotations'].get(CLAIM)} released {released}")
+    doomed = expired(kept(args.deployment), datetime.now(UTC) - timedelta(days=args.older_than))
+    for pv in doomed:
+        print(f"  {meta(pv)['name']:<42} {spec(pv).get('storageClassName'):<18} {meta(pv)['labels'][LABEL]} "
+              f"{meta(pv)['annotations'].get(CLAIM)} released {meta(pv)['annotations'][RELEASED_AT]}")
     if not doomed:
         print(f"no released volume older than {args.older_than} days")
         return
@@ -872,6 +898,7 @@ def main(argv: list[str] | None = None) -> int:
 
     cleanup = sub.add_parser("cleanup", help="delete volumes runs released longer ago than --older-than")
     cleanup.add_argument("--older-than", type=float, default=14, help="days (default 14)")
+    cleanup.add_argument("--deployment", type=UUID, help="only this deployment's volumes")
     cleanup.add_argument("-y", "--yes", action="store_true")
 
     args = parser.parse_args(argv)

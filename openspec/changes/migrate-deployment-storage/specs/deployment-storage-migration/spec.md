@@ -103,7 +103,7 @@ A run SHALL work out its progress from the cluster and the database alone. It SH
 
 ### Requirement: Old volumes are kept until cleanup
 
-Every volume a run releases SHALL be kept, labeled with its deployment, its role and the claim it belonged to, and stamped with when it was released. `rollback` SHALL put a migrated deployment back on its kept `local-path` volumes in the same way, losing what was written since. `cleanup` SHALL delete released volumes older than a cutoff, 14 days by default, after confirmation.
+Every volume a run releases SHALL be kept, labeled with its deployment, its role and the claim it belonged to, and stamped with when it was released. `rollback` SHALL put a migrated deployment back on its kept `local-path` volumes in the same way, losing what was written since. `cleanup` SHALL delete released volumes older than a cutoff, 14 days by default, after confirmation, optionally for one deployment only.
 
 #### Scenario: Rolling back
 
@@ -119,3 +119,17 @@ Every volume a run releases SHALL be kept, labeled with its deployment, its role
 
 - **WHEN** the operator runs `cleanup` 14 days after a migration
 - **THEN** the old `local-path` volumes are deleted along with their data
+
+### Requirement: Kept volumes are scoped to the environment
+
+`plan` and `cleanup` SHALL consider only volumes labeled with a deployment in their own environment's database, because environments may share a cluster. `plan` SHALL list only the kept volumes that no claim holds.
+
+#### Scenario: Another environment's volumes
+
+- **WHEN** dev and prod share a cluster and the operator runs `cleanup` in dev
+- **THEN** no volume kept by a prod migration is listed or deleted
+
+#### Scenario: A migrated deployment's live volumes
+
+- **WHEN** the operator runs `plan` after a migration
+- **THEN** the copies the deployment runs on are not listed
