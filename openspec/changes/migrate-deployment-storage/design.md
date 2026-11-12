@@ -94,6 +94,12 @@ its `claimRef` names the claim, with no `uid`. The switch then:
 6. checks that every claim is bound to the volume reserved for it;
 7. ends maintenance.
 
+Before step 3 the run deletes every finished pod that names one of the claims.
+Claim protection counts any scheduled pod that names a claim, including one
+that has terminated, so such a pod would hold the delete forever. Pods left
+`Completed` by an earlier node shutdown are the usual case. The delete itself
+times out after two minutes and names the pods still holding the claim.
+
 A reserved volume stays `Available` while a claim of that name exists and is
 bound elsewhere, and only a claim of that name binds it. So at any crash point
 a reconcile either renders the old claims against the old volumes, or renders

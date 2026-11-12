@@ -43,12 +43,17 @@ A dry run SHALL perform these checks and report, changing nothing.
 
 ### Requirement: The deployment is held for maintenance while its data moves
 
-A run SHALL hold the deployment for maintenance and wait until no pod uses its claims before copying. It SHALL release the hold only once every claim is bound to its new volume, and the deployment SHALL then return to the power it had before. If a copy fails, the run SHALL release the hold, and the deployment SHALL run on its old volumes as before.
+A run SHALL hold the deployment for maintenance and wait until no running pod uses its claims before copying. It SHALL delete finished pods that name one of the claims, because claim protection keeps a claim they name from being deleted. It SHALL release the hold only once every claim is bound to its new volume, and the deployment SHALL then return to the power it had before. If a copy fails, the run SHALL release the hold, and the deployment SHALL run on its old volumes as before.
 
 #### Scenario: A deployment its owner had stopped
 
 - **WHEN** a stopped deployment is migrated
 - **THEN** it is stopped afterwards, with reason `manual`
+
+#### Scenario: A finished pod names a claim
+
+- **WHEN** a pod that ran before the hold has finished but still names one of the claims
+- **THEN** the run deletes it before switching, and the old claim's deletion completes
 
 #### Scenario: A copy that fails
 

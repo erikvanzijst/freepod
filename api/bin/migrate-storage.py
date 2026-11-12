@@ -442,15 +442,17 @@ echo "copied ${need}K"
 """
 
 
-def pods_using(ns: str, claims: set[str]) -> list[str]:
-    using = []
+def pods_using(ns: str, claims: set[str]) -> tuple[list[str], list[str]]:
+    """The pods naming any of `claims`, as (live, finished). A finished pod
+    mounts nothing, but claim protection still counts it, so a claim it
+    names can't be deleted while it exists."""
+    live, finished = [], []
     for pod in items("pod", ns=ns):
-        if (pod.get("status") or {}).get("phase") in ("Succeeded", "Failed"):
-            continue
         names = {(v.get("persistentVolumeClaim") or {}).get("claimName") for v in spec(pod).get("volumes") or []}
         if names & claims:
-            using.append(meta(pod)["name"])
-    return using
+            done = (pod.get("status") or {}).get("phase") in ("Succeeded", "Failed")
+            (finished if done else live).append(meta(pod)["name"])
+    return live, finished
 
 
 # ── Volumes ──────────────────────────────────────────────────────────────
@@ -570,7 +572,14 @@ def switch(snap: Snapshot, claims: list[Claim], volumes: dict[str, str], storage
         if live is not None and spec(live).get("volumeName") != volumes[claim.name]:
             release_volume(spec(live)["volumeName"])
             log(f"{claim.name}: releasing {spec(live)['volumeName']}")
-            delete("pvc", claim.name, snap.namespace)
+            try:
+                delete("pvc", claim.name, snap.namespace, "--timeout=120s")
+            except Fail:
+                live_pods, finished = pods_using(snap.namespace, {claim.name})
+                raise Fail(
+                    f"claim {claim.name} is still not deleted; pods naming it: "
+                    f"{', '.join(live_pods + finished) or 'none'}. Run the same command again once they're gone."
+                ) from None
     enqueue_reconcile(snap.id)
     settle(snap.id, "re-rendering the release", timeout)
     for claim in claims:
@@ -641,7 +650,10 @@ def lift(snap: Snapshot, timeout: float) -> Snapshot:
 
 def quiet(snap: Snapshot, claims: list[Claim], timeout: float) -> None:
     names = {c.name for c in claims}
-    wait_for(f"no pod to use {', '.join(sorted(names))}", lambda: not pods_using(snap.namespace, names), timeout)
+    wait_for(f"no pod to use {', '.join(sorted(names))}", lambda: not pods_using(snap.namespace, names)[0], timeout)
+    for pod in pods_using(snap.namespace, names)[1]:
+        log(f"deleting finished pod {pod}, which would hold up deleting its claims")
+        delete("pod", pod, snap.namespace)
 
 
 def check_target(target: str | None) -> str:

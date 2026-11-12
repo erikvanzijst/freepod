@@ -168,9 +168,9 @@ def test_switch_records_the_class_before_releasing_anything(ms, monkeypatch, sna
         ("class", "ceph"),
         ("delete", "statefulset", "db", "--cascade=orphan"),
         ("patch", "pv", "old-data"),
-        ("delete", "pvc", "data"),
+        ("delete", "pvc", "data", "--timeout=120s"),
         ("patch", "pv", "old-pg"),
-        ("delete", "pvc", "pg-db-0"),
+        ("delete", "pvc", "pg-db-0", "--timeout=120s"),
         ("reconcile",),
         ("settled",),
         ("create", "PersistentVolumeClaim", "pg-db-0", "new-pg"),
@@ -192,6 +192,37 @@ def test_switch_keeps_a_claim_already_on_its_volume(ms, monkeypatch, snap):
     ms.switch(snap, [ms.Claim("data", "1Gi", None, live["data"])], {"data": "new-data"}, "ceph", 5)
 
     assert calls == [("reconcile",)]
+
+
+def _pod(name, phase, claim):
+    return {
+        "metadata": {"name": name},
+        "spec": {"volumes": [{"name": "v", "persistentVolumeClaim": {"claimName": claim}}]},
+        "status": {"phase": phase},
+    }
+
+
+def test_quiet_deletes_finished_pods_that_name_a_claim(ms, monkeypatch, snap):
+    pods = [
+        _pod("done", "Succeeded", "data"),
+        _pod("crashed", "Failed", "data"),
+        _pod("other", "Succeeded", "unrelated"),
+    ]
+    deleted = []
+    monkeypatch.setattr(ms, "items", lambda kind, **_: list(pods) if kind == "pod" else [])
+    monkeypatch.setattr(ms, "delete", lambda kind, name, ns, *extra: deleted.append((kind, name)))
+
+    ms.quiet(snap, [ms.Claim("data", "1Gi", None, None)], 5)
+
+    assert deleted == [("pod", "done"), ("pod", "crashed")]
+
+
+def test_quiet_waits_for_a_live_pod(ms, monkeypatch, snap):
+    pods = [_pod("app", "Running", "data")]
+    monkeypatch.setattr(ms, "items", lambda kind, **_: list(pods))
+    monkeypatch.setattr(ms, "POLL", 0)
+    with pytest.raises(ms.Fail, match="no pod to use data"):
+        ms.quiet(snap, [ms.Claim("data", "1Gi", None, None)], 0)
 
 
 def test_the_target_defaults_to_the_only_allowed_class(ms, monkeypatch):
