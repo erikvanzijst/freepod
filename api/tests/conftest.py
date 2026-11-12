@@ -283,6 +283,7 @@ _XDIST_GROUPS = {
         "test_chart_release_label_contract",
         "test_chart_stopped_render",
         "test_chart_rollout_strategy",
+        "test_chart_storage_contract",
         "test_custom_chart",
         "test_custom_ssh_sidecar",
         "test_discourse_chart",
