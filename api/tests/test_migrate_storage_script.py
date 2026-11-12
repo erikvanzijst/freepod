@@ -66,7 +66,7 @@ def snap(ms):
 @pytest.fixture
 def cluster(ms, monkeypatch):
     state = SimpleNamespace(docs=[], pvcs=[], statefulsets={})
-    monkeypatch.setattr(ms, "render", lambda snap: state.docs)
+    monkeypatch.setattr(ms, "render", lambda snap, plan=None: state.docs)
     monkeypatch.setattr(ms, "items", lambda kind, **_: list(state.pvcs) if kind == "pvc" else [])
     monkeypatch.setattr(ms, "get", lambda kind, name, ns=None: state.statefulsets.get(name) if kind == "statefulset" else None)
     return state
@@ -178,6 +178,23 @@ def test_switch_records_the_class_before_releasing_anything(ms, monkeypatch, sna
     assert created["pg-db-0"]["metadata"]["labels"] == {"app": "db"}
 
 
+def test_switch_moves_the_plan_once_the_old_claims_are_gone(ms, monkeypatch, snap):
+    calls = []
+    live = {"data": _pvc("data", volume="old-data")}
+    monkeypatch.setattr(ms, "get", lambda kind, name, ns=None: live.get(name) if kind == "pvc" else None)
+    monkeypatch.setattr(ms, "delete", lambda kind, name, ns, *extra: (calls.append(("delete", kind, name)), live.pop(name, None)))
+    monkeypatch.setattr(ms, "items", lambda kind, **_: [])
+    monkeypatch.setattr(ms, "patch", lambda *a, **k: None)
+    monkeypatch.setattr(ms, "set_storage_class", lambda *a: None)
+    monkeypatch.setattr(ms, "set_plan_template", lambda _id, tv: calls.append(("plan", tv)))
+    monkeypatch.setattr(ms, "enqueue_reconcile", lambda _id: calls.append(("reconcile",)))
+    monkeypatch.setattr(ms, "settle", lambda *a: live.update(data=_pvc("data", volume="new-data")))
+
+    ms.switch(snap, [ms.Claim("data", "10Gi", None, live["data"])], {"data": "new-data"}, "ceph", 5, 44)
+
+    assert calls == [("delete", "pvc", "data"), ("plan", 44), ("reconcile",)]
+
+
 def test_switch_keeps_a_claim_already_on_its_volume(ms, monkeypatch, snap):
     calls = []
     live = {"data": _pvc("data", volume="new-data")}
@@ -274,3 +291,72 @@ def test_the_target_defaults_to_the_only_allowed_class(ms, monkeypatch):
     monkeypatch.setattr(ms, "get_settings", lambda: SimpleNamespace(storage_classes=[]))
     with pytest.raises(ms.Fail, match="--to"):
         ms.check_target(None)
+
+
+def test_render_uses_the_plan_the_next_reconcile_applies(ms, monkeypatch):
+    import json
+
+    rendered = []
+
+    def run(cmd, **_):
+        if cmd[:3] == ["helm", "get", "values"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"caelus": {"plan": {"storageSize": "1Gi"}, "releaseId": "r"}}))
+        rendered.append(json.loads(Path(cmd[cmd.index("-f") + 1]).read_text()))
+        return SimpleNamespace(returncode=0, stdout="")
+
+    monkeypatch.setattr(ms, "run", run)
+    snap = SimpleNamespace(release="app", namespace="ns", chart_ref="oci://c", chart_digest="sha256:x", chart_version="1", plan=None)
+    ms.render(snap)
+    snap.plan = {"storageSize": "5Gi"}
+    ms.render(snap)
+    ms.render(snap, {"storageSize": "10Gi"})
+
+    assert [v["caelus"]["plan"] for v in rendered] == [{"storageSize": "1Gi"}, {"storageSize": "5Gi"}, {"storageSize": "10Gi"}]
+    assert all(v["caelus"]["releaseId"] == "r" for v in rendered)
+
+
+@pytest.fixture
+def plans(ms, monkeypatch):
+    templates = {
+        27: SimpleNamespace(id=27, plan_id=2, price_cents=0, billing_interval="monthly", storage_bytes=2**30, deleted_at=None),
+        44: SimpleNamespace(id=44, plan_id=2, price_cents=0, billing_interval="monthly", storage_bytes=10 * 2**30, deleted_at=None),
+        45: SimpleNamespace(id=45, plan_id=14, price_cents=0, billing_interval="monthly", storage_bytes=10 * 2**30, deleted_at=None),
+        46: SimpleNamespace(id=46, plan_id=2, price_cents=500, billing_interval="monthly", storage_bytes=10 * 2**30, deleted_at=None),
+    }
+
+    class Session:
+        def get(self, _model, key):
+            return templates.get(key)
+
+    class Scope:
+        def __enter__(self):
+            return Session()
+
+        def __exit__(self, *_):
+            return False
+
+    monkeypatch.setattr(ms, "session_scope", Scope)
+    return SimpleNamespace(plan_template_id=27)
+
+
+def test_a_plan_change_stays_within_the_plan_and_its_price(ms, plans):
+    assert ms.plan_change(plans, None) is None
+    assert ms.plan_change(plans, 27) is None
+    assert ms.plan_change(plans, 44) == {"storageBytes": 10 * 2**30, "storageSize": "10Gi"}
+    with pytest.raises(ms.Fail, match="belongs to plan 14"):
+        ms.plan_change(plans, 45)
+    with pytest.raises(ms.Fail, match="another price"):
+        ms.plan_change(plans, 46)
+    with pytest.raises(ms.Fail, match="no plan template 99"):
+        ms.plan_change(plans, 99)
+
+
+def test_rollback_records_a_local_volume_as_big_as_its_grown_claim(ms, monkeypatch):
+    patched = []
+    monkeypatch.setattr(ms, "patch", lambda kind, name, body, ns=None: patched.append((name, body)))
+    pv = {"metadata": {"name": "old"}, "spec": {"capacity": {"storage": "1Gi"}}}
+
+    ms.fit(pv, ms.Claim("data", "10Gi", None, None))
+    ms.fit(pv, ms.Claim("data", "512Mi", None, None))
+
+    assert patched == [("old", {"spec": {"capacity": {"storage": "10Gi"}}})]

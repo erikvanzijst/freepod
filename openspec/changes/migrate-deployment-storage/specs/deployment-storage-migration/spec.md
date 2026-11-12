@@ -41,6 +41,25 @@ A dry run SHALL perform these checks and report, changing nothing.
 - **WHEN** the deployment's release renders no claims and no claim templates
 - **THEN** the run records the class without stopping it
 
+### Requirement: A migration can grow the deployment's plan
+
+`migrate` SHALL accept another version of the deployment's plan, at the same price and billing interval, and refuse any other. It SHALL size the new claims by that version, measure the 80% limit against those sizes, and move the subscription to it only after the old claims are deleted, because a class that cannot grow a claim fails any release that tries. Without one, it SHALL size the claims by the subscription's current plan version, as the next reconcile renders them.
+
+#### Scenario: A volume that outgrew its plan
+
+- **WHEN** the operator migrates a deployment whose data exceeds its plan's size, naming a bigger version of the same plan
+- **THEN** the new claims have the bigger size, and the subscription is on that version once the deployment runs again
+
+#### Scenario: A version of another plan or price
+
+- **WHEN** the operator names a plan version of another plan, or at another price
+- **THEN** the run refuses before changing anything
+
+#### Scenario: Rolling back a grown deployment
+
+- **WHEN** the operator rolls back a deployment whose plan grew in its migration
+- **THEN** it keeps the bigger plan, and its kept `local-path` volumes are recorded as big as the claims ask
+
 ### Requirement: The deployment is held for maintenance while its data moves
 
 A run SHALL hold the deployment for maintenance and wait until no running pod uses its claims before copying. It SHALL delete finished pods that name one of the claims, because claim protection keeps a claim they name from being deleted. It SHALL release the hold only once every claim is bound to its new volume, and the deployment SHALL then return to the power it had before. If a copy fails, the run SHALL release the hold, and the deployment SHALL run on its old volumes as before.

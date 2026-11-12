@@ -31,11 +31,12 @@ from sqlmodel import select
 from app import post_render
 from app.config import get_settings
 from app.db import get_engine, session_scope
-from app.models import DeploymentORM
+from app.models import DeploymentORM, PlanTemplateVersionORM, SubscriptionORM
 from app.provisioner import _with_optional_digest
 from app.services import power
 from app.services.errors import CaelusException
 from app.services.jobs import JobService
+from app.services.reconcile import plan_values
 from app.services.reconcile_constants import (
     DEPLOYMENT_STATUS_DELETED,
     DEPLOYMENT_STATUS_ERROR,
@@ -173,6 +174,8 @@ class Snapshot:
     chart_ref: str
     chart_version: str
     chart_digest: str | None
+    plan_template_id: int | None
+    plan: dict[str, Any] | None
 
     @property
     def under_maintenance(self) -> bool:
@@ -187,6 +190,7 @@ def _snapshot(session, deployment: DeploymentORM) -> Snapshot:
     template = deployment.desired_template
     product = template.product
     desired, applied = deployment.desired_power, deployment.applied_power
+    subscription = deployment.subscription
     open_jobs = JobService(session).list_jobs(
         statuses=[JOB_STATUS_QUEUED, JOB_STATUS_RUNNING], deployment_id=deployment.id
     )
@@ -207,6 +211,8 @@ def _snapshot(session, deployment: DeploymentORM) -> Snapshot:
         chart_ref=template.chart_ref,
         chart_version=template.chart_version,
         chart_digest=template.chart_digest,
+        plan_template_id=subscription.plan_template_id if subscription else None,
+        plan=plan_values(subscription.plan_template) if subscription and subscription.plan_template else None,
     )
 
 
@@ -244,6 +250,34 @@ def set_storage_class(deployment_id: UUID, storage_class: str | None) -> None:
         session.add(row)
         session.commit()
     log(f"recorded storage class {storage_class or 'none'}")
+
+
+def plan_change(snap: Snapshot, template_id: int | None) -> dict[str, Any] | None:
+    """The `caelus.plan` values of `template_id`, which the subscription moves
+    to once the old claims are gone. None when it is there already. Only
+    another version of the same plan at the same price: billing never notices."""
+    if template_id is None or template_id == snap.plan_template_id:
+        return None
+    with session_scope() as session:
+        new = session.get(PlanTemplateVersionORM, template_id)
+        old = session.get(PlanTemplateVersionORM, snap.plan_template_id) if snap.plan_template_id else None
+        if new is None or new.deleted_at is not None:
+            raise Fail(f"no plan template {template_id}")
+        if old is None:
+            raise Fail("the deployment has no plan to change")
+        if new.plan_id != old.plan_id:
+            raise Fail(f"plan template {template_id} belongs to plan {new.plan_id}, not the deployment's plan {old.plan_id}")
+        if (new.price_cents, new.billing_interval) != (old.price_cents, old.billing_interval):
+            raise Fail(f"plan template {template_id} has another price than {old.id}")
+        return plan_values(new)
+
+
+def set_plan_template(deployment_id: UUID, template_id: int) -> None:
+    with session_scope() as session:
+        sub = session.get(DeploymentORM, deployment_id).subscription
+        session.get(SubscriptionORM, sub.id).plan_template_id = template_id
+        session.commit()
+    log(f"moved the subscription to plan template {template_id}")
 
 
 def enqueue_reconcile(deployment_id: UUID) -> None:
@@ -315,13 +349,18 @@ class Inspection:
         return [c for c in self.claims if c.live is not None]
 
 
-def render(snap: Snapshot) -> list[dict[str, Any]]:
+def render(snap: Snapshot, plan: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """The release as the next reconcile renders it: its applied values, with
+    `plan`, or else the subscription's, as `caelus.plan`."""
     got = run(["helm", "get", "values", snap.release, "-n", snap.namespace, "-o", "json"])
     if got.returncode:
         raise Fail(f"helm get values: {got.stderr.strip()}")
-    values = json.loads(got.stdout or "null")
+    values = json.loads(got.stdout or "null") or {}
+    plan = plan if plan is not None else snap.plan
+    if plan is not None:
+        values.setdefault("caelus", {})["plan"] = plan
     with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
-        json.dump(values or {}, f)
+        json.dump(values, f)
         f.flush()
         cmd = [
             "helm", "template", snap.release,
@@ -336,12 +375,14 @@ def render(snap: Snapshot) -> list[dict[str, Any]]:
     return [doc for doc in yaml.safe_load_all(proc.stdout) if isinstance(doc, dict)]
 
 
-def inspect(snap: Snapshot, allowed: set[str], known: set[str] = frozenset()) -> Inspection:
+def inspect(
+    snap: Snapshot, allowed: set[str], known: set[str] = frozenset(), plan: dict[str, Any] | None = None
+) -> Inspection:
     """The release's claims, with what the namespace holds for each. A live
     claim must be on one of `allowed`; `known` names claims an earlier run
     removed, which count although nothing holds them now."""
     out = Inspection()
-    docs = render(snap)
+    docs = render(snap, plan)
     try:
         post_render.refuse_shared_claims(docs)
     except post_render.SharedClaim as exc:
@@ -566,10 +607,19 @@ def keep_volume(pv: str) -> None:
 # ── Switching a deployment onto a set of volumes ─────────────────────────
 
 
-def switch(snap: Snapshot, claims: list[Claim], volumes: dict[str, str], storage_class: str | None, timeout: float) -> None:
+def switch(
+    snap: Snapshot,
+    claims: list[Claim],
+    volumes: dict[str, str],
+    storage_class: str | None,
+    timeout: float,
+    plan_template: int | None = None,
+) -> None:
     """With the deployment stopped and every volume reserved for its claim:
     record the class, remove what pins the old volumes, and have the release
-    claim the reserved ones."""
+    claim the reserved ones, on `plan_template` if given. The plan moves only
+    once the old claims are gone, because a class that cannot grow a claim
+    fails the release that tries."""
     if snap.storage_class != storage_class:
         set_storage_class(snap.id, storage_class)
     for sts in inspect_statefulsets(snap):
@@ -588,6 +638,8 @@ def switch(snap: Snapshot, claims: list[Claim], volumes: dict[str, str], storage
                     f"claim {claim.name} is still not deleted; pods naming it: "
                     f"{', '.join(live_pods + finished) or 'none'}. Run the same command again once they're gone."
                 ) from None
+    if plan_template is not None:
+        set_plan_template(snap.id, plan_template)
     enqueue_reconcile(snap.id)
     settle(snap.id, "re-rendering the release", timeout)
     for claim in claims:
@@ -760,13 +812,23 @@ def cmd_migrate(args: argparse.Namespace) -> None:
         if snap.storage_class == target and not snap.under_maintenance:
             finish(snap, target)
             return
+        plan = plan_change(snap, args.plan_template)
+        regrade = args.plan_template if plan is not None else None
+        if regrade is not None:
+            log(f"the subscription moves from plan template {snap.plan_template_id} to {regrade} at the switch")
         copies = tagged(snap.id, COPY)
         resuming = snap.under_maintenance
-        found = inspect(snap, {LOCAL_PATH} if snap.storage_class is None else {LOCAL_PATH, target}, set(copies))
+        found = inspect(snap, {LOCAL_PATH} if snap.storage_class is None else {LOCAL_PATH, target}, set(copies), plan)
         for claim in found.claims:
             where = f"{claim.live_class} {claim.volume}" if claim.live else "not created yet"
             log(f"  {claim.name}: {claim.size}, {where}"
                 f"{f', StatefulSet {claim.statefulset}' if claim.statefulset else ''}")
+            copy = copies.get(claim.name)
+            if copy is not None and quantity(spec(copy)["capacity"]["storage"]) < quantity(claim.size):
+                found.problems.append(
+                    f"the copy of {claim.name}, {meta(copy)['name']}, holds {spec(copy)['capacity']['storage']}, "
+                    f"less than {claim.size}; finish without --plan-template, or rollback and migrate again"
+                )
         if found.problems:
             raise Fail("refusing:\n  " + "\n  ".join(found.problems))
         if snap.storage_class is None:
@@ -779,6 +841,8 @@ def cmd_migrate(args: argparse.Namespace) -> None:
                 log(f"would record {target}: nothing to copy")
                 return
             set_storage_class(snap.id, target)
+            if regrade is not None:
+                set_plan_template(snap.id, regrade)
             log("no volumes to move; new ones will be created on the new class")
             return
 
@@ -815,7 +879,7 @@ def cmd_migrate(args: argparse.Namespace) -> None:
                 if claim.name not in copies:
                     raise Fail(f"class already recorded, but no copy of {claim.name}; run rollback")
                 volumes[claim.name] = meta(copies[claim.name])["name"]
-        switch(snap, moving, volumes, target, args.timeout)
+        switch(snap, moving, volumes, target, args.timeout, regrade)
         lift(snap, args.timeout)
         finish(load(snap.id), target)
 
@@ -827,6 +891,15 @@ def finish(snap: Snapshot, target: str) -> None:
             keep_volume(meta(pv)["name"])
     log(f"done: {snap.label} is on {target}. The local-path volumes are kept; "
         "rollback restores them, cleanup deletes them")
+
+
+def fit(pv: dict[str, Any], claim: Claim) -> None:
+    """Record a local-path volume as big as `claim` asks, so the claim binds
+    it after its plan grew. local-path enforces no size."""
+    capacity = spec(pv)["capacity"]["storage"]
+    if quantity(capacity) < quantity(claim.size):
+        patch("pv", meta(pv)["name"], {"spec": {"capacity": {"storage": claim.size}}})
+        log(f"{claim.name}: recorded {meta(pv)['name']} as {claim.size}, was {capacity}")
 
 
 def cmd_rollback(args: argparse.Namespace) -> None:
@@ -852,6 +925,7 @@ def cmd_rollback(args: argparse.Namespace) -> None:
             if claim.volume != pv:
                 if claim.volume:
                     tag(claim.volume, snap.id, COPY, claim.name)
+                fit(sources[claim.name], claim)
                 reserve(pv, snap.namespace, claim.name)
             volumes[claim.name] = pv
         switch(snap, claims, volumes, None, args.timeout)
@@ -895,6 +969,8 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--to", help="target class; defaults to the only one the environment allows")
             p.add_argument("--dry-run", action="store_true", help="check and measure, change nothing")
             p.add_argument("--copy-timeout", type=float, default=7200, help="seconds to allow each copy")
+            p.add_argument("--plan-template", type=int,
+                           help="move the subscription to this version of its plan, sizing the new volumes by it")
 
     cleanup = sub.add_parser("cleanup", help="delete volumes runs released longer ago than --older-than")
     cleanup.add_argument("--older-than", type=float, default=14, help="days (default 14)")

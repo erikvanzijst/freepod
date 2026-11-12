@@ -140,8 +140,18 @@ and Kubernetes refuses to shrink a claim. Before stopping anything, the script
 measures each volume and refuses one using more than 80% of its rendered size.
 That leaves room for the filesystem and the 5% ext4 keeps for root, which an
 app running as another user can't use. The copy pod then checks the new
-volume's real free space. A claim that is too small has to be grown in the
-chart or plan first.
+volume's real free space.
+
+The render is the release's applied values with the subscription's plan, as
+the next reconcile applies it. A claim that is too small for its plan grows
+with the migration: `--plan-template` names a bigger version of the same plan
+at the same price, the copy is made at its size, and the subscription moves to
+it between deleting the old claims and the reconcile that recreates them. Not
+earlier: `local-path` can't grow a claim, so any release that tries fails,
+including the one that stops the deployment for maintenance. A rollback
+afterwards keeps the bigger plan and records the kept `local-path` volume as
+big as the claim asks, since that class enforces no size and the claim would
+not bind a smaller volume.
 
 ### D6. Nothing is deleted until cleanup
 

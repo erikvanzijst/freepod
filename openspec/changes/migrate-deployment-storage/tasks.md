@@ -20,16 +20,18 @@
 
 ## 4. Dev proof
 
-- [ ] 4.1 Release the API and worker to dev
-- [ ] 4.2 Migrate one deployment of each shape: Helm claims only; a StatefulSet database; several claims; one on each node; one already stopped
-- [ ] 4.3 Kill a run mid-copy and mid-switch; rerun finishes it
-- [ ] 4.4 Roll one back, then migrate it again
-- [ ] 4.5 `cleanup` deletes the released volumes on both classes
+- [x] 4.1 Release the API and worker to dev
+- [x] 4.2 Migrate one deployment of each shape: Helm claims only; a StatefulSet database; several claims; one on each node; one already stopped
+- [x] 4.3 Kill a run mid-copy and mid-switch; rerun finishes it
+- [x] 4.4 Roll one back, then migrate it again
+- [x] 4.5 `cleanup` deletes the released volumes on both classes
 
 ## 5. Production
 
-- [ ] 5.1 A backup of the new class exists and has been restore-tested
+- [x] 5.1 A backup of the new class exists and has been restore-tested
 - [ ] 5.2 Grow any claim whose data is over 80% of its size
+  - [x] 5.2.1 `migrate --plan-template` sizes the copies by another version of the plan and moves the subscription at the switch; rollback fits the kept volumes
+  - [x] 5.2.2 Nextcloud Free plans: a 10 GiB version, canonical for new subscriptions (prod plans 2 and 26)
 - [ ] 5.3 Migrate one deployment at a time
 
 ## 6. Archive

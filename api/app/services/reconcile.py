@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlmodel import Session
 
 from app.config import get_settings
-from app.models import DeploymentORM, DeploymentReleaseORM, ProductTemplateVersionORM
+from app.models import DeploymentORM, DeploymentReleaseORM, PlanTemplateVersionORM, ProductTemplateVersionORM
 from app.models.core import DeploymentPowerORM
 from app import post_render
 from app.provisioner import Provisioner, provisioner as default_provisioner
@@ -100,6 +100,15 @@ def vars_secret_name(deployment: DeploymentORM, release: DeploymentReleaseORM) -
     Secret this apply never touched. See design.md D10.
     """
     return f"{deployment.name}-vars-{release.number}"
+
+
+def plan_values(plan_template: PlanTemplateVersionORM) -> dict:
+    """A plan's `caelus.plan` Helm values."""
+    values: dict = {}
+    if plan_template.storage_bytes:
+        values["storageBytes"] = plan_template.storage_bytes
+        values["storageSize"] = bytes_to_k8s_size(plan_template.storage_bytes)
+    return values
 
 
 @dataclass(frozen=True)
@@ -925,9 +934,4 @@ class DeploymentReconciler:
         """
         if not deployment.subscription or not deployment.subscription.plan_template:
             return None
-        plan_values: dict = {}
-        storage_bytes = deployment.subscription.plan_template.storage_bytes
-        if storage_bytes:
-            plan_values["storageBytes"] = storage_bytes
-            plan_values["storageSize"] = bytes_to_k8s_size(storage_bytes)
-        return {"caelus": {"plan": plan_values}}
+        return {"caelus": {"plan": plan_values(deployment.subscription.plan_template)}}
