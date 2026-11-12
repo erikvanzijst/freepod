@@ -1,3 +1,10 @@
+- version: "3.4.1"
+  notes: |-
+    A small fix-up release that makes shared links fast again.
+
+    - Shared links load faster, including large ones
+    - More phone photo formats are recognized correctly
+    - Workflows apply default values to their steps as expected
 - version: "3.4.0"
   notes: |-
     A big update with tags on your phone, smarter workflows and a batch of
