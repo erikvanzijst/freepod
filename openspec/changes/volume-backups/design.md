@@ -147,17 +147,19 @@ at the start of the run. The node-agent ConfigMap limits that:
   `defaultRepoMaintainFrequency` to 24h.
 - **The default applies only when a repository is created.** Existing
   `BackupRepository` objects keep the frequency they were created with.
-- **Maintenance frees the data of expired snapshots.** The daily cycle sets how
-  long that data outlives its last backup; measured in tasks.
+- **Maintenance frees the data of expired snapshots** in namespaces that still
+  exist. A deleted namespace's repository is removed whole instead (D8).
 
 ### D8. Purge of deleted deployments
 
 - **What already works:**
   - A deleted deployment's namespace no longer exists, so later backups skip
     it.
-  - Its last 14 nightlies expire one by one; with each, Velero deletes the
-    backup's objects, its Secrets and its Kopia snapshots.
-  - Maintenance then removes the data no snapshot references.
+  - Its last 14 nightlies expire one by one. Velero's garbage collector checks
+    for expired backups hourly; with each, it deletes the backup's objects, its
+    Secrets, its DataUploads and its Kopia snapshot manifests.
+  - The volume data stays in the repository until maintenance or the cleanup
+    below removes it.
 - **What Velero never deletes:** the namespace's `BackupRepository` object, and
   the repository's remaining files under `kopia/<namespace>/` (format, indexes,
   manifests).
@@ -176,8 +178,11 @@ at the start of the run. The node-agent ConfigMap limits that:
     the backup system, and it would still have to wait 14 days.
   - **A schedule per namespace:** with as many schedules as deployments, the
     expiry is no easier to follow.
-- **The bound in the Terms** is the TTL, plus the measured maintenance delay,
-  plus one cleanup cycle, rounded up.
+- **The bound in the Terms: 16 days.** The reconciler deletes the namespace as
+  soon as it processes a deletion, so the last backup holding it was taken
+  before the deletion and expires within 14 days of it. Collection adds up to
+  1h, and the next cleanup up to 24h: at most 15 days and 1 hour, rounded up.
+  Maintenance plays no part, because the cleanup deletes the whole prefix.
 
 ### D9. Staleness alert
 

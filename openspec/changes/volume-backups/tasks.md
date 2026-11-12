@@ -19,27 +19,27 @@
 - [x] 3.3 Cap the data mover through the node-agent ConfigMap (one upload per node, one being prepared, 50m/384Mi request, 1Gi limit); verified at most 2 data-mover pods during a run, and the limits on the pods
 - [x] 3.4 Set repository maintenance to daily, and switch the existing `BackupRepository` objects to it; verified on the server's arguments and on every repository's spec
 - [x] 3.5 Add the `BackupTooOld` alert; verified it was pending before the first scheduled run and cleared after it
-- [ ] 3.6 Add a README to `tf/deps/velero`: a terse entry that links this change's spec, plus the two operator facts that aren't obvious from the code (the node agent reads its ConfigMap only at startup; run one manual backup after changing the backup location's settings); verified by review
+- [x] 3.6 Add a README to `tf/deps/velero`: a terse entry that links this change's spec, plus the two operator facts that aren't obvious from the code (the node agent reads its ConfigMap only at startup; run one manual backup after changing the backup location's settings); verified by review
 
 ## 4. Purge of deleted deployments
 
-- [ ] 4.1 Add the daily cleanup CronJob to `tf/deps/velero`. For each `BackupRepository` whose namespace no longer exists and that no DataUpload references, it deletes the `kopia/<namespace>/` prefix and then the object. Pick an image that already carries a Kubernetes and an S3 client, and give it least-privilege RBAC. Verify with `terraform plan` and a manual run, which reports nothing to remove on today's cluster
-- [ ] 4.2 Exercise the full purge on dev: create a scratch namespace with a Ceph claim, back it up, delete the namespace, delete its backups, run maintenance and the cleanup job. Verify no object under `kopia/<namespace>/` and no `BackupRepository` for it remain
-- [ ] 4.3 Measure the delay between a backup expiring and maintenance removing its data, on the task-4.2 namespace, and derive the deletion bound: TTL plus that delay plus one cleanup cycle, rounded up. Record the measurement in the runbook
+- [x] 4.1 Add the daily cleanup CronJob to `tf/deps/velero`. For each `BackupRepository` whose namespace no longer exists and that no DataUpload references, it deletes the `kopia/<namespace>/` prefix and then the object. Pick an image that already carries a Kubernetes and an S3 client, and give it least-privilege RBAC. Verify with `terraform plan` and a manual run, which reports nothing to remove on today's cluster
+- [x] 4.2 Exercise the full purge on dev: create a scratch namespace with a Ceph claim, back it up with a short TTL, delete the namespace, and let the backup expire; then run the cleanup job. Verify that a run before expiry keeps the repository, and that afterwards no object under `kopia/<namespace>/` and no `BackupRepository` for it remain
+- [x] 4.3 Measure the delay between a backup expiring and Velero deleting it with its DataUploads, on the task-4.2 namespace, and derive the deletion bound: TTL plus the garbage-collection interval plus one cleanup cycle, rounded up (16 days). Record the measurement in the runbook
 
 ## 5. Restore procedure
 
-- [ ] 5.1 Write the operator restore procedure (design D10) in the runbook, including how to read a backup's logs and results without the Velero CLI under SSE-C
-- [ ] 5.2 Rehearse it on a dev deployment with a database: stop, restore from the nightly into the same namespace, start. Verify the application starts against its restored database, and that the restored claims belong to the deployment's Helm release
+- [x] 5.1 Write the operator restore procedure (design D10) in the runbook, including how to read a backup's logs and results without the Velero CLI under SSE-C
+- [x] 5.2 Rehearse it on a dev deployment with a database: stop, restore from the nightly into the same namespace, start. Verify the application starts against its restored database, and that the restored claims belong to the deployment's Helm release
 
 ## 6. Legal
 
-- [ ] 6.1 Amend Terms §5.5: a deleted deployment's live data is destroyed after 1 day, and its copies in operational backups expire within the bound from task 4.3. Verify that §5.3 and §5.4 (no restore on request) still read consistently
-- [ ] 6.2 Amend DPA §3.8 and the Annex 1 retention paragraph to match §5.5, and replace "routine backup cycles" with the stated bound; verified by review
+- [x] 6.1 Amend Terms §5.5: a deleted deployment's live data is destroyed after 1 day, and its copies in operational backups expire within the bound from task 4.3. Verify that §5.3 and §5.4 (no restore on request) still read consistently
+- [x] 6.2 Amend DPA §3.8 and the Annex 1 retention paragraph to match §5.5, and replace "routine backup cycles" with the stated bound; verified by review
 
 ## 7. Integration
 
-- [ ] 7.1 Run `terraform plan` for `tf/deps` from this branch and confirm "No changes" against the live cluster, so the applied state is exactly what merges
+- [x] 7.1 Run `terraform plan` for `tf/deps` from this branch and confirm "No changes" against the live cluster, so the applied state is exactly what merges
 - [ ] 7.2 Open the PR; after merge, confirm the next 00:30 UTC run completes and `BackupTooOld` stays clear
 
 ## Workflow follow-up

@@ -149,3 +149,206 @@ resource "helm_release" "velero" {
 
   depends_on = [kubernetes_secret_v1.repo_credentials, kubernetes_secret_v1.sse_c_key]
 }
+
+resource "kubernetes_config_map_v1" "cleanup" {
+  metadata {
+    name      = "velero-cleanup"
+    namespace = var.namespace
+  }
+
+  data = {
+    "cleanup.sh" = file("${path.module}/cleanup.sh")
+  }
+}
+
+resource "kubernetes_service_account_v1" "cleanup" {
+  metadata {
+    name      = "velero-cleanup"
+    namespace = var.namespace
+  }
+}
+
+resource "kubernetes_role_v1" "cleanup" {
+  metadata {
+    name      = "velero-cleanup"
+    namespace = var.namespace
+  }
+
+  rule {
+    api_groups = ["velero.io"]
+    resources  = ["datauploads"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    api_groups = ["velero.io"]
+    resources  = ["backuprepositories"]
+    verbs      = ["list", "delete"]
+  }
+
+  rule {
+    api_groups = ["batch"]
+    resources  = ["jobs"]
+    verbs      = ["list", "delete"]
+  }
+}
+
+resource "kubernetes_role_binding_v1" "cleanup" {
+  metadata {
+    name      = "velero-cleanup"
+    namespace = var.namespace
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = kubernetes_role_v1.cleanup.metadata[0].name
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account_v1.cleanup.metadata[0].name
+    namespace = var.namespace
+  }
+}
+
+resource "kubernetes_cluster_role_v1" "cleanup" {
+  metadata {
+    name = "velero-cleanup"
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["namespaces"]
+    verbs      = ["get"]
+  }
+}
+
+resource "kubernetes_cluster_role_binding_v1" "cleanup" {
+  metadata {
+    name = "velero-cleanup"
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = kubernetes_cluster_role_v1.cleanup.metadata[0].name
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account_v1.cleanup.metadata[0].name
+    namespace = var.namespace
+  }
+}
+
+resource "kubernetes_cron_job_v1" "cleanup" {
+  metadata {
+    name      = "velero-cleanup"
+    namespace = var.namespace
+  }
+
+  spec {
+    schedule                      = "0 6 * * *"
+    concurrency_policy            = "Forbid"
+    successful_jobs_history_limit = 1
+    failed_jobs_history_limit     = 2
+
+    job_template {
+      metadata {}
+
+      spec {
+        backoff_limit           = 0
+        active_deadline_seconds = 1800
+
+        template {
+          metadata {
+            labels = {
+              app = "velero-cleanup"
+            }
+          }
+
+          spec {
+            restart_policy       = "Never"
+            service_account_name = kubernetes_service_account_v1.cleanup.metadata[0].name
+
+            security_context {
+              run_as_non_root = true
+              run_as_user     = 65534
+              run_as_group    = 65534
+              fs_group        = 65534
+            }
+
+            container {
+              name    = "cleanup"
+              image   = "alpine/k8s:1.34.13"
+              command = ["bash", "/script/cleanup.sh"]
+
+              env {
+                name  = "HOME"
+                value = "/tmp"
+              }
+              env {
+                name  = "VELERO_NAMESPACE"
+                value = var.namespace
+              }
+              env {
+                name  = "BUCKET"
+                value = var.bucket
+              }
+              env {
+                name  = "S3_URL"
+                value = var.s3_url
+              }
+              env {
+                name  = "AWS_DEFAULT_REGION"
+                value = "garage"
+              }
+              env {
+                name  = "AWS_SHARED_CREDENTIALS_FILE"
+                value = "/credentials/cloud"
+              }
+
+              resources {
+                requests = { cpu = "10m", memory = "64Mi" }
+                limits   = { memory = "256Mi" }
+              }
+
+              security_context {
+                allow_privilege_escalation = false
+                capabilities {
+                  drop = ["ALL"]
+                }
+              }
+
+              volume_mount {
+                name       = "script"
+                mount_path = "/script"
+                read_only  = true
+              }
+              volume_mount {
+                name       = "credentials"
+                mount_path = "/credentials"
+                read_only  = true
+              }
+            }
+
+            volume {
+              name = "script"
+              config_map {
+                name = kubernetes_config_map_v1.cleanup.metadata[0].name
+              }
+            }
+            volume {
+              name = "credentials"
+              secret {
+                secret_name  = kubernetes_secret_v1.cloud_credentials.metadata[0].name
+                default_mode = "0440"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
