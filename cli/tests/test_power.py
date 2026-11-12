@@ -153,12 +153,12 @@ def test_a_maintenance_stop_cannot_be_started_from_the_cli(make_api, tmp_path):
         answer=(
             409,
             {
-                "detail": "Deployment is under maintenance and cannot be started; try again later",
+                "detail": "Deployment is under maintenance and cannot be started now",
                 "code": "under_maintenance",
             },
         ),
     )
-    with pytest.raises(FreepodError, match="(?s)platform maintenance.*try again later"):
+    with pytest.raises(FreepodError, match="(?s)platform maintenance.*"):
         run(make_api, platform, tmp_path, RUNNING)
 
 
