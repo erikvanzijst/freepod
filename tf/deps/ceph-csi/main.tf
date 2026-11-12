@@ -75,3 +75,51 @@ resource "kubernetes_storage_class_v1" "pool" {
 
   depends_on = [helm_release.ceph_csi_rbd]
 }
+
+resource "helm_release" "snapshot_controller" {
+  name      = "snapshot-controller"
+  namespace = var.namespace
+  chart     = "https://github.com/piraeusdatastore/helm-charts/releases/download/snapshot-controller-5.4.0/snapshot-controller-5.4.0.tgz"
+
+  values = [yamlencode({ keepCRDs = true })]
+}
+
+resource "kubernetes_secret_v1" "snapshotter" {
+  metadata {
+    name      = "csi-rbd-snapshots"
+    namespace = var.namespace
+  }
+
+  data = {
+    userID  = var.snapshot_user_id
+    userKey = var.user_keys[var.snapshot_user_id]
+  }
+}
+
+# Velero uses one class per driver, so this class's client reaches every pool.
+# Snapshots stay in their volume's pool.
+resource "helm_release" "snapshot_class" {
+  name      = "rbd-snapshot-class"
+  namespace = var.namespace
+  chart     = helm_release.snapshot_controller.chart
+
+  values = [
+    yamlencode({
+      installCRDs = false
+      controller  = { enabled = false }
+      volumeSnapshotClasses = [{
+        name           = "ceph-rbd"
+        driver         = "rbd.csi.ceph.com"
+        deletionPolicy = "Delete"
+        labels         = { "velero.io/csi-volumesnapshot-class" = "true" }
+        parameters = {
+          clusterID                                         = var.cluster_id
+          "csi.storage.k8s.io/snapshotter-secret-name"      = kubernetes_secret_v1.snapshotter.metadata[0].name
+          "csi.storage.k8s.io/snapshotter-secret-namespace" = var.namespace
+        }
+      }]
+    })
+  ]
+
+  depends_on = [helm_release.snapshot_controller, helm_release.ceph_csi_rbd]
+}

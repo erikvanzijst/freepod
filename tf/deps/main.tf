@@ -117,10 +117,35 @@ module "ceph_csi" {
   monitors   = var.ceph_monitors
   user_keys  = var.ceph_user_keys
 
+  snapshot_user_id = "freepod-snapshots"
+
   storage_classes = {
     ceph-freepod     = { pool = "freepod", user_id = "freepod", reclaim_policy = "Delete" }
     ceph-freepod-dev = { pool = "freepod-dev", user_id = "freepod-dev", reclaim_policy = "Delete" }
   }
+}
+
+resource "kubernetes_namespace" "velero" {
+  metadata {
+    name = "velero"
+    labels = {
+      # The node agent reads pod volumes from the host.
+      "pod-security.kubernetes.io/enforce" = "privileged"
+    }
+  }
+}
+
+module "velero" {
+  source               = "./velero"
+  namespace            = kubernetes_namespace.velero.metadata[0].name
+  bucket               = "freepod-velero"
+  s3_url               = var.velero_s3_url
+  s3_access_key_id     = var.velero_s3_access_key_id
+  s3_secret_access_key = var.velero_s3_secret_access_key
+  repo_password        = var.velero_repo_password
+  sse_c_key            = var.velero_sse_c_key
+
+  depends_on = [module.ceph_csi]
 }
 
 # --- Monitoring stack (cluster-wide observability) ---
