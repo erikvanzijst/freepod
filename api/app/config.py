@@ -26,7 +26,7 @@ class CaelusSettings(BaseSettings):
     # parity by construction, and a CI test binds it to the ToS markdown so the
     # two cannot drift. The CAELUS_CURRENT_TOS_VERSION override exists only as an
     # emergency escape hatch and is not populated in normal operation.
-    current_tos_version: str = "2026-09-27"
+    current_tos_version: str = "2026-11-16"
 
     database_url: str = "postgresql+psycopg://caelus:caelus@localhost:5432/caelus"
     static_path: Path = Path(__file__).parent.parent / "static"

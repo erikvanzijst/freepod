@@ -2,7 +2,7 @@
 
 ---
 
-**Effective date:** 2026-09-27  
+**Effective date:** 2026-11-16  
 **Provider:** Freepod VZW  
 organised under the laws of Belgium, with registered office at
 `[REGISTERED ADDRESS]`, enterprise number `[BE 0xxx.xxx.xxx]`
