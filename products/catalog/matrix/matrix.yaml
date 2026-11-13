@@ -97,7 +97,7 @@ template:
   chart_version: 0.3.3
   system_values:
     image:
-      tag: v1.9.4
+      tag: v2.0.0
     # Freepod's contacts on every tenant server, so moderators elsewhere can
     # reach the host before blocking *.freepod.app. Policy URLs always serve
     # the latest text, which carries its own effective date.
