@@ -1,3 +1,13 @@
+- version: "2.0.0"
+  notes: |-
+    A major release that makes rooms behave better across devices and servers, with many security fixes.
+
+    - Forgetting a room on one device now removes it from your other devices too
+    - You can choose which rooms receive a new display name or avatar
+    - People who left a private room see it as it was when they left, not what happens after
+    - Message reports to moderators now show the reported message
+    - Uploads pause automatically if your storage almost fills up
+    - Many federation and security fixes, including faster joins from other servers
 - version: "1.9.4"
   notes: |-
     A feature and security release with stricter protection for your account and rooms.
