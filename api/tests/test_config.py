@@ -19,6 +19,7 @@ def test_default_values(monkeypatch):
     assert settings.platform_domains == []
     assert settings.reserved_handles == []
     assert settings.storage_classes == []
+    assert settings.storage_class is None
 
 
 def test_retired_hostname_settings_are_gone():
@@ -47,6 +48,19 @@ def test_list_field_json_parsing(monkeypatch):
 def test_storage_classes_json_parsing(monkeypatch):
     monkeypatch.setenv("CAELUS_STORAGE_CLASSES", '["ceph-freepod-dev"]')
     assert CaelusSettings(_env_file=None).storage_classes == ["ceph-freepod-dev"]
+
+
+def test_storage_class_on_the_list_is_accepted(monkeypatch):
+    monkeypatch.setenv("CAELUS_STORAGE_CLASSES", '["ceph-freepod-dev"]')
+    monkeypatch.setenv("CAELUS_STORAGE_CLASS", "ceph-freepod-dev")
+    assert CaelusSettings(_env_file=None).storage_class == "ceph-freepod-dev"
+
+
+def test_storage_class_off_the_list_refuses_to_load(monkeypatch):
+    monkeypatch.setenv("CAELUS_STORAGE_CLASSES", '["ceph-freepod-dev"]')
+    monkeypatch.setenv("CAELUS_STORAGE_CLASS", "ceph-freepod")
+    with pytest.raises(ValueError, match="'ceph-freepod'"):
+        CaelusSettings(_env_file=None)
 
 
 def test_var_encryption_keys_are_comma_separated(monkeypatch):

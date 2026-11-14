@@ -284,13 +284,25 @@ def test_only_released_volumes_past_the_cutoff_expire(ms):
 
 
 def test_the_target_defaults_to_the_only_allowed_class(ms, monkeypatch):
-    monkeypatch.setattr(ms, "get_settings", lambda: SimpleNamespace(storage_classes=["ceph-freepod-dev"]))
+    monkeypatch.setattr(
+        ms, "get_settings", lambda: SimpleNamespace(storage_class=None, storage_classes=["ceph-freepod-dev"])
+    )
     assert ms.check_target(None) == "ceph-freepod-dev"
     with pytest.raises(ms.Fail, match="not allowed"):
         ms.check_target("ceph-freepod")
-    monkeypatch.setattr(ms, "get_settings", lambda: SimpleNamespace(storage_classes=[]))
+    monkeypatch.setattr(ms, "get_settings", lambda: SimpleNamespace(storage_class=None, storage_classes=[]))
     with pytest.raises(ms.Fail, match="--to"):
         ms.check_target(None)
+
+
+def test_the_target_defaults_to_the_environments_class(ms, monkeypatch):
+    monkeypatch.setattr(
+        ms,
+        "get_settings",
+        lambda: SimpleNamespace(storage_class="ceph-freepod", storage_classes=["ceph-freepod", "ceph-freepod-next"]),
+    )
+    assert ms.check_target(None) == "ceph-freepod"
+    assert ms.check_target("ceph-freepod-next") == "ceph-freepod-next"
 
 
 def test_render_uses_the_plan_the_next_reconcile_applies(ms, monkeypatch):

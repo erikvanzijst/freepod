@@ -73,9 +73,14 @@ variable "platform_domains" {
 }
 
 variable "storage_classes" {
-  description = "StorageClasses a new deployment may be created on (CAELUS_STORAGE_CLASSES)"
+  description = "StorageClasses a deployment may record (CAELUS_STORAGE_CLASSES)"
   type        = list(string)
   default     = []
+}
+
+variable "storage_class" {
+  description = "StorageClass every new deployment records (CAELUS_STORAGE_CLASS); must be in storage_classes"
+  type        = string
 }
 
 variable "legacy_tenant_redirects" {

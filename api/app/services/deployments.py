@@ -341,16 +341,17 @@ def _allocate_namespace(session: Session, *, product_name: str, user_email: str)
     )
 
 
-def _choose_storage_class(owner: UserORM) -> str | None:
-    """The owner's class, refused unless the environment allows it
-    (openspec deployment-storage-class D5)."""
-    if owner.storage_class is None:
+def _choose_storage_class() -> str | None:
+    """The environment's class, refused unless the environment allows it
+    (openspec default-storage-class D1)."""
+    settings = get_settings()
+    if settings.storage_class is None:
         return None
-    if owner.storage_class not in get_settings().storage_classes:
+    if settings.storage_class not in settings.storage_classes:
         raise ValidationException(
-            f"Storage class {owner.storage_class!r} is not allowed in this environment"
+            f"Storage class {settings.storage_class!r} is not allowed in this environment"
         )
-    return owner.storage_class
+    return settings.storage_class
 
 
 def create_deployment(
@@ -408,7 +409,7 @@ def create_deployment(
         session, owner_id=payload.user_id, build_id=None, user_values=payload.user_values_json
     )
 
-    storage_class = _choose_storage_class(user)
+    storage_class = _choose_storage_class()
 
     # Determine if this is a paid plan requiring payment.
     is_paid = payment_provider is not None and plan_template.price_cents > 0

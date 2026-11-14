@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -45,9 +45,10 @@ class CaelusSettings(BaseSettings):
     platform_domains: list[str] = []
     reserved_handles: list[str] = []
 
-    # StorageClasses a new deployment may be created on (openspec
-    # deployment-storage-class D5).
+    # StorageClasses a deployment may record, and the one every new deployment
+    # records (openspec default-storage-class D1). Unset records none.
     storage_classes: list[str] = []
+    storage_class: str | None = None
 
     # cert-manager ClusterIssuer used for per-app HTTP-01 certs on custom domains.
     # Override to a `-staging` issuer during rollout. Tenant hostnames do not use
@@ -378,6 +379,14 @@ class CaelusSettings(BaseSettings):
     mollie_api_key: str | None = None
     mollie_redirect_url: str | None = None
     mollie_webhook_base_url: str | None = None
+
+    @model_validator(mode="after")
+    def _storage_class_is_allowed(self) -> CaelusSettings:
+        if self.storage_class is not None and self.storage_class not in self.storage_classes:
+            raise ValueError(
+                f"storage_class {self.storage_class!r} is not in storage_classes {self.storage_classes}"
+            )
+        return self
 
     @field_validator("var_encryption_keys", mode="before")
     @classmethod

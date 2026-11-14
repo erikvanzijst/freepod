@@ -721,7 +721,10 @@ def quiet(snap: Snapshot, claims: list[Claim], timeout: float) -> None:
 
 
 def check_target(target: str | None) -> str:
-    allowed = get_settings().storage_classes
+    settings = get_settings()
+    allowed = settings.storage_classes
+    if target is None:
+        target = settings.storage_class
     if target is None:
         if len(allowed) != 1:
             raise Fail(f"name the class with --to; this environment allows {allowed or 'none'}")
@@ -970,7 +973,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
         p.add_argument("--timeout", type=float, default=1200, help="seconds to wait for each reconcile")
         if name == "migrate":
-            p.add_argument("--to", help="target class; defaults to the only one the environment allows")
+            p.add_argument("--to", help="target class; defaults to the environment's class for new deployments")
             p.add_argument("--dry-run", action="store_true", help="check and measure, change nothing")
             p.add_argument("--copy-timeout", type=float, default=7200, help="seconds to allow each copy")
             p.add_argument("--plan-template", type=int,
