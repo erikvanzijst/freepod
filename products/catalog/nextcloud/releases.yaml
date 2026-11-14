@@ -1,3 +1,13 @@
+- version: "35.0.3"
+  notes: |-
+    A bug-fix release for Nextcloud 35.
+
+    - Passwords in email shares arrive as readable text instead of a hash
+    - Live photos are handled better when you upload and view them
+    - Files with an unrecognized file type can be uploaded
+    - Previews generate faster, and busy folders stay responsive
+    - Fixes for encryption, calendar sync and sharing
+    - Security fixes, including protection against a PHP session upload flaw
 - version: "35.0.2"
   notes: |-
     A bug-fix release for Nextcloud 35.
