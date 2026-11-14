@@ -355,15 +355,12 @@ def _settle(project, deployment_id):
 
 def test_a_recorded_storage_class_survives_every_change(project, monkeypatch):
     from app.config import get_settings
-    from app.models import UserORM
 
-    settings = get_settings().model_copy(update={"storage_classes": ["ceph-freepod"]})
+    settings = get_settings().model_copy(
+        update={"storage_class": "ceph-freepod", "storage_classes": ["ceph-freepod"]}
+    )
     monkeypatch.setattr("app.services.deployments.get_settings", lambda: settings)
     session = project["session"]
-    owner = session.get(UserORM, project["user_id"])
-    owner.storage_class = "ceph-freepod"
-    session.add(owner)
-    session.commit()
 
     client = project["client"]
     created = _create(project).json()["deployment"]

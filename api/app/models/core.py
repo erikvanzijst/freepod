@@ -82,9 +82,6 @@ class UserORM(UserBase, table=True):
     tos_accepted_version: Optional[str] = Field(default=None, nullable=True)
     tos_accepted_at: Optional[datetime] = Field(default=None, nullable=True)
     handle: Optional[str] = Field(default=None, nullable=True)
-    # Operator-set in SQL only; never read or written through the API
-    # (openspec deployment-storage-class).
-    storage_class: Optional[str] = Field(default=None, nullable=True)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
     deployments: list["DeploymentORM"] = Relationship(back_populates="user")
     subscriptions: list["SubscriptionORM"] = Relationship(

@@ -1,5 +1,5 @@
 """Choosing a deployment's storage class at create
-(openspec deployment-storage-class)."""
+(openspec default-storage-class)."""
 
 from __future__ import annotations
 
@@ -7,26 +7,21 @@ import pytest
 from sqlmodel import func, select
 
 from app.config import get_settings
-from app.models import DeploymentORM, DeploymentReleaseORM, ProductORM, SubscriptionORM, UserORM
+from app.models import DeploymentORM, DeploymentReleaseORM, ProductORM, SubscriptionORM
 from app.services import deployments, products, templates
 from app.services.errors import ValidationException
 from tests.conftest import create_free_plan_template, create_user, make_accepted_user
 
 
 @pytest.fixture
-def allow(monkeypatch):
-    def _allow(*classes: str) -> None:
-        settings = get_settings().model_copy(update={"storage_classes": list(classes)})
+def environment(monkeypatch):
+    def _environment(storage_class: str | None, *allowed: str) -> None:
+        settings = get_settings().model_copy(
+            update={"storage_class": storage_class, "storage_classes": list(allowed)}
+        )
         monkeypatch.setattr("app.services.deployments.get_settings", lambda: settings)
 
-    return _allow
-
-
-def _flag(db_session, user_id: int, storage_class: str | None) -> None:
-    user = db_session.get(UserORM, user_id)
-    user.storage_class = storage_class
-    db_session.add(user)
-    db_session.commit()
+    return _environment
 
 
 def _template(db_session, name: str):
@@ -63,25 +58,25 @@ def _count(db_session, model) -> int:
     return db_session.exec(select(func.count()).select_from(model)).one()
 
 
-def test_a_flagged_account_records_its_class(db_session, allow):
-    allow("ceph-freepod")
-    user = make_accepted_user(db_session, "flagged@example.com")
-    _flag(db_session, user.id, "ceph-freepod")
-    created = _create(db_session, user.id, "flagged-product")
+def test_every_account_records_the_environments_class(db_session, environment):
+    environment("ceph-freepod", "ceph-freepod")
+    user = make_accepted_user(db_session, "anyone@example.com")
+    created = _create(db_session, user.id, "env-product")
     assert db_session.get(DeploymentORM, created.deployment.id).storage_class == "ceph-freepod"
 
 
-def test_an_unflagged_account_records_none(db_session, allow):
-    allow("ceph-freepod")
-    user = make_accepted_user(db_session, "unflagged@example.com")
-    created = _create(db_session, user.id, "unflagged-product")
+def test_an_environment_naming_no_class_records_none(db_session, environment):
+    environment(None, "ceph-freepod")
+    user = make_accepted_user(db_session, "noclass@example.com")
+    created = _create(db_session, user.id, "noclass-product")
     assert db_session.get(DeploymentORM, created.deployment.id).storage_class is None
 
 
-def test_an_administrator_creating_for_a_flagged_owner_records_the_owners_class(client, db_session, allow):
-    allow("ceph-freepod")
+def test_an_administrator_creating_for_another_account_records_the_environments_class(
+    client, db_session, environment
+):
+    environment("ceph-freepod", "ceph-freepod")
     owner_id = create_user(client, "owner@example.com")["id"]
-    _flag(db_session, owner_id, "ceph-freepod")
     template, ptv_id = _template(db_session, "admin-product")
     resp = client.post(
         f"/api/users/{owner_id}/deployments",
@@ -93,10 +88,9 @@ def test_an_administrator_creating_for_a_flagged_owner_records_the_owners_class(
 
 
 @pytest.mark.parametrize("allowed", [["ceph-freepod-dev"], []], ids=["other-class", "empty-list"])
-def test_an_unlisted_class_is_refused_and_nothing_is_stored(db_session, allow, allowed):
-    allow(*allowed)
-    user = make_accepted_user(db_session, "prodflag@example.com")
-    _flag(db_session, user.id, "ceph-freepod")
+def test_an_unlisted_class_is_refused_and_nothing_is_stored(db_session, environment, allowed):
+    environment("ceph-freepod", *allowed)
+    user = make_accepted_user(db_session, "unlisted@example.com")
     template, ptv_id = _template(db_session, "refused-product")
     before = {m: _count(db_session, m) for m in (DeploymentORM, DeploymentReleaseORM, SubscriptionORM)}
     with pytest.raises(ValidationException, match="ceph-freepod"):
@@ -110,12 +104,11 @@ def test_an_unlisted_class_is_refused_and_nothing_is_stored(db_session, allow, a
     assert {m: _count(db_session, m) for m in before} == before
 
 
-def test_clearing_an_accounts_class_keeps_existing_deployments(db_session, allow):
-    allow("ceph-freepod")
-    user = make_accepted_user(db_session, "cleared@example.com")
-    _flag(db_session, user.id, "ceph-freepod")
-    first = _create(db_session, user.id, "cleared-first")
-    _flag(db_session, user.id, None)
-    second = _create(db_session, user.id, "cleared-second")
+def test_changing_the_environments_class_keeps_existing_deployments(db_session, environment):
+    environment("ceph-freepod", "ceph-freepod", "ceph-freepod-next")
+    user = make_accepted_user(db_session, "changed@example.com")
+    first = _create(db_session, user.id, "changed-first")
+    environment("ceph-freepod-next", "ceph-freepod", "ceph-freepod-next")
+    second = _create(db_session, user.id, "changed-second")
     assert db_session.get(DeploymentORM, first.deployment.id).storage_class == "ceph-freepod"
-    assert db_session.get(DeploymentORM, second.deployment.id).storage_class is None
+    assert db_session.get(DeploymentORM, second.deployment.id).storage_class == "ceph-freepod-next"

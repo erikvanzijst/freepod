@@ -642,13 +642,11 @@ def test_a_storage_class_field_is_refused_on_create_and_update(client, db_sessio
 def test_no_read_model_reports_a_storage_class(client, db_session, monkeypatch):
     from app.config import get_settings
 
-    settings = get_settings().model_copy(update={"storage_classes": ["ceph-freepod"]})
+    settings = get_settings().model_copy(
+        update={"storage_class": "ceph-freepod", "storage_classes": ["ceph-freepod"]}
+    )
     monkeypatch.setattr("app.services.deployments.get_settings", lambda: settings)
     user_id = create_user(client, "sc-read@example.com")["id"]
-    user = db_session.get(UserORM, user_id)
-    user.storage_class = "ceph-freepod"
-    db_session.add(user)
-    db_session.commit()
     dep_id = _create_deployment_for_user(client, db_session, user_id, "-sc-read")
 
     reads = [
