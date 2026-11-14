@@ -11,6 +11,7 @@ data_dir = "${data_dir}"
 # LMDB is the Garage default and what upstream tunes for. Metadata lives on its
 # own PVC so it can move to faster storage if this cluster ever offers a choice.
 db_engine = "lmdb"
+metadata_auto_snapshot_interval = "6h"
 
 # One k3s node, one replica. A replication factor above 1 on a single node
 # leaves Garage unable to satisfy its own quorum, and it refuses writes.

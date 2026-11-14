@@ -95,6 +95,10 @@ module "garage" {
   namespace = kubernetes_namespace.garage.metadata[0].name
   host      = local.garage_host
 
+  storage_class = local.storage_class
+  meta_pvc_size = local.is_prod_workspace ? "8Gi" : "4Gi"
+  data_pvc_size = local.is_prod_workspace ? "150Gi" : "10Gi"
+
   bucket_exporter_image = var.bucket_exporter_image
   prometheus_base_url   = var.prometheus_base_url
   loki_base_url         = var.loki_base_url

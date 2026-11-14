@@ -132,12 +132,12 @@ resource "kubernetes_stateful_set" "garage" {
           }
 
           volume_mount {
-            name       = "meta"
+            name       = "meta-rbd"
             mount_path = local.metadata_dir
           }
 
           volume_mount {
-            name       = "data"
+            name       = "data-rbd"
             mount_path = local.data_dir
           }
 
@@ -194,14 +194,14 @@ resource "kubernetes_stateful_set" "garage" {
     # TWO separate claims, deliberately. Metadata is small, latency-sensitive
     # and access-heavy; object data is bulk. Keeping them apart means metadata
     # can move to a faster storage class later without resizing or migrating
-    # the bulk volume. Both sizes come from module variables — the data size is
-    # the hard ceiling on this dependency's contribution to node disk pressure.
+    # the bulk volume.
     volume_claim_template {
       metadata {
-        name = "meta"
+        name = "meta-rbd"
       }
       spec {
-        access_modes = ["ReadWriteOnce"]
+        access_modes       = ["ReadWriteOncePod"]
+        storage_class_name = var.storage_class
         resources {
           requests = {
             storage = var.meta_pvc_size
@@ -212,10 +212,11 @@ resource "kubernetes_stateful_set" "garage" {
 
     volume_claim_template {
       metadata {
-        name = "data"
+        name = "data-rbd"
       }
       spec {
-        access_modes = ["ReadWriteOnce"]
+        access_modes       = ["ReadWriteOncePod"]
+        storage_class_name = var.storage_class
         resources {
           requests = {
             storage = var.data_pvc_size

@@ -20,16 +20,19 @@ variable "kubectl_image" {
   default     = "alpine/k8s:1.31.1"
 }
 
+variable "storage_class" {
+  description = "StorageClass of the metadata and object-data volumes"
+  type        = string
+}
+
 variable "meta_pvc_size" {
   description = "Size of the Garage metadata PVC (LMDB). Small, but must not be starved."
   type        = string
-  default     = "2Gi"
 }
 
 variable "data_pvc_size" {
-  description = "Size of the Garage object-data PVC. This is the hard ceiling on this dependency's contribution to node disk pressure."
+  description = "Size of the Garage object-data PVC, the ceiling on all tenant object storage"
   type        = string
-  default     = "20Gi"
 }
 
 variable "cpu_request" {
