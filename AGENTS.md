@@ -227,23 +227,31 @@ This repository is a monorepo with:
   ExternalName Service to the environment's API, whose outermost middleware
   (`app/parking.py`) answers every request for a host that is not the
   platform's own with the 503 parking page and never reaches a route. Catalog
-  charts may render no Helm hooks. Spec:
+  charts may render no Helm hooks. A `maintenance` stop is set and lifted
+  only by the platform (the storage migration): while it holds, start and
+  update are refused (`under_maintenance`), and lifting it restores the power
+  before it. Spec:
   [deployment-power-data-model](openspec/specs/deployment-power-data-model/spec.md),
   [deployment-power-api](openspec/specs/deployment-power-api/spec.md),
   [deployment-power-reconciliation](openspec/specs/deployment-power-reconciliation/spec.md),
   [parking-page](openspec/specs/parking-page/spec.md),
   [cli-power](openspec/specs/cli-power/spec.md),
   [deployment-power-ui](openspec/specs/deployment-power-ui/spec.md) ·
-  Rationale: [stop-and-start-deployments](openspec/changes/archive/2026-11-06-stop-and-start-deployments/design.md)
+  Rationale: [stop-and-start-deployments](openspec/changes/archive/2026-11-06-stop-and-start-deployments/design.md),
+  [migrate-deployment-storage](openspec/changes/archive/2026-11-14-migrate-deployment-storage/design.md)
 - **Storage class.** A deployment records the StorageClass its volumes are
   provisioned on when it is created (`deployment.storage_class`, the
   environment's `CAELUS_STORAGE_CLASS`, which must be in its
   `CAELUS_STORAGE_CLASSES`), and nothing through the API changes it. The
   post-renderer applies it (`--storage-class`) to every claim with
-  `ReadWriteOncePod`; null leaves the chart's volumes untouched. Spec:
+  `ReadWriteOncePod`; null leaves the chart's volumes untouched. Only
+  `api/bin/migrate-storage.py` changes it afterwards, when it moves a
+  deployment's volumes from `local-path` onto the class. Spec:
   [deployment-storage-class](openspec/specs/deployment-storage-class/spec.md),
+  [deployment-storage-migration](openspec/specs/deployment-storage-migration/spec.md),
   [storage-chart-contract](openspec/specs/storage-chart-contract/spec.md) ·
   Rationale: [deployment-storage-class](openspec/changes/archive/2026-11-11-deployment-storage-class/design.md),
+  [migrate-deployment-storage](openspec/changes/archive/2026-11-14-migrate-deployment-storage/design.md),
   [default-storage-class](openspec/changes/default-storage-class/design.md)
 - **"Sign in with Freepod" is an edge feature any chart can render, served by
   `daemons/app-auth/`** (Go): a Traefik forward-auth verifier and a broker on

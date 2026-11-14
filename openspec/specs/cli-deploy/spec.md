@@ -4,6 +4,7 @@
 The deploy command's contract: what it checks before spending effort, in what order it
 does the expensive parts, and how it creates or updates the deployment that serves the
 built image.
+
 ## Requirements
 
 ### Requirement: Deploy validates against current platform state before doing expensive work
@@ -177,6 +178,12 @@ settles or the configured timeout elapses.
 
 - **WHEN** the platform refuses the update because the hostname is in use
 - **THEN** the client reports that another deployment holds the hostname
+
+#### Scenario: A release to a deployment held for maintenance
+
+- **WHEN** the platform refuses the update with code `under_maintenance`
+- **THEN** the client says the deployment is held for platform maintenance and is worth retrying later
+- **AND** says the built image is reused by a re-run
 
 ### Requirement: The rollout is followed to a terminal state and reported
 

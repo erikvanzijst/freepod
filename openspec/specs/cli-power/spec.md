@@ -72,6 +72,11 @@ The client SHALL turn the platform's refusals into actionable messages. A deploy
 - **WHEN** the platform refuses start with code `not_startable`
 - **THEN** the client says the deployment is stopped for payment and cannot be started from the CLI
 
+#### Scenario: A deployment held for maintenance
+
+- **WHEN** the platform refuses start with code `under_maintenance`
+- **THEN** the client says the deployment is stopped for platform maintenance, returns to how it was once that ends, and can be retried later
+
 ### Requirement: Deploying to a stopped deployment says it stays stopped
 
 When `freepod deploy` completes a rollout to a deployment whose desired power is `stopped`, the client SHALL say that the deployment remains stopped and that `freepod start` runs it. It SHALL NOT start the deployment itself.

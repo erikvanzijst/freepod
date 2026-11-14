@@ -29,11 +29,11 @@
 ## 5. Production
 
 - [x] 5.1 A backup of the new class exists and has been restore-tested
-- [ ] 5.2 Grow any claim whose data is over 80% of its size
+- [x] 5.2 Grow any claim whose data is over 80% of its size
   - [x] 5.2.1 `migrate --plan-template` sizes the copies by another version of the plan and moves the subscription at the switch; rollback fits the kept volumes
   - [x] 5.2.2 Nextcloud Free plans: a 10 GiB version, canonical for new subscriptions (prod plans 2 and 26)
-- [ ] 5.3 Migrate one deployment at a time
+- [x] 5.3 Migrate one deployment at a time
 
 ## 6. Archive
 
-- [ ] 6.1 AGENTS.md: point the power and storage class entries at `deployment-storage-migration`
+- [x] 6.1 AGENTS.md: point the power and storage class entries at `deployment-storage-migration`

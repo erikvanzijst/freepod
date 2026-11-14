@@ -50,7 +50,7 @@ Each environment SHALL list the StorageClasses its deployments may be created on
 
 ### Requirement: The class never changes through the API
 
-No API, CLI or UI operation SHALL accept a storage class as input, report a deployment's storage class, or change it after creation. Updating values or vars, moving to another template version, stopping, starting and redeploying SHALL all keep the class the deployment was created with.
+No API, CLI or UI operation SHALL accept a storage class as input, report a deployment's storage class, or change it after creation. Updating values or vars, moving to another template version, stopping, starting and redeploying SHALL all keep the class the deployment was created with. Only the operator's storage migration (`deployment-storage-migration`) SHALL change a recorded class.
 
 #### Scenario: A template upgrade
 
@@ -61,6 +61,11 @@ No API, CLI or UI operation SHALL accept a storage class as input, report a depl
 
 - **WHEN** a create or update request carries a storage class field
 - **THEN** the field has no effect on the deployment's storage class
+
+#### Scenario: A migrated deployment
+
+- **WHEN** the operator migrates a deployment that records no class onto `ceph-freepod`
+- **THEN** the deployment records `ceph-freepod`
 
 ### Requirement: An account's class is an operator setting
 

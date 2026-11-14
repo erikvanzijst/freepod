@@ -21,6 +21,7 @@ None.
 ### Modified Capabilities
 
 - `deployment-storage-class`: the class comes from the environment instead of the owner's account. The three selection requirements are replaced by environment-based ones, and the account-flag requirement is removed.
+- `deployment-storage-migration`: with no class named, the script targets the environment's class for new deployments.
 
 ## Impact
 
