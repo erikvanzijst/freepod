@@ -32,14 +32,6 @@ pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not i
 
 GATE = egress_gate.gate_container(image="gate:1", deadline_seconds=60)
 
-# Charts allowed to break the contract, each with its reason.
-EXEMPT = {
-    # Rolls its claim on purpose (test_chart_rollout_strategy); not a catalog
-    # product, so it never runs on a storage class.
-    "helloworld",
-}
-
-
 def _claim_names(doc: dict) -> list[str]:
     volumes = (_pod_template(doc).get("spec") or {}).get("volumes") or []
     return [v["persistentVolumeClaim"]["claimName"] for v in volumes if "persistentVolumeClaim" in v]
@@ -76,15 +68,9 @@ def violations(rendered: str) -> list[str]:
     return found
 
 
-@pytest.mark.parametrize("chart", [c for c in CHARTS if c not in EXEMPT])
+@pytest.mark.parametrize("chart", CHARTS)
 def test_every_chart_meets_the_storage_contract(chart):
     assert not violations(_render(chart, {})), chart
-
-
-@pytest.mark.parametrize("chart", sorted(EXEMPT))
-def test_exemptions_are_still_needed(chart):
-    assert chart in CHARTS, f"{chart} is no longer a product chart"
-    assert violations(_render(chart, {})), f"{chart} no longer needs its exemption"
 
 
 def test_the_check_sees_claims():
