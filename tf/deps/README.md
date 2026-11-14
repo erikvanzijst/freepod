@@ -28,7 +28,8 @@ independent state and does not use Terraform workspaces.
   inside a gVisor sandbox on the tenant node pool — see
   [Sandboxed runtime](#sandboxed-runtime).
 - `caelus-tls` namespace (`tls/`) holding the platform certificate and the
-  `TLSStore/default` Traefik serves from. One certificate covers `freepod.eu`
+  `TLSStore/default` Traefik serves from, plus `TLSOption/default`: TLS 1.2+
+  with only AEAD (GCM, ChaCha20) ECDHE suites. One certificate covers `freepod.eu`
   and the tenant domains `freepod.app` and `dev.freepod.app`, with their
   wildcards, issued over DNS-01 through Cloudflare and deSEC respectively. The store is platform-owned rather
   than rendered by the Traefik release, and Traefik is pinned to this namespace
