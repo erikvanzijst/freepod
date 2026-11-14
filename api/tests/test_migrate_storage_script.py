@@ -360,3 +360,30 @@ def test_rollback_records_a_local_volume_as_big_as_its_grown_claim(ms, monkeypat
     ms.fit(pv, ms.Claim("data", "512Mi", None, None))
 
     assert patched == [("old", {"spec": {"capacity": {"storage": "10Gi"}}})]
+
+
+def test_hold_reconciles_a_failed_stop_back_to_ready_before_maintenance(ms, monkeypatch):
+    failed = SimpleNamespace(id=uuid4(), reason=None, status=ms.DEPLOYMENT_STATUS_ERROR, settled=True, last_error="boom")
+    failed.under_maintenance = False
+    calls = []
+    monkeypatch.setattr(ms, "enqueue_reconcile", lambda _id: calls.append("reconcile"))
+
+    def settle(_id, what, timeout):
+        calls.append(what)
+        return SimpleNamespace(id=_id, applied_state=ms.POWER_STATE_STOPPED)
+
+    monkeypatch.setattr(ms, "settle", settle)
+
+    class Session:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, *_):
+            return False
+
+    monkeypatch.setattr(ms, "session_scope", Session)
+    monkeypatch.setattr(ms.power, "begin_maintenance", lambda _s, deployment_id: calls.append("maintenance"))
+
+    ms.hold(failed, 1)
+
+    assert calls == ["reconcile", "recovering from the failed reconcile", "maintenance", "stopping for maintenance"]

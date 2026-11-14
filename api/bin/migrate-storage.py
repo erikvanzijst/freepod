@@ -683,6 +683,10 @@ def create_statefulset_claim(snap: Snapshot, claim: Claim, pv: str) -> None:
 
 def hold(snap: Snapshot, timeout: float) -> Snapshot:
     if not snap.under_maintenance:
+        if snap.status == DEPLOYMENT_STATUS_ERROR and snap.settled:
+            log(f"reconciling after a failed reconcile: {snap.last_error}")
+            enqueue_reconcile(snap.id)
+            snap = settle(snap.id, "recovering from the failed reconcile", timeout)
         with session_scope() as session:
             power.begin_maintenance(session, deployment_id=snap.id)
         log("maintenance begun")
