@@ -40,7 +40,7 @@
 ## 7. Integration
 
 - [x] 7.1 Run `terraform plan` for `tf/deps` from this branch and confirm "No changes" against the live cluster, so the applied state is exactly what merges
-- [ ] 7.2 Open the PR; after merge, confirm the next 00:30 UTC run completes and `BackupTooOld` stays clear
+- [x] 7.2 Open the PR; after merge, confirm the next 00:30 UTC run completes and `BackupTooOld` stays clear
 
 ## Workflow follow-up
 
