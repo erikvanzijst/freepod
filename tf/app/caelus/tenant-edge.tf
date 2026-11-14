@@ -22,6 +22,24 @@ resource "kubernetes_manifest" "tenant_apex_redirect" {
   }
 }
 
+resource "kubernetes_manifest" "tenant_apex_security_txt_redirect" {
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "Middleware"
+    metadata = {
+      name      = "redirect-tenant-apex-security-txt"
+      namespace = var.namespace
+    }
+    spec = {
+      redirectRegex = {
+        regex       = "^.*$"
+        replacement = "https://${var.domain}/.well-known/security.txt"
+        permanent   = true
+      }
+    }
+  }
+}
+
 resource "kubernetes_manifest" "tenant_apex_route" {
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
@@ -39,6 +57,16 @@ resource "kubernetes_manifest" "tenant_apex_route" {
           name = kubernetes_manifest.tenant_apex_redirect.manifest.metadata.name
         }]
         # Never reached: the redirect answers first.
+        services = [{
+          name = kubernetes_service.api.metadata[0].name
+          port = 8000
+        }]
+        }, {
+        match = "Host(`${var.tenant_domain}`) && Path(`/.well-known/security.txt`)"
+        kind  = "Rule"
+        middlewares = [{
+          name = kubernetes_manifest.tenant_apex_security_txt_redirect.manifest.metadata.name
+        }]
         services = [{
           name = kubernetes_service.api.metadata[0].name
           port = 8000

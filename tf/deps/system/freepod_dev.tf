@@ -42,6 +42,26 @@ resource "kubernetes_manifest" "freepod_dev_redirect_middleware" {
   depends_on = [module.traefik]
 }
 
+resource "kubernetes_manifest" "freepod_dev_security_txt_middleware" {
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "Middleware"
+    metadata = {
+      name      = "redirect-freepod-dev-security-txt"
+      namespace = "kube-system"
+    }
+    spec = {
+      redirectRegex = {
+        regex       = "^.*$"
+        replacement = "https://freepod.eu/.well-known/security.txt"
+        permanent   = false
+      }
+    }
+  }
+
+  depends_on = [module.traefik]
+}
+
 resource "kubernetes_manifest" "freepod_dev_route" {
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
@@ -59,6 +79,16 @@ resource "kubernetes_manifest" "freepod_dev_route" {
           name = kubernetes_manifest.freepod_dev_redirect_middleware.manifest.metadata.name
         }]
         # Never hit: the redirect short-circuits first (see redirect_https.tf).
+        services = [{
+          name = "traefik"
+          port = 80
+        }]
+        }, {
+        match = "Host(`freepod.dev`) && Path(`/.well-known/security.txt`)"
+        kind  = "Rule"
+        middlewares = [{
+          name = kubernetes_manifest.freepod_dev_security_txt_middleware.manifest.metadata.name
+        }]
         services = [{
           name = "traefik"
           port = 80

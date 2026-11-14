@@ -24,6 +24,33 @@ function legalMarkdown(): Plugin {
 }
 
 /**
+ * RFC 9116 security.txt. Expires is a required field, so it is stamped one
+ * year past the build rather than committed as a date that silently lapses.
+ */
+function securityTxt(): Plugin {
+  return {
+    name: 'security-txt',
+    apply: 'build',
+    generateBundle() {
+      const expires = new Date()
+      expires.setUTCFullYear(expires.getUTCFullYear() + 1)
+      expires.setUTCDate(expires.getUTCDate() - 1)
+      this.emitFile({
+        type: 'asset',
+        fileName: '.well-known/security.txt',
+        source: [
+          'Contact: mailto:security@freepod.eu',
+          `Expires: ${expires.toISOString().replace(/\.\d{3}Z$/, 'Z')}`,
+          'Preferred-Languages: en',
+          'Canonical: https://freepod.eu/.well-known/security.txt',
+          '',
+        ].join('\n'),
+      })
+    },
+  }
+}
+
+/**
  * Renders each page's title and link-preview tags into its own HTML file:
  * `/` into index.html, and a copy of the built index.html per other page
  * (dev.html) and per catalog app (app-<slug>.html, with a card image rendered
@@ -67,7 +94,7 @@ const appDocs = readdirSync(new URL('./docs/apps/products', import.meta.url))
   .map((file) => file.slice(0, -'.mdx'.length))
 
 export default defineConfig({
-  plugins: [react(), legalMarkdown(), pageMeta()],
+  plugins: [react(), legalMarkdown(), securityTxt(), pageMeta()],
   define: {
     __APP_DOCS__: JSON.stringify(appDocs),
   },
