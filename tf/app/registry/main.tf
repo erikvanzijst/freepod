@@ -94,23 +94,21 @@ resource "kubernetes_manifest" "certificate" {
   }
 }
 
-resource "kubernetes_persistent_volume_claim" "registry" {
+resource "kubernetes_persistent_volume_claim" "data" {
   metadata {
-    name      = "registry"
+    name      = "registry-data"
     namespace = var.namespace
   }
 
   spec {
-    access_modes = ["ReadWriteOnce"]
+    access_modes       = ["ReadWriteOncePod"]
+    storage_class_name = var.storage_class
     resources {
       requests = {
         storage = var.storage_size
       }
     }
   }
-
-  # local-path binds on first consumer, which is the Deployment below.
-  wait_until_bound = false
 }
 
 resource "kubernetes_deployment" "registry" {
@@ -287,7 +285,7 @@ resource "kubernetes_deployment" "registry" {
         volume {
           name = "storage"
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.registry.metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim.data.metadata[0].name
           }
         }
       }

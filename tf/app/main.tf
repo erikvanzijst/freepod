@@ -58,6 +58,9 @@ module "registry" {
   token_realm  = "https://${local.domain}/api/registry/token"
   token_issuer = local.registry_token_issuer
   jwks         = var.registry_jwks[terraform.workspace]
+
+  storage_class = local.storage_class
+  storage_size  = local.is_prod_workspace ? "40Gi" : "15Gi"
 }
 
 # The verifier's in-cluster address. Derived here rather than output by

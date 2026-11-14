@@ -46,10 +46,14 @@ variable "cluster_issuer" {
   default     = "letsencrypt-dns"
 }
 
-variable "storage_size" {
-  description = "Requested volume size. Nominal: local-path enforces no quota."
+variable "storage_class" {
+  description = "StorageClass of the registry's volume"
   type        = string
-  default     = "20Gi"
+}
+
+variable "storage_size" {
+  description = "Requested volume size"
+  type        = string
 }
 
 variable "restart_schedule" {
