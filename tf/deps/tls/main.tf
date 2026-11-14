@@ -31,6 +31,12 @@ resource "kubernetes_manifest" "wildcard" {
 
       commonName = "*.freepod.eu"
       dnsNames   = var.wildcard_dns_names
+
+      privateKey = {
+        algorithm      = "ECDSA"
+        size           = 256
+        rotationPolicy = "Always"
+      }
     }
   }
 }

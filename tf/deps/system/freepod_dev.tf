@@ -17,6 +17,12 @@ resource "kubernetes_manifest" "freepod_dev_certificate" {
         kind = "ClusterIssuer"
       }
       dnsNames = ["freepod.dev"]
+
+      privateKey = {
+        algorithm      = "ECDSA"
+        size           = 256
+        rotationPolicy = "Always"
+      }
     }
   }
 }
