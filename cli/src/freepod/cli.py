@@ -21,6 +21,7 @@ from urllib.parse import quote
 import click
 
 from . import EXIT_ERROR, EXIT_OK, BuildFailed, FreepodError, UsageError
+from . import apply as apply_module
 from . import bucket as bucket_module
 from . import build as build_module
 from . import copy as copy_module
@@ -30,6 +31,7 @@ from . import deploy as deploy_module
 from . import history
 from . import initialize
 from . import keys as keys_module
+from . import link as link_module
 from . import logs as logs_module
 from . import objects as objects_module
 from . import power as power_module
@@ -359,6 +361,31 @@ def init(context: Context, force: bool, name: Optional[str], hostname: Optional[
 
 
 @cli.command()
+@click.argument("deployment", required=False)
+@click.option(
+    "--force",
+    is_flag=True,
+    help=f"replace the deployment {PROJECT_FILE} records; that one is left as it is",
+)
+@click.pass_obj
+def link(context: Context, deployment: Optional[str], force: bool) -> None:
+    """Point this project at an existing deployment, by name or id.
+
+    Without an argument, lists your deployments to pick from. A new
+    .freepod.json gets the deployment's managed settings back; an existing one
+    keeps its own, and link reports how they differ. Nothing is sent to the
+    deployment: run `freepod apply` for that.
+    """
+    session = context.session()
+    session.authenticate(interactive=False)
+
+    with context.client(session) as api:
+        linked = link_module.link(api, Path.cwd(), deployment, force=force, echo=context.say)
+
+    click.echo(str(linked.path))
+
+
+@cli.command()
 @click.option(
     "--recreate",
     is_flag=True,
@@ -376,7 +403,7 @@ def init(context: Context, force: bool, name: Optional[str], hostname: Optional[
     "--no-build",
     "no_build",
     is_flag=True,
-    help="redeploy the current image without building, e.g. to apply staged vars",
+    help="apply .freepod.json and staged vars without building; same as `freepod apply`",
 )
 @click.pass_obj
 def deploy(context: Context, recreate: bool, no_gitignore: bool, no_build: bool) -> None:
@@ -403,15 +430,7 @@ def deploy(context: Context, recreate: bool, no_gitignore: bool, no_build: bool)
     session.authenticate(interactive=False)
 
     if no_build:
-        with context.client(session) as api:
-            address = deploy_module.release_current(
-                api,
-                context.env.name,
-                interactive=sys.stdin.isatty(),
-                timeout=wait_seconds(context.timeout, ROLLOUT_WAIT_SECONDS),
-            )
-        click.echo(address)
-        context.say(f"Released. Live at {address}")
+        _apply(context, session)
         return
 
     with context.client(session) as api:
@@ -432,6 +451,33 @@ def deploy(context: Context, recreate: bool, no_gitignore: bool, no_build: bool)
     # `URL=$(freepod deploy)` yields exactly the URL.
     click.echo(address)
     context.say(f"Deployed. Live at {address}")
+
+
+@cli.command(name="apply")
+@click.pass_obj
+def apply_command(context: Context) -> None:
+    """Send .freepod.json to the deployment, without building.
+
+    Sets the deployment's name, description, icon and every other setting
+    the file holds, and marks them as managed by the file. Prints what
+    changed. A change the running app needs, or staged vars, starts a
+    release, which this follows until it is live.
+    """
+    session = context.session()
+    session.authenticate(interactive=False)
+    _apply(context, session)
+
+
+def _apply(context: Context, session: Session) -> None:
+    with context.client(session) as api:
+        address = apply_module.apply(
+            api,
+            context.env.name,
+            timeout=wait_seconds(context.timeout, ROLLOUT_WAIT_SECONDS),
+            echo=context.say,
+        )
+    if address:
+        click.echo(address)
 
 
 @cli.command()

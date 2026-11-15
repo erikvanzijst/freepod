@@ -375,7 +375,7 @@ def test_a_deleted_deployment_is_reported_before_a_build_is_spent(make_api, tmp_
     with pytest.raises(FreepodError) as raised:
         run(make_api, platform, tmp_path)
 
-    assert "--recreate" in str(raised.value)
+    assert "freepod init --force" in str(raised.value)
     assert "no longer exists" in str(raised.value)
     # Nothing was packed, uploaded, or built.
     assert "/api/artifacts" not in platform.paths()

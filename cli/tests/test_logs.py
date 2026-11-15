@@ -422,7 +422,7 @@ def test_the_command_adds_no_package_dependency():
 
     declared = importlib.metadata.requires("freepod") or []
     names = sorted(re.split(r"[\s><=!~;\[]", spec)[0] for spec in declared)
-    assert names == ["click", "httpx", "pathspec"]
+    assert names == ["click", "httpx", "pathspec", "prompt-toolkit"]
 
 
 def test_a_rollover_is_announced_on_stderr_and_never_prefixed_onto_a_line(make_api):

@@ -296,15 +296,15 @@ def test_setting_several_vars_produces_one_rollout(run_var):
     assert len(platform.updates) == 1
 
 
-def test_rolling_the_current_image_leaves_the_build_to_the_platform(run_var):
-    """The platform carries the applied release's build over to a release that
-    keeps its image, so naming it here would only duplicate that rule."""
+def test_rolling_names_the_running_build(run_var):
+    """Staged vars alone do not make an update release; naming the build the
+    deployment runs does, and keeps its image."""
     platform = VarPlatform()
 
     assert run_var(platform, ["var", "set", "A=1"]) == EXIT_OK
 
-    assert platform.updates[0]["user_values_json"]["image"] == IMAGE
-    assert "build_id" not in platform.updates[0]
+    assert platform.updates[0]["build_id"] == "b-1"
+    assert "managed_fields" not in platform.updates[0]
 
 
 def test_staging_writes_without_rolling(run_var):

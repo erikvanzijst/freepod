@@ -32,7 +32,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
-from typing import IO, Any, Callable, Dict, List, Optional, Tuple
+from typing import IO, Any, Callable, Dict, Optional, Tuple
 
 import httpx
 
@@ -270,10 +270,22 @@ def preflight(
     return Preflight(project, user_id, product, template, values, deployment, plan)
 
 
+def read_linked(api: ApiClient, user_id: int, project: Project) -> Dict[str, Any]:
+    """The recorded deployment, or a refusal naming how to re-point the project.
+
+    A deployment deleted on the platform still leaves its pointer in a file
+    that is committed, so this is the common way a project goes stale.
+    """
+    record = _read_deployment(api, user_id, project)
+    if record is None:
+        raise FreepodError(f"{project.path} records no deployment — this is a client bug")
+    return record
+
+
 def _read_deployment(
     api: ApiClient, user_id: int, project: Project
 ) -> Optional[Dict[str, Any]]:
-    """The recorded deployment, or a refusal naming `--recreate`.
+    """The recorded deployment, or a refusal naming how to re-point the project.
 
     A deployment deleted on the platform still leaves its pointer in a file
     that is committed, so this is the common way a project goes stale. Catching
@@ -288,8 +300,8 @@ def _read_deployment(
         raise FreepodError(
             f"{project.path} points at deployment {deployment_id}, "
             f"which no longer exists{env_suffix(project.env)}.\n"
-            f"  It was deleted outside this project. Run `freepod deploy --recreate` "
-            f"to create a new deployment and re-point {PROJECT_FILE} at it."
+            f"  It was deleted outside this project. Run `freepod init --force` to "
+            f"create a new one, or `freepod link` to point {PROJECT_FILE} at another."
         )
     if not response.is_success:
         raise FreepodError(
@@ -692,6 +704,27 @@ def update_deployment(
     return response.json()
 
 
+def put_update(
+    api: ApiClient,
+    user_id: int,
+    deployment_id: str,
+    body: Dict[str, Any],
+    *,
+    move: Optional[str] = None,
+    built: bool = False,
+) -> Dict[str, Any]:
+    """`PUT` an update body as given: the deployment as the platform returns it."""
+    response = api.put(f"/api/users/{user_id}/deployments/{deployment_id}", json=body)
+    if response.status_code == 409:
+        raise _conflict(response, move=move, built=built)
+    if not response.is_success:
+        raise FreepodError(
+            f"could not update the deployment: HTTP {response.status_code} "
+            f"{response.text.strip()[:300]}"
+        )
+    return response.json()
+
+
 # --------------------------------------------------------------------------
 # Waiting
 # --------------------------------------------------------------------------
@@ -880,9 +913,22 @@ def release(
         build_id=build_id,
     )
 
+    return finish_rollout(api, state.user_id, record, timeout=timeout, poll=poll, echo=echo)
+
+
+def finish_rollout(
+    api: ApiClient,
+    user_id: int,
+    record: Dict[str, Any],
+    *,
+    timeout: int = ROLLOUT_WAIT_SECONDS,
+    poll: float = POLL_SECONDS,
+    echo: Callable[[str], None] = _log,
+) -> str:
+    """Follow the rollout the update in `record` started. Returns the address."""
     final = follow_rollout(
         api,
-        state.user_id,
+        user_id,
         record["id"],
         record.get("generation", 0),
         timeout=timeout,
@@ -944,27 +990,35 @@ def release_current(
     poll: float = POLL_SECONDS,
     echo: Callable[[str], None] = _log,
 ) -> str:
-    """Roll the deployment again on the image it already runs. Returns the address.
+    """Roll the build the deployment runs again, so staged vars take effect.
 
-    No build is named: the platform carries the applied release's build over
-    to a release that keeps its image.
+    Naming the running build is what makes the platform release; the project
+    file is not sent. Returns the address.
     """
-    state = preflight(api, env_name, root=root, interactive=interactive, echo=echo)
-    if state.deployment is None:
+    project = require_project(root)
+    if not project.deployment_id:
         raise FreepodError(
-            "this project has no deployment yet, so there is nothing to roll.\n"
-            "  Run `freepod deploy` to create one."
+            f"{project.path} records no deployment, so there is nothing to roll.\n"
+            f"  Run `freepod init` to create one."
         )
-    image = applied_image(state.deployment)
-    if image is None:
+    user_id = api.me()["id"]
+    record = read_linked(api, user_id, project)
+    build = (record.get("applied_release") or {}).get("build_id")
+    if not build:
         raise FreepodError(
-            f"deployment '{state.deployment.get('name')}' has never completed a "
-            f"rollout, so there is no image to release.\n"
-            f"  Run `freepod deploy` to build and release one."
+            f"deployment '{record.get('name')}' runs no build yet, so there is nothing "
+            f"to roll again.\n"
+            f"  Pending vars take effect with the next `freepod deploy`."
         )
-    announce_pending_vars(api, state, echo=echo)
-    echo(f"Releasing {image} again.")
-    return release(api, state, image, timeout=timeout, poll=poll, echo=echo)
+    record = wait_until_settled(api, user_id, record, timeout=timeout, poll=poll, echo=echo)
+    echo(f"Releasing '{record.get('name')}' again on its current build.")
+    updated = put_update(
+        api,
+        user_id,
+        record["id"],
+        {"user_values_json": record.get("user_values_json") or {}, "build_id": str(build)},
+    )
+    return finish_rollout(api, user_id, updated, timeout=timeout, poll=poll, echo=echo)
 
 
 def deploy(
