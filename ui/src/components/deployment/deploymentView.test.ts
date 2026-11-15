@@ -205,3 +205,28 @@ describe('powerLabel', () => {
     expect(powerLabel(deployment({ status: 'error', ...power('stopped', 'stopped', 'manual') }))).toBe('Stopped')
   })
 })
+
+describe('deploymentView identity', () => {
+  const customTemplate = {
+    id: 3,
+    product: { id: 9, name: 'Custom user app', slug: 'custom', icon_url: '/api/static/icons/custom.png' },
+  } as Deployment['desired_template']
+
+  it('tells two Custom deployments apart by name and icon', () => {
+    const arkanoid = deploymentView(
+      deployment({ name: 'Arkanoid', desired_template: customTemplate, icon_url: '/api/static/icons/ark.png' }),
+    )
+    const recipes = deploymentView(deployment({ name: 'Recipes', desired_template: customTemplate, icon_url: null }))
+    expect([arkanoid.appName, recipes.appName]).toEqual(['Arkanoid', 'Recipes'])
+    expect(arkanoid.iconUrl).toMatch(/icons\/ark\.png$/)
+    expect(recipes.iconUrl).toMatch(/icons\/custom\.png$/)
+  })
+
+  it('names the product, not the deployment, where the app manages sign-in', () => {
+    const view = deploymentView(
+      deployment({ name: 'Family photos', auth: { enabled: true, protocol: 'oidc', access: 'anyone' } }),
+    )
+    expect(view.appName).toBe('Family photos')
+    expect(view.signIn).toBe('Managed in Immich')
+  })
+})

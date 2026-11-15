@@ -224,12 +224,18 @@ export function updateDeployment(
   userId: number,
   deploymentId: string,
   payload: {
-    desired_template_id: number
+    desired_template_id?: number
     user_values_json?: object
     // Passed through explicitly: an update that omits it drops the release's
     // link to the build that produced the running image.
     build_id?: string | null
     vars?: Record<string, VarWrite>
+    name?: string
+    description?: string | null
+    /** Base64 PNG, JPEG or WebP; null resets to the product's. */
+    icon?: string | null
+    /** Sent only to take a field over from `.freepod.json`. */
+    managed_fields?: string[]
   },
 ) {
   return requestJson<Deployment>(`/users/${userId}/deployments/${deploymentId}`, {

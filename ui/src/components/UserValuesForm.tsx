@@ -19,6 +19,7 @@ import { HostnameField } from './HostnameField'
 import { SensitiveVarField } from './SensitiveVarField'
 import { isStringList, linesToList } from './stringListField'
 import { evaluateConditionals } from './schemaConditionals'
+import { ManagedFieldNotice } from './deployment/ManagedFieldNotice'
 
 const ajv = new Ajv2020({ allErrors: true, strict: false })
 addFormats(ajv)
@@ -284,6 +285,10 @@ interface UserValuesFormProps {
   /** The hostname label an install dialog starts with, e.g. the app's slug. */
   hostnamePrefill?: string
   readOnly?: boolean
+  /** Top-level keys `.freepod.json` manages: shown read-only, with Take over. */
+  managedKeys?: string[]
+  onTakeOver?: (key: string) => void
+  takingOver?: boolean
 }
 
 export function UserValuesForm({
@@ -298,6 +303,9 @@ export function UserValuesForm({
   initialHostname,
   hostnamePrefill,
   readOnly,
+  managedKeys = [],
+  onTakeOver,
+  takingOver,
 }: UserValuesFormProps) {
   const fields = useMemo(() => flattenSchema(valuesSchemaJson), [valuesSchemaJson])
   const initialValues = useMemo(() => flattenValues(initialValuesJson ?? null), [initialValuesJson])
@@ -509,6 +517,149 @@ export function UserValuesForm({
     handleChange(path, options[Number(selected)], 'enum')
   }
 
+  const renderField = (field: SchemaField, readOnly: boolean | undefined) => {
+    if (field.title?.toLowerCase() === 'hostname') {
+      return (
+        <HostnameField
+          key={field.path}
+          value={typeof formData[field.path] === 'string' ? (formData[field.path] as string) : ''}
+          onChange={(hostname) => handleChange(field.path, hostname, 'string')}
+          onValidationChange={onHostnameValidationChange}
+          suffix={handleQuery.data?.suffix}
+          cnameTarget={cnameTargetQuery.data || undefined}
+          required={field.required}
+          error={fieldErrors[field.path]}
+          description={field.description}
+          initialHostname={initialHostname}
+          defaultPrefix={hostnamePrefill}
+          readOnly={readOnly}
+        />
+      )
+    }
+
+    if (field.sensitive) {
+      return (
+        <SensitiveVarField
+          key={field.path}
+          label={field.title || field.path}
+          description={field.description}
+          required={field.required}
+          error={fieldErrors[field.path]}
+          readOnly={readOnly}
+          alreadySet={initialVars?.[field.path] !== undefined}
+          touched={touchedSensitive.has(field.path)}
+          value={typeof formData[field.path] === 'string' ? (formData[field.path] as string) : ''}
+          onChange={(value) => handleChange(field.path, value, 'string', true)}
+        />
+      )
+    }
+
+    if (isStringList(field)) {
+      return (
+        <FormControl key={field.path} fullWidth error={!!fieldErrors[field.path]}>
+          <TextField
+            label={field.title || field.path}
+            helperText={
+              fieldErrors[field.path] ||
+              [field.description, 'One per line.'].filter(Boolean).join(' ')
+            }
+            value={typeof formData[field.path] === 'string' ? formData[field.path] : ''}
+            onChange={(e) => handleChange(field.path, e.target.value, field.type)}
+            multiline
+            minRows={2}
+            required={field.required}
+            error={!!fieldErrors[field.path]}
+            slotProps={{
+              htmlInput: { spellCheck: false, style: { fontFamily: 'monospace' } },
+              ...(readOnly ? { input: { readOnly: true } } : {}),
+            }}
+          />
+        </FormControl>
+      )
+    }
+
+    if (field.enum && field.type !== 'boolean') {
+      const options = field.enum
+      const index = options.findIndex((option) => option === formData[field.path])
+      return (
+        <FormControl key={field.path} fullWidth error={!!fieldErrors[field.path]}>
+          <TextField
+            select
+            label={field.title || field.path}
+            helperText={fieldErrors[field.path] || field.description}
+            value={index === -1 ? '' : String(index)}
+            onChange={(e) => handleEnumChange(field.path, options, e.target.value)}
+            required={field.required}
+            error={!!fieldErrors[field.path]}
+            disabled={readOnly}
+          >
+            {!field.required && (
+              <MenuItem value="">
+                <em>Not set</em>
+              </MenuItem>
+            )}
+            {options.map((option, i) => (
+              <MenuItem key={i} value={String(i)}>
+                {String(option)}
+              </MenuItem>
+            ))}
+          </TextField>
+        </FormControl>
+      )
+    }
+
+    return (
+      <FormControl key={field.path} fullWidth error={!!fieldErrors[field.path]}>
+        {field.type === 'boolean' ? (
+          <>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData[field.path] === true}
+                  onChange={(e) => handleChange(field.path, e.target.checked, 'boolean')}
+                  disabled={readOnly}
+                />
+              }
+              label={field.title || field.path}
+            />
+            {/* A checkbox has no helperText to carry the error. */}
+            {fieldErrors[field.path] ? (
+              <FormHelperText>{fieldErrors[field.path]}</FormHelperText>
+            ) : (
+              field.description && <FormHelperText>{field.description}</FormHelperText>
+            )}
+          </>
+        ) : (
+          <TextField
+            label={field.title || field.path}
+            helperText={fieldErrors[field.path] || field.description}
+            value={
+              typeof formData[field.path] === 'string' || typeof formData[field.path] === 'number'
+                ? formData[field.path]
+                : ''
+            }
+            onChange={(e) => handleChange(field.path, e.target.value, field.type)}
+            type={
+              field.type === 'integer' || field.type === 'number'
+                ? 'number'
+                : field.pattern
+                  ? 'text'
+                  : 'text'
+            }
+            inputProps={
+              field.pattern
+                ? { title: field.description || field.title || field.path }
+                : undefined
+            }
+            required={field.required}
+            error={!!fieldErrors[field.path]}
+            slotProps={readOnly ? { input: { readOnly: true } } : undefined}
+          />
+        )}
+      </FormControl>
+    )
+  }
+
   if (fields.length === 0) {
     return null
   }
@@ -527,146 +678,17 @@ export function UserValuesForm({
           ))}
         </Box>
       )}
-      {shownFields.map((field) => {
-        if (field.title?.toLowerCase() === 'hostname') {
-          return (
-            <HostnameField
-              key={field.path}
-              value={typeof formData[field.path] === 'string' ? (formData[field.path] as string) : ''}
-              onChange={(hostname) => handleChange(field.path, hostname, 'string')}
-              onValidationChange={onHostnameValidationChange}
-              suffix={handleQuery.data?.suffix}
-              cnameTarget={cnameTargetQuery.data || undefined}
-              required={field.required}
-              error={fieldErrors[field.path]}
-              description={field.description}
-              initialHostname={initialHostname}
-              defaultPrefix={hostnamePrefill}
-              readOnly={readOnly}
-            />
-          )
-        }
-
-        if (field.sensitive) {
-          return (
-            <SensitiveVarField
-              key={field.path}
-              label={field.title || field.path}
-              description={field.description}
-              required={field.required}
-              error={fieldErrors[field.path]}
-              readOnly={readOnly}
-              alreadySet={initialVars?.[field.path] !== undefined}
-              touched={touchedSensitive.has(field.path)}
-              value={typeof formData[field.path] === 'string' ? (formData[field.path] as string) : ''}
-              onChange={(value) => handleChange(field.path, value, 'string', true)}
-            />
-          )
-        }
-
-        if (isStringList(field)) {
-          return (
-            <FormControl key={field.path} fullWidth error={!!fieldErrors[field.path]}>
-              <TextField
-                label={field.title || field.path}
-                helperText={
-                  fieldErrors[field.path] ||
-                  [field.description, 'One per line.'].filter(Boolean).join(' ')
-                }
-                value={typeof formData[field.path] === 'string' ? formData[field.path] : ''}
-                onChange={(e) => handleChange(field.path, e.target.value, field.type)}
-                multiline
-                minRows={2}
-                required={field.required}
-                error={!!fieldErrors[field.path]}
-                slotProps={{
-                  htmlInput: { spellCheck: false, style: { fontFamily: 'monospace' } },
-                  ...(readOnly ? { input: { readOnly: true } } : {}),
-                }}
-              />
-            </FormControl>
-          )
-        }
-
-        if (field.enum && field.type !== 'boolean') {
-          const options = field.enum
-          const index = options.findIndex((option) => option === formData[field.path])
-          return (
-            <FormControl key={field.path} fullWidth error={!!fieldErrors[field.path]}>
-              <TextField
-                select
-                label={field.title || field.path}
-                helperText={fieldErrors[field.path] || field.description}
-                value={index === -1 ? '' : String(index)}
-                onChange={(e) => handleEnumChange(field.path, options, e.target.value)}
-                required={field.required}
-                error={!!fieldErrors[field.path]}
-                disabled={readOnly}
-              >
-                {!field.required && (
-                  <MenuItem value="">
-                    <em>Not set</em>
-                  </MenuItem>
-                )}
-                {options.map((option, i) => (
-                  <MenuItem key={i} value={String(i)}>
-                    {String(option)}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </FormControl>
-          )
-        }
-
+      {shownFields.map((field, index) => {
+        const key = field.path.split('.')[0]
+        const managed = managedKeys.includes(key)
+        const element = renderField(field, readOnly || managed)
+        if (!managed || shownFields.findIndex((f) => f.path.split('.')[0] === key) !== index) return element
+        const label = (valuesSchemaJson?.properties as Record<string, { title?: string }> | undefined)?.[key]?.title ?? key
         return (
-          <FormControl key={field.path} fullWidth error={!!fieldErrors[field.path]}>
-            {field.type === 'boolean' ? (
-              <>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={formData[field.path] === true}
-                      onChange={(e) => handleChange(field.path, e.target.checked, 'boolean')}
-                      disabled={readOnly}
-                    />
-                  }
-                  label={field.title || field.path}
-                />
-                {/* A checkbox has no helperText to carry the error. */}
-                {fieldErrors[field.path] ? (
-                  <FormHelperText>{fieldErrors[field.path]}</FormHelperText>
-                ) : (
-                  field.description && <FormHelperText>{field.description}</FormHelperText>
-                )}
-              </>
-            ) : (
-              <TextField
-                label={field.title || field.path}
-                helperText={fieldErrors[field.path] || field.description}
-                value={
-                  typeof formData[field.path] === 'string' || typeof formData[field.path] === 'number'
-                    ? formData[field.path]
-                    : ''
-                }
-                onChange={(e) => handleChange(field.path, e.target.value, field.type)}
-                type={
-                  field.type === 'integer' || field.type === 'number'
-                    ? 'number'
-                    : field.pattern
-                      ? 'text'
-                      : 'text'
-                }
-                inputProps={
-                  field.pattern
-                    ? { title: field.description || field.title || field.path }
-                    : undefined
-                }
-                required={field.required}
-                error={!!fieldErrors[field.path]}
-                slotProps={readOnly ? { input: { readOnly: true } } : undefined}
-              />
-            )}
-          </FormControl>
+          <Stack key={`managed-${field.path}`} spacing={1}>
+            <ManagedFieldNotice label={label} takingOver={takingOver} onTakeOver={onTakeOver && (() => onTakeOver(key))} />
+            {element}
+          </Stack>
         )
       })}
     </Stack>

@@ -12,6 +12,7 @@ import {
 } from '@mui/material'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import { resolveApiPath } from '../api/client'
+import type { ReactNode } from 'react'
 import type { Plan, ProductSummary } from '../api/types'
 import { UserValuesForm } from './UserValuesForm'
 import type { VarSubmission } from './UserValuesForm'
@@ -53,6 +54,11 @@ interface DeployDialogContentProps {
   showTosAgreement?: boolean
   tosAccepted?: boolean
   onTosAcceptedChange?: (accepted: boolean) => void
+  /** Rendered above the app settings, e.g. the deployment's identity. */
+  beforeValues?: ReactNode
+  managedKeys?: string[]
+  onTakeOver?: (key: string) => void
+  takingOver?: boolean
 }
 
 export function DeployDialogContent({
@@ -86,6 +92,10 @@ export function DeployDialogContent({
   showTosAgreement,
   tosAccepted = false,
   onTosAcceptedChange,
+  beforeValues,
+  managedKeys,
+  onTakeOver,
+  takingOver,
 }: DeployDialogContentProps) {
   return (
     <>
@@ -189,6 +199,8 @@ export function DeployDialogContent({
             This product has no template configured yet.
           </Alert>
         ) : (
+          <>
+          {beforeValues}
           <UserValuesForm
             valuesSchemaJson={valuesSchemaJson}
             initialValuesJson={initialValuesJson}
@@ -201,7 +213,11 @@ export function DeployDialogContent({
             initialHostname={initialHostname}
             hostnamePrefill={hostnamePrefill}
             readOnly={readOnly}
+            managedKeys={managedKeys}
+            onTakeOver={onTakeOver}
+            takingOver={takingOver}
           />
+          </>
         )}
       </Stack>
       {showTosAgreement && !loading && (

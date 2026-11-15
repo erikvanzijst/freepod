@@ -18,6 +18,7 @@ export interface DeploymentProblem {
 
 /** A deployment in the words a non-technical user reads on its card. */
 export interface DeploymentView {
+  /** The deployment's own name. */
   appName: string
   iconUrl: string | null
   address: string | null
@@ -162,9 +163,9 @@ function price(d: Deployment): string | undefined {
   return `${formatEuro(plan.price_cents)}/${plan.billing_interval === 'annual' ? 'yr' : 'mo'}`
 }
 
-function signIn(d: Deployment, appName: string): string | undefined {
+function signIn(d: Deployment, productName: string): string | undefined {
   if (!d.auth?.enabled) return undefined
-  if (d.auth.access !== 'listed') return `Managed in ${appName}`
+  if (d.auth.access !== 'listed') return `Managed in ${productName}`
   const n = d.auth.listed_count ?? 0
   if (n === 0) return 'Only you'
   return `You and ${n} ${n === 1 ? 'person' : 'people'}`
@@ -180,10 +181,11 @@ export function deploymentView(d: Deployment): DeploymentView {
     d.hostname &&
       !(d.status === 'pending' || d.status === 'deleting' || (d.status === 'provisioning' && (d.generation ?? 1) <= 1)),
   )
-  const appName = product?.name ?? 'App'
+  const appName = d.name || product?.name || 'App'
+  const iconUrl = d.icon_url ?? product?.icon_url
   return {
     appName,
-    iconUrl: product?.icon_url ? resolveApiPath(product.icon_url) : null,
+    iconUrl: iconUrl ? resolveApiPath(iconUrl) : null,
     address: d.hostname,
     url: d.hostname ? ensureUrl(d.hostname) : null,
     docsUrl: docsUrl(product?.slug),
@@ -200,7 +202,7 @@ export function deploymentView(d: Deployment): DeploymentView {
     canRemove: d.status !== 'deleting' && d.status !== 'deleted',
     canStop: d.status === 'ready' && (d.power?.desired ?? 'running') === 'running',
     canStart: d.status === 'ready' && d.power?.desired === 'stopped' && d.power.reason === 'manual',
-    signIn: signIn(d, appName),
+    signIn: signIn(d, product?.name ?? appName),
     listed: Boolean(d.auth?.enabled && d.auth.access === 'listed'),
   }
 }

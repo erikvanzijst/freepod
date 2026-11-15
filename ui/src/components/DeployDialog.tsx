@@ -2,12 +2,15 @@ import { Dialog, DialogContent } from '@mui/material'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 import { createDeployment, updateDeployment, listTemplates, listPlans, getDeployment, getTosAcceptance, recordTosAcceptance } from '../api/endpoints'
+import { ApiError } from '../api/client'
 import type { Deployment, Plan, ProductSummary, ProductTemplate } from '../api/types'
 import { validateUserValues } from './UserValuesForm'
 import type { VarSubmission } from './UserValuesForm'
 import { DeployDialogContent } from './DeployDialogContent'
 import { findPlan } from './useInstallRequest'
 import { LEGAL_DOCS } from '../content/legal'
+import { DeploymentIdentityFields } from './deployment/DeploymentIdentityFields'
+import { identityDraft, identityPayload, withManagedValues, type IdentityDraft } from './deployment/identityDraft'
 
 // Version (effective date) of the Terms of Service this build displays; recorded
 // as the user's acceptance on first launch. Sourced from the bundled document so
@@ -41,6 +44,8 @@ export function DeployDialog({ product, userId, onClose, deployment, initialPlan
   const [requiredFilled, setRequiredFilled] = useState(true)
   const [selectedPlanTemplateId, setSelectedPlanTemplateId] = useState<number | null>(null)
   const [tosAccepted, setTosAccepted] = useState(false)
+  const [identity, setIdentity] = useState<IdentityDraft | null>(deployment ? identityDraft(deployment) : null)
+  const [nameError, setNameError] = useState<string | undefined>()
 
   const isEditMode = Boolean(deployment)
 
@@ -76,6 +81,8 @@ export function DeployDialog({ product, userId, onClose, deployment, initialPlan
   })
   const currentVars = deploymentQuery.data?.vars ?? null
   const varsPending = deploymentQuery.data?.pending === true
+  // The fresh read, so a take-over shows at once.
+  const current = deploymentQuery.data ?? deployment
 
   const canonicalTemplate: ProductTemplate | undefined = useMemo(() => {
     return templatesQuery.data?.find((t) => t.id === product.template_id)
@@ -158,13 +165,15 @@ export function DeployDialog({ product, userId, onClose, deployment, initialPlan
   const updateMutation = useMutation({
     mutationFn: (payload: {
       templateId: number
-      userValuesJson?: object
+      userValuesJson?: Record<string, unknown>
       vars?: Record<string, VarSubmission>
+      identity?: ReturnType<typeof identityPayload>
     }) =>
       updateDeployment(userId, deployment!.id, {
         desired_template_id: payload.templateId,
-        user_values_json: payload.userValuesJson,
+        user_values_json: payload.userValuesJson && current ? withManagedValues(current, payload.userValuesJson) : undefined,
         vars: payload.vars,
+        ...payload.identity,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deployments'] })
@@ -173,7 +182,11 @@ export function DeployDialog({ product, userId, onClose, deployment, initialPlan
     },
     onError: (error: Error) => {
       const errorMsg = error.message
-      if (errorMsg.includes('not in ready state')) {
+      if (error instanceof ApiError && error.code === 'name_in_use') {
+        setNameError('You already have an app with this name.')
+      } else if (error instanceof ApiError && error.code === 'invalid_name') {
+        setNameError(errorMsg)
+      } else if (errorMsg.includes('not in ready state')) {
         setFormError('This deployment cannot be updated right now. It may be provisioning or was modified by another process.')
       } else if (errorMsg.startsWith('vars.')) {
         // See the create mutation: a var error belongs beside its field.
@@ -188,6 +201,18 @@ export function DeployDialog({ product, userId, onClose, deployment, initialPlan
         setFormError(error.message)
       }
     },
+  })
+
+  const takeOverMutation = useMutation({
+    mutationFn: (key: string) =>
+      updateDeployment(userId, deployment!.id, {
+        managed_fields: (current?.managed_fields ?? []).filter((k) => k !== key),
+      }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['deployment', userId, deployment?.id], updated)
+      queryClient.invalidateQueries({ queryKey: ['deployments'] })
+    },
+    onError: (error: Error) => setFormError(error.message),
   })
 
   const activeMutation = isEditMode ? updateMutation : createMutation
@@ -213,10 +238,16 @@ export function DeployDialog({ product, userId, onClose, deployment, initialPlan
     // runtime submits exactly the payload it always did.
     const varsToSend = Object.keys(vars).length > 0 ? vars : undefined
     if (isEditMode) {
+      if (identity && !identity.name.trim()) {
+        setNameError('Give the app a name.')
+        return
+      }
+      setNameError(undefined)
       updateMutation.mutate({
         templateId,
         userValuesJson: valuesToSend,
         vars: varsToSend,
+        identity: identity && current ? identityPayload(current, identity) : undefined,
       })
     } else {
       createMutation.mutate({
@@ -226,7 +257,7 @@ export function DeployDialog({ product, userId, onClose, deployment, initialPlan
         vars: varsToSend,
       })
     }
-  }, [product.template_id, deployment, isEditMode, activeTemplate, userValues, vars, effectivePlanTemplateId, createMutation, updateMutation])
+  }, [product.template_id, deployment, current, identity, isEditMode, activeTemplate, userValues, vars, effectivePlanTemplateId, createMutation, updateMutation])
 
   // Applying staged vars is an ordinary redeploy: the release the platform
   // mints captures whatever the deployment's vars currently are. Nothing about
@@ -286,6 +317,24 @@ export function DeployDialog({ product, userId, onClose, deployment, initialPlan
           showTosAgreement={!isEditMode && !hasAcceptedTos}
           tosAccepted={tosAccepted}
           onTosAcceptedChange={setTosAccepted}
+          beforeValues={
+            current && identity ? (
+              <DeploymentIdentityFields
+                deployment={current}
+                value={identity}
+                onChange={(next) => {
+                  setIdentity(next)
+                  setNameError(undefined)
+                }}
+                nameError={nameError}
+                onTakeOver={(key) => takeOverMutation.mutate(key)}
+                takingOver={takeOverMutation.isPending}
+              />
+            ) : undefined
+          }
+          managedKeys={current?.managed_fields}
+          onTakeOver={(key) => takeOverMutation.mutate(key)}
+          takingOver={takeOverMutation.isPending}
         />
       </DialogContent>
     </Dialog>

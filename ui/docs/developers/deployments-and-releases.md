@@ -25,7 +25,7 @@ The previously recorded deployment is not changed or deleted. Use `--recreate` w
 | `freepod deploy --no-build` | No | Settings in `.freepod.json`, staged vars |
 | `freepod var set`, `freepod var rm` | No | The changed vars, staged vars |
 
-Each of these creates one numbered release. One release runs at a time per deployment: a command that starts a release while another is queued or running fails, and can be retried when the first one finishes. `freepod var set --stage` and `freepod var rm --stage` save changes without starting a release.
+Each of these creates one numbered release when it changes what runs: the image, a setting, or a var. A command that changes none of them creates no release, unless the deployment's last release failed, which it then retries. One release runs at a time per deployment: a command that starts a release while another is queued or running fails, and can be retried when the first one finishes. `freepod var set --stage` and `freepod var rm --stage` save changes without starting a release.
 
 A release replaces the running container. The sequence is described under [Runtime contract: Releases](runtime.mdx#releases):
 
@@ -80,6 +80,8 @@ freepod start
 A stopped deployment runs again only when you start it. `freepod deploy` to a stopped deployment releases the new version but leaves it stopped, so the new version first runs at the next `freepod start`.
 
 Only a deployment that is ready can be stopped or started. If its last release failed, a successful `freepod deploy` is needed first.
+
+A deployment can be renamed, and given a description and an icon, under **Settings** on the [dashboard](app:/). This creates no release. The name is shown on the dashboard and on the deployment's **Sign in with Freepod** page.
 
 A deployment can also be stopped and started from the [dashboard](app:/).
 
