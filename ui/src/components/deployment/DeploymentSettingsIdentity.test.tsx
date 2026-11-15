@@ -124,6 +124,23 @@ describe('Settings: the deployment identity', () => {
     expect(body).not.toHaveProperty('managed_fields')
   })
 
+  it('leaves a setting the deployment never had out of a rename', async () => {
+    open(deployment({ user_values_json: { hostname: 'arkanoid.example.com' } }))
+    await waitFor(() => expect(nameField()).toHaveValue('Arkanoid'))
+    fireEvent.change(nameField(), { target: { value: 'Breakout' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await waitFor(() => expect(updateDeploymentMock).toHaveBeenCalledTimes(1))
+    expect(updateDeploymentMock.mock.calls[0][2].user_values_json).toEqual({ hostname: 'arkanoid.example.com' })
+  })
+
+  it('sends a setting the deployment never had once it is changed', async () => {
+    open(deployment({ user_values_json: { hostname: 'arkanoid.example.com' } }))
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Sign in with Freepod' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await waitFor(() => expect(updateDeploymentMock).toHaveBeenCalledTimes(1))
+    expect(updateDeploymentMock.mock.calls[0][2].user_values_json.auth).toEqual({ enabled: true })
+  })
+
   it('resets an own icon to the product one with a null icon', async () => {
     open(deployment({ icon_url: '/api/static/icons/own.png' }))
     await waitFor(() => expect(screen.getByText('Your own icon')).toBeInTheDocument())

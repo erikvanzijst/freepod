@@ -216,12 +216,18 @@ function splitSubmission(
   formData: Record<string, unknown>,
   initialVars: StoredVars,
   touchedSensitive: Set<string>,
+  filledIn: Record<string, unknown> = {},
 ): { chartData: Record<string, unknown>; vars: Record<string, VarSubmission> } {
   const chartData: Record<string, unknown> = {}
   const vars: Record<string, VarSubmission> = {}
 
   for (const field of fields) {
     if (field.target !== 'runtime') {
+      // An optional value the deployment never set, shown as its default and
+      // left alone, is not a change: sending it would release the app.
+      if (!field.required && field.path in filledIn && formData[field.path] === filledIn[field.path]) {
+        continue
+      }
       if (field.path in formData) {
         chartData[field.path] = isStringList(field)
           ? linesToList(formData[field.path])
@@ -331,6 +337,8 @@ export function UserValuesForm({
   // means on the wire -- an empty string is a real value and would wipe the
   // stored secret.
   const [touchedSensitive, setTouchedSensitive] = useState<Set<string>>(new Set())
+  // Editing only: the fields the deployment does not set, as the form filled them in.
+  const [filledIn, setFilledIn] = useState<Record<string, unknown>>({})
 
   // The schema's conditionals, evaluated against what the form holds as one
   // document: chart values and vars together, vars typed as the platform
@@ -385,8 +393,13 @@ export function UserValuesForm({
       }
     }
     setFormData(initialData)
+    setFilledIn(
+      initialValuesJson
+        ? Object.fromEntries(Object.entries(initialData).filter(([path]) => !(path in initialValues)))
+        : {},
+    )
     setTouchedSensitive(new Set())
-  }, [fields, initialValues, initialVars])
+  }, [fields, initialValues, initialValuesJson, initialVars])
 
   useEffect(() => {
     if (fields.length === 0) {
@@ -400,6 +413,7 @@ export function UserValuesForm({
       formData,
       initialVars,
       touchedSensitive,
+      filledIn,
     )
 
     onVarsChange?.(vars)
@@ -419,7 +433,7 @@ export function UserValuesForm({
     }
 
     onChange(unflatten(chartData))
-  }, [formData, fields, shownFields, initialVars, touchedSensitive, onChange, onVarsChange])
+  }, [formData, fields, shownFields, initialVars, touchedSensitive, filledIn, onChange, onVarsChange])
 
   useEffect(() => {
     if (errors.length === 0) {
