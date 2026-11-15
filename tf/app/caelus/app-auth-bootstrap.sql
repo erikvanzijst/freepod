@@ -52,6 +52,8 @@ GRANT USAGE ON SCHEMA public TO caelus_app_auth;
 -- detail the broker has no use for. Vars and database passwords live in tables this role is never
 -- granted.
 GRANT SELECT (id, hostname, status, applied_release_id, user_id) ON TABLE deployment TO caelus_app_auth;
+-- Branding: the deployment's own name and icon, falling back to its product's.
+GRANT SELECT (display_name, description, rel_icon_path) ON TABLE deployment TO caelus_app_auth;
 GRANT SELECT (id, template_id, values_json) ON TABLE deployment_release TO caelus_app_auth;
 GRANT SELECT (id, product_id, system_values_json) ON TABLE product_template_version TO caelus_app_auth;
 GRANT SELECT (id, name, slug, rel_icon_path) ON TABLE product TO caelus_app_auth;

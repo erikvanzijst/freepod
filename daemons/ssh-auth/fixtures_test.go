@@ -179,9 +179,9 @@ func (f *fixture) deployment(userID int, name, status string) (id string, namesp
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO deployment
-		   (id, user_id, desired_template_id, desired_release_id, name, namespace,
+		   (id, user_id, desired_template_id, desired_release_id, name, display_name, namespace,
 		    status, generation, subscription_id, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, now())`,
+		 VALUES ($1, $2, $3, $4, $5, $5, $6, $7, 1, $8, now())`,
 		id, userID, templateID, releaseID, name, namespace, status, subscriptionID); err != nil {
 		f.t.Fatal(err)
 	}
