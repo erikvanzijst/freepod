@@ -591,26 +591,40 @@ def _announce_move(
     return move
 
 
+class CreateConflict(FreepodError):
+    """A refused creation, with the platform's code and detail to act on."""
+
+    def __init__(self, message: str, code: Optional[str], detail: Optional[str]):
+        super().__init__(message)
+        self.code = code
+        self.detail = detail
+
+
 def create_deployment(
     api: ApiClient,
     user_id: int,
     template_id: int,
     plan_template_id: int,
     values: Dict[str, Any],
+    extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """`POST /api/users/{user_id}/deployments`, with no image and no build.
 
     Nothing has been built yet: a build belongs to a deployment, so the
     deployment comes first and serves the product's placeholder meanwhile.
+    `extra` carries the identity and `managed_fields`.
     """
     body = {
         "desired_template_id": template_id,
         "plan_template_id": plan_template_id,
         "user_values_json": values,
+        **(extra or {}),
     }
     response = api.post(f"/api/users/{user_id}/deployments", json=body)
     if response.status_code == 409:
-        raise _conflict(response, built=False)
+        raise CreateConflict(
+            str(_conflict(response, built=False)), _json_code(response), _json_detail(response)
+        )
     if response.status_code == 400 and _json_code(response) == handle_module.DEPLOY_REFUSAL_CODE:
         raise FreepodError(
             f"the platform refused the deployment because this account does not "

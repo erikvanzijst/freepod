@@ -28,6 +28,7 @@ from . import database as database_module
 from . import delete as delete_module
 from . import deploy as deploy_module
 from . import history
+from . import initialize
 from . import keys as keys_module
 from . import logs as logs_module
 from . import objects as objects_module
@@ -44,7 +45,6 @@ from .api import ApiClient
 from .auth import Session, forget_environment, format_claims, log
 from .config import (
     BUILD_WAIT_SECONDS,
-    CUSTOM_PRODUCT_SLUG,
     DEFAULT_HTTP_TIMEOUT,
     ENVIRONMENTS,
     LOGIN_WAIT_SECONDS,
@@ -55,9 +55,7 @@ from .config import (
     resolve_environment,
     wait_seconds,
 )
-from .project import DEFAULT_ENV, PROJECT_FILE, find_project_root, load
-from . import handle
-from .values import ValueCollector, hostname_label
+from .project import PROJECT_FILE, find_project_root, load
 
 
 def _declared_environment() -> Optional[str]:
@@ -328,90 +326,36 @@ def whoami(context: Context) -> None:
 @click.option(
     "--force",
     is_flag=True,
-    help=f"overwrite an existing {PROJECT_FILE}; its deployment keeps running "
-    "but is no longer linked to this project",
+    help=f"create a new deployment even though {PROJECT_FILE} records one; that "
+    "one keeps running and stays on your dashboard",
+)
+@click.option("--name", help="the app's name; the directory's name is offered otherwise")
+@click.option(
+    "--hostname",
+    help="the app's hostname: a label completed beneath your handle, or a custom domain",
 )
 @click.pass_obj
-def init(context: Context, force: bool) -> None:
-    """Set up the current directory as a Freepod project.
+def init(context: Context, force: bool, name: Optional[str], hostname: Optional[str]) -> None:
+    """Create this directory's app on Freepod.
 
-    Asks for the project's settings, such as its hostname, and writes them to
-    .freepod.json, which is meant to be committed. Nothing is deployed until
-    you run `freepod deploy`.
+    Asks for the app's name and hostname, creates its deployment, which serves
+    a placeholder until the first `freepod deploy`, and records it in
+    .freepod.json, which is meant to be committed. Returns without waiting for
+    the deployment to be provisioned.
     \f
-    Reads only. No deployment is created — that is `freepod deploy`'s job, so
-    that a failure writing the project file cannot leave behind a provisioned
-    resource the user cannot see.
+    Every answer goes to the platform; the file records only the deployment's
+    id, plus any keys it already held.
     """
-    root = Path.cwd()
-    target = root / PROJECT_FILE
-
-    if target.exists() and not force:
-        raise UsageError(
-            f"{target} already exists. Re-run with --force to discard it and start "
-            f"over. Its deployment would keep running, but this project could no "
-            f"longer update or delete it.\n"
-            f"  To change a value, edit {PROJECT_FILE} directly; `freepod deploy` "
-            f"asks for anything required that is missing."
-        )
-    if target.exists() and force:
-        existing = project.load(root)
-        if existing.deployment_id:
-            context.say(
-                f"Warning: --force unlinks deployment "
-                f"{existing.deployment_id} from this project. It keeps "
-                f"running, and this project can no longer update it."
-            )
-
     session = context.session()
     session.authenticate(interactive=False)
 
     with context.client(session) as api:
-        # `/api/me` first: everything else init reads is public and would be
-        # answered anonymously however bad the credential is. See design D15.
-        api.me()
-
-        product = api.find_product(CUSTOM_PRODUCT_SLUG)
-        if product is None:
-            raise FreepodError(
-                f"this instance does not offer user-supplied application deployments "
-                f"({context.env.api_base} publishes no '{CUSTOM_PRODUCT_SLUG}' product)."
-            )
-
-        template = product.get("template") or {}
-        schema = template.get("values_schema_json") or {}
-        if not schema.get("properties"):
-            raise FreepodError(
-                f"the '{CUSTOM_PRODUCT_SLUG}' product's template declares no user "
-                f"values schema, so there is nothing to configure — this is a "
-                f"platform problem, please report it."
-            )
-
-        if context.verbose:
-            context.say(f"Product '{product.get('name')}' (template {template.get('id')}).")
-
-        collector = ValueCollector(
-            schema,
-            suffix=handle.held_suffix(api),
-            check_hostname=api.check_hostname,
-            suggested_hostname=hostname_label(root.name),
+        created, _record = initialize.init(
+            api, Path.cwd(), force=force, name=name, hostname=hostname, echo=context.say
         )
-        values = collector.collect()
-
-    # The file names an environment only when it is not the default, so a
-    # project initialized against `FREEPOD_ENV=dev` still stays on dev.
-    declared = None if context.env.name == DEFAULT_ENV else context.env.name
-    new = project.Project(
-        root=root, env=declared, fields=values, schema=project.schema_url(context.env.api_base)
-    )
-    new.save()
 
     # The path is the result; everything else is commentary.
-    click.echo(str(target))
-    context.say(
-        f"Initialized{env_suffix(context.env.name, 'for')}. Run `freepod deploy` "
-        f"to build and release."
-    )
+    click.echo(str(created.path))
 
 
 @cli.command()
