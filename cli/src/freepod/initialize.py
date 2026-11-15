@@ -22,7 +22,7 @@ from . import tos
 from .api import ApiClient
 from .config import CUSTOM_PRODUCT_SLUG
 from .fields import claimed_body, first_free_name, list_deployments, named
-from .project import DEFAULT_ENV, PROJECT_FILE, Project, load, settle_migration
+from .project import DEFAULT_ENV, PROJECT_FILE, Project, load
 from . import values as values_module
 from .values import (
     HOSTNAME_REASONS,
@@ -94,7 +94,6 @@ def init(
     deployments = list_deployments(api, user_id)
     if existing is not None and existing.deployment_id:
         unlinked = next((d for d in deployments if d.get("id") == existing.deployment_id), None)
-        settle_migration(existing, unlinked)
         label = f"'{unlinked['name']}'" if unlinked else existing.deployment_id
         echo(
             f"Unlinking deployment {label} from this project. It keeps running and "

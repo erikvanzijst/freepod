@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -54,13 +53,6 @@ BUILD_OUTPUT_KEYS = frozenset({"image"})
 #: The product a project file describes, whose schema `$schema` names.
 SCHEMA_PRODUCT = "custom"
 
-#: The hostnames earlier releases of this client wrote, `<label>.<account>.freepod.eu`
-#: and `<label>.<account>.dev.freepod.eu`. Fixed here rather than learned from
-#: the platform: the rewrite only corrects this client's own earlier output.
-_LEGACY_HOSTNAME = re.compile(
-    r"^(?P<label>[a-z0-9-]+)\.(?:(?!dev\.)[a-z0-9-]+\.freepod\.eu|[a-z0-9-]+\.dev\.freepod\.eu)$"
-)
-
 
 def schema_url(api_base: str) -> str:
     """The project schema on the environment at `api_base`."""
@@ -84,8 +76,6 @@ class Project:
         self.fields: Dict[str, Any] = dict(fields or {})
         self.deployment_id = str(deployment_id) if deployment_id else None
         self.schema = schema
-        # A format 1 file whose `hostname` waits on the deployment's (D8).
-        self.unsettled_hostname: Optional[str] = None
 
     @property
     def env(self) -> str:
@@ -264,12 +254,7 @@ def load(root: Path) -> Project:
 
 
 def _migrate(root: Path, document: Dict[str, Any], env: Optional[str]) -> Project:
-    """Rewrite a format 1 file as format 2 (D8).
-
-    The rewrite is saved at once unless the file is linked and sets `hostname`:
-    that key is dropped only when it matches the deployment's, which needs a
-    read, so it waits for `settle_migration`.
-    """
+    """Rewrite a format 1 file as format 2, and save it (D8)."""
     path = root / PROJECT_FILE
     pointer = document.get("deployment")
     if pointer is not None and (not isinstance(pointer, dict) or not pointer.get("id")):
@@ -278,12 +263,8 @@ def _migrate(root: Path, document: Dict[str, Any], env: Optional[str]) -> Projec
     if not isinstance(values, dict):
         raise FreepodError(f"{path}: 'user_values' must be an object")
 
-    fields = {k: v for k, v in values.items() if k not in BUILD_OUTPUT_KEYS}
-    hostname = fields.get("hostname")
-    if isinstance(hostname, str):
-        match = _LEGACY_HOSTNAME.match(hostname.strip().lower())
-        if match is not None:
-            fields["hostname"] = match.group("label")
+    # The deployment owns its hostname; the file names one only by choice.
+    fields = {k: v for k, v in values.items() if k not in BUILD_OUTPUT_KEYS | {"hostname"}}
 
     from .config import ENVIRONMENTS
 
@@ -295,9 +276,6 @@ def _migrate(root: Path, document: Dict[str, Any], env: Optional[str]) -> Projec
         deployment_id=pointer["id"] if pointer else None,
         schema=schema_url(environment.api_base) if environment else None,
     )
-    if project.deployment_id and "hostname" in fields:
-        project.unsettled_hostname = fields["hostname"]
-        return project
     project.save()
     if project.deployment_id:
         click.echo(f"Migrated {PROJECT_FILE} to format {FORMAT_VERSION}.", err=True)
@@ -308,33 +286,6 @@ def _migrate(root: Path, document: Dict[str, Any], env: Optional[str]) -> Projec
             err=True,
         )
     return project
-
-
-def settle_migration(project: Project, deployment: Optional[Dict[str, Any]]) -> None:
-    """Finish migrating a linked format 1 file, given its deployment as read.
-
-    `hostname` is dropped when the deployment already has it, and kept as a
-    managed field otherwise, so an edit never deployed is not lost.
-    """
-    hostname = project.unsettled_hostname
-    if hostname is None:
-        return
-    project.unsettled_hostname = None
-    if deployment is not None and _same_hostname(hostname, deployment):
-        project.fields.pop("hostname", None)
-    project.save()
-    click.echo(f"Migrated {PROJECT_FILE} to format {FORMAT_VERSION}.", err=True)
-
-
-def _same_hostname(value: str, deployment: Dict[str, Any]) -> bool:
-    value = value.strip().lower()
-    stored = (deployment.get("user_values_json") or {}).get("hostname")
-    actual = (deployment.get("hostname") or "").lower()
-    if value in (actual, (stored or "").lower()):
-        return True
-    # A label the platform completed beneath the owner's handle.
-    first, _, _ = actual.partition(".")
-    return "." not in value and first.rpartition("-")[0] == value
 
 
 def require_project(start: Optional[Path] = None) -> Project:

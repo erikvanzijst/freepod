@@ -18,7 +18,7 @@ from . import FreepodError, UsageError
 from .api import ApiClient
 from .deploy import read_deployment
 from .fields import list_deployments, named
-from .project import DEFAULT_ENV, IDENTITY_KEYS, PROJECT_FILE, Project, load, settle_migration
+from .project import DEFAULT_ENV, IDENTITY_KEYS, PROJECT_FILE, Project, load
 
 
 def _log(message: str) -> None:
@@ -72,7 +72,6 @@ def link(
 
     if existing is not None and existing.deployment_id:
         previous = next((d for d in deployments if d.get("id") == existing.deployment_id), None)
-        settle_migration(existing, previous)
         label = f"'{previous['name']}'" if previous else existing.deployment_id
         echo(f"No longer pointing at deployment {label}; it is left as it is.")
 

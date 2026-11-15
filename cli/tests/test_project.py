@@ -15,7 +15,6 @@ from freepod.project import (
     load,
     require_project,
     schema_url,
-    settle_migration,
 )
 
 DEPLOYMENT_ID = "40bd8dea-54f3-430d-8ee0-f1689f9629cb"
@@ -159,21 +158,21 @@ def _v1(root, deployment, values, **extra):
     )
 
 
-def test_a_never_deployed_format_1_project_is_unlinked_and_keeps_its_hostname(tmp_path, capsys):
+def test_a_never_deployed_format_1_project_is_unlinked(tmp_path, capsys):
     _v1(tmp_path, None, {"hostname": "arkanoid"})
 
     project = load(tmp_path)
 
     assert project.deployment_id is None
-    assert saved(tmp_path) == {"$schema": PROD_SCHEMA, "version": 2, "hostname": "arkanoid"}
+    assert saved(tmp_path) == {"$schema": PROD_SCHEMA, "version": 2}
     assert "freepod init" in capsys.readouterr().err
 
 
-def test_a_linked_format_1_project_without_hostname_is_rewritten_at_once(tmp_path, capsys):
+def test_a_linked_format_1_project_is_rewritten_at_once_without_its_hostname(tmp_path, capsys):
     _v1(
         tmp_path,
         {"id": DEPLOYMENT_ID, "name": "custom-d8dtx4"},
-        {"auth": {"enabled": True}, "image": "x"},
+        {"hostname": "arkanoid", "auth": {"enabled": True}, "image": "x"},
         env="dev",
     )
 
@@ -187,79 +186,6 @@ def test_a_linked_format_1_project_without_hostname_is_rewritten_at_once(tmp_pat
         "auth": {"enabled": True},
     }
     assert "Migrated" in capsys.readouterr().err
-
-
-def test_a_deployed_hostname_is_dropped_once_the_deployment_is_read(tmp_path, capsys):
-    _v1(
-        tmp_path,
-        {"id": DEPLOYMENT_ID, "name": "custom-d8dtx4"},
-        {"hostname": "arkanoid", "auth": {"enabled": True}},
-    )
-
-    project = load(tmp_path)
-    assert saved(tmp_path)["version"] == 1
-    assert project.hostname == "arkanoid"
-
-    settle_migration(
-        project,
-        {"hostname": "arkanoid-erik.freepod.app", "user_values_json": {"hostname": "arkanoid"}},
-    )
-
-    assert saved(tmp_path) == {
-        "$schema": PROD_SCHEMA,
-        "version": 2,
-        "deployment": DEPLOYMENT_ID,
-        "auth": {"enabled": True},
-    }
-    assert "Migrated" in capsys.readouterr().err
-
-
-@pytest.mark.parametrize(
-    "deployment",
-    [
-        {
-            "hostname": "arkanoid-erik.freepod.app",
-            "user_values_json": {"hostname": "arkanoid-erik.freepod.app"},
-        },
-        {
-            "hostname": "arkanoid.example.com",
-            "user_values_json": {"hostname": "arkanoid.example.com"},
-        },
-    ],
-    ids=["completed-label", "custom-domain"],
-)
-def test_a_hostname_the_deployment_has_is_recognized(tmp_path, deployment):
-    value = deployment["hostname"] if "example" in deployment["hostname"] else "arkanoid"
-    _v1(tmp_path, {"id": DEPLOYMENT_ID}, {"hostname": value})
-    project = load(tmp_path)
-    settle_migration(project, deployment)
-    assert "hostname" not in saved(tmp_path)
-
-
-def test_a_hostname_edited_but_never_deployed_is_kept(tmp_path):
-    _v1(tmp_path, {"id": DEPLOYMENT_ID}, {"hostname": "breakout"})
-    project = load(tmp_path)
-    settle_migration(
-        project,
-        {"hostname": "arkanoid-erik.freepod.app", "user_values_json": {"hostname": "arkanoid"}},
-    )
-    assert saved(tmp_path)["hostname"] == "breakout"
-
-
-def test_a_hostname_is_kept_when_the_deployment_is_gone(tmp_path):
-    _v1(tmp_path, {"id": DEPLOYMENT_ID}, {"hostname": "arkanoid"})
-    project = load(tmp_path)
-    settle_migration(project, None)
-    assert saved(tmp_path)["hostname"] == "arkanoid"
-
-
-@pytest.mark.parametrize(
-    "old,label",
-    [("photos.alice.freepod.eu", "photos"), ("notes.bob.dev.freepod.eu", "notes")],
-)
-def test_an_old_format_hostname_becomes_its_label(tmp_path, old, label):
-    _v1(tmp_path, None, {"hostname": old})
-    assert load(tmp_path).hostname == label
 
 
 def test_a_format_1_pointer_without_an_id_is_refused(tmp_path):

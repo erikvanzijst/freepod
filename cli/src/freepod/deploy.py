@@ -49,7 +49,7 @@ from .config import (
     env_suffix,
     login_command,
 )
-from .project import PROJECT_FILE, Project, require_project, settle_migration
+from .project import PROJECT_FILE, Project, require_project
 from .values import (
     HOSTNAME_REASONS,
     ValueCollector,
@@ -203,7 +203,6 @@ def preflight(
         )
 
     deployment = read_linked(api, user_id, project)
-    settle_migration(project, deployment)
     values = _settle_values(api, project, schema, deployment, interactive=interactive, echo=echo)
     return Preflight(project, user_id, product, template, values, deployment)
 

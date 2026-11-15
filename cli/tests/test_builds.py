@@ -111,12 +111,9 @@ def deployment_running(image):
 
 
 def project_at(tmp_path, *, env="prod", pointer=None):
-    document = {
-        "version": 1,
-        "env": env,
-        "deployment": pointer,
-        "user_values": {"hostname": "myapp.freepod.eu"},
-    }
+    document = {"version": 2, "env": env, "hostname": "myapp"}
+    if pointer:
+        document["deployment"] = pointer["id"]
     (tmp_path / ".freepod.json").write_text(json.dumps(document))
     return tmp_path
 

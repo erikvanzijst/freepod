@@ -19,7 +19,7 @@ from . import FreepodError, UsageError
 from . import deploy as deploy_module
 from .api import ApiClient
 from .fields import claimed_body
-from .project import IDENTITY_KEYS, PROJECT_FILE, Project, require_project, settle_migration
+from .project import IDENTITY_KEYS, PROJECT_FILE, Project, require_project
 from .values import check_public_patterns
 
 
@@ -44,8 +44,6 @@ def apply(
 
     user_id = api.me()["id"]
     record = deploy_module.read_linked(api, user_id, project)
-    settle_migration(project, record)
-    claimed = claimed_body(project)
 
     stored = dict(record.get("user_values_json") or {})
     values = {**stored, **project.chart_values}

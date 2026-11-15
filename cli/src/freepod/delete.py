@@ -35,7 +35,7 @@ from . import FreepodError, UsageError
 from .api import ApiClient, _json_detail
 from .config import ROLLOUT_WAIT_SECONDS, env_suffix
 from .deploy import describe_conflict
-from .project import PROJECT_FILE, Project, require_project, settle_migration
+from .project import PROJECT_FILE, Project, require_project
 
 #: Where a teardown ends. `deleted` is the record the platform keeps behind;
 #: a 404 means it stopped keeping one, and both mean the same thing here.
@@ -271,7 +271,6 @@ def delete(
     user_id = api.me()["id"]
     deployment_id = project.deployment_id
     record = read_deployment(api, user_id, deployment_id)
-    settle_migration(project, record)
 
     if record is None:
         # Gone already — deleted from the web UI, or from another checkout.

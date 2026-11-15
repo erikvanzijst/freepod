@@ -569,9 +569,8 @@ Every key other than `$schema`, `version`, `env` and `deployment` is a field the
 file manages: `name`, `description`, `icon` (a path to an image), or a chart
 property. It holds **intent** and nothing a deploy produces: a file holding
 `image` is refused, because it is a build output. An unlinked project has no
-`deployment` key; a null one is refused. A format 1 file is migrated on read
-(`project.py`); its `hostname` is dropped once the deployment is read and
-already has it.
+`deployment` key; a null one is refused. A format 1 file is migrated and saved on first
+read (`project.py`).
 
 Spec: [cli-project-file](../openspec/changes/deployment-identity-and-project-file/specs/cli-project-file/spec.md)
 

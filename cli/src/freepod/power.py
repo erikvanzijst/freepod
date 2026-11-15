@@ -17,7 +17,7 @@ from . import FreepodError, UsageError
 from .api import ApiClient, _json_detail
 from .config import ROLLOUT_WAIT_SECONDS, env_suffix
 from .delete import POLL_SECONDS, address, read_deployment
-from .project import require_project, settle_migration
+from .project import require_project
 
 STOPPED = "stopped"
 RUNNING = "running"
@@ -154,7 +154,6 @@ def change(
     user_id = api.me()["id"]
     deployment_id = project.deployment_id
     record = read_deployment(api, user_id, deployment_id)
-    settle_migration(project, record)
     if record is None:
         raise FreepodError(
             f"deployment {deployment_id} no longer exists{env_suffix(env_name)}.\n"

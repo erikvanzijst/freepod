@@ -120,19 +120,18 @@ records the environment.
 
 The client SHALL rewrite a format 1 file as format 2 the first time it reads it, and say
 so. The pointer's id SHALL be kept and its name dropped. `user_values` keys other than
-`hostname` and `image` SHALL become top-level keys. `hostname` SHALL be dropped when the
-deployment's hostname matches it, and kept as an owned key otherwise. A null pointer
-SHALL become an unlinked file.
+`hostname` and `image` SHALL become top-level keys, so the deployment owns its hostname.
+A null pointer SHALL become an unlinked file.
 
 #### Scenario: A deployed format 1 project with sign-in
 
-- **WHEN** a format 1 file records a deployment and `user_values` of `{"hostname": "arkanoid", "auth": {"enabled": true}}`, and the deployment's hostname is `arkanoid`
+- **WHEN** a format 1 file records a deployment and `user_values` of `{"hostname": "arkanoid", "auth": {"enabled": true}}`
 - **THEN** the rewritten file holds `$schema`, `version: 2`, `deployment` and `auth`, and no `hostname`
 
 #### Scenario: A format 1 project never deployed
 
 - **WHEN** a format 1 file records `"deployment": null` and `user_values` of `{"hostname": "arkanoid"}`
-- **THEN** the rewritten file is unlinked and holds `hostname: "arkanoid"`
+- **THEN** the rewritten file is unlinked and holds no `hostname`
 - **AND** the client names `freepod init` as the next step
 
 ## REMOVED Requirements

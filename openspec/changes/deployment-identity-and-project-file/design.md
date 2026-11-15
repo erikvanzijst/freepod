@@ -191,10 +191,11 @@ working, now two lines.
 The client already rewrites legacy hostnames on load. Migrating format 1 extends that:
 
 - The pointer's id is kept and its name dropped.
-- `user_values` keys are lifted to the top level, except `image` and `hostname`.
-- `hostname` is dropped when it equals the deployment's, and kept as an owned key
-  otherwise. Then an edit made to the file but never deployed is not lost.
+- `user_values` keys are lifted to the top level, except `image` and `hostname`, which
+  the deployment owns by default.
 - A null pointer becomes an unlinked file.
+- The rewrite is saved on first read. A hostname edited in the file but never deployed
+  is lost; that takes an edit pending across the one-time upgrade.
 
 Format 1 files have no notion of ownership. Their next apply claims exactly the lifted
 keys, which matches format 1 behavior, where the file's values always won.

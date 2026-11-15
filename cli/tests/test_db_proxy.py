@@ -53,12 +53,7 @@ DATABASE = {
 
 
 def project_at(tmp_path: Path, *, env="prod") -> Path:
-    document = {
-        "version": 1,
-        "env": env,
-        "deployment": {"id": DEPLOYMENT_ID, "name": DEPLOYMENT_NAME},
-        "user_values": {"hostname": "dbprobe.dev.freepod.eu"},
-    }
+    document = {"version": 2, "env": env, "deployment": DEPLOYMENT_ID, "hostname": "dbprobe"}
     (tmp_path / ".freepod.json").write_text(json.dumps(document), encoding="utf-8")
     return tmp_path
 
