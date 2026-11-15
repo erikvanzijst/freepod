@@ -24,7 +24,7 @@ Plan. Run the full `api/` suite before every push.
 
 ## 3. Sign-in branding (PR 1)
 
-- [ ] 3.1 Grant `caelus_app_auth` `SELECT (display_name, description, rel_icon_path)` on `deployment` in `tf/app/caelus/app-auth-bootstrap.sql`; verify with `terraform plan` on dev that only the grant changes
+- [x] 3.1 Grant `caelus_app_auth` `SELECT (display_name, description, rel_icon_path)` on `deployment` in `tf/app/caelus/app-auth-bootstrap.sql`; verify with `terraform plan` on dev that only the grant changes
 - [x] 3.2 `app-auth` brands from the deployment's name and effective icon (`coalesce` with the product's); verify with `go test ./...` in `daemons/app-auth` covering a deployment with and without its own icon, and bump the daemons version
 
 ## 4. Dashboard identity (PR 1)
@@ -37,6 +37,7 @@ Plan. Run the full `api/` suite before every push.
 ## 5. Server rollout (PR 1)
 
 - [ ] 5.1 Roll out the API, the grants and app-auth on dev, then prod; confirm on dev that a rename from the dashboard creates no release and that a sign-in page shows the deployment's name
+  - Dev done 2026-11-15 (API/UI 191453c pinned, daemons 0.11.0); prod after merge
 
 ## 6. Client: project file format 2 (PR 2)
 
