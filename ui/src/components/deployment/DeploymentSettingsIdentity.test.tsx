@@ -146,7 +146,7 @@ describe('Settings: the deployment identity', () => {
     Object.defineProperty(img, 'height', { value: 300 })
     fireEvent.load(img)
     fireEvent.click(screen.getByRole('button', { name: 'Use image' }))
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Use image' })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Crop the icon' })).not.toBeInTheDocument())
     expect(await screen.findByText('Your own icon')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Update' }))
     await waitFor(() => expect(updateDeploymentMock).toHaveBeenCalled())
