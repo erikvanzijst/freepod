@@ -66,6 +66,7 @@ def world(cli_runner):
                 session, user_id=user.id, product_id=product.id
             ),
             name="dep",
+            display_name="dep",
             namespace="ns",
         )
         session.add(deployment)

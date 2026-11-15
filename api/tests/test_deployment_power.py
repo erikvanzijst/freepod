@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from app.models import DeploymentORM, DeploymentUpdate, UserORM
+from app.models import DeploymentORM, DeploymentUpdate, ProductTemplateVersionORM, UserORM
 from app.models.core import DeploymentPowerORM, DeploymentReconcileJobORM
 from app.services import deployments as deployment_service
 from app.services import power
@@ -185,11 +185,24 @@ def _hold(db_session, deployment) -> None:
     _apply(db_session, deployment)
 
 
+def _newer_template(db_session, deployment) -> int:
+    """A later template of the deployment's product, so an update releases."""
+    current = db_session.get(ProductTemplateVersionORM, deployment.desired_template_id)
+    newer = ProductTemplateVersionORM(
+        product_id=current.product_id, chart_ref=current.chart_ref, chart_version="2.0.0"
+    )
+    db_session.add(newer)
+    db_session.commit()
+    return newer.id
+
+
 def _update(db_session, deployment):
     return deployment_service.update_deployment(
         db_session,
         DeploymentUpdate(
-            id=deployment.id, user_id=deployment.user_id, desired_template_id=deployment.desired_template_id
+            id=deployment.id,
+            user_id=deployment.user_id,
+            desired_template_id=_newer_template(db_session, deployment),
         ),
     )
 
@@ -376,7 +389,7 @@ def test_rest_refuses_start_and_update_under_maintenance(client, db_session, own
     assert (resp.status_code, resp.json().get("code")) == (409, "under_maintenance")
     resp = client.put(
         f"/api/users/{deployment.user_id}/deployments/{deployment.id}",
-        json={"desired_template_id": deployment.desired_template_id},
+        json={"desired_template_id": _newer_template(db_session, deployment)},
         headers=auth_header(OWNER),
     )
     assert (resp.status_code, resp.json().get("code")) == (409, "under_maintenance")

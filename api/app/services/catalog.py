@@ -63,7 +63,7 @@ from app.services.images import (
     save_static,
     screenshot_rel_path,
 )
-from app.services.template_values import check_var_markers
+from app.services.template_values import check_reserved_keys, check_var_markers
 
 logger = logging.getLogger(__name__)
 
@@ -261,6 +261,7 @@ class TemplateBlock(CatalogModel):
             # Same rules the API applies to a hand-made template, so a bad
             # marker fails `catalog lint` in CI rather than on rollout.
             check_var_markers(v)
+            check_reserved_keys(v)
         except ValidationException as exc:
             raise ValueError(f"values_schema: {exc}") from exc
         return v

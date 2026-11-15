@@ -466,6 +466,7 @@ def make_deployment_with_release(session: Session, **kwargs) -> DeploymentORM:
         kwargs["subscription_id"] = make_free_subscription(
             session, user_id=kwargs["user_id"], product_id=template.product_id
         )
+    kwargs.setdefault("display_name", f"{kwargs.get('name', 'app')}-{uuid4().hex[:6]}")
     release_id = uuid4()
     deployment = DeploymentORM(desired_release_id=release_id, **kwargs)
     session.add(deployment)

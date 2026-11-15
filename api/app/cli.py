@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -596,6 +597,43 @@ _VARS_JSON_HELP = (
 _VARS_FILE_HELP = "Path to a file holding the vars, in the --vars-json shape; '-' reads stdin."
 
 
+_NAME_HELP = "The deployment's name, unique among the owner's live deployments."
+_DESCRIPTION_HELP = "The deployment's description; an empty string clears it."
+_ICON_HELP = "Path to a PNG, JPEG or WebP icon of at most 256 KiB."
+_MANAGED_FIELDS_HELP = (
+    "Comma-separated top-level keys a project file manages, e.g. 'name,auth'; "
+    "an empty string manages none."
+)
+
+
+def _identity_fields(
+    *,
+    name: str | None,
+    description: str | None,
+    icon: Path | None,
+    clear_icon: bool = False,
+    managed_fields: str | None,
+) -> dict:
+    """Only the identity fields given, so an update leaves the rest unchanged."""
+    if icon is not None and clear_icon:
+        raise ValueError("Provide only one of --icon or --clear-icon")
+    fields: dict = {}
+    if name is not None:
+        fields["name"] = name
+    if description is not None:
+        fields["description"] = description or None
+    if icon is not None:
+        try:
+            fields["icon"] = base64.b64encode(icon.read_bytes()).decode()
+        except OSError as exc:
+            raise ValueError(f"Unable to read --icon: {exc}") from exc
+    if clear_icon:
+        fields["icon"] = None
+    if managed_fields is not None:
+        fields["managed_fields"] = [k.strip() for k in managed_fields.split(",") if k.strip()]
+    return fields
+
+
 @app.command("create-deployment")
 def create_deployment(
     *,
@@ -618,8 +656,15 @@ def create_deployment(
     vars_file: str | None = typer.Option(
         None, "--vars-file", help=_VARS_FILE_HELP
     ),
+    name: str | None = typer.Option(None, "--name", help=_NAME_HELP),
+    description: str | None = typer.Option(None, "--description", help=_DESCRIPTION_HELP),
+    icon: Path | None = typer.Option(None, "--icon", help=_ICON_HELP),
+    managed_fields: str | None = typer.Option(None, "--managed-fields", help=_MANAGED_FIELDS_HELP),
 ) -> None:
     try:
+        identity_fields = _identity_fields(
+            name=name, description=description, icon=icon, managed_fields=managed_fields
+        )
         parsed_vars = _parse_vars_input(vars_json=vars_json, vars_file=vars_file)
         parsed_user_values = _parse_json_object_input(
             json_text=user_values_json,
@@ -657,6 +702,7 @@ def create_deployment(
                     plan_template_id=plan_template_id,
                     user_values_json=parsed_user_values,
                     vars=parsed_vars,
+                    **identity_fields,
                 ),
             )
         except CaelusException as e:
@@ -986,7 +1032,9 @@ def update_deployment(
     *,
     user_id: int = typer.Option(..., "--user-id"),
     deployment_id: UUID = typer.Option(..., "--deployment-id"),
-    desired_template_id: int = typer.Option(..., "--desired-template-id"),
+    desired_template_id: int | None = typer.Option(
+        None, "--desired-template-id", help="Defaults to the deployment's current template."
+    ),
     user_values_json: str | None = typer.Option(
         None,
         "--user-values-json",
@@ -1004,8 +1052,20 @@ def update_deployment(
     vars_file: str | None = typer.Option(
         None, "--vars-file", help=_VARS_FILE_HELP
     ),
+    name: str | None = typer.Option(None, "--name", help=_NAME_HELP),
+    description: str | None = typer.Option(None, "--description", help=_DESCRIPTION_HELP),
+    icon: Path | None = typer.Option(None, "--icon", help=_ICON_HELP),
+    clear_icon: bool = typer.Option(False, "--clear-icon", help="Remove the deployment's own icon."),
+    managed_fields: str | None = typer.Option(None, "--managed-fields", help=_MANAGED_FIELDS_HELP),
 ) -> None:
     try:
+        identity_fields = _identity_fields(
+            name=name,
+            description=description,
+            icon=icon,
+            clear_icon=clear_icon,
+            managed_fields=managed_fields,
+        )
         parsed_vars = _parse_vars_input(vars_json=vars_json, vars_file=vars_file)
     except ValueError as e:
         typer.echo(f"Error: {e}", err=True)
@@ -1038,6 +1098,7 @@ def update_deployment(
                     desired_template_id=desired_template_id,
                     user_values_json=parsed_user_values,
                     vars=parsed_vars,
+                    **identity_fields,
                 ),
             )
         except CaelusException as e:

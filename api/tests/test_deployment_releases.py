@@ -1,7 +1,7 @@
 """The release ledger: created by the request, completed by the reconciler.
 
-Covers the write-path half — that every create and update mints exactly one
-release, that a rejected write mints none, how a named build is validated, and
+Covers the write-path half — that a create and every update that releases
+mints exactly one release, that a rejected write mints none, how a named build is validated, and
 how status derives. The reconciler's half lives in the reconcile tests, and the
 insert ordering the deferred foreign key permits is exercised in
 test_deployment_release_ledger.py.
@@ -185,13 +185,13 @@ def test_update_mints_a_second_release_and_moves_only_the_desired_pointer(client
     assert deployment.applied_release_id == first.id
 
 
-def test_two_identical_updates_produce_two_distinct_releases(client, db_session):
+def test_a_second_identical_update_creates_no_release(client, db_session):
     user_id, template_id, plan_id = _setup(client, db_session, "twice@example.com")
     resp = _create(client, user_id, template_id, plan_id, {"host": "twice.example.com"})
     deployment_id = UUID(resp.json()["deployment"]["id"])
     body = {
         "desired_template_id": template_id,
-        "user_values_json": {"host": "twice.example.com"},
+        "user_values_json": {"host": "twice.example.com", "workers": []},
     }
 
     for _ in range(2):
@@ -200,11 +200,33 @@ def test_two_identical_updates_produce_two_distinct_releases(client, db_session)
             f"/api/users/{user_id}/deployments/{deployment_id}", json=body
         ).status_code == 200
 
-    releases = _releases(db_session, deployment_id)
-    assert [r.number for r in releases] == [1, 2, 3]
-    # Identity comes from the row, not the content.
-    assert len({r.id for r in releases}) == 3
-    assert releases[1].values_json == releases[2].values_json
+    assert [r.number for r in _releases(db_session, deployment_id)] == [1, 2]
+
+
+def test_an_identical_update_retries_a_failed_deployment(client, db_session):
+    user_id, template_id, plan_id = _setup(client, db_session, "retry@example.com")
+    resp = _create(client, user_id, template_id, plan_id, {"host": "retry.example.com"})
+    deployment_id = UUID(resp.json()["deployment"]["id"])
+    deployment = _make_ready(db_session, deployment_id)
+    deployment.status = "error"
+    db_session.add(deployment)
+    db_session.commit()
+
+    resp = client.put(
+        f"/api/users/{user_id}/deployments/{deployment_id}",
+        json={"user_values_json": {"host": "retry.example.com"}},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "provisioning"
+    assert [r.number for r in _releases(db_session, deployment_id)] == [1, 2]
+    jobs = db_session.exec(
+        select(DeploymentReconcileJobORM).where(
+            DeploymentReconcileJobORM.deployment_id == deployment_id,
+            DeploymentReconcileJobORM.status == "queued",
+        )
+    ).all()
+    assert len(jobs) == 1
 
 
 def test_a_rejected_update_leaves_no_release_behind(client, db_session):
@@ -464,7 +486,10 @@ def test_an_update_that_omits_the_build_keeps_the_applied_one(client, db_session
     user_id, template_id, deployment_id, build = _running_a_build(
         client, db_session, "keep@example.com", "keep.example.com"
     )
-    _update(client, user_id, deployment_id, template_id)
+    _update(
+        client, user_id, deployment_id, template_id,
+        user_values_json={"host": "keep.example.com", "image": build.image, "workers": []},
+    )
     assert _releases(db_session, deployment_id)[-1].build_id == build.id
 
 
@@ -507,7 +532,12 @@ def test_an_explicit_null_records_no_build(client, db_session):
     user_id, template_id, deployment_id, _ = _running_a_build(
         client, db_session, "clear@example.com", "clear.example.com"
     )
-    _update(client, user_id, deployment_id, template_id, build_id=None)
+    releases = len(_releases(db_session, deployment_id))
+    _update(
+        client, user_id, deployment_id, template_id, build_id=None,
+        user_values_json={"host": "clear.example.com", "image": "7@sha256:" + "a" * 64, "workers": []},
+    )
+    assert len(_releases(db_session, deployment_id)) == releases + 1
     assert _releases(db_session, deployment_id)[-1].build_id is None
 
 
@@ -528,7 +558,11 @@ def test_nothing_is_inherited_from_a_release_that_never_applied(client, db_sessi
     _release_with(client, user_id, deployment_id, template_id, "failed.example.com", build)
     _make_ready(db_session, deployment_id)
 
-    _update(client, user_id, deployment_id, template_id)
+    _update(
+        client, user_id, deployment_id, template_id,
+        user_values_json={"host": "failed.example.com", "image": build.image, "workers": []},
+    )
+    assert [r.number for r in _releases(db_session, deployment_id)] == [1, 2, 3]
     assert _releases(db_session, deployment_id)[-1].build_id is None
 
 

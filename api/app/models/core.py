@@ -26,7 +26,7 @@ from sqlalchemy import (
     text,
 )
 
-from app.config import get_settings
+from app.config import get_settings, get_static_url_base
 from app.services.reconcile_constants import (
     DEPLOYMENT_STATUS_DELETED,
     POWER_REASONS,
@@ -615,6 +615,13 @@ class DeploymentORM(DeploymentBase, table=True):
             "namespace",
             unique=True,
         ),
+        Index(
+            "uq_deployment_display_name",
+            "user_id",
+            func.lower(Column("display_name")),
+            unique=True,
+            postgresql_where=Column("status") != DEPLOYMENT_STATUS_DELETED,
+        ),
     )
 
     id: UUID = Field(default_factory=uuid4, sa_column=Column(Uuid, primary_key=True))
@@ -745,7 +752,17 @@ class DeploymentORM(DeploymentBase, table=True):
     hostname: Optional[str] = Field(
         default=None, sa_column=Column(String(), nullable=True, index=True)
     )
+    # The generated release name; reads report `display_name` as `name`
+    # (deployment-naming).
     name: str = Field(sa_column=Column(String(), nullable=False, index=True))
+    display_name: str = Field(sa_column=Column(String(), nullable=False))
+    description: Optional[str] = Field(default=None, sa_column=Column(Text(), nullable=True))
+    rel_icon_path: Optional[str] = Field(default=None, nullable=True)
+    icon_source_sha256: Optional[str] = Field(default=None, nullable=True)
+    managed_fields: list[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False, server_default=text("'[]'")),
+    )
     namespace: str = Field(sa_column=Column(String(), nullable=False, index=True))
     user_values_json: Optional[dict[str, Any]] = Field(
         default=None, sa_column=Column(JSON, nullable=True)
@@ -816,6 +833,28 @@ _VARS_FIELD_DESCRIPTION = (
 )
 
 
+_NAME_FIELD_DESCRIPTION = (
+    "The deployment's own name: 1 to 100 characters after trimming, no "
+    "control characters, unique among the owner's live deployments ignoring "
+    "case (code `name_in_use` otherwise). Defaults on create to the product's "
+    "name, suffixed ` 2`, ` 3`... while taken."
+)
+_DESCRIPTION_FIELD_DESCRIPTION = (
+    "The deployment's own description, at most 500 characters; null clears "
+    "it, so the product's shows again."
+)
+_ICON_FIELD_DESCRIPTION = (
+    "The deployment's own icon: a base64 PNG, JPEG or WebP image of at most "
+    "256 KiB, stored re-encoded; null clears it. Omitted, it is unchanged."
+)
+_MANAGED_FIELDS_DESCRIPTION = (
+    "The top-level keys a project file manages: `name`, `description`, "
+    "`icon`, or top-level chart properties. Sets the list when carried. A "
+    "request without it may not change a managed value (code "
+    "`managed_by_project_file`)."
+)
+
+
 class DeploymentCreate(DeploymentBase):
     model_config = ConfigDict(extra="forbid")
     plan_template_id: int
@@ -827,13 +866,20 @@ class DeploymentCreate(DeploymentBase):
     vars: dict[str, VarWrite] = Field(
         default_factory=dict, description=_VARS_FIELD_DESCRIPTION
     )
+    name: Optional[str] = Field(default=None, description=_NAME_FIELD_DESCRIPTION)
+    description: Optional[str] = Field(default=None, description=_DESCRIPTION_FIELD_DESCRIPTION)
+    icon: Optional[str] = Field(default=None, description=_ICON_FIELD_DESCRIPTION)
+    managed_fields: Optional[list[str]] = Field(default=None, description=_MANAGED_FIELDS_DESCRIPTION)
 
 
 class DeploymentUpdate(SQLModel):
     model_config = ConfigDict(extra="forbid")
     id: Optional[UUID] = None
     user_id: Optional[int] = None
-    desired_template_id: int
+    desired_template_id: Optional[int] = Field(
+        default=None,
+        description="The template version to move to; defaults to the current one.",
+    )
     user_values_json: Optional[dict[str, Any]] = Field(default=None)
     build_id: Optional[UUID] = Field(
         default=None, description=_BUILD_ID_FIELD_DESCRIPTION
@@ -841,6 +887,10 @@ class DeploymentUpdate(SQLModel):
     vars: dict[str, VarWrite] = Field(
         default_factory=dict, description=_VARS_FIELD_DESCRIPTION
     )
+    name: Optional[str] = Field(default=None, description=_NAME_FIELD_DESCRIPTION)
+    description: Optional[str] = Field(default=None, description=_DESCRIPTION_FIELD_DESCRIPTION)
+    icon: Optional[str] = Field(default=None, description=_ICON_FIELD_DESCRIPTION)
+    managed_fields: Optional[list[str]] = Field(default=None, description=_MANAGED_FIELDS_DESCRIPTION)
 
 
 class DeploymentAuthRead(SQLModel):
@@ -875,7 +925,12 @@ class DeploymentRead(DeploymentBase):
     applied_release: Optional["DeploymentReleaseRead"] = None
     subscription_id: Optional[int] = None
     subscription: Optional["SubscriptionRead"] = None
+    # The owner's name (`display_name`), never the release name.
     name: str
+    # The deployment's own; null where the product's applies.
+    description: Optional[str] = None
+    icon_url: Optional[str] = None
+    managed_fields: list[str] = Field(default_factory=list)
     namespace: str
     status: str = Field(default="pending")
     generation: int = Field(default=1)
@@ -896,6 +951,17 @@ class DeploymentRead(DeploymentBase):
     # `None` when no release is serving yet.
     auth: Optional[DeploymentAuthRead] = None
     power: DeploymentPowerRead
+
+    @model_validator(mode="before")
+    @classmethod
+    def _identity(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return data
+        d = {k: getattr(data, k) for k in cls.model_fields if k != "name" and hasattr(data, k)}
+        d["name"] = data.display_name
+        if data.rel_icon_path:
+            d["icon_url"] = f"{get_static_url_base()}/{data.rel_icon_path}"
+        return d
 
 
 class SftpCredentialsRead(SQLModel):

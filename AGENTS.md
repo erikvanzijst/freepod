@@ -25,8 +25,8 @@ This repository is a monorepo with:
 - **Builds** turn an uploaded project archive into a container image and
   **belong to a deployment**, addressed under it
   (`/users/{uid}/deployments/{id}/builds`); a build's owner is its deployment's
-  owner, and a build outlives its deployment. So a first `freepod deploy`
-  creates the deployment, serving the `custom` placeholder, before it builds.
+  owner, and a build outlives its deployment. So `freepod init` creates the
+  deployment, serving the `custom` placeholder, before anything is built.
   Nothing auto-deploys a build — the client submits a successful build's `image`
   to the deployment update endpoint itself, and may pass that build's
   `build_id`, which must be that deployment's own and is recorded on the release
@@ -37,6 +37,18 @@ This repository is a monorepo with:
   [add-build-subsystem](openspec/changes/archive/2026-08-14-add-build-subsystem/design.md),
   [add-deployment-logs](openspec/changes/archive/2026-08-18-add-deployment-logs/design.md),
   [builds-belong-to-deployments](openspec/changes/archive/2026-09-25-builds-belong-to-deployments/design.md)
+- **A deployment has an identity of its own**: an owner-chosen `name`,
+  unique among the owner's live deployments, and an optional description and
+  icon that fall back to the product's. The `name` column keeps the generated
+  Helm release name; the owner's name is `display_name`, which reads report
+  as `name`. A project file claims top-level keys as `managed_fields`, which
+  only a request carrying the list may change. An update releases only when
+  the running app would change, so a rename is a row update. Spec:
+  [deployment-identity](openspec/changes/deployment-identity-and-project-file/specs/deployment-identity/spec.md),
+  [deployment-project-file](openspec/changes/deployment-identity-and-project-file/specs/deployment-project-file/spec.md),
+  [edit-deployment-backend](openspec/specs/edit-deployment-backend/spec.md) ·
+  Rationale:
+  [deployment-identity-and-project-file](openspec/changes/deployment-identity-and-project-file/design.md)
 - **Tenant images live in a per-environment registry where every operation
   authenticates**, reachable only inside the cluster. A build pushes with a
   short-lived capability the build worker mints for exactly its own
