@@ -50,7 +50,7 @@ from .config import (
     env_suffix,
     login_command,
 )
-from .project import PROJECT_FILE, Project, require_project
+from .project import PROJECT_FILE, Project, require_project, settle_migration
 from .values import (
     HOSTNAME_REASONS,
     ValueCollector,
@@ -176,24 +176,24 @@ def preflight(
     """Read everything a deploy depends on, cheapest and most fatal first."""
     project = require_project(root)
 
-    if project.env != env_name and project.deployment and not recreate:
+    if project.env != env_name and project.deployment_id and not recreate:
         # The recorded deployment is minted on another environment, and no
         # request to this one can reach it. Deploying here would start fresh
         # and leave it running but unaddressable from this project — a
         # consequence that needs the same confirmation as --recreate.
         raise UsageError(
             f"{project.path} records deployment "
-            f"'{project.deployment_name}' on '{project.env}', but this command "
+            f"{project.deployment_id} on '{project.env}', but this command "
             f"targets '{env_name}'.\n"
             f"  The deployment would keep running, but this project could no "
             f"longer address it. Re-run with --recreate to point the project "
             f"at a new deployment on '{env_name}'."
         )
 
-    if recreate and project.deployment:
+    if recreate and project.deployment_id:
         echo(
-            f"--recreate: unlinking deployment '{project.deployment_name}' "
-            f"({project.deployment_id}) from this project. It is not deleted — "
+            f"--recreate: unlinking deployment {project.deployment_id} "
+            f"from this project. It is not deleted — "
             f"if it still exists, it keeps running."
         )
         # The pointer stays on the project until the replacement exists.
@@ -237,6 +237,7 @@ def preflight(
     # `--recreate` is a decision to abandon the recorded deployment, so its
     # state is not worth a request: whatever it says, this deploy creates.
     deployment = None if recreate else _read_deployment(api, user_id, project)
+    settle_migration(project, deployment)
 
     # Everything above is a read. Everything below may ask a question, so the
     # cheap fatal checks are exhausted first: there is no point collecting a
@@ -285,8 +286,7 @@ def _read_deployment(
     response = api.get(f"/api/users/{user_id}/deployments/{deployment_id}")
     if response.status_code == 404:
         raise FreepodError(
-            f"{project.path} points at deployment {deployment_id}"
-            f"{f' (' + project.deployment_name + ')' if project.deployment_name else ''}, "
+            f"{project.path} points at deployment {deployment_id}, "
             f"which no longer exists{env_suffix(project.env)}.\n"
             f"  It was deleted outside this project. Run `freepod deploy --recreate` "
             f"to create a new deployment and re-point {PROJECT_FILE} at it."
@@ -314,7 +314,11 @@ def _settle_values(
     deployment pointer, which is the one thing in the file that cannot be
     reconstructed.
     """
-    values = dict(project.user_values)
+    # The deployment's stored values, with the file's keys over them: a key the
+    # file leaves out keeps the value the deployment has.
+    stored = dict((deployment or {}).get("user_values_json") or {})
+    stored.pop(IMAGE_KEY, None)
+    values = {**stored, **project.chart_values}
     check_public_patterns(values)
     missing = missing_required(schema, values)
     hostname_key = _hostname_key(schema)
@@ -332,7 +336,8 @@ def _settle_values(
             interactive=interactive,
         )
         values = collector.collect(values, only_missing=True)
-        project.user_values = dict(values)
+        prompted = {k: values[k] for k in missing if k in values}
+        project.set_chart_values({**project.chart_values, **prompted})
         project.save()
 
     if hostname_key:
@@ -813,7 +818,7 @@ def ensure_deployment(
     )
     if state.project.env != api.env.name:
         state.project.env = api.env.name
-    state.project.record_deployment(record["id"], record["name"])
+    state.project.record_deployment(record["id"], api.env.api_base)
     echo(
         f"Created deployment '{record['name']}' ({record['id']}); it serves a "
         f"placeholder until this build is released."

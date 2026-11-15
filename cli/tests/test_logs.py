@@ -58,8 +58,8 @@ def project_at(tmp_path: Path, *, env="prod", deployment=DEPLOYMENT) -> Path:
     Project(
         root=tmp_path,
         env=env,
-        deployment={"id": deployment, "name": "custom-d8dtx4"} if deployment else None,
-        user_values={"hostname": "myapp.freepod.eu"},
+        deployment_id=deployment,
+        fields={"hostname": "myapp"},
     ).save()
     return tmp_path
 

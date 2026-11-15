@@ -160,7 +160,7 @@ def test_the_project_file_selects_the_environment(capsys, tmp_path, monkeypatch)
 
     store_refresh_token("prod", "freepod-cli-prod", "prod-refresh")
     store_refresh_token("dev", "freepod-cli-dev", "dev-refresh")
-    Project(root=tmp_path, env="dev", user_values={"hostname": "a.dev.freepod.eu"}).save()
+    Project(root=tmp_path, env="dev", fields={"hostname": "a"}).save()
     monkeypatch.chdir(tmp_path)
 
     assert main(["logout"]) == EXIT_OK
@@ -175,7 +175,7 @@ def test_an_explicit_env_overrides_the_project_file(capsys, tmp_path, monkeypatc
 
     store_refresh_token("prod", "freepod-cli-prod", "prod-refresh")
     store_refresh_token("dev", "freepod-cli-dev", "dev-refresh")
-    Project(root=tmp_path, env="dev", user_values={"hostname": "a.dev.freepod.eu"}).save()
+    Project(root=tmp_path, env="dev", fields={"hostname": "a"}).save()
     monkeypatch.chdir(tmp_path)
 
     assert main(["--env", "prod", "logout"]) == EXIT_OK
@@ -191,7 +191,7 @@ def test_a_project_file_without_an_environment_stays_on_prod(capsys, tmp_path, m
 
     store_refresh_token("prod", "freepod-cli-prod", "prod-refresh")
     store_refresh_token("dev", "freepod-cli-dev", "dev-refresh")
-    Project(root=tmp_path, user_values={"hostname": "a.freepod.eu"}).save()
+    Project(root=tmp_path, fields={"hostname": "a"}).save()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("FREEPOD_ENV", "dev")
 
@@ -220,7 +220,7 @@ def test_an_unknown_environment_in_the_file_does_not_break_other_commands(
     group callback as everything else."""
     from freepod.project import Project
 
-    Project(root=tmp_path, env="staging", user_values={}).save()
+    Project(root=tmp_path, env="staging").save()
     monkeypatch.chdir(tmp_path)
 
     assert main(["logout"]) == EXIT_OK

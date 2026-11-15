@@ -356,10 +356,10 @@ def init(context: Context, force: bool) -> None:
         )
     if target.exists() and force:
         existing = project.load(root)
-        if existing.deployment_name:
+        if existing.deployment_id:
             context.say(
                 f"Warning: --force unlinks deployment "
-                f"'{existing.deployment_name}' from this project. It keeps "
+                f"{existing.deployment_id} from this project. It keeps "
                 f"running, and this project can no longer update it."
             )
 
@@ -401,7 +401,9 @@ def init(context: Context, force: bool) -> None:
     # The file names an environment only when it is not the default, so a
     # project initialized against `FREEPOD_ENV=dev` still stays on dev.
     declared = None if context.env.name == DEFAULT_ENV else context.env.name
-    new = project.Project(root=root, env=declared, user_values=values)
+    new = project.Project(
+        root=root, env=declared, fields=values, schema=project.schema_url(context.env.api_base)
+    )
     new.save()
 
     # The path is the result; everything else is commentary.
@@ -719,7 +721,7 @@ def releases(context: Context, limit: int, show_all: bool) -> None:
     if project_file.env != context.env.name and project_file.deployment_id:
         raise UsageError(
             f"{project_file.path} records deployment "
-            f"'{project_file.deployment_name}' on '{project_file.env}', not on "
+            f"{project_file.deployment_id} on '{project_file.env}', not on "
             f"'{context.env.name}'.\n"
             f"  Re-run without --env (or with --env {project_file.env}) to list it."
         )
@@ -745,7 +747,7 @@ def releases(context: Context, limit: int, show_all: bool) -> None:
 
     if not records:
         context.say(
-            f"Deployment '{project_file.deployment_name}' has no releases"
+            f"Deployment {project_file.deployment_id} has no releases"
             f"{env_suffix(context.env.name)}."
         )
         return
@@ -785,7 +787,7 @@ def _project_deployment(context: Context, *, lacks: str = "vars") -> project.Pro
     if project_file.env != context.env.name and project_file.deployment_id:
         raise UsageError(
             f"{project_file.path} records deployment "
-            f"'{project_file.deployment_name}' on '{project_file.env}', not on "
+            f"{project_file.deployment_id} on '{project_file.env}', not on "
             f"'{context.env.name}'.\n"
             f"  Re-run without --env (or with --env {project_file.env})."
         )
@@ -805,7 +807,7 @@ def _refuse_unreachable(deployment, project_file, env_name) -> dict:
     or gone, and a connection there would be refused for a reason the platform
     already told us, so it is said rather than discovered the hard way.
     """
-    name = project_file.deployment_name
+    name = (deployment or {}).get("name") or project_file.deployment_id
     if deployment is None:
         raise FreepodError(
             f"deployment '{name}' no longer exists{env_suffix(env_name)} — it may "
@@ -863,7 +865,7 @@ def _connection_setup(
             database = database_module.read(api, user_id, project_file.deployment_id)
             if database is None:
                 raise FreepodError(
-                    f"deployment '{project_file.deployment_name}' has no database, so "
+                    f"deployment {project_file.deployment_id} has no database, so "
                     f"there is nothing to connect to. Check `freepod db status`."
                 )
         edge = api.ssh_edge()
@@ -1850,10 +1852,8 @@ def cp(context: Context, source: str, destination: str) -> None:
     Nothing has to be installed in your image for this to work.
     """
     project_file = _project_deployment(context)
-    deployment_name = project_file.deployment_name
-
     # Every refusal that does not need a connection happens before we spend one.
-    local, remote, upload = copy_module.direction(source, destination, deployment_name)
+    local, remote, upload = copy_module.direction(source, destination, project_file.deployment_id)
     copy_module.check_local(local, upload=upload)
     ssh_module.require_sftp()
 

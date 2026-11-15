@@ -147,8 +147,8 @@ def test_init_writes_the_project_file(dev_api, credential, answers, in_tmp_dir, 
 
     project = load(in_tmp_dir)
     assert project.env == "dev"
-    assert project.user_values == {"hostname": "myapp"}
-    assert project.deployment is None
+    assert project.fields == {"hostname": "myapp"}
+    assert project.deployment_id is None
     capsys.readouterr()
 
 
@@ -262,7 +262,7 @@ def test_the_optional_image_property_is_not_written(dev_api, credential, answers
     answers("myapp")
     main(["--env", "dev", "init"])
 
-    assert "image" not in load(in_tmp_dir).user_values
+    assert "image" not in load(in_tmp_dir).fields
 
 
 # --------------------------------------------------------------------------
@@ -335,11 +335,11 @@ def test_force_warns_that_it_discards_the_deployment_pointer(
     assert main(["--env", "dev", "init", "--force"]) == EXIT_OK
 
     stderr = capsys.readouterr().err
-    assert "custom-old99" in stderr
+    assert "deployment abc" in stderr
     assert "unlinks deployment" in stderr
 
     project = load(in_tmp_dir)
-    assert project.deployment is None, "--force discards the whole file, pointer included"
+    assert project.deployment_id is None, "--force discards the whole file, pointer included"
     assert project.hostname == "fresh"
 
 

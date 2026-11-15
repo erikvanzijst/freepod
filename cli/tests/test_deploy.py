@@ -322,13 +322,14 @@ class Platform:
 
 
 def project_at(tmp_path, *, values=None, pointer=None, env="prod", files=True):
-    """Write a `.freepod.json` and a token file to pack."""
-    document = {
-        "version": 1,
-        "env": env,
-        "deployment": pointer,
-        "user_values": {"hostname": "myapp-erik.freepod.app"} if values is None else values,
-    }
+    """Write a format 2 `.freepod.json` and a token file to pack.
+
+    `pointer` is the deployment's id, or a dict carrying it.
+    """
+    document = {"version": 2, "env": env}
+    if pointer:
+        document["deployment"] = pointer["id"] if isinstance(pointer, dict) else pointer
+    document.update({"hostname": "myapp-erik.freepod.app"} if values is None else values)
     (tmp_path / ".freepod.json").write_text(json.dumps(document))
     if files:
         (tmp_path / "index.js").write_text("console.log('hi')\n")
@@ -448,8 +449,8 @@ def test_a_newly_required_value_is_prompted_for_and_the_pointer_survives(
 
     assert state.values["region"] == "eu-west"
     saved = json.loads((tmp_path / ".freepod.json").read_text())
-    assert saved["user_values"]["region"] == "eu-west"
-    assert saved["deployment"] == pointer
+    assert saved["region"] == "eu-west"
+    assert saved["deployment"] == pointer["id"]
 
 
 def test_recreate_keeps_the_old_pointer_until_the_replacement_exists(
@@ -473,7 +474,7 @@ def test_recreate_keeps_the_old_pointer_until_the_replacement_exists(
     # Nothing was asked about the abandoned deployment: this deploy creates.
     assert state.deployment is None
     saved = json.loads((tmp_path / ".freepod.json").read_text())
-    assert saved["deployment"] == pointer
+    assert saved["deployment"] == pointer["id"]
 
 
 def test_a_missing_value_without_a_terminal_names_the_field(make_api, tmp_path):
@@ -846,7 +847,7 @@ def test_the_pointer_is_written_before_anything_is_packed(make_api, tmp_path):
 
     run(make_api, platform, tmp_path)
 
-    assert seen["file"]["deployment"] == {"id": "new-id-1", "name": "custom-fresh"}
+    assert seen["file"]["deployment"] == "new-id-1"
 
 
 def test_a_failed_first_build_keeps_the_deployment_and_names_delete(make_api, tmp_path):
@@ -861,7 +862,7 @@ def test_a_failed_first_build_keeps_the_deployment_and_names_delete(make_api, tm
         run(make_api, platform, tmp_path, echo=said.append)
 
     saved = json.loads((tmp_path / ".freepod.json").read_text())
-    assert saved["deployment"] == {"id": "new-id-1", "name": "custom-fresh"}
+    assert saved["deployment"] == "new-id-1"
     assert any("freepod delete" in line and "custom-fresh" in line for line in said)
     assert not any(method == "PUT" for method, _ in platform.calls)
 
@@ -898,7 +899,7 @@ def test_the_pointer_is_written_before_the_rollout_is_awaited(make_api, tmp_path
 
     run(make_api, platform, tmp_path)
 
-    assert seen["file"]["deployment"] == {"id": "new-id-1", "name": "custom-fresh"}
+    assert seen["file"]["deployment"] == "new-id-1"
 
 
 def test_a_checkout_url_is_refused(make_api, tmp_path):
@@ -1330,7 +1331,7 @@ def test_recreate_discards_the_pointer_and_creates_a_new_deployment(make_api, tm
     assert ("POST", "/api/users/7/deployments/new-id-2/builds") in platform.calls
     assert [p for m, p in platform.calls if m == "PUT"] == ["/api/users/7/deployments/new-id-2"]
     saved = json.loads((tmp_path / ".freepod.json").read_text())
-    assert saved["deployment"] == {"id": "new-id-2", "name": "custom-second"}
+    assert saved["deployment"] == "new-id-2"
 
 
 def test_recreate_never_reads_the_discarded_deployment(make_api, tmp_path):
@@ -1357,7 +1358,7 @@ def test_recreate_does_not_persist_the_discard_until_the_new_deployment_exists(
         run(make_api, platform, tmp_path, recreate=True)
 
     saved = json.loads((tmp_path / ".freepod.json").read_text())
-    assert saved["deployment"] == {"id": "40bd8dea-old", "name": "custom-old"}
+    assert saved["deployment"] == "40bd8dea-old"
 
 
 # --------------------------------------------------------------------------

@@ -35,7 +35,7 @@ from . import FreepodError, UsageError
 from .api import ApiClient, _json_detail
 from .config import ROLLOUT_WAIT_SECONDS, env_suffix
 from .deploy import describe_conflict
-from .project import PROJECT_FILE, Project, require_project
+from .project import PROJECT_FILE, Project, require_project, settle_migration
 
 #: Where a teardown ends. `deleted` is the record the platform keeps behind;
 #: a 404 means it stopped keeping one, and both mean the same thing here.
@@ -255,7 +255,7 @@ def delete(
         # silently did nothing on the wrong environment would read as success.
         raise UsageError(
             f"{project.path} records deployment "
-            f"'{project.deployment_name}' on '{project.env}', not on "
+            f"{project.deployment_id} on '{project.env}', not on "
             f"'{env_name}'.\n"
             f"  Re-run without --env (or with --env {project.env}) to delete it."
         )
@@ -271,13 +271,13 @@ def delete(
     user_id = api.me()["id"]
     deployment_id = project.deployment_id
     record = read_deployment(api, user_id, deployment_id)
+    settle_migration(project, record)
 
     if record is None:
         # Gone already — deleted from the web UI, or from another checkout.
         # Clearing the stale pointer is the whole of what is left to do.
-        name = project.deployment_name
         echo(
-            f"Deployment {deployment_id}{f' ({name})' if name else ''} no longer "
+            f"Deployment {deployment_id} no longer "
             f"exists{env_suffix(env_name)}; nothing to delete."
         )
         _forget(project, echo)

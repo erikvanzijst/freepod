@@ -1,22 +1,24 @@
 """The `.freepod.json` project file: load, save, and project-root discovery.
 
-The file holds intent — the deployment pointer, the user values, and, for a
-project on a non-default environment, that environment — and nothing a deploy
-would rewrite. In particular the build's `image`
-is never written to it: it is a build output, not intent, and persisting it
-would mean a rewritten committed file on every deploy, which is git churn and a
-merge conflict for any team of two. See design D4.
+The file holds intent: the deployment pointer, the fields the project manages,
+and, for a project on a non-default environment, that environment. Nothing a
+deploy produces is written to it; the build's `image` in particular is a build
+output, and a file that holds one is refused.
 
 ```json
 {
-  "version": 1,
-  "deployment": {"id": "40bd8dea-…", "name": "custom-d8dtx4"},
-  "user_values": {"hostname": "myapp"}
+  "$schema": "https://freepod.eu/api/products/custom/project-schema",
+  "version": 2,
+  "deployment": "40bd8dea-…",
+  "name": "Arkanoid",
+  "auth": {"enabled": true}
 }
 ```
 
-Before the first deploy, `deployment` is `null`. An absent `env` means
-`DEFAULT_ENV`; it is written only for a project on another environment.
+Every key other than `$schema`, `version`, `env` and `deployment` is a
+deployment field the file manages: an identity key (`name`, `description`,
+`icon`) or a chart property. An unlinked project has no `deployment` key.
+Format 1 files are migrated on read (design D8).
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import click
 
@@ -38,15 +40,19 @@ PROJECT_FILE = ".freepod.json"
 DEFAULT_ENV = "prod"
 
 #: Bumped when the on-disk format changes incompatibly.
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
-#: Keys a deploy produces rather than a user declaring. Stripped on write.
-#:
-#: `image` is not merely omitted when absent — it is removed even if a caller
-#: passes one, because the platform's schema declares it `type: "string"` under
-#: `additionalProperties: false`, so neither a value nor an explicit null
-#: belongs in a file that is committed and diffed.
+#: The file's own keys; everything else is a field it manages.
+FILE_KEYS = ("$schema", "version", "env", "deployment")
+
+#: The deployment's own metadata, as opposed to its chart properties.
+IDENTITY_KEYS = ("name", "description", "icon")
+
+#: Keys a deploy produces rather than a user declaring.
 BUILD_OUTPUT_KEYS = frozenset({"image"})
+
+#: The product a project file describes, whose schema `$schema` names.
+SCHEMA_PRODUCT = "custom"
 
 #: The hostnames earlier releases of this client wrote, `<label>.<account>.freepod.eu`
 #: and `<label>.<account>.dev.freepod.eu`. Fixed here rather than learned from
@@ -56,6 +62,11 @@ _LEGACY_HOSTNAME = re.compile(
 )
 
 
+def schema_url(api_base: str) -> str:
+    """The project schema on the environment at `api_base`."""
+    return f"{api_base.rstrip('/')}/api/products/{SCHEMA_PRODUCT}/project-schema"
+
+
 class Project:
     """One project's file, and the directory it was found in."""
 
@@ -63,16 +74,18 @@ class Project:
         self,
         root: Path,
         env: Optional[str] = None,
-        user_values: Optional[Dict[str, Any]] = None,
-        deployment: Optional[Dict[str, str]] = None,
-        version: int = FORMAT_VERSION,
+        fields: Optional[Dict[str, Any]] = None,
+        deployment_id: Optional[str] = None,
+        schema: Optional[str] = None,
     ):
         self.root = Path(root)
         # As declared in the file: None is written as no key at all.
         self.declared_env = env
-        self.user_values = dict(user_values or {})
-        self.deployment = dict(deployment) if deployment else None
-        self.version = version
+        self.fields: Dict[str, Any] = dict(fields or {})
+        self.deployment_id = str(deployment_id) if deployment_id else None
+        self.schema = schema
+        # A format 1 file whose `hostname` waits on the deployment's (D8).
+        self.unsettled_hostname: Optional[str] = None
 
     @property
     def env(self) -> str:
@@ -82,34 +95,51 @@ class Project:
     def env(self, name: str) -> None:
         self.declared_env = name
 
-    # -- location ---------------------------------------------------------
-
     @property
     def path(self) -> Path:
         return self.root / PROJECT_FILE
 
-    @property
-    def deployment_id(self) -> Optional[str]:
-        return self.deployment.get("id") if self.deployment else None
+    # -- fields -----------------------------------------------------------
 
     @property
-    def deployment_name(self) -> Optional[str]:
-        return self.deployment.get("name") if self.deployment else None
+    def identity(self) -> Dict[str, Any]:
+        """The identity keys the file sets."""
+        return {key: self.fields[key] for key in IDENTITY_KEYS if key in self.fields}
+
+    @property
+    def chart_values(self) -> Dict[str, Any]:
+        """The chart properties the file sets."""
+        return {k: v for k, v in self.fields.items() if k not in IDENTITY_KEYS}
+
+    def set_chart_values(self, values: Dict[str, Any]) -> None:
+        """Replace the chart properties, keeping the identity keys."""
+        chart = {k: v for k, v in values.items() if k not in BUILD_OUTPUT_KEYS}
+        self.fields = {**self.identity, **chart}
+
+    @property
+    def managed_fields(self) -> List[str]:
+        """Every field the file sets, which is every field it manages."""
+        return sorted(self.fields)
 
     @property
     def hostname(self) -> Optional[str]:
-        value = self.user_values.get("hostname")
+        value = self.fields.get("hostname")
         return value if isinstance(value, str) else None
 
     # -- persistence ------------------------------------------------------
 
     def to_document(self) -> Dict[str, Any]:
-        values = {k: v for k, v in self.user_values.items() if k not in BUILD_OUTPUT_KEYS}
-        document: Dict[str, Any] = {"version": self.version}
+        document: Dict[str, Any] = {}
+        if self.schema:
+            document["$schema"] = self.schema
+        document["version"] = FORMAT_VERSION
         if self.declared_env is not None:
             document["env"] = self.declared_env
-        document["deployment"] = dict(self.deployment) if self.deployment else None
-        document["user_values"] = values
+        if self.deployment_id:
+            document["deployment"] = self.deployment_id
+        for key, value in self.fields.items():
+            if key not in BUILD_OUTPUT_KEYS:
+                document[key] = value
         return document
 
     def save(self) -> None:
@@ -122,7 +152,7 @@ class Project:
         temporary = self.path.with_name(f"{PROJECT_FILE}.{os.getpid()}.tmp")
         try:
             with open(temporary, "w", encoding="utf-8") as handle:
-                json.dump(document, handle, indent=2)
+                json.dump(document, handle, indent=2, ensure_ascii=False)
                 handle.write("\n")
             os.replace(temporary, self.path)
         except BaseException:
@@ -132,26 +162,26 @@ class Project:
                 pass
             raise
 
-    def record_deployment(self, deployment_id: str, name: str) -> None:
+    def record_deployment(self, deployment_id: str, api_base: Optional[str] = None) -> None:
         """Pin the deployment pointer and persist it immediately.
 
         Written before the rollout is awaited: a deployment that exists but is
-        not recorded is one the user cannot see, address, or delete.
+        not recorded is one the user cannot see, address, or delete. The
+        schema follows the environment the pointer belongs to.
         """
-        self.deployment = {"id": str(deployment_id), "name": name}
+        self.deployment_id = str(deployment_id)
+        if api_base:
+            self.schema = schema_url(api_base)
         self.save()
 
     def forget_deployment(self) -> None:
         """Drop the deployment pointer and persist it immediately.
 
-        The counterpart of `record_deployment`, and written the moment the
-        platform accepts a deletion rather than once the teardown lands: from
-        that point the deployment can never serve this project again, so a
-        pointer to it would only make the next deploy fail. Everything else in
-        the file — the environment, the user values — is intent and survives,
-        so a later `freepod deploy` re-creates under the same hostname.
+        Written the moment the platform accepts a deletion: from then on the
+        deployment can never serve this project again. Every other key is
+        intent and survives, so `freepod init` re-creates with it.
         """
-        self.deployment = None
+        self.deployment_id = None
         self.save()
 
 
@@ -170,7 +200,7 @@ def find_project_root(start: Optional[Path] = None) -> Optional[Path]:
 
 
 def load(root: Path) -> Project:
-    """Read the project file in `root`."""
+    """Read the project file in `root`, migrating a format 1 file."""
     path = Path(root) / PROJECT_FILE
     try:
         with open(path, "r", encoding="utf-8") as handle:
@@ -183,7 +213,7 @@ def load(root: Path) -> Project:
     if not isinstance(document, dict):
         raise FreepodError(f"{path} must contain a JSON object")
 
-    version = document.get("version", FORMAT_VERSION)
+    version = document.get("version", 1)
     if not isinstance(version, int) or version > FORMAT_VERSION:
         raise FreepodError(
             f"{path} declares format version {version!r}, which this client does not "
@@ -194,39 +224,117 @@ def load(root: Path) -> Project:
     if env is not None and (not isinstance(env, str) or not env):
         raise FreepodError(f"{path}: 'env' must be a non-empty string")
 
-    user_values = document.get("user_values")
-    if user_values is None:
-        user_values = {}
-    if not isinstance(user_values, dict):
-        raise FreepodError(f"{path}: 'user_values' must be an object")
+    if version < FORMAT_VERSION:
+        return _migrate(Path(root), document, env)
 
-    deployment = document.get("deployment")
-    if deployment is not None:
-        if not isinstance(deployment, dict) or not deployment.get("id"):
-            raise FreepodError(f"{path}: 'deployment' must be null or carry an 'id'")
+    if "deployment" in document:
+        pointer = document["deployment"]
+        if pointer is None:
+            raise FreepodError(
+                f"{path}: 'deployment' is null. Remove the key to leave the project "
+                f"unlinked, or run `freepod link` to point it at a deployment."
+            )
+        if not isinstance(pointer, str) or not pointer:
+            raise FreepodError(f"{path}: 'deployment' must be the deployment's id, as a string")
 
-    project = Project(
+    schema = document.get("$schema")
+    if schema is not None and not isinstance(schema, str):
+        raise FreepodError(f"{path}: '$schema' must be a string")
+
+    fields = {k: v for k, v in document.items() if k not in FILE_KEYS}
+    if "user_values" in fields:
+        raise FreepodError(
+            f"{path}: 'user_values' belongs to format 1. In format 2 its keys sit at "
+            f"the top level of the file."
+        )
+    outputs = sorted(BUILD_OUTPUT_KEYS & fields.keys())
+    if outputs:
+        raise FreepodError(
+            f"{path}: '{outputs[0]}' is a build output, which freepod sets on every "
+            f"deploy. Remove it from the file."
+        )
+
+    return Project(
         root=Path(root),
         env=env,
-        user_values=user_values,
-        deployment=deployment,
-        version=version,
+        fields=fields,
+        deployment_id=document.get("deployment"),
+        schema=schema,
     )
-    _rewrite_legacy_hostname(project)
+
+
+def _migrate(root: Path, document: Dict[str, Any], env: Optional[str]) -> Project:
+    """Rewrite a format 1 file as format 2 (D8).
+
+    The rewrite is saved at once unless the file is linked and sets `hostname`:
+    that key is dropped only when it matches the deployment's, which needs a
+    read, so it waits for `settle_migration`.
+    """
+    path = root / PROJECT_FILE
+    pointer = document.get("deployment")
+    if pointer is not None and (not isinstance(pointer, dict) or not pointer.get("id")):
+        raise FreepodError(f"{path}: 'deployment' must be null or carry an 'id'")
+    values = document.get("user_values") or {}
+    if not isinstance(values, dict):
+        raise FreepodError(f"{path}: 'user_values' must be an object")
+
+    fields = {k: v for k, v in values.items() if k not in BUILD_OUTPUT_KEYS}
+    hostname = fields.get("hostname")
+    if isinstance(hostname, str):
+        match = _LEGACY_HOSTNAME.match(hostname.strip().lower())
+        if match is not None:
+            fields["hostname"] = match.group("label")
+
+    from .config import ENVIRONMENTS
+
+    environment = ENVIRONMENTS.get(env or DEFAULT_ENV)
+    project = Project(
+        root=root,
+        env=env,
+        fields=fields,
+        deployment_id=pointer["id"] if pointer else None,
+        schema=schema_url(environment.api_base) if environment else None,
+    )
+    if project.deployment_id and "hostname" in fields:
+        project.unsettled_hostname = fields["hostname"]
+        return project
+    project.save()
+    if project.deployment_id:
+        click.echo(f"Migrated {PROJECT_FILE} to format {FORMAT_VERSION}.", err=True)
+    else:
+        click.echo(
+            f"Migrated {PROJECT_FILE} to format {FORMAT_VERSION}. It records no "
+            f"deployment yet: run `freepod init` to create one.",
+            err=True,
+        )
     return project
 
 
-def _rewrite_legacy_hostname(project: Project) -> None:
-    """Replace an old-format hostname with its application label, which the
-    platform completes beneath the account's handle, and save the file."""
-    hostname = project.hostname
-    match = _LEGACY_HOSTNAME.match(hostname.strip().lower()) if hostname else None
-    if match is None:
+def settle_migration(project: Project, deployment: Optional[Dict[str, Any]]) -> None:
+    """Finish migrating a linked format 1 file, given its deployment as read.
+
+    `hostname` is dropped when the deployment already has it, and kept as a
+    managed field otherwise, so an edit never deployed is not lost.
+    """
+    hostname = project.unsettled_hostname
+    if hostname is None:
         return
-    label = match.group("label")
-    project.user_values["hostname"] = label
+    project.unsettled_hostname = None
+    if deployment is not None and _same_hostname(hostname, deployment):
+        project.fields.pop("hostname", None)
     project.save()
-    click.echo(f"Rewrote hostname {hostname} → {label} in {PROJECT_FILE}.", err=True)
+    click.echo(f"Migrated {PROJECT_FILE} to format {FORMAT_VERSION}.", err=True)
+
+
+def _same_hostname(value: str, deployment: Dict[str, Any]) -> bool:
+    value = value.strip().lower()
+    stored = (deployment.get("user_values_json") or {}).get("hostname")
+    actual = (deployment.get("hostname") or "").lower()
+    if value in (actual, (stored or "").lower()):
+        return True
+    # A label the platform completed beneath the owner's handle.
+    first, _, _ = actual.partition(".")
+    return "." not in value and first.rpartition("-")[0] == value
 
 
 def require_project(start: Optional[Path] = None) -> Project:

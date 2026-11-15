@@ -41,9 +41,9 @@ Plan. Run the full `api/` suite before every push.
 
 ## 6. Client: project file format 2 (PR 2)
 
-- [ ] 6.1 Format 2 model in `cli/src/freepod/project.py`: flat keys, a string or absent pointer (null refused), `$schema` per environment, `image` refused as a build output, and accessors for the identity keys, the chart keys and the managed list; verify with `test_project.py` cases
-- [ ] 6.2 Format 1 migration on read (pointer id kept, `user_values` lifted except `image`, `hostname` dropped when equal to the deployment's, a null pointer becoming unlinked), with a message; verify with tests for each scenario in cli-project-file
-- [ ] 6.3 `freepod delete` removes the `deployment` key and keeps the rest; verify with `test_delete.py`
+- [x] 6.1 Format 2 model in `cli/src/freepod/project.py`: flat keys, a string or absent pointer (null refused), `$schema` per environment, `image` refused as a build output, and accessors for the identity keys, the chart keys and the managed list; verify with `test_project.py` cases
+- [x] 6.2 Format 1 migration on read (pointer id kept, `user_values` lifted except `image`, `hostname` dropped when equal to the deployment's, a null pointer becoming unlinked), with a message; verify with tests for each scenario in cli-project-file
+- [x] 6.3 `freepod delete` removes the `deployment` key and keeps the rest; verify with `test_delete.py`
 
 ## 7. Client: init, link, apply, deploy (PR 2)
 
