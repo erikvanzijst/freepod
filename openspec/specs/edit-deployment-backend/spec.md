@@ -1,3 +1,9 @@
+# edit-deployment-backend Specification
+
+## Purpose
+
+The service behind `PUT /api/users/{uid}/deployments/{id}`: which template versions an update may target, and the deployment states it may be applied in.
+
 ## Overview
 
 ```
@@ -25,7 +31,7 @@ Template version check (relaxed):
   desired_template_id > current   --> ALLOW  (upgrade)
 ```
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Update deployment allows same template version
 The `update_deployment()` service MUST allow updates where `desired_template_id` equals the deployment's current `desired_template_id`. It MUST still reject updates where the new `desired_template_id` is strictly less than the current one.
