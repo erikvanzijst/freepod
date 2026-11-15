@@ -93,7 +93,11 @@ that locks users out until they upgrade.
 | `config.py`   | The two environments, the OAuth client ids, wait defaults, and on-disk paths.                                                          |
 | `auth.py`     | Both OAuth2 flows, the token cache, and `Session` — acquisition and renewal only.                                                      |
 | `api.py`      | The HTTP client, the 401/403 contract, and retries for safe methods.                                                                   |
-| `project.py`  | `.freepod.json`: load, save, project-root discovery.                                                                                   |
+| `project.py`  | `.freepod.json`: load, save, format 1 migration, project-root discovery.                                                               |
+| `fields.py`   | What a project file sends: identity, icon, `managed_fields`; the caller's deployment names.                                            |
+| `initialize.py` | `init`: name, hostname, the create.                                                                                                  |
+| `link.py`     | `link` and its picker.                                                                                                                 |
+| `apply.py`    | `apply`, and the unapplied-changes warning.                                                                                            |
 | `values.py`   | Schema-driven prompting and hostname normalization.                                                                                    |
 | `archive.py`  | Packing the working tree: ignore layering, pruning, and the tar stream.                                                                |
 | `build.py`    | Upload slot, presigned POST, build creation, and log streaming.                                                                        |
@@ -148,8 +152,10 @@ Spec: [cli-environments](../openspec/specs/cli-environments/spec.md) · Rational
 | `login`  | Authenticate and cache the credential. Offers the terms if outstanding.                                      | `--loopback`, `--device`, `--force` |
 | `logout` | Discard the **local** credential for the selected environment.                                               |                                     |
 | `whoami` | Report who the cached credential authenticates as. Never opens a browser.                                    |                                     |
-| `init`   | Write `.freepod.json` for the current directory. Reads only — creates nothing.                               | `--force`                           |
-| `deploy` | Preflight → pack → upload → build → release.                                                                 | `--recreate`, `--no-gitignore`      |
+| `init`   | Name the app, claim its hostname, create its deployment, and write `.freepod.json`.                          | `--name`, `--hostname`, `--force`   |
+| `link`   | Point `.freepod.json` at an existing deployment, by name or id, or picked from a list.                      | `--force`                           |
+| `apply`  | Send `.freepod.json` to the deployment without building; rolls out staged vars.                              |                                     |
+| `deploy` | Preflight → pack → upload → build → release, with `.freepod.json` in the same release.                       | `--no-build` (= `apply`), `--no-gitignore` |
 | `delete` | Tear down the project's deployment, and follow the teardown to gone.                                         | `--yes/-y`, `--no-wait`             |
 | `builds` | List the project's builds, marking the one this project runs. `builds log` prints one build's log.           | `--limit`, `--all`; `-f` (log)      |
 | `log`    | Stream the project deployment's application output.                                                          | `-f`, `-n`, `-r`, `-t`              |
@@ -324,47 +330,29 @@ Spec: [cli-deploy](../openspec/specs/cli-deploy/spec.md) · Rationale:
 
 Preflight, cheapest and most fatal first:
 
-1. The project file, and that its recorded deployment applies to this
-   environment — a project whose pointer was minted elsewhere needs
-   `--recreate` before it can deploy here.
+1. The project file: that it records a deployment, on this environment, and
+   that its icon can be read.
 2. `GET /api/me` — the first request that actually exercises the credential.
 3. `GET /api/products` — the `custom` product and its canonical template.
 4. The recorded deployment, so one deleted out of band is reported here rather
-   than after a four-minute build. Skipped under `--recreate`, which has
-   already decided to abandon it.
-5. On a create only: a free plan, then the terms.
-6. Any newly required value, by asking.
-7. The hostname, but only when it is new or changed.
+   than after a four-minute build.
+5. Any newly required value, by asking. The answer goes with this release, not
+   into the file.
 
-Then, on a first deploy or under `--recreate`, the deployment is created with no
-image and recorded in the project file at once. A build belongs to a deployment,
-so it has to exist before anything is built; meanwhile the product serves its
-placeholder page. Only then is the archive packed, uploaded and built against
-that deployment, and the build released into it by an update, after waiting
-for the new deployment to settle. A failed first build leaves the deployment
-recorded, so the next deploy reuses it rather than orphaning it; the client
-names `freepod delete` for anyone who wants it gone.
+Then the archive is packed, uploaded and built against that deployment, and the
+build released by one update, built as `apply` builds it plus the template, the
+build and its image. A deployment `init` created moments ago may still be
+provisioning, so the release waits for it to settle.
 
 Rationale: [builds-belong-to-deployments](../openspec/changes/archive/2026-09-25-builds-belong-to-deployments/design.md)
-D6, which reverses this client's original build-first ordering (design D6 of
-`add-freepod-cli`).
+D6, and the deployment-identity-and-project-file design D3 and D7, which move
+creation to `init`.
 
 Things worth knowing about each step:
 
-- **Hostname checks are conditional** (design D14). `GET /api/hostnames/{fqdn}`
-  runs without `exclude_deployment_id`, so re-checking a name we already hold
-  reports `in_use` against ourselves — and for a custom domain it performs a
-  live DNS lookup that is slow and transiently failure-prone. A value just
-  prompted for was already checked inside the prompt loop.
-- **Only free plans.** `select_free_plan` takes the first plan whose current
-  template is priced at zero. Anything priced puts the deployment in `pending`
-  behind a checkout page this client cannot drive. Plans are read in preflight
-  rather than at release so an instance with no free plan refuses instantly —
-  observed, not hypothetical: the `custom` product on dev published no plans.
 - **User values are submitted whole.** The platform replaces stored values
-  wholesale; omitting the key reuses what is stored, but a partial object does
-  not merge, so sending `{"image": …}` alone fails on the missing required
-  hostname (design D8).
+  wholesale, so the update carries the deployment's stored values with the
+  file's keys over them (design D8 of `add-freepod-cli`).
 - **The rollout is followed by generation, not by status.** `generation` is
   incremented atomically by the update and returned with it; a `ready` carrying
   an older generation belongs to the previous rollout, and reporting it would
@@ -381,15 +369,31 @@ Things worth knowing about each step:
   quoted verbatim rather than guessed at — an invented message would be wrong
   exactly when it mattered most.
 
-`--recreate` creates a new deployment and re-points the file at it. The old
-pointer is left on the project until the create succeeds, because losing it to
-a failed create is strictly worse than holding a pointer to something that may
-already be gone — and preflight is not free of writes in between, since
-`_settle_values` saves the file the moment the template requires a value it
-lacks. What `--recreate` changes before then is only what preflight reads: the
-recorded deployment is not fetched, so the run takes the create path. The new
-pointer is written **before** the rollout is awaited: a deployment that exists
-but is not recorded is one the project can never address again.
+## Creating, linking and applying
+
+`init` creates the deployment (`initialize.py`). It asks for the name, offering
+the directory's or the first free `<name> N`, then the hostname, offering the
+name as a label or the first usable `-2` to `-5` of it. `--name` and
+`--hostname` skip the prompts. Before asking it makes the checks a create
+needs: a free plan (`select_free_plan`: anything priced puts the deployment
+behind a checkout page this client cannot drive), the handle and the terms. It
+creates with no image, records only the pointer, and returns without waiting
+for provisioning. An unlinked file's keys go in the create as
+`managed_fields`.
+
+`link` (`link.py`) records an existing deployment. A new file gets the
+deployment's managed fields back, except the icon, so the next apply claims
+them again. The picker is `prompt_toolkit`.
+
+`apply` (`apply.py`) sends one update: the file's identity keys, the stored
+chart values with the file's keys over them, and the file's keys as
+`managed_fields` (`fields.claimed_body`). The platform releases only when the
+running app would change. Other project commands warn, without failing, when
+the file holds changes the deployment lacks.
+
+Spec: [cli-init](../openspec/changes/deployment-identity-and-project-file/specs/cli-init/spec.md),
+[cli-link](../openspec/changes/deployment-identity-and-project-file/specs/cli-link/spec.md),
+[cli-apply](../openspec/changes/deployment-identity-and-project-file/specs/cli-apply/spec.md)
 
 ## Deleting a deployment
 
@@ -531,7 +535,7 @@ Spec: [cli-vars](../openspec/specs/cli-vars/spec.md) · Rationale:
   `PATCH` and the release follows it.
 - **A deployment mid-rollout is refused, not waited on.** The vars are already
   recorded by then, so waiting would hold the terminal for a rollout the caller
-  did not ask for. The error names `--stage` and `deploy --no-build`.
+  did not ask for. The error names `--stage` and `freepod apply`.
 - **`--secret` defers to the schema.** Where the product's template declares the
   property, the platform decides its sensitivity and rejects a caller that
   contradicts it — so the client drops the flag and says why, rather than
@@ -540,69 +544,49 @@ Spec: [cli-vars](../openspec/specs/cli-vars/spec.md) · Rationale:
   `KEY=VALUE` is in the shell history forever. Off a terminal it is a usage
   error rather than an empty value.
 
-### `deploy --no-build`
+### Rolling out staged vars
 
-Vars take effect on the next release, and nothing else mints one without other
-changes. `deploy --no-build` is that primitive: it preflights, reads the
-**applied** release's image, and releases it again.
-
-It names no build. The platform carries the applied release's `build_id` over
-to any update that omits it and keeps that build's image, so the release `var
-set` creates still links back to the build that produced the code it runs.
-
-Refused when the deployment has never completed a rollout: there is no image to
-re-release, and inventing one from the desired release would ship something
-that has never run.
+Vars take effect on the next release, and staged vars alone do not make an
+update release. `var set` and `apply` roll them out by naming the build the
+deployment runs, which releases and keeps its image. A deployment that runs no
+build yet has nothing to roll; its vars take effect with the first deploy.
 
 ## The project file
 
-`.freepod.json`, written by `init`, meant to be committed:
+`.freepod.json`, written by `init` or `link`, meant to be committed:
 
 ```json
 {
-  "version": 1,
-  "deployment": {"id": "40bd8dea-…", "name": "custom-app-d8dtx4"},
-  "user_values": {"hostname": "myapp-ada.freepod.app"}
+  "$schema": "https://freepod.eu/api/products/custom/project-schema",
+  "version": 2,
+  "deployment": "40bd8dea-54f3-430d-8ee0-f1689f9629cb",
+  "name": "My app",
+  "auth": {"enabled": true}
 }
 ```
 
-It holds **intent** and nothing a deploy would rewrite (design D4). In
-particular `image` is never written here — it is a build output, and persisting
-it would mean a rewritten committed file on every deploy, which is git churn and
-a merge conflict for any team of two. `image` is stripped on write even if a
-caller passes one, because the platform's schema declares it under
-`additionalProperties: false`, so neither a value nor an explicit null belongs
-in a file that is committed and diffed.
+Every key other than `$schema`, `version`, `env` and `deployment` is a field the
+file manages: `name`, `description`, `icon` (a path to an image), or a chart
+property. It holds **intent** and nothing a deploy produces: a file holding
+`image` is refused, because it is a build output. An unlinked project has no
+`deployment` key; a null one is refused. A format 1 file is migrated on read
+(`project.py`); its `hostname` is dropped once the deployment is read and
+already has it.
 
-Spec: [cli-project-file](../openspec/specs/cli-project-file/spec.md) · Rationale:
-[add-freepod-cli](../openspec/changes/archive/2026-08-15-add-freepod-cli/design.md)
+Spec: [cli-project-file](../openspec/changes/deployment-identity-and-project-file/specs/cli-project-file/spec.md)
 
-`env` is written only for a non-default environment; absent means `prod`, so
-a production user's file never mentions one. `init` writes it when the
-environment it ran against is not `prod`, whether chosen by `--env` or by
-`FREEPOD_ENV`. An existing `"env": "prod"` is read and preserved as is.
+`env` is written only for a non-default environment; absent means `prod`.
+An existing `"env": "prod"` is read and preserved as is. `env` is both a record
+and an instruction: it says which environment the recorded deployment lives on,
+and it is the environment every command run from this directory targets unless
+`--env` says otherwise. It travels with the pointer in the same write. A command
+that targets another environment is refused only when the recorded pointer would
+be stranded by it: `deploy` and `apply` name `freepod init --force` on the other
+environment, and `delete` and `log` name the environment the deployment lives on.
 
-`env` is both a record and an instruction: it says which environment the
-recorded deployment was minted on, and it is the environment every command run
-from this directory targets unless `--env` says otherwise. The two readings
-cannot be allowed to drift apart, so the environment travels with the pointer
-in the same write — a file that recorded a deployment while still declaring
-another environment would name an id its own environment cannot answer. Only a
-create moves it, which today means `deploy --recreate` or a first deploy.
-
-A command that targets an environment other than the one recorded is not
-refused for disagreeing; it is refused only when the recorded pointer would be
-stranded by it, and then by the command that knows what the pointer is for.
-`deploy` demands `--recreate`, because the old deployment keeps running while
-the project stops being able to address it. `delete` and `log` name the
-environment the deployment actually lives on, because a delete that silently
-did nothing would read as success, and a bare "no deployment here" would send
-the user to `deploy` for a project that already has one.
-
-`deploy` prompts for a required value the file lacks and records the answer,
-rather than sending the user back to `init` — which would discard the deployment
-pointer, the one thing in the file that cannot be reconstructed. `init --force`
-warns by name about the deployment it is about to orphan.
+`deploy` prompts for a required value the deployment lacks and sends it with the
+release, rather than sending the user back to `init`. `init --force` names the
+deployment it leaves running.
 
 Required values come from the product template's `values_schema_json`, walked at
 runtime, so a newly required property appears without a client release. Today

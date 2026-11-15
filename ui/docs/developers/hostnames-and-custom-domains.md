@@ -4,7 +4,7 @@ title: Hostnames and custom domains
 
 # Hostnames and custom domains
 
-Each deployment has exactly one hostname, set as `hostname` in `.freepod.json`. It is either a Freepod hostname ending in your handle, or a domain you own.
+Each deployment has exactly one hostname, chosen in `freepod init` and changed with `hostname` in `.freepod.json`. It is either a Freepod hostname ending in your handle, or a domain you own.
 
 ## Freepod hostnames
 
@@ -33,15 +33,13 @@ A deployment can use a domain you own: a name within it, such as `app.example.co
 
    Step-by-step instructions for common providers are in [Custom domain](/apps/managing/custom-domain).
 
-2. Set the hostname in `.freepod.json`, or enter it in `freepod init`:
+2. Enter the hostname in `freepod init`, or, for an existing app, set it in `.freepod.json`:
 
    ```json title=".freepod.json"
-   "user_values": {
-     "hostname": "app.example.com"
-   }
+   "hostname": "app.example.com"
    ```
 
-3. Run `freepod deploy`.
+3. Run `freepod apply`.
 
 Freepod checks the record with the domain's authoritative nameservers at every release, and refuses the release if it does not point to Freepod:
 
@@ -55,10 +53,10 @@ It obtains a TLS certificate for the hostname from Let's Encrypt and renews it a
 
 ## Changing the hostname
 
-Edit `hostname` in `.freepod.json` and release:
+Set `hostname` in `.freepod.json` and apply it:
 
 ```bash
-freepod deploy --no-build
+freepod apply
 ```
 
 The new hostname serves the deployment once the release completes. The old hostname stops serving immediately and becomes available to other deployments; requests to it are not redirected.

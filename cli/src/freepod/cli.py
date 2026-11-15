@@ -1036,7 +1036,7 @@ def var_list(context: Context, as_json: bool) -> None:
     else:
         context.say("No vars are set.")
     if payload.get("pending"):
-        context.say("Some vars are not applied yet. Apply them with `freepod deploy --no-build`.")
+        context.say("Some vars are not applied yet. Apply them with `freepod apply`.")
 
 
 @var.command("get")
@@ -1088,7 +1088,7 @@ def var_set(
     or `-f FILE`. Several vars in one command are applied in one redeploy.
 
     `--stage` saves them without redeploying, which also works while a deploy
-    is in progress. `freepod deploy --no-build` applies staged vars.
+    is in progress. `freepod apply` applies staged vars.
     """
     if not assignments and not source:
         raise UsageError("give KEY=VALUE pairs, a bare KEY to be prompted for, or -f FILE")
@@ -1165,7 +1165,7 @@ def _finish_var_write(
     subject = "var" if count == 1 else "vars"
     if stage:
         context.say(f"Saved {count} {subject}, not applied yet.")
-        context.say("Apply them with `freepod deploy --no-build`.")
+        context.say("Apply them with `freepod apply`.")
         return
     if not payload.get("pending"):
         context.say(f"Saved {count} {subject}; nothing changed, so nothing to redeploy.")
@@ -1176,7 +1176,7 @@ def _finish_var_write(
             f"deployment '{deployment.get('name')}' is {deployment.get('status')}, "
             f"so it cannot be redeployed right now.\n"
             f"  The {subject} {'is' if count == 1 else 'are'} saved. Apply "
-            f"{'it' if count == 1 else 'them'} with `freepod deploy --no-build` "
+            f"{'it' if count == 1 else 'them'} with `freepod apply` "
             f"once the current rollout finishes, or pass --stage to skip this step."
         )
 
@@ -1194,7 +1194,7 @@ def _finish_var_write(
         raise type(error)(
             f"{error}\n"
             f"  The vars are saved. Re-run with --stage to skip the redeploy, "
-            f"or apply them later with `freepod deploy --no-build`."
+            f"or apply them later with `freepod apply`."
         ) from error
     click.echo(address)
 
