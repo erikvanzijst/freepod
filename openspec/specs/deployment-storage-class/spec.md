@@ -6,48 +6,6 @@ Decides which StorageClass a deployment's volumes are provisioned on. The class 
 
 ## Requirements
 
-### Requirement: A deployment records its storage class
-
-Every deployment SHALL record the StorageClass its volumes are provisioned on, or none. A deployment that records none SHALL have its volumes rendered exactly as its chart renders them. Deployments that existed before this capability SHALL record none.
-
-#### Scenario: An existing deployment after the upgrade
-
-- **WHEN** the platform is upgraded to this capability
-- **THEN** every existing deployment records no storage class, and its next reconcile renders the same volume specs as before
-
-#### Scenario: A new deployment by an account that names no class
-
-- **WHEN** an account that names no class creates a deployment
-- **THEN** the deployment records no storage class, and its volumes are rendered as its chart renders them
-
-### Requirement: The class is chosen once, at creation
-
-When a deployment is created, the platform SHALL set its storage class to the class its owning account names, or to none when the account names none. The environment SHALL NOT supply a class of its own, so dev and prod choose the same way. The owner's account decides even when an administrator creates the deployment on the owner's behalf.
-
-#### Scenario: A flagged account
-
-- **WHEN** an account flagged with `ceph-freepod` creates a deployment
-- **THEN** the deployment records `ceph-freepod`
-
-#### Scenario: An administrator creates for a flagged account
-
-- **WHEN** an administrator whose own account names no class creates a deployment owned by an account flagged with `ceph-freepod`
-- **THEN** the deployment records `ceph-freepod`
-
-### Requirement: Only allowed classes are chosen
-
-Each environment SHALL list the StorageClasses its deployments may be created on. A create whose owner names a class not on the list SHALL be refused with an error naming the class, and nothing SHALL be persisted. This keeps one environment's deployments out of another environment's pool, since every class is visible cluster-wide.
-
-#### Scenario: A dev account flagged with the prod class
-
-- **WHEN** an account flagged with `ceph-freepod` creates a deployment on dev, which allows only `ceph-freepod-dev`
-- **THEN** the create is refused, naming `ceph-freepod`, and no deployment, release or subscription row is stored
-
-#### Scenario: An environment that allows no class
-
-- **WHEN** a flagged account creates a deployment on an environment whose list is empty
-- **THEN** the create is refused
-
 ### Requirement: The class never changes through the API
 
 No API, CLI or UI operation SHALL accept a storage class as input, report a deployment's storage class, or change it after creation. Updating values or vars, moving to another template version, stopping, starting and redeploying SHALL all keep the class the deployment was created with. Only the operator's storage migration (`deployment-storage-migration`) SHALL change a recorded class.
@@ -66,15 +24,6 @@ No API, CLI or UI operation SHALL accept a storage class as input, report a depl
 
 - **WHEN** the operator migrates a deployment that records no class onto `ceph-freepod`
 - **THEN** the deployment records `ceph-freepod`
-
-### Requirement: An account's class is an operator setting
-
-An account SHALL name at most one StorageClass for its future deployments, and none by default. Only an operator SHALL set it, directly in the platform database; no API, CLI or UI operation SHALL read or write it. Changing an account's class SHALL affect only deployments created afterwards.
-
-#### Scenario: Unflagging an account
-
-- **WHEN** an operator clears the class of an account that owns deployments recording `ceph-freepod`
-- **THEN** those deployments keep `ceph-freepod`, and the account's next deployment records no storage class
 
 ### Requirement: The platform applies the class to every volume
 
@@ -135,3 +84,50 @@ For a deployment that records a storage class, the platform SHALL refuse to rend
 
 - **WHEN** a release renders a claim requesting `ReadWriteMany`
 - **THEN** the reconcile fails, naming the claim
+
+### Requirement: Every deployment records its class or none
+
+Every deployment SHALL record the StorageClass its volumes are provisioned on, or none. A deployment that records none SHALL have its volumes rendered exactly as its chart renders them. Deployments that existed before the platform recorded classes SHALL record none until the class is recorded for them.
+
+#### Scenario: An existing deployment after the upgrade
+
+- **WHEN** the platform is upgraded to record classes
+- **THEN** every existing deployment records no storage class, and its next reconcile renders the same volume specs as before
+
+#### Scenario: A new deployment in an environment that names no class
+
+- **WHEN** a deployment is created in an environment that names no class for new deployments
+- **THEN** the deployment records no storage class, and its volumes are rendered as its chart renders them
+
+### Requirement: The environment chooses the class at creation
+
+When a deployment is created, the platform SHALL set its storage class to the class the environment names for new deployments, or to none when the environment names none. Neither the owning account nor the account that creates the deployment SHALL influence the choice.
+
+#### Scenario: A new deployment on prod
+
+- **WHEN** any account creates a deployment on an environment that names `ceph-freepod`
+- **THEN** the deployment records `ceph-freepod`
+
+#### Scenario: An administrator creates for another account
+
+- **WHEN** an administrator creates a deployment owned by another account on an environment that names `ceph-freepod`
+- **THEN** the deployment records `ceph-freepod`
+
+#### Scenario: The environment's class changes
+
+- **WHEN** an operator changes the class the environment names for new deployments
+- **THEN** existing deployments keep the class they recorded, and only deployments created afterwards record the new one
+
+### Requirement: The environment's class is one it allows
+
+Each environment SHALL list the StorageClasses its deployments may record, and the class it names for new deployments SHALL be on that list. The platform SHALL refuse to start when it is not. A create that would record a class not on the list SHALL be refused, naming the class, with nothing persisted. Every class is visible cluster-wide, so this keeps one environment out of another's pool.
+
+#### Scenario: Dev configured with the prod class
+
+- **WHEN** the dev platform names `ceph-freepod` for new deployments but allows only `ceph-freepod-dev`
+- **THEN** the platform refuses to start, naming `ceph-freepod`
+
+#### Scenario: A class that is not allowed at create
+
+- **WHEN** a create would record a class the environment does not allow
+- **THEN** the create is refused, naming the class, and no deployment, release or subscription row is stored

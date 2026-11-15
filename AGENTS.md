@@ -252,7 +252,7 @@ This repository is a monorepo with:
   [storage-chart-contract](openspec/specs/storage-chart-contract/spec.md) ·
   Rationale: [deployment-storage-class](openspec/changes/archive/2026-11-11-deployment-storage-class/design.md),
   [migrate-deployment-storage](openspec/changes/archive/2026-11-14-migrate-deployment-storage/design.md),
-  [default-storage-class](openspec/changes/default-storage-class/design.md)
+  [default-storage-class](openspec/changes/archive/2026-11-15-default-storage-class/design.md)
 - **"Sign in with Freepod" is an edge feature any chart can render, served by
   `daemons/app-auth/`** (Go): a Traefik forward-auth verifier and a broker on
   `login.<domain>`, the only party that talks to Keycloak for tenant apps (one

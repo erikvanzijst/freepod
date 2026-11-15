@@ -16,8 +16,8 @@
 
 ## 3. Prod rollout
 
-- [ ] 3.1 Release to prod with `ceph-freepod`. Verify with one fresh deployment by an unflagged account, as in 2.1.
-- [ ] 3.2 Backfill the claimless prod deployments as in 2.2. Verify that `plan` reports none and that no reconcile failed afterwards.
+- [x] 3.1 Release to prod with `ceph-freepod`. Verify with one fresh deployment by an unflagged account, as in 2.1.
+- [x] 3.2 Backfill the claimless prod deployments as in 2.2. Verify that `plan` reports none and that no reconcile failed afterwards.
 
 ## Workflow follow-up
 
