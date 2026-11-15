@@ -25,7 +25,7 @@ from app.models import (
     ProductTemplateVersionORM,
     UserORM,
 )
-from app.models.core import _utcnow
+from app.models.core import DeploymentPowerORM, _utcnow
 from app.services import app_access
 from tests.conftest import AUTH_HEADER, TEST_DATABASE_URL, USER_EMAIL, make_deployment_with_release
 
@@ -451,6 +451,28 @@ def test_removal_signs_the_person_out_of_an_oidc_app(user_client, db_session, ap
     assert claims["sub"] == "s-ana"
     assert claims["freepod_access"] == "revoked"
     assert db_session.exec(select(AppAccessEntryORM)).all() == []
+
+
+@pytest.mark.parametrize("which", ["desired", "applied"], ids=["stopping", "stopped"])
+def test_removal_waits_for_a_stopped_oidc_app(user_client, db_session, app_answers, which):
+    c, _ = user_client
+    deployment = _deployment(db_session, _owner(db_session), system=IMMICH, hostname="photos-erik.freepod.app")
+    power = DeploymentPowerORM(deployment_id=deployment.id, state="stopped", reason="manual")
+    db_session.add(power)
+    db_session.flush()
+    setattr(deployment, f"{which}_power_id", power.id)
+    db_session.add(deployment)
+    db_session.commit()
+    entry = _entry(db_session, deployment, "ana@example.com", subject="s-ana")
+    r = c.delete(_url(deployment, f"/{entry.id}"))
+    assert r.status_code == 409 and r.json()["code"] == "access_app_stopped"
+    assert r.json()["detail"].startswith(f"{deployment.display_name} is stopped")
+    assert app_answers.posts == []
+    db_session.expire_all()
+    assert len(db_session.exec(select(AppAccessEntryORM)).all()) == 1
+
+    invited = _entry(db_session, deployment, "bo@example.com")
+    assert c.delete(_url(deployment, f"/{invited.id}")).status_code == 204
 
 
 @pytest.mark.parametrize(

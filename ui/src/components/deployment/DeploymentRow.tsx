@@ -150,7 +150,17 @@ export function DeploymentRow({ deployment, userId, deletePending, onEdit, onDel
         />
       )}
       {accessOpen && (
-        <AccessDialog userId={userId} deploymentId={deployment.id} hostname={deployment.hostname} appName={view.appName} onClose={() => setAccessOpen(false)} />
+        <AccessDialog
+          userId={userId}
+          deploymentId={deployment.id}
+          hostname={deployment.hostname}
+          appName={view.appName}
+          signOutBlocked={
+            deployment.auth?.protocol === 'oidc' &&
+            (deployment.power.desired === 'stopped' || deployment.power.applied === 'stopped')
+          }
+          onClose={() => setAccessOpen(false)}
+        />
       )}
     </Box>
   )

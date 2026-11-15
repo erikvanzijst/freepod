@@ -29,6 +29,8 @@ interface AccessDialogProps {
   deploymentId: string
   hostname: string | null | undefined
   appName: string
+  /** The app signs people out itself and is stopped, so a signed-in person cannot be removed yet. */
+  signOutBlocked?: boolean
   onClose: () => void
 }
 
@@ -37,7 +39,7 @@ interface AccessDialogProps {
  * the owner keeps. Nothing here depends on the product but its name and
  * address.
  */
-export function AccessDialog({ userId, deploymentId, hostname, appName, onClose }: AccessDialogProps) {
+export function AccessDialog({ userId, deploymentId, hostname, appName, signOutBlocked, onClose }: AccessDialogProps) {
   const { query, add, remove } = useAccessList(userId, deploymentId)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<AccessFilter>('all')
@@ -105,6 +107,7 @@ export function AccessDialog({ userId, deploymentId, hostname, appName, onClose 
                   entry={entry}
                   appName={appName}
                   search={search}
+                  signOutBlocked={signOutBlocked}
                   onRemove={(e) => remove.mutateAsync(e.id)}
                 />
               ))}

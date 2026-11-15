@@ -111,6 +111,9 @@ def add_access(
     responses={
         403: {"description": "Only the deployment's owner may change its access list."},
         404: {"description": "No such deployment for this user, or no such entry on its list."},
+        409: {
+            "description": "The app signs people out itself and is stopped or stopping (`access_app_stopped`); the entry stays."
+        },
         502: {"description": "The app did not accept signing the person out (`access_logout_failed`); the entry stays."},
     },
 )

@@ -25,16 +25,19 @@ interface AccessEntryRowProps {
   entry: AccessEntry
   appName: string
   search?: string
+  /** The app is stopped and would have to sign this person out. */
+  signOutBlocked?: boolean
   /** Removes the entry; absent for a read-only view. */
   onRemove?: (entry: AccessEntry) => Promise<unknown>
 }
 
 /** One person on the list; removing them asks for confirmation in the row itself. */
-export function AccessEntryRow({ entry, appName, search = '', onRemove }: AccessEntryRowProps) {
+export function AccessEntryRow({ entry, appName, search = '', signOutBlocked, onRemove }: AccessEntryRowProps) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const who = entry.name || entry.email
+  const blocked = Boolean(signOutBlocked && entry.bound_at)
 
   const remove = async () => {
     if (!onRemove) return
@@ -56,14 +59,16 @@ export function AccessEntryRow({ entry, appName, search = '', onRemove }: Access
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography sx={{ fontSize: 14.5, fontWeight: 500 }}>Remove {who}?</Typography>
             <Typography sx={{ fontSize: 13, color: fg.muted, lineHeight: 1.45 }}>
-              They lose access to {appName} within a minute and can't sign in again. What they stored there stays.
+              {blocked
+                ? `${appName} is stopped, so it can't sign ${who} out. Start it, then remove them.`
+                : `They lose access to ${appName} within a minute and can't sign in again. What they stored there stays.`}
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} sx={{ flex: '0 0 auto' }}>
             <Button size="small" disabled={busy} onClick={() => { setConfirming(false); setError(null) }} sx={{ color: fg.muted }}>
               Cancel
             </Button>
-            <Button size="small" variant="contained" disabled={busy} onClick={remove}
+            <Button size="small" variant="contained" disabled={busy || blocked} onClick={remove}
               sx={{ background: toneColor.problem, color: '#1A0B0B', '&:hover': { background: '#FCA5A5' } }}>
               {busy ? 'Removing…' : 'Remove'}
             </Button>
