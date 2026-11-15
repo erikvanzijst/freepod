@@ -173,23 +173,6 @@ def _check_limits(desired: dict[str, tuple[str, bool]]) -> None:
         )
 
 
-def staged(session: Session, deployment: DeploymentORM) -> bool:
-    """Whether head differs from the desired release's snapshot: what a new
-    release would carry that the one already asked for does not.
-
-    Unlike `pending`, a first rollout still in flight is not staged.
-    """
-    head_ids = {row.id for row in head(session, deployment.id).values()}
-    desired_ids = set(
-        session.exec(
-            select(ReleaseVarORM.var_id).where(
-                ReleaseVarORM.release_id == deployment.desired_release_id
-            )
-        ).all()
-    )
-    return head_ids != desired_ids
-
-
 def write_vars(
     session: Session,
     *,

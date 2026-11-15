@@ -393,21 +393,53 @@ def test_chart_values_and_a_build_make_one_release(client, db_session, setup):
     assert latest.values_json["auth"] == {"enabled": True}
 
 
-def test_staged_vars_make_an_unchanged_update_release(client, db_session, setup):
+def test_staged_vars_wait_for_a_release_that_names_the_running_build(client, db_session, setup):
+    from app.models import BuildORM
+
     created = _created(client, setup, "a.example.com")
+    _ready(db_session, created["id"])
+    image = "7@sha256:" + "b" * 64
+    build = BuildORM(
+        deployment_id=UUID(created["id"]),
+        artifact_id="artifact-y",
+        status="succeeded",
+        image=image,
+        finished_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    db_session.add(build)
+    db_session.commit()
+    values = {"host": "a.example.com", "image": image}
+    assert _put(client, setup, created["id"], user_values_json=values, build_id=str(build.id)).status_code == 200
     _ready(db_session, created["id"])
     url = f"/api/users/{setup[0]}/deployments/{created['id']}"
     staged = client.patch(
         f"{url}/vars/runtime", json={"vars": {"LOG_LEVEL": {"value": "trace"}}}, headers=auth_header(OWNER)
     )
     assert staged.status_code == 200, staged.text
-    assert _release_count(db_session, created["id"]) == 1
+    assert _release_count(db_session, created["id"]) == 2
 
-    resp = _put(client, setup, created["id"], user_values_json={"host": "a.example.com"})
+    renamed = _put(client, setup, created["id"], name="Renamed", user_values_json=values)
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["status"] == "ready"
+    assert _release_count(db_session, created["id"]) == 2
 
+    resp = _put(client, setup, created["id"], user_values_json=values, build_id=str(build.id))
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "provisioning"
-    assert _release_count(db_session, created["id"]) == 2
+    assert _release_count(db_session, created["id"]) == 3
+
+
+def test_staged_vars_do_not_block_a_rename_while_provisioning(client, db_session, setup):
+    created = _created(client, setup, "a.example.com")
+    url = f"/api/users/{setup[0]}/deployments/{created['id']}"
+    staged = client.patch(
+        f"{url}/vars/runtime", json={"vars": {"LOG_LEVEL": {"value": "trace"}}}, headers=auth_header(OWNER)
+    )
+    assert staged.status_code == 200, staged.text
+    resp = _put(client, setup, created["id"], name="Renamed")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "provisioning"
+    assert _release_count(db_session, created["id"]) == 1
 
 
 def test_vars_set_at_create_do_not_stage_a_rename_while_provisioning(client, db_session, setup):

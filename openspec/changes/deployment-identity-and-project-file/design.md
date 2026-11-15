@@ -86,8 +86,11 @@ fields. The dashboard, the operator CLI, `freepod apply` and `freepod deploy` al
 through it.
 
 An update releases when its chart values differ from the stored ones, when it names
-another template or a build, when it carries vars or vars are pending, or when the
-deployment is in `error`. Anything else is a row update: no release, no reconcile, and no
+another template or a build, when it carries vars, or when the deployment is in
+`error`. Staged vars alone do not release: otherwise a rename while vars are staged
+would either be refused while provisioning or roll the vars out unasked once ready.
+`freepod apply` and `deploy --no-build` roll staged vars out by naming the build the
+deployment runs, which already releases. Anything else is a row update: no release, no reconcile, and no
 `ready` guard, so a rename works while provisioning. Keeping `error` as an
 always-release case means re-sending an unchanged update still retries a failed
 deployment, which is the one use of identical updates today.

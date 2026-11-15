@@ -91,7 +91,9 @@ SHALL say so. When a release was created, it SHALL follow the rollout as deploy 
 ### Requirement: Apply rolls out staged vars
 
 When the deployment's vars are pending, apply SHALL create a release from the current
-image, as `freepod deploy --no-build` does, and `--no-build` SHALL be an alias of apply.
+image by naming the build the deployment runs, as `freepod deploy --no-build` does, and
+`--no-build` SHALL be an alias of apply. When the running release names no build, apply
+SHALL say the vars stay pending until the next `freepod deploy`.
 
 #### Scenario: Applying staged vars
 

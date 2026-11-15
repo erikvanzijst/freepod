@@ -39,9 +39,9 @@ change the status.
 
 An update SHALL create a release and queue a reconcile when its chart values differ from
 the deployment's stored ones, when it names another template, when it names a build,
-when it carries vars or vars are pending, or when the deployment's status is `error`.
-Any other update SHALL change only the deployment's row, and SHALL create no release and
-queue no reconcile.
+when it carries vars, or when the deployment's status is `error`. Staged vars alone SHALL
+NOT make an update release. Any other update SHALL change
+only the deployment's row, and SHALL create no release and queue no reconcile.
 
 #### Scenario: Only the name changes
 
@@ -55,8 +55,15 @@ queue no reconcile.
 
 #### Scenario: Staged vars
 
-- **WHEN** an update with unchanged values is sent to a deployment whose vars are pending
+- **WHEN** an update with unchanged values names the build the deployment runs, and the
+  deployment's vars are pending
 - **THEN** a release is created from the current image and the vars take effect
+
+#### Scenario: Renaming with staged vars
+
+- **WHEN** an update changes only `name` on a deployment whose vars are pending, whether
+  it is `ready` or `provisioning`
+- **THEN** no release is created, and the vars stay pending
 
 #### Scenario: Retrying a failed deployment
 

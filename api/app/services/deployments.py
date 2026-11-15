@@ -829,7 +829,6 @@ def _identity_changes(
 
 
 def _releases(
-    session: Session,
     deployment: DeploymentORM,
     update: DeploymentUpdate,
     *,
@@ -843,7 +842,6 @@ def _releases(
         or update.build_id is not None
         or bool(update.vars)
         or deployment.status == DEPLOYMENT_STATUS_ERROR
-        or vars_service.staged(session, deployment)
     )
 
 
@@ -930,7 +928,6 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
             columns["icon_source_sha256"] = icon.source_sha256
 
     if not _releases(
-        session,
         deployment,
         update,
         target_template_id=target_template_id,

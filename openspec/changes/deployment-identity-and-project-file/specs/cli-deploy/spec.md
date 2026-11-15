@@ -80,7 +80,7 @@ from the deployment's current image.
 
 #### Scenario: Applying a staged var change
 - **WHEN** a developer runs `freepod deploy --no-build` on a deployment with staged vars
-- **THEN** a release is created from the current image, with no build
+- **THEN** a release is created from the current image, naming the build it runs
 - **AND** the staged vars take effect
 
 #### Scenario: The build reference is preserved
