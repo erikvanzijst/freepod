@@ -59,8 +59,10 @@ through one logout token each, sent in the background and never retried.
 is for, in a signed `freepod_app` parameter: the deployment's own name and its
 effective icon (its own, else its product's, served from `APP_AUTH_PLATFORM_URL`,
 optional). Keycloak's Freepod provider shows it on that flow's pages and emails
-([`tf/deps/keycloak/provider`](../../tf/deps/keycloak/provider)). When the
-deployment cannot be read, a sign-in goes ahead branded by hostname alone.
+([`tf/deps/keycloak/provider`](../../tf/deps/keycloak/provider)). The consent
+page shows the same name and icon, with the hostname always beside the name,
+since the owner chooses the name. When the deployment cannot be read, a sign-in
+goes ahead branded by hostname alone.
 
 Spec: [app-auth-verifier](../../openspec/specs/app-auth-verifier/spec.md),
 [app-auth-broker](../../openspec/specs/app-auth-broker/spec.md),

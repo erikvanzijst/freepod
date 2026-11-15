@@ -335,7 +335,7 @@ func (b *broker) oidcCallback(w http.ResponseWriter, r *http.Request, f flow) {
 		return
 	}
 	setCookie(w, consentCookie, sealed, int(consentTTL.Seconds()))
-	v := consentView{chrome: b.chrome, Host: pc.Host, Email: pc.Email, Name: pc.Name, CSRF: pc.CSRF}
+	v := b.consentView(ctx, pc)
 	// D7: browsers apply form-action to the redirect that answers the form, so
 	// a native app's scheme must be allowed on this page, and only that one.
 	if client.isNativeRedirect(req.RedirectURI) {

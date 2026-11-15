@@ -166,6 +166,39 @@ h1 .host {
   color: transparent;
 }
 
+/* ── The app, by its owner's name, with its hostname always beside it ── */
+.app {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 20px;
+}
+.app-icon {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line-soft);
+}
+.app-initial {
+  display: grid;
+  place-items: center;
+  font-family: var(--display);
+  font-size: 24px;
+  color: var(--fg-primary);
+}
+.app-text { min-width: 0; }
+.app h1 { margin: 0 0 4px; }
+.app .app-host {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
 p { margin: 0 0 14px; color: var(--fg-muted); }
 p strong { color: var(--fg-primary); font-weight: 600; }
 

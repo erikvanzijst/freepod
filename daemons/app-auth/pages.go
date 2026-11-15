@@ -94,8 +94,15 @@ var pageTmpl = mustPage(`
 
 var consentTmpl = mustPage(`
 <p class="eyebrow">Sign in with Freepod</p>
-<h1>Continue to <span class="host">{{.Host}}</span>?</h1>
-<div class="who">
+{{if .AppName}}<div class="app">
+  {{if .AppIcon}}<img class="app-icon" src="{{.AppIcon}}" alt="">{{else}}<div class="app-icon app-initial" aria-hidden="true">{{.AppInitial}}</div>{{end}}
+  <div class="app-text">
+    <h1>Continue to <span class="host">{{.AppName}}</span>?</h1>
+    <p class="app-host">{{.Host}}</p>
+  </div>
+</div>
+{{else}}<h1>Continue to <span class="host">{{.Host}}</span>?</h1>
+{{end}}<div class="who">
   <div class="avatar" aria-hidden="true">{{.Initial}}</div>
   <div class="ident">
     <div class="name">{{if .Name}}{{.Name}}{{else}}{{.Email}}{{end}}</div>
@@ -156,20 +163,28 @@ type page struct {
 
 type consentView struct {
 	chrome
-	Title   string
-	Host    string
-	Email   string
-	Name    string
-	Initial string
-	CSRF    string
+	Title string
+	Host  string
+	// AppName and AppIcon are the deployment's own name and icon URL. The
+	// owner chooses the name, so the page always shows Host beside it.
+	AppName    string
+	AppIcon    string
+	AppInitial string
+	Email      string
+	Name       string
+	Initial    string
+	CSRF       string
 	// FormAction is one more form-action source, for a native app's scheme.
 	FormAction string
 }
 
-func securityHeaders(w http.ResponseWriter, c chrome, formAction ...string) {
-	origin := "'self'"
-	if u, err := url.Parse(c.Assets); err == nil && u.Host != "" {
-		origin = u.Scheme + "://" + u.Host
+func securityHeaders(w http.ResponseWriter, c chrome, imgSrc string, formAction ...string) {
+	origin := originOf(c.Assets, "'self'")
+	img := origin
+	if imgSrc != "" {
+		if o := originOf(imgSrc, ""); o != "" && o != origin {
+			img += " " + o
+		}
 	}
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
@@ -179,9 +194,16 @@ func securityHeaders(w http.ResponseWriter, c chrome, formAction ...string) {
 	// form-action allows https: because the consent POST answers with a
 	// redirect to the app's host, and browsers apply form-action to redirects.
 	h.Set("Content-Security-Policy", "default-src 'none'; style-src "+origin+"; font-src "+origin+
-		"; img-src "+origin+"; form-action "+strings.Join(append([]string{"'self'", "https:"}, formAction...), " ")+
+		"; img-src "+img+"; form-action "+strings.Join(append([]string{"'self'", "https:"}, formAction...), " ")+
 		"; frame-ancestors 'none'; base-uri 'none'")
 	h.Set("Referrer-Policy", "no-referrer")
+}
+
+func originOf(raw, fallback string) string {
+	if u, err := url.Parse(raw); err == nil && u.Host != "" {
+		return u.Scheme + "://" + u.Host
+	}
+	return fallback
 }
 
 func renderPage(w http.ResponseWriter, status int, p page) {
@@ -191,18 +213,22 @@ func renderPage(w http.ResponseWriter, status int, p page) {
 	if p.Eyebrow == "" {
 		p.Eyebrow = "Sign in with Freepod"
 	}
-	securityHeaders(w, p.chrome)
+	securityHeaders(w, p.chrome, "")
 	w.WriteHeader(status)
 	pageTmpl.Execute(w, p)
 }
 
 func renderConsent(w http.ResponseWriter, v consentView) {
 	v.Title = "Continue to " + v.Host
+	if v.AppName != "" {
+		v.Title = "Continue to " + v.AppName
+		v.AppInitial = initial(v.AppName, v.Host)
+	}
 	v.Initial = initial(v.Name, v.Email)
 	if v.FormAction != "" {
-		securityHeaders(w, v.chrome, v.FormAction)
+		securityHeaders(w, v.chrome, v.AppIcon, v.FormAction)
 	} else {
-		securityHeaders(w, v.chrome)
+		securityHeaders(w, v.chrome, v.AppIcon)
 	}
 	w.WriteHeader(http.StatusOK)
 	consentTmpl.Execute(w, v)

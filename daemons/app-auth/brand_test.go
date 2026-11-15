@@ -140,3 +140,46 @@ func TestOIDCSignOutSurvivesAFailedClientLookup(t *testing.T) {
 		t.Fatalf("%d endSessions=%d", w.Code, g.auth.endSessions)
 	}
 }
+
+func TestHeaderConsentNamesTheAppBesideItsHostname(t *testing.T) {
+	g := newBrokerRig(t)
+	g.b.platformURL = "https://freepod.example"
+	g.st.identities["dep-milk"] = appIdentity{Name: "Milk <run>", IconPath: "icons/m.png"}
+	w := g.returnFromIdP(g.start(milk))
+	body := w.Body.String()
+	for _, want := range []string{
+		`Continue to <span class="host">Milk &lt;run&gt;</span>?`,
+		`<p class="app-host">` + milk + `</p>`,
+		`<img class="app-icon" src="https://freepod.example/api/static/icons/m.png" alt="">`,
+		`<title>Continue to Milk &lt;run&gt; · Freepod</title>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+	if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "img-src 'self' https://freepod.example;") {
+		t.Fatalf("CSP %s", csp)
+	}
+}
+
+func TestOIDCConsentWithoutAnIconShowsTheInitial(t *testing.T) {
+	g := newProviderRig(t)
+	g.st.identities[depWiki] = appIdentity{Name: "wiki"}
+	w := g.returnFromIdP(g.authorize(authorizeQuery(depWiki, wikiCallback)))
+	body := w.Body.String()
+	if !strings.Contains(body, `<div class="app-icon app-initial" aria-hidden="true">W</div>`) ||
+		!strings.Contains(body, `<p class="app-host">`+wiki+`</p>`) {
+		t.Fatalf("%s", body)
+	}
+	if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "img-src 'self';") {
+		t.Fatalf("CSP %s", csp)
+	}
+}
+
+func TestConsentFallsBackToTheHostname(t *testing.T) {
+	g := newBrokerRig(t)
+	body := g.returnFromIdP(g.start(milk)).Body.String()
+	if !strings.Contains(body, `Continue to <span class="host">`+milk+`</span>?`) || strings.Contains(body, "app-host") {
+		t.Fatalf("%s", body)
+	}
+}

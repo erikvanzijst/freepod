@@ -241,7 +241,14 @@ func (b *broker) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setCookie(w, consentCookie, sealed, int(consentTTL.Seconds()))
-	renderConsent(w, consentView{chrome: b.chrome, Host: pc.Host, Email: pc.Email, Name: pc.Name, CSRF: pc.CSRF})
+	renderConsent(w, b.consentView(ctx, pc))
+}
+
+// consentView is the consent page for pc, naming the app as its owner does.
+func (b *broker) consentView(ctx context.Context, pc pendingConsent) consentView {
+	brand := b.brand(ctx, pc.DeploymentID, pc.Host)
+	return consentView{chrome: b.chrome, Host: pc.Host, AppName: brand.Name, AppIcon: brand.Icon,
+		Email: pc.Email, Name: pc.Name, CSRF: pc.CSRF}
 }
 
 func (b *broker) consent(w http.ResponseWriter, r *http.Request) {
