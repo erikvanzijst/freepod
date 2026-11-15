@@ -556,11 +556,11 @@ def _notify_threshold(
 
     md = notifications.md
     used = f"{size_bytes / 1024 ** 2:.0f} MB of {allowance / 1024 ** 2:.0f} MB"
-    named = md(deployment.name)
+    named = md(deployment.display_name)
     if deployment.hostname:
         named += f" at <https://{deployment.hostname}>"
     if threshold >= READONLY_THRESHOLD:
-        subject = f"{deployment.name}: database is full and now read-only"
+        subject = f"{deployment.display_name}: database is full and now read-only"
         heading = "Your database is full"
         body = (
             f"The database for {named} has reached its plan allowance ({md(used)}), and is now "
@@ -569,7 +569,7 @@ def _notify_threshold(
             "dashboard, or contact support."
         )
     else:
-        subject = f"{deployment.name}: database is {threshold}% full"
+        subject = f"{deployment.display_name}: database is {threshold}% full"
         heading = f"Your database is {threshold}% full"
         body = (
             f"The database for {named} is using {md(used)}, which is over {threshold}% of its "
@@ -587,7 +587,7 @@ def _notify_threshold(
         body=body,
         # Local development serves the dashboard over plain HTTP, which an action may not link.
         action=notifications.Action("Open your dashboard", dashboard) if dashboard.startswith("https://") else None,
-        reason=f"You received this email because you own {deployment.name} on Freepod.",
+        reason=f"You received this email because you own {deployment.display_name} on Freepod.",
     )
     return True
 
