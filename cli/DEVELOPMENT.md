@@ -1136,9 +1136,9 @@ prints one line to stderr when it is newer:
     freepod 0.20.1 available (you have 0.19.0): uv tool upgrade freepod
 
 **It asks the repository the install upgrades from.** The Homebrew tap is
-published after PyPI, often a day later, so a brew user is checked against the
-formula in `erikvanzijst/homebrew-tap` and everyone else against PyPI's JSON
-API. Telling a brew user about a PyPI release would send them to a
+published after PyPI, minutes later when the release goes to plan, so a brew
+user is checked against the formula in `erikvanzijst/homebrew-tap` and everyone
+else against PyPI's JSON API. Telling a brew user about a PyPI release would send them to a
 `brew upgrade` that does nothing. `detect_install` reads the installer from
 `sys.prefix`: a `Cellar` path is Homebrew, a `mise` path is mise (checked first,
 because its `pipx:` backend installs through uv or pipx), then the
@@ -1296,6 +1296,14 @@ an upload is not idempotent.
 
 Uploads authenticate with PyPI Trusted Publishing (OIDC) through the `pypi` and
 `testpypi` GitHub environments. There is no PyPI token in the repository.
+
+After the upload, the `homebrew` job dispatches the tap's `brew release`
+workflow with the tag's version, using the `HOMEBREW_TAP_DISPATCH_TOKEN`
+secret (a fine-grained token with Actions: write on `erikvanzijst/homebrew-tap`
+only). That workflow opens a `bump-freepod-<version>` PR, which the tap's own
+CI bottles and merges. Homebrew's `brew bump` holds every PyPI release back for
+a day, so the tap's daily autobump is only the fallback; the workflow can also
+be run by hand from the tap's Actions tab.
 
 **A version number is spent the moment it is uploaded.** PyPI refuses a
 re-upload of a version even after you delete it, so a botched release is fixed
