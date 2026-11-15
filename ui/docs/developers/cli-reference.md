@@ -165,7 +165,7 @@ The secret key is masked unless `--show-secret` is given.
 ## `freepod builds`
 
 ```
-freepod builds [OPTIONS] COMMAND [ARGS]...
+freepod builds [OPTIONS] [COMMAND] [ARGS]...
 ```
 
 List this project's builds, most recent first.
