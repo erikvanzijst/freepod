@@ -263,7 +263,7 @@ def delete(
     if not project.deployment_id:
         raise UsageError(
             f"{project.path} records no deployment, so there is nothing to delete.\n"
-            f"  Run `freepod deploy` to create one."
+            f"  Run `freepod init` to create one."
         )
 
     # `/api/me` first, as everywhere: it is the request that actually exercises

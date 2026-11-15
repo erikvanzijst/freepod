@@ -313,7 +313,7 @@ def test_a_project_that_has_never_deployed_is_refused(
 
     assert main(["releases"]) == EXIT_USAGE
     err = capsys.readouterr().err
-    assert "no deployment" in err and "freepod deploy" in err
+    assert "no deployment" in err and "freepod init" in err
 
 
 def test_a_project_on_another_environment_is_refused(

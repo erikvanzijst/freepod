@@ -324,6 +324,35 @@ def whoami(context: Context) -> None:
         context.say(format_claims(session.access_token))
 
 
+def _linked_record(context: Context, api: ApiClient) -> Optional[Dict[str, Any]]:
+    """The deployment this directory's project records, or None on any failure."""
+    try:
+        root = find_project_root()
+        project_file = load(root) if root is not None else None
+        if project_file is None or not project_file.deployment_id:
+            return None
+        if project_file.env != context.env.name:
+            return None
+        return releases_module.read_deployment(api, api.me()["id"], project_file.deployment_id)
+    except FreepodError:
+        return None
+
+
+def _warn_unapplied(context: Context, record: Optional[Dict[str, Any]]) -> None:
+    """Say when .freepod.json holds changes its deployment lacks. Never fails a command."""
+    if not record:
+        return
+    try:
+        root = find_project_root()
+        if root is None:
+            return
+        project_file = load(root)
+    except FreepodError:
+        return
+    if project_file.deployment_id == record.get("id"):
+        apply_module.warn_unapplied(project_file, record, context.say)
+
+
 @cli.command()
 @click.option(
     "--force",
@@ -386,12 +415,6 @@ def link(context: Context, deployment: Optional[str], force: bool) -> None:
 
 
 @cli.command()
-@click.option(
-    "--recreate",
-    is_flag=True,
-    help="create a new deployment instead of updating the current one, which "
-    "keeps running",
-)
 # A negated `is_flag`, not `flag_value=False`; see cli/DEVELOPMENT.md.
 @click.option(
     "--no-gitignore",
@@ -406,26 +429,20 @@ def link(context: Context, deployment: Optional[str], force: bool) -> None:
     help="apply .freepod.json and staged vars without building; same as `freepod apply`",
 )
 @click.pass_obj
-def deploy(context: Context, recreate: bool, no_gitignore: bool, no_build: bool) -> None:
+def deploy(context: Context, no_gitignore: bool, no_build: bool) -> None:
     """Build the current project and release it to its deployment.
 
-    Uploads the project directory, builds an image from it and releases it.
-    The first deploy also creates the deployment, which shows a placeholder
-    page until the first build is live. Settings are checked before anything
-    is uploaded, so most mistakes are reported in seconds rather than after a
-    build.
+    Uploads the project directory, builds an image from it and releases it
+    together with .freepod.json, in one release. Run `freepod init` first to
+    create the deployment. Settings are checked before anything is uploaded,
+    so most mistakes are reported in seconds rather than after a build.
 
     The live address is the only output on stdout; build output and progress
     go to stderr, so `URL=$(freepod deploy)` captures the address.
     \f
-    Preflight, then — on a first deploy — create the deployment, then pack,
-    upload, build and release, in that order: everything a cheap read can refuse
-    is refused before anything is created or built, and a build always belongs
-    to a deployment that already exists.
+    Preflight, then pack, upload, build and release, in that order: everything
+    a cheap read can refuse is refused before anything is built.
     """
-    if no_build and recreate:
-        raise UsageError("--no-build releases an existing deployment; --recreate makes a new one")
-
     session = context.session()
     session.authenticate(interactive=False)
 
@@ -437,7 +454,6 @@ def deploy(context: Context, recreate: bool, no_gitignore: bool, no_build: bool)
         address = deploy_module.deploy(
             api,
             context.env.name,
-            recreate=recreate,
             honor_gitignore=not no_gitignore,
             verbose=context.verbose,
             quiet=context.quiet,
@@ -558,7 +574,7 @@ def _power(context: Context, target: str, no_wait: bool) -> None:
     session = context.session()
     session.authenticate(interactive=False)
     with context.client(session) as api:
-        power_module.change(
+        record = power_module.change(
             api,
             context.env.name,
             target,
@@ -566,6 +582,7 @@ def _power(context: Context, target: str, no_wait: bool) -> None:
             timeout=wait_seconds(context.timeout, ROLLOUT_WAIT_SECONDS),
             echo=context.say,
         )
+    _warn_unapplied(context, record)
 
 
 @cli.group(invoke_without_command=True)
@@ -720,7 +737,7 @@ def releases(context: Context, limit: int, show_all: bool) -> None:
         raise UsageError(
             f"{project_file.path} records no deployment, so there are no "
             f"releases to list.\n"
-            f"  Run `freepod deploy` to create one."
+            f"  Run `freepod init` to create one."
         )
 
     session = context.session()
@@ -734,6 +751,7 @@ def releases(context: Context, limit: int, show_all: bool) -> None:
         records = releases_module.list_releases(
             api, user_id, project_file.deployment_id
         )
+    _warn_unapplied(context, deployment)
 
     if not records:
         context.say(
@@ -784,7 +802,7 @@ def _project_deployment(context: Context, *, lacks: str = "vars") -> project.Pro
     if not project_file.deployment_id:
         raise UsageError(
             f"{project_file.path} records no deployment, so it has no {lacks}.\n"
-            f"  Run `freepod deploy` to create one."
+            f"  Run `freepod init` to create one."
         )
     return project_file
 
@@ -801,7 +819,7 @@ def _refuse_unreachable(deployment, project_file, env_name) -> dict:
     if deployment is None:
         raise FreepodError(
             f"deployment '{name}' no longer exists{env_suffix(env_name)} — it may "
-            f"have been deleted. Run `freepod deploy` to create a new one."
+            f"have been deleted. Run `freepod init --force` to create a new one."
         )
     status = deployment.get("status")
     if status not in deploy_module.SETTLED_STATUSES:
@@ -850,6 +868,7 @@ def _connection_setup(
             project_file,
             context.env.name,
         )
+        _warn_unapplied(context, deployment)
         database = None
         if require_database:
             database = database_module.read(api, user_id, project_file.deployment_id)
@@ -1094,6 +1113,7 @@ def var_set(
     with context.client(session) as api:
         user_id = api.me()["id"]
         deployment = deploy_module.read_deployment(api, user_id, project_file.deployment_id)
+        _warn_unapplied(context, deployment)
         if secret:
             entries, declared = vars_module.mark_sensitive(entries, deployment)
             if declared:
@@ -1121,6 +1141,7 @@ def var_rm(context: Context, keys: tuple, stage: bool) -> None:
     with context.client(session) as api:
         user_id = api.me()["id"]
         deployment = deploy_module.read_deployment(api, user_id, project_file.deployment_id)
+        _warn_unapplied(context, deployment)
         vars_module.remove(api, user_id, project_file.deployment_id, list(keys))
         payload = vars_module.read(api, user_id, project_file.deployment_id)
         _finish_var_write(context, api, len(keys), payload, deployment, stage=stage)
@@ -1799,6 +1820,7 @@ def log_command(
     session = context.session()
     session.authenticate(interactive=False)
     with context.client(session) as api:
+        _warn_unapplied(context, _linked_record(context, api))
         try:
             code = logs_module.run(
                 api,

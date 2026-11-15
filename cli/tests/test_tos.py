@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from freepod import FreepodError
-from freepod.deploy import preflight
 from freepod.tos import (
     ACCEPTED,
     AGREEMENT,
@@ -255,41 +254,6 @@ def test_require_without_a_terminal_names_how_to_accept(make_api):
 # --------------------------------------------------------------------------
 
 
-def test_an_unaccepted_first_deploy_is_stopped_before_anything_is_built(
-    make_api, tmp_path, monkeypatch
-):
-    """The platform's own refusal is a 400 from the *create* call, which
-    arrives after the archive is packed, uploaded, and built."""
-    platform = unaccepted()
-    project_at(tmp_path)
-    monkeypatch.setattr("click.confirm", lambda *a, **k: False)
-
-    with pytest.raises(FreepodError):
-        run(make_api, platform, tmp_path)
-
-    assert "/api/artifacts" not in platform.paths()
-    assert f"/api/users/7/builds" not in platform.paths()
-
-
-def test_a_headless_deploy_fails_rather_than_skipping_the_check(make_api, tmp_path):
-    """No automation bypass, by design. A deploy with no terminal cannot ask,
-    and the answer to "cannot ask" is to stop — never to proceed unaccepted.
-    There is deliberately no flag that accepts on the operator's behalf.
-    """
-    platform = unaccepted()
-    project_at(tmp_path)
-
-    with pytest.raises(FreepodError) as raised:
-        run(make_api, platform, tmp_path, interactive=False)
-
-    assert "has not accepted" in str(raised.value)
-    # Not a warning, not a skip: nothing whatsoever was spent.
-    assert "/api/artifacts" not in platform.paths()
-    assert f"/api/users/7/builds" not in platform.paths()
-    assert "tos" not in platform.bodies
-    assert not any(m == "POST" and "deployments" in p for m, p in platform.calls)
-
-
 def test_no_flag_accepts_the_terms_on_the_operators_behalf(make_api, tmp_path):
     """The counterpart of the test above, stated as a property of the surface:
     consent is only ever recorded from an affirmative answer to the prompt.
@@ -300,23 +264,6 @@ def test_no_flag_accepts_the_terms_on_the_operators_behalf(make_api, tmp_path):
     for command in cli.commands.values():
         flags.extend(option.name for option in command.params)
     assert not any("accept" in name or "tos" in name or "terms" in name for name in flags)
-
-
-def test_the_terms_are_settled_before_any_value_is_asked_for(make_api, tmp_path):
-    """Collecting a hostname first would ask for work a decline then discards.
-
-    The project carries no hostname *and* no acceptance, so both checks would
-    fire. Whichever runs first is the one that reports.
-    """
-    platform = unaccepted()
-    project_at(tmp_path, values={})
-    api, _, _ = make_api(platform)
-
-    with pytest.raises(FreepodError) as raised:
-        preflight(api, "prod", root=tmp_path, echo=lambda _m: None, interactive=False)
-
-    assert "accepted the Freepod terms" in str(raised.value)
-    assert "hostname" not in str(raised.value)
 
 
 def test_an_update_never_asks_about_the_terms(make_api, tmp_path):
@@ -337,36 +284,3 @@ def test_an_update_never_asks_about_the_terms(make_api, tmp_path):
 
     assert "/api/me/tos-acceptance" not in platform.paths()
 
-
-def test_the_terms_are_only_settled_after_the_cheap_reads_refuse(make_api, tmp_path):
-    """An instance with no free plan can never deploy, so asking anyone to
-    accept terms for it is a question with no useful answer."""
-    platform = unaccepted(plans=[])
-    project_at(tmp_path)
-
-    with pytest.raises(FreepodError) as raised:
-        run(make_api, platform, tmp_path)
-
-    assert "publishes no plans" in str(raised.value)
-    assert "/api/me/tos-acceptance" not in platform.paths()
-
-
-def test_a_create_refused_for_the_terms_is_not_reported_as_bad_values(
-    make_api, tmp_path
-):
-    """The backstop for the race where acceptance is withdrawn mid-deploy. A
-    generic 400 would send the user to edit a file that is already correct."""
-    platform = Platform(
-        create_status=400,
-        create_detail="Terms of Service must be accepted before deploying",
-    )
-    project_at(tmp_path)
-
-    with pytest.raises(FreepodError) as raised:
-        run(make_api, platform, tmp_path)
-
-    message = str(raised.value)
-    assert "has not accepted its terms" in message
-    assert "freepod login" in message
-    # Creation precedes the build now, so nothing was built to lose.
-    assert not any("/builds" in path for _method, path in platform.calls)

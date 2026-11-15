@@ -252,7 +252,7 @@ def test_a_project_recording_no_deployment_is_a_usage_error(run_db, capsys):
     code = run_db(DatabasePlatform(), ["db", "status"], pointer=None)
 
     assert code == EXIT_USAGE
-    assert "freepod deploy" in capsys.readouterr().err
+    assert "freepod init" in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------

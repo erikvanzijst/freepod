@@ -126,3 +126,22 @@ def describe_changes(project: Project, record: Dict[str, Any]) -> List[str]:
             f"No longer managed by {PROJECT_FILE}: {', '.join(released)} (values unchanged)."
         )
     return lines
+
+
+def unapplied_keys(project: Project, record: Dict[str, Any]) -> List[str]:
+    """The file's keys, other than `icon`, whose value the deployment does not have."""
+    return sorted(
+        key
+        for key in project.fields
+        if key != "icon" and project.fields[key] != _current(record, key)
+    )
+
+
+def warn_unapplied(project: Project, record: Dict[str, Any], echo: Callable[[str], None]) -> None:
+    """One line naming `freepod apply` when the file holds changes the deployment lacks."""
+    keys = unapplied_keys(project, record)
+    if keys:
+        echo(
+            f"Warning: {PROJECT_FILE} has changes not yet applied ({', '.join(keys)}). "
+            f"Run `freepod apply` to send them."
+        )

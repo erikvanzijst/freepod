@@ -711,3 +711,57 @@ def test_no_requests_is_reported_on_stderr(make_api, tmp_path):
     assert run(api, "prod", root=tmp_path, http=True, out=out, say=said.append) == 0
     assert out.getvalue() == ""
     assert any("No HTTP requests" in line for line in said)
+
+
+# --------------------------------------------------------------------------
+# The project file's unapplied changes (cli-apply)
+# --------------------------------------------------------------------------
+
+
+def _logs_with_deployment(record):
+    def handler(request):
+        path = request.url.path
+        if path == "/api/me":
+            return httpx.Response(200, json={"id": 7, "email": "dev@example.com"})
+        if path == f"/api/users/7/deployments/{DEPLOYMENT}":
+            return httpx.Response(200, json=record)
+        return stream_response(sse(log_event(TS1, "hello"), end()))
+
+    return handler
+
+
+def test_logs_warn_about_unapplied_changes_without_failing(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsys
+):
+    Project(
+        root=tmp_path, deployment_id=DEPLOYMENT, fields={"description": "New", "icon": "i.png"}
+    ).save()
+    monkeypatch.chdir(tmp_path)
+    stub_api(
+        _logs_with_deployment({"id": DEPLOYMENT, "description": "Old", "user_values_json": {}})
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main(["log"])
+
+    assert exc.value.code == 0
+    out, err = capsys.readouterr()
+    assert out == "hello\n"
+    assert "changes not yet applied (description)" in err
+    assert "freepod apply" in err
+    assert "icon" not in err
+
+
+def test_logs_say_nothing_when_the_file_matches(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsys
+):
+    Project(root=tmp_path, deployment_id=DEPLOYMENT, fields={"description": "Same"}).save()
+    monkeypatch.chdir(tmp_path)
+    stub_api(
+        _logs_with_deployment({"id": DEPLOYMENT, "description": "Same", "user_values_json": {}})
+    )
+
+    with pytest.raises(SystemExit):
+        main(["log"])
+
+    assert "not yet applied" not in capsys.readouterr().err
