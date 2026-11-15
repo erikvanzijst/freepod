@@ -1,7 +1,6 @@
 import type { Deployment } from '../../api/types'
 
 export const ICON_MAX_BYTES = 256 * 1024
-export const ICON_TYPES = ['image/png', 'image/jpeg', 'image/webp']
 
 /**
  * The identity Settings edits. `icon` is `undefined` while the owner has not
@@ -43,16 +42,4 @@ export function withManagedValues(d: Deployment, values: Record<string, unknown>
     else delete result[key]
   }
   return result
-}
-
-export async function readIcon(file: File): Promise<{ base64: string; preview: string }> {
-  if (!ICON_TYPES.includes(file.type)) throw new Error('Choose a PNG, JPEG or WebP image.')
-  if (file.size > ICON_MAX_BYTES) throw new Error('Choose an image of at most 256 KiB.')
-  const preview = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(new Error('Could not read the image.'))
-    reader.readAsDataURL(file)
-  })
-  return { base64: preview.slice(preview.indexOf(',') + 1), preview }
 }

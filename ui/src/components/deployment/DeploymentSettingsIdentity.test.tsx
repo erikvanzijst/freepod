@@ -21,6 +21,14 @@ vi.mock('../../api/endpoints', () => ({
   recordTosAcceptance: vi.fn(),
 }))
 
+vi.mock('../image/cropImage', async (orig) => ({
+  ...(await orig<typeof import('../image/cropImage')>()),
+  cropImage: () => Promise.resolve(new Blob(['icon'], { type: 'image/png' })),
+}))
+
+URL.createObjectURL = vi.fn(() => 'blob:picked')
+URL.revokeObjectURL = vi.fn()
+
 vi.mock('../handle/useMyHandle', () => ({ useMyHandle: () => ({ data: undefined, isSuccess: true }) }))
 
 const custom: Product = {
@@ -124,6 +132,25 @@ describe('Settings: the deployment identity', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Update' }))
     await waitFor(() => expect(updateDeploymentMock).toHaveBeenCalled())
     expect(updateDeploymentMock.mock.calls[0][2]).toMatchObject({ icon: null })
+  })
+
+  it('crops an uploaded icon and sends it as base64', async () => {
+    open(deployment())
+    await waitFor(() => expect(nameField()).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    fireEvent.change(screen.getByTestId('image-file'), {
+      target: { files: [new File(['x'], 'photo.jpg', { type: 'image/jpeg' })] },
+    })
+    const img = await screen.findByAltText('The picked image')
+    Object.defineProperty(img, 'width', { value: 300 })
+    Object.defineProperty(img, 'height', { value: 300 })
+    fireEvent.load(img)
+    fireEvent.click(screen.getByRole('button', { name: 'Use image' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Use image' })).not.toBeInTheDocument())
+    expect(await screen.findByText('Your own icon')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await waitFor(() => expect(updateDeploymentMock).toHaveBeenCalled())
+    expect(updateDeploymentMock.mock.calls[0][2]).toMatchObject({ icon: btoa('icon') })
   })
 
   it('shows a name in use on the name field', async () => {

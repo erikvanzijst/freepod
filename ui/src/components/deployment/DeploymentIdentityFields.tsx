@@ -1,10 +1,12 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { Box, Button, Stack, TextField, Typography } from '@mui/material'
 import { resolveApiPath } from '../../api/client'
 import type { Deployment } from '../../api/types'
 import AppIcon from '../apppage/AppIcon'
 import { ManagedFieldNotice } from './ManagedFieldNotice'
-import { ICON_TYPES, readIcon, type IdentityDraft } from './identityDraft'
+import { blobToBase64, ICON_EDGE } from '../image/cropImage'
+import { useImagePicker } from '../image/useImagePicker'
+import { ICON_MAX_BYTES, type IdentityDraft } from './identityDraft'
 
 interface DeploymentIdentityFieldsProps {
   deployment: Deployment
@@ -26,7 +28,6 @@ export function DeploymentIdentityFields({
   takingOver,
   disabled,
 }: DeploymentIdentityFieldsProps) {
-  const fileRef = useRef<HTMLInputElement>(null)
   const [iconError, setIconError] = useState<string | null>(null)
   const managed = new Set(deployment.managed_fields ?? [])
   const product = deployment.desired_template?.product
@@ -39,16 +40,21 @@ export function DeploymentIdentityFields({
       <ManagedFieldNotice label={label} takingOver={takingOver} onTakeOver={onTakeOver && (() => onTakeOver(key))} />
     ) : null
 
-  const pick = async (file: File | undefined) => {
-    if (!file) return
-    try {
-      const { base64, preview } = await readIcon(file)
-      setIconError(null)
-      onChange({ ...value, icon: base64, iconPreview: preview })
-    } catch (e) {
-      setIconError((e as Error).message)
-    }
-  }
+  const picker = useImagePicker({
+    title: 'Crop the icon',
+    aspect: 1,
+    maxEdge: ICON_EDGE,
+    maxBytes: ICON_MAX_BYTES,
+    onPicked: (blob) => {
+      blobToBase64(blob).then(
+        ({ base64, dataUrl }) => {
+          setIconError(null)
+          onChange({ ...value, icon: base64, iconPreview: dataUrl })
+        },
+        (e: Error) => setIconError(e.message),
+      )
+    },
+  })
 
   return (
     <Stack spacing={2} data-testid="deployment-identity">
@@ -88,18 +94,8 @@ export function DeploymentIdentityFields({
           </Box>
           {!managed.has('icon') && !disabled && (
             <>
-              <input
-                ref={fileRef}
-                type="file"
-                accept={ICON_TYPES.join(',')}
-                hidden
-                data-testid="icon-file"
-                onChange={(e) => {
-                  void pick(e.target.files?.[0])
-                  e.target.value = ''
-                }}
-              />
-              <Button size="small" variant="outlined" onClick={() => fileRef.current?.click()}>
+              {picker.element}
+              <Button size="small" variant="outlined" onClick={picker.open}>
                 Upload
               </Button>
               {!isDefaultIcon && (
