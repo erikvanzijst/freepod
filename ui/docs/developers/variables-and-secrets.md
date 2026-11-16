@@ -14,7 +14,7 @@ freepod var set API_TOKEN --secret             # prompts for the value without e
 freepod var set -f production.env              # KEY=VALUE lines from a file
 ```
 
-`freepod var set` saves the variables and starts a [release](deployments-and-releases.md) so they take effect. Several variables in one command produce one release.
+`freepod var set` saves the variables and starts a [release](deployments-and-releases.md) so they take effect. Several variables in one command produce one release. Before a project's first `freepod deploy`, it only saves them, and the first deploy applies them.
 
 A bare `KEY` prompts for the value, which keeps it out of shell history. Prefer that, or `-f`, for credentials.
 

@@ -1167,6 +1167,10 @@ def _finish_var_write(
         context.say(f"Saved {count} {subject}, not applied yet.")
         context.say("Apply them with `freepod apply`.")
         return
+    # Before the first deploy there is no build to roll: the vars go out with it.
+    if not (deployment.get("applied_release") or {}).get("build_id"):
+        context.say(f"Saved {count} {subject}; they take effect with the first `freepod deploy`.")
+        return
     if not payload.get("pending"):
         context.say(f"Saved {count} {subject}; nothing changed, so nothing to redeploy.")
         return

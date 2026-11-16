@@ -180,7 +180,8 @@ freepod var rm LOG_LEVEL
 Setting a var rolls the deployment, because that is what makes it take effect.
 Several in one command produce one rollout. `--stage` records them for your
 next deploy instead, and `freepod apply` applies staged vars without
-rebuilding your entire project.
+rebuilding your entire project. Before the first deploy, vars are saved and go
+out with it.
 
 A var marked `--secret` is **write-only**: the platform never returns it, so
 `var list` shows its key with the value hidden and nothing can print it back.

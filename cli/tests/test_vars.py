@@ -56,7 +56,8 @@ class VarPlatform:
     """A platform that serves one deployment's vars and records the writes."""
 
     def __init__(self, *, vars_=None, pending=False, status="ready", write_status=200,
-                 write_detail=None, release_vars=None):
+                 write_detail=None, release_vars=None, built=True):
+        self.built = built
         self.vars = dict(vars_ or {})
         self.pending = pending
         self.status = status
@@ -109,9 +110,11 @@ class VarPlatform:
                 self.updates.append(json.loads(request.content))
                 self.pending = False
                 return json_response(200, deployment_with(self.vars, status="ready"))
-            return json_response(
-                200, deployment_with(self.vars, pending=self.pending, status=self.status)
-            )
+            record = deployment_with(self.vars, pending=self.pending, status=self.status)
+            if not self.built:
+                record["applied_release"] = None if self.status == "provisioning" else {
+                    "id": "r-1", "number": 1, "build_id": None, "values_json": {}}
+            return json_response(200, record)
 
         return json_response(404, {"detail": f"unrouted {method} {path}"})
 
@@ -323,6 +326,18 @@ def test_staging_works_while_a_rollout_is_in_flight(run_var):
 
     assert platform.writes == [{"A": {"value": "1"}}]
     assert platform.updates == []
+
+
+@pytest.mark.parametrize("status", ["provisioning", "ready"], ids=["provisioning", "placeholder"])
+def test_before_the_first_deploy_the_var_waits_for_it(run_var, capsys, status):
+    """Right after init there is no build to roll: saving is the whole job."""
+    platform = VarPlatform(status=status, pending=True, built=False)
+
+    assert run_var(platform, ["var", "set", "A=1"]) == EXIT_OK
+
+    assert platform.writes == [{"A": {"value": "1"}}]
+    assert platform.updates == []
+    assert "first `freepod deploy`" in capsys.readouterr().err
 
 
 def test_applying_against_a_provisioning_deployment_fails_and_suggests_stage(

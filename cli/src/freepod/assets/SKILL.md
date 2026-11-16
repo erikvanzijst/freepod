@@ -57,7 +57,8 @@ freepod var list                         # secrets show as <hidden>
 
 Setting a var rolls the deployment, because that is what makes it take effect.
 Several in one command produce one rollout, and `--stage` records them for the
-next deploy instead.
+next deploy instead. Before the first `freepod deploy` there is nothing to roll:
+the vars are saved and go out with it.
 
 These reach the *running* container only. A variable the build itself has to
 read goes in a `railpack.json` — see *Variables the build needs*.
