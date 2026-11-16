@@ -157,15 +157,18 @@
     <header id="kc-header" class="pf-v5-c-login__header">
       <#if freepodApp??>
       <div id="kc-header-wrapper" class="pf-v5-c-brand fp-app-brand">
-        <#if freepodApp.icon??><img class="fp-app-icon" src="${freepodApp.icon}" alt=""></#if>
-        <div class="fp-app-titles">
-          <#if freepodApp.name??>
-          <span class="fp-app-name">${freepodApp.name}</span>
-          <#else>
-          <span class="fp-app-host">${freepodApp.host}</span>
-          </#if>
-          <span class="fp-app-on">${msg("freepodAppOn")}</span>
+        <div class="fp-app-head">
+          <#if freepodApp.icon??><img class="fp-app-icon" src="${freepodApp.icon}" alt=""></#if>
+          <div class="fp-app-titles">
+            <#if freepodApp.name??>
+            <span class="fp-app-name">${freepodApp.name}</span>
+            <#else>
+            <span class="fp-app-host">${freepodApp.host}</span>
+            </#if>
+            <span class="fp-app-on">${msg("freepodAppOn")}</span>
+          </div>
         </div>
+        <#if freepodApp.name??><span class="fp-app-address">${freepodApp.host}</span></#if>
       </div>
       <#else>
       <div id="kc-header-wrapper"
