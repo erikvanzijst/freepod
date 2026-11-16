@@ -351,6 +351,7 @@ a:hover { color: var(--accent-pink); }
   transition: border-color 0.18s, background 0.18s;
 }
 .pf-v5-c-button.pf-m-secondary::after { display: none !important; }
+#authenticateWebAuthnButton { margin-top: 16px; }
 .pf-v5-c-button.pf-m-secondary:hover {
   background: rgba(255, 255, 255, 0.07) !important;
   border-color: var(--accent-blue) !important;
