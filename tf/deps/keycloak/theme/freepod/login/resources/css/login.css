@@ -455,6 +455,31 @@ a#social-google span {
   margin: 0 !important;
 }
 
+/* ── Passkey sign-in, under the identity providers (login.ftl) ───────────
+   A peer of the Google button, with FIDO's passkey mark. The mark is inset in
+   its artwork, so it is drawn larger than the G to look the same size. */
+.pf-v5-c-login__main-footer #authenticateWebAuthnButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 44px;
+  margin-top: 0 !important;
+  padding: 0 16px;
+  font-size: 14px;
+}
+.pf-v5-c-login__main-footer #kc-social-providers ~ #authenticateWebAuthnButton {
+  margin-top: 12px !important;
+}
+.pf-v5-c-login__main-footer #authenticateWebAuthnButton::before {
+  content: '';
+  flex: none;
+  width: 26px;
+  height: 26px;
+  margin: -2px 0;
+  background: url('../img/passkey.svg') center / contain no-repeat;
+}
+
 /* ── App sign-in: the app's name leads, Freepod is the subtitle ────────── */
 .fp-app-brand::before {
   display: none;
@@ -551,4 +576,29 @@ body.fp-app .pf-v5-c-login__main-header::before {
 }
 .fp-app-brand:has(.fp-app-host) .fp-app-titles {
   align-items: center;
+}
+
+/* ── Phones: fit the sign-in card on one screen ────────────────────────── */
+@media (max-width: 575px) {
+  .pf-v5-c-login {
+    padding-top: 12px !important;
+    padding-bottom: 16px !important;
+  }
+  #kc-header { margin-bottom: 16px; }
+  #kc-header-wrapper { padding-top: 8px; }
+  .pf-v5-c-login__main-header { padding: 24px 24px 0; }
+  .pf-v5-c-login__main-header::before { margin-bottom: 8px; }
+  .pf-v5-c-login__main-header h1.pf-v5-c-title { font-size: 24px; }
+  .pf-v5-c-login__main-body { padding: 18px 24px 24px; }
+  #kc-form-login { gap: 12px !important; }
+  #kc-form-login .pf-v5-c-form__group-label { padding-bottom: 6px !important; }
+  #kc-login,
+  .pf-v5-c-button.pf-m-primary,
+  .pf-v5-c-button.pf-m-secondary { padding: 11px 20px; }
+  .kc-login-divider { margin: 20px 0 14px; }
+  .pf-v5-c-login__main-footer-band {
+    margin-top: 20px;
+    padding-top: 16px !important;
+  }
+  .fp-app-hosted { margin-top: 12px; }
 }
