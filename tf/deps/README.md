@@ -465,7 +465,7 @@ tag is never re-pushed: every theme or base-image change takes the next build
 number. Build, push and roll out:
 
 ```bash
-./scripts/build-images.sh 26.8.1-5 --keycloak  # build + push ghcr.io/<owner>/freepod/keycloak
+./scripts/build-images.sh 26.8.1-6 --keycloak  # build + push ghcr.io/<owner>/freepod/keycloak
 # set keycloak_image in variables.tf to the new tag, then:
 cd tf/deps && terraform apply -target=module.keycloak
 ```
