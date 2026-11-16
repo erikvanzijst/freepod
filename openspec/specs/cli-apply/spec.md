@@ -68,9 +68,10 @@ clear the deployment's icon.
 
 Apply SHALL compare the file with the deployment as it read it before the update, and
 print each key whose value changed, showing the old and new values. For any value longer
-than one line it SHALL say only that the key changed. The icon SHALL NOT be reported,
-because reads carry no fingerprint of it to compare against. When nothing changed it
-SHALL say so. When a release was created, it SHALL follow the rollout as deploy does.
+than one line it SHALL say only that the key changed. It SHALL report the icon as changed
+or cleared when the content-addressed `icon_url` differs after the update. When nothing
+changed it SHALL say so. When a release was created, it SHALL follow the rollout as
+deploy does.
 
 #### Scenario: A rename
 
@@ -81,6 +82,16 @@ SHALL say so. When a release was created, it SHALL follow the rollout as deploy 
 
 - **WHEN** the owner changed a description in the dashboard after taking it over, and the file still holds the old one
 - **THEN** apply restores the file's description and prints the change
+
+#### Scenario: A new icon
+
+- **WHEN** apply sends an icon whose image differs from the deployment's
+- **THEN** it prints `icon: changed`
+
+#### Scenario: The same icon again
+
+- **WHEN** apply sends the icon the deployment already has, and nothing else differs
+- **THEN** it reports that nothing changed
 
 #### Scenario: Nothing to do
 

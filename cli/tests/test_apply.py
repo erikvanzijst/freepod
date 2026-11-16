@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 
 import httpx
@@ -39,6 +40,13 @@ def stored_deployment(**overrides):
     return record
 
 
+def icon_url(encoded):
+    """The platform's content-addressed address for an icon, None for none."""
+    if encoded is None:
+        return None
+    return f"/api/static/icons/{hashlib.sha1(encoded.encode()).hexdigest()}.png"
+
+
 class Platform:
     """One deployment that answers reads and updates as the server's release
     rule does: chart values or a named build release, anything else does not."""
@@ -68,6 +76,8 @@ class Platform:
             for key in ("name", "description"):
                 if key in body:
                     updated[key] = body[key]
+            if "icon" in body:
+                updated["icon_url"] = icon_url(body["icon"])
             if "managed_fields" in body:
                 updated["managed_fields"] = body["managed_fields"]
             if releases:
@@ -169,7 +179,7 @@ def test_a_multiline_value_is_reported_as_changed_only(platform, tmp_path, capsy
     assert "description: changed" in capsys.readouterr().err
 
 
-def test_the_icon_is_sent_as_base64_and_not_reported(platform, tmp_path, capsys):
+def test_a_new_icon_is_sent_as_base64_and_reported(platform, tmp_path, capsys):
     scripted = platform()
     (tmp_path / "icon.png").write_bytes(b"\x89PNG fake")
     write(tmp_path, icon="icon.png")
@@ -178,16 +188,31 @@ def test_the_icon_is_sent_as_base64_and_not_reported(platform, tmp_path, capsys)
 
     assert scripted.updates[0]["icon"] == "iVBORyBmYWtl"
     assert scripted.updates[0]["managed_fields"] == ["icon"]
-    assert "icon" not in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "icon: changed" in err
+    assert "Nothing changed." not in err
 
 
-def test_a_null_icon_clears_it(platform, tmp_path):
-    scripted = platform()
+def test_the_same_icon_again_reports_nothing_changed(platform, tmp_path, capsys):
+    platform(stored_deployment(managed_fields=["icon"], icon_url=icon_url("iVBORyBmYWtl")))
+    (tmp_path / "icon.png").write_bytes(b"\x89PNG fake")
+    write(tmp_path, icon="icon.png")
+
+    assert apply() == EXIT_OK
+
+    err = capsys.readouterr().err
+    assert "icon" not in err
+    assert "Nothing changed." in err
+
+
+def test_a_null_icon_clears_it(platform, tmp_path, capsys):
+    scripted = platform(stored_deployment(icon_url=icon_url("iVBORyBmYWtl")))
     write(tmp_path, icon=None)
 
     apply()
 
     assert scripted.updates[0]["icon"] is None
+    assert "icon: cleared" in capsys.readouterr().err
 
 
 def test_a_missing_icon_fails_before_anything_is_sent(platform, tmp_path, capsys):

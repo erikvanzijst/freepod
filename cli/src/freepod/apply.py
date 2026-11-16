@@ -63,6 +63,8 @@ def apply(
             api, user_id, record, timeout=timeout, poll=poll, echo=echo
         )
     updated = deploy_module.put_update(api, user_id, record["id"], body)
+    if updated.get("icon_url") != record.get("icon_url"):
+        changes.append("icon: changed" if updated.get("icon_url") else "icon: cleared")
 
     for line in changes:
         echo(line)
