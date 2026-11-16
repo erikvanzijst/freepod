@@ -15,6 +15,7 @@ import { SftpAccessPanel } from './SftpAccessPanel'
 import { AccessPanel } from './AccessPanel'
 import { DeploymentPowerControls } from './deployment/DeploymentPowerControls'
 import { powerChanging, powerLabel } from './deployment/deploymentView'
+import { withManagedValues } from './deployment/identityDraft'
 
 interface DeploymentDialogProps {
   deployment: Deployment | null
@@ -122,7 +123,7 @@ export function DeploymentDialog({ deployment: initialDeployment, onClose }: Dep
     mutationFn: () =>
       updateDeployment(deployment!.user_id, deployment!.id, {
         desired_template_id: canonicalId!,
-        user_values_json: userValues ?? {},
+        user_values_json: withManagedValues(deployment!, userValues ?? {}),
         vars: Object.keys(vars).length > 0 ? vars : undefined,
       }),
     onSuccess: (updated) => {

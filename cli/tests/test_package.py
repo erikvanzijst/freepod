@@ -30,6 +30,10 @@ EXPECTED_MODULES = {
     "archive",
     "build",
     "deploy",
+    "initialize",
+    "link",
+    "apply",
+    "fields",
     "delete",
     "history",
     "skill",
@@ -76,14 +80,14 @@ def test_nothing_imports_the_api_server():
     assert offenders == []
 
 
-def test_the_runtime_dependencies_are_the_declared_three():
+def test_the_runtime_dependencies_are_the_declared_four():
     """Every import must resolve to the standard library or a declared dep.
 
     The dependency budget is part of the distribution contract: each addition
     lengthens a Homebrew formula's vendored resources and can cost the
-    universal-wheel guarantee.
+    universal-wheel guarantee. `prompt_toolkit` is `freepod link`'s picker.
     """
-    declared = {"click", "httpx", "pathspec"}
+    declared = {"click", "httpx", "pathspec", "prompt_toolkit"}
     local = EXPECTED_MODULES | {"freepod"}
     stdlib = set(getattr(__import__("sys"), "stdlib_module_names", ()))
     if not stdlib:  # pragma: no cover - Python 3.9 has no stdlib_module_names

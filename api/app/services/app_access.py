@@ -47,6 +47,7 @@ from app.services.errors import (
     RateLimitedException,
     UpstreamException,
 )
+from app.services.reconcile_constants import POWER_STATE_STOPPED
 
 logger = logging.getLogger(__name__)
 
@@ -274,9 +275,21 @@ def remove_entry(session: Session, deployment: DeploymentORM, entry_id: UUID) ->
     if entry.subject and serving is not None and serving[0].oidc:
         uri = logout_uri(deployment.hostname, _logout_path(serving[1]))
         if uri is not None:
+            _require_running(deployment)
             _send_logout(deployment, entry.subject, uri)
     session.delete(entry)
     session.commit()
+
+
+def _require_running(deployment: DeploymentORM) -> None:
+    """A stopped app cannot sign anyone out, so a removal waits until it runs."""
+    powers = (deployment.desired_power, deployment.applied_power)
+    if any(p is not None and p.state == POWER_STATE_STOPPED for p in powers):
+        raise ConflictException(
+            f"{deployment.display_name} is stopped, so it cannot sign this person out. "
+            "Start it, then remove them.",
+            code="access_app_stopped",
+        )
 
 
 def _logout_path(template: ProductTemplateVersionORM) -> Any:

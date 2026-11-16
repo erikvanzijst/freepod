@@ -156,13 +156,15 @@ with it. Load the `deploy-to-freepod` skill before the first `freepod init` or
 `freepod deploy`; it has the details. In short:
 
 ```bash
-printf 'myapp\n' | freepod init      # once; a short lowercase name for the app
-freepod deploy                       # takes a few minutes
+freepod init --name "My app" --hostname myapp   # once; the app's name and a short lowercase hostname
+freepod deploy                                  # takes a few minutes
 ```
 
 - Tell the user the app's address when `freepod deploy` finishes.
 - If the app has per-user data, enable Sign in with Freepod in `.freepod.json`
-  before deploying (the skill shows how).
+  before deploying (the skill shows how). To change a setting later, such as
+  the name, description or sign-in, edit `.freepod.json` and run
+  `freepod apply`.
 - Commit `.freepod.json`.
 - The skill suggests stubbing S3 when testing locally; here, `dev-app` already
   provides a real local S3.

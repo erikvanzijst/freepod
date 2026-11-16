@@ -1,24 +1,22 @@
-"""The deploy pipeline: preflight, create (first deploy only), pack, upload, build, release.
+"""The deploy pipeline: preflight, pack, upload, build, release.
 
-A build belongs to a deployment, so on a first deploy the deployment is created
-before anything is packed, with no image: the product serves its placeholder
-until the first build is released into it. Every deploy then builds against
-that deployment and updates it, always targeting the product's canonical
-template and always submitting user values as a complete document. See the
-`builds-belong-to-deployments` design D6, and the CLI's design D7 and D8.
+A build belongs to a deployment, which `freepod init` creates. Every deploy
+builds against it and releases the build together with the project file in
+one update, built as `freepod apply` builds it, always targeting the
+product's canonical template. See the `builds-belong-to-deployments` design
+D6 and the deployment-identity design D3.
 
 Preflight is the whole point of the ordering. Packing and building cost
 minutes; every question that can be answered from a cheap read is answered
 first, in this order:
 
-1. the project file, and that its recorded deployment applies to this
-   environment — a cross-environment deploy needs `--recreate`,
+1. the project file: that it records a deployment, on this environment, and
+   that its icon can be read,
 2. `GET /api/me` — the first request that actually exercises the credential,
 3. `GET /api/products` — the product and its canonical template,
 4. the recorded deployment, so one deleted out of band is reported here rather
    than after a four-minute build,
-5. any newly required value, by asking,
-6. the hostname, but only when it is new or changed (design D14).
+5. any newly required value, by asking.
 
 What preflight cannot catch is a template that narrowed rather than grew: a
 tightened `pattern` or a property removed under `additionalProperties: false`
@@ -32,16 +30,17 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
-from typing import IO, Any, Callable, Dict, List, Optional, Tuple
+from typing import IO, Any, Callable, Dict, Optional, Tuple
 
 import httpx
 
-from . import FreepodError, RolloutFailed, UsageError
+from . import FreepodError, RolloutFailed
 from . import handle as handle_module
 from . import tos
 from .api import ApiClient, _json_code, _json_detail
 from .archive import packed_archive, report
 from .build import build_image
+from .fields import claimed_body
 from . import vars as vars_module
 from .config import (
     BUILD_WAIT_SECONDS,
@@ -56,10 +55,8 @@ from .values import (
     ValueCollector,
     check_public_patterns,
     describe_reason,
-    full_hostname,
     is_hostname_property,
     missing_required,
-    normalize_hostname,
 )
 
 #: Statuses a rollout ends in. `pending` is not among them — it means a paid
@@ -137,8 +134,7 @@ class Preflight:
         product: Dict[str, Any],
         template: Dict[str, Any],
         values: Dict[str, Any],
-        deployment: Optional[Dict[str, Any]],
-        plan: Optional[Dict[str, Any]] = None,
+        deployment: Dict[str, Any],
     ):
         self.project = project
         self.user_id = user_id
@@ -146,7 +142,6 @@ class Preflight:
         self.template = template
         self.values = values
         self.deployment = deployment
-        self.plan = plan
 
     @property
     def schema(self) -> Dict[str, Any]:
@@ -158,8 +153,6 @@ class Preflight:
 
     @property
     def deployment_template_id(self) -> Optional[int]:
-        if not self.deployment:
-            return None
         value = self.deployment.get("desired_template_id")
         return value if isinstance(value, int) else None
 
@@ -169,39 +162,14 @@ def preflight(
     env_name: str,
     *,
     root: Optional[Path] = None,
-    recreate: bool = False,
     interactive: bool = True,
     echo: Callable[[str], None] = _log,
 ) -> Preflight:
     """Read everything a deploy depends on, cheapest and most fatal first."""
-    project = require_project(root)
+    from .apply import linked_project  # apply imports this module
 
-    if project.env != env_name and project.deployment and not recreate:
-        # The recorded deployment is minted on another environment, and no
-        # request to this one can reach it. Deploying here would start fresh
-        # and leave it running but unaddressable from this project — a
-        # consequence that needs the same confirmation as --recreate.
-        raise UsageError(
-            f"{project.path} records deployment "
-            f"'{project.deployment_name}' on '{project.env}', but this command "
-            f"targets '{env_name}'.\n"
-            f"  The deployment would keep running, but this project could no "
-            f"longer address it. Re-run with --recreate to point the project "
-            f"at a new deployment on '{env_name}'."
-        )
-
-    if recreate and project.deployment:
-        echo(
-            f"--recreate: unlinking deployment '{project.deployment_name}' "
-            f"({project.deployment_id}) from this project. It is not deleted — "
-            f"if it still exists, it keeps running."
-        )
-        # The pointer stays on the project until the replacement exists.
-        # Clearing it here would be persisted by any save between now and the
-        # create — `_settle_values` writes one whenever the template requires a
-        # value this file lacks — and a deploy that then failed would leave a
-        # deployment nothing can address. A pointer to something that may
-        # already be gone is strictly the better wreckage.
+    project = linked_project(root, env_name, "deploy")
+    claimed_body(project)  # an unreadable icon fails here, before a build
 
     # `/api/me` first: the reads below are on the edge's skip-auth list and are
     # answered anonymously however bad the credential is. See design D15.
@@ -234,45 +202,27 @@ def preflight(
             f"it — this is a platform problem, please report it."
         )
 
-    # `--recreate` is a decision to abandon the recorded deployment, so its
-    # state is not worth a request: whatever it says, this deploy creates.
-    deployment = None if recreate else _read_deployment(api, user_id, project)
+    deployment = read_linked(api, user_id, project)
+    values = _settle_values(api, project, schema, deployment, interactive=interactive, echo=echo)
+    return Preflight(project, user_id, product, template, values, deployment)
 
-    # Everything above is a read. Everything below may ask a question, so the
-    # cheap fatal checks are exhausted first: there is no point collecting a
-    # hostname, or asking anyone to accept terms, for a deploy that a plain
-    # `GET` already knows cannot succeed.
-    #
-    # Both of these are create-only preconditions. Plans are read here rather
-    # than at release, which D6 does not list among the preflight reads but the
-    # principle it states does: an instance with no free plan refuses every
-    # time, and one cheap read turns that from a refusal after a four-minute
-    # build into an instant one. Observed, not hypothetical — the `custom`
-    # product on dev published no plans at all.
-    plan = None
-    if deployment is None:
-        plan = select_free_plan(api, product)
-        handle_module.require(api)
-        # Only a create is gated on the terms; an update is not. Asking on
-        # every deploy would be nagging for a fact the platform records once.
-        tos.require(api, interactive=interactive, echo=echo)
 
-    values = _settle_values(
-        api,
-        project,
-        schema,
-        deployment,
-        interactive=interactive,
-        echo=echo,
-    )
+def read_linked(api: ApiClient, user_id: int, project: Project) -> Dict[str, Any]:
+    """The recorded deployment, or a refusal naming how to re-point the project.
 
-    return Preflight(project, user_id, product, template, values, deployment, plan)
+    A deployment deleted on the platform still leaves its pointer in a file
+    that is committed, so this is the common way a project goes stale.
+    """
+    record = _read_deployment(api, user_id, project)
+    if record is None:
+        raise FreepodError(f"{project.path} records no deployment — this is a client bug")
+    return record
 
 
 def _read_deployment(
     api: ApiClient, user_id: int, project: Project
 ) -> Optional[Dict[str, Any]]:
-    """The recorded deployment, or a refusal naming `--recreate`.
+    """The recorded deployment, or a refusal naming how to re-point the project.
 
     A deployment deleted on the platform still leaves its pointer in a file
     that is committed, so this is the common way a project goes stale. Catching
@@ -285,11 +235,10 @@ def _read_deployment(
     response = api.get(f"/api/users/{user_id}/deployments/{deployment_id}")
     if response.status_code == 404:
         raise FreepodError(
-            f"{project.path} points at deployment {deployment_id}"
-            f"{f' (' + project.deployment_name + ')' if project.deployment_name else ''}, "
+            f"{project.path} points at deployment {deployment_id}, "
             f"which no longer exists{env_suffix(project.env)}.\n"
-            f"  It was deleted outside this project. Run `freepod deploy --recreate` "
-            f"to create a new deployment and re-point {PROJECT_FILE} at it."
+            f"  It was deleted outside this project. Run `freepod init --force` to "
+            f"create a new one, or `freepod link` to point {PROJECT_FILE} at another."
         )
     if not response.is_success:
         raise FreepodError(
@@ -303,91 +252,37 @@ def _settle_values(
     api: ApiClient,
     project: Project,
     schema: Dict[str, Any],
-    deployment: Optional[Dict[str, Any]],
+    deployment: Dict[str, Any],
     *,
     interactive: bool,
     echo: Callable[[str], None],
 ) -> Dict[str, Any]:
-    """Fill in whatever the template requires and the file does not carry.
+    """The deployment's stored chart values with the file's keys over them, and
+    whatever the template now requires that neither holds, asked for.
 
-    Asking is deliberate: sending the user back to `init` would discard the
-    deployment pointer, which is the one thing in the file that cannot be
-    reconstructed.
+    An answer goes with this release only, not into the file: the deployment
+    keeps it, and the file holds what the developer chose to manage.
     """
-    values = dict(project.user_values)
+    stored = dict(deployment.get("user_values_json") or {})
+    stored.pop(IMAGE_KEY, None)
+    values = {**stored, **project.chart_values}
     check_public_patterns(values)
     missing = missing_required(schema, values)
-    hostname_key = _hostname_key(schema)
+    if not missing:
+        return values
 
-    if missing:
-        echo(
-            f"The product template requires "
-            f"{'a value' if len(missing) == 1 else 'values'} this project does not "
-            f"carry yet: {', '.join(missing)}."
-        )
-        collector = ValueCollector(
-            schema,
-            suffix=handle_module.held_suffix(api),
-            check_hostname=api.check_hostname,
-            interactive=interactive,
-        )
-        values = collector.collect(values, only_missing=True)
-        project.user_values = dict(values)
-        project.save()
-
-    if hostname_key:
-        values[hostname_key] = _settle_hostname(
-            api,
-            values[hostname_key],
-            deployment,
-            # A value just prompted for was already checked inside the prompt
-            # loop, where a refusal could be answered with another try.
-            already_checked=hostname_key in missing,
-            echo=echo,
-        )
-
-    return values
-
-
-def _settle_hostname(
-    api: ApiClient,
-    value: str,
-    deployment: Optional[Dict[str, Any]],
-    *,
-    already_checked: bool,
-    echo: Callable[[str], None],
-) -> str:
-    """Normalize the hostname, and check it only when it is new or changed.
-
-    The value is sent as entered, a bare label included; the platform completes
-    it. `GET /api/hostnames/{value}` runs without `exclude_deployment_id`, so
-    re-checking a name we already hold reports `in_use` against ourselves — and
-    for a custom domain it performs a live DNS lookup that is slow and
-    transiently failure-prone. See design D14. So the comparison with the
-    deployment's hostname appends the account's suffix to a bare label.
-    """
-    hostname = normalize_hostname(value)
-    current = (deployment or {}).get("hostname") or ""
-
-    if already_checked:
-        return hostname
-    if current and "." not in hostname:
-        if full_hostname(hostname, handle_module.held_suffix(api)).lower() == current.lower():
-            return hostname
-    elif hostname.lower() == current.lower():
-        return hostname
-
-    verdict = api.check_hostname(hostname)
-    checked = verdict.get("fqdn") or hostname
-    if not verdict.get("usable", False):
-        raise FreepodError(
-            f"{checked}: {describe_reason(verdict.get('reason'))}.\n"
-            f"  Edit 'hostname' in {PROJECT_FILE} and re-run — nothing has been "
-            f"built or deployed."
-        )
-    if current:
-        echo(f"Hostname {current} → {checked}.")
-    return hostname
+    echo(
+        f"The product template requires "
+        f"{'a value' if len(missing) == 1 else 'values'} this deployment does not "
+        f"have yet: {', '.join(missing)}."
+    )
+    collector = ValueCollector(
+        schema,
+        suffix=handle_module.held_suffix(api),
+        check_hostname=api.check_hostname,
+        interactive=interactive,
+    )
+    return collector.collect(values, only_missing=True)
 
 
 def _hostname_key(schema: Dict[str, Any]) -> Optional[str]:
@@ -586,26 +481,40 @@ def _announce_move(
     return move
 
 
+class CreateConflict(FreepodError):
+    """A refused creation, with the platform's code and detail to act on."""
+
+    def __init__(self, message: str, code: Optional[str], detail: Optional[str]):
+        super().__init__(message)
+        self.code = code
+        self.detail = detail
+
+
 def create_deployment(
     api: ApiClient,
     user_id: int,
     template_id: int,
     plan_template_id: int,
     values: Dict[str, Any],
+    extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """`POST /api/users/{user_id}/deployments`, with no image and no build.
 
     Nothing has been built yet: a build belongs to a deployment, so the
     deployment comes first and serves the product's placeholder meanwhile.
+    `extra` carries the identity and `managed_fields`.
     """
     body = {
         "desired_template_id": template_id,
         "plan_template_id": plan_template_id,
         "user_values_json": values,
+        **(extra or {}),
     }
     response = api.post(f"/api/users/{user_id}/deployments", json=body)
     if response.status_code == 409:
-        raise _conflict(response, built=False)
+        raise CreateConflict(
+            str(_conflict(response, built=False)), _json_code(response), _json_detail(response)
+        )
     if response.status_code == 400 and _json_code(response) == handle_module.DEPLOY_REFUSAL_CODE:
         raise FreepodError(
             f"the platform refused the deployment because this account does not "
@@ -639,32 +548,19 @@ def create_deployment(
     return envelope["deployment"]
 
 
-def update_deployment(
+def put_update(
     api: ApiClient,
     user_id: int,
     deployment_id: str,
-    template_id: int,
-    values: Dict[str, Any],
+    body: Dict[str, Any],
     *,
     move: Optional[str] = None,
-    build_id: Optional[str] = None,
+    built: bool = False,
 ) -> Dict[str, Any]:
-    """`PUT` the same route, with the complete user-values document.
-
-    Complete because the platform replaces stored values wholesale: omitting
-    the key reuses what is stored, but a partial object does not merge, so
-    sending `{"image": …}` alone fails on the missing required hostname. See
-    design D8.
-    """
-    body: Dict[str, Any] = {
-        "desired_template_id": template_id,
-        "user_values_json": values,
-    }
-    if build_id is not None:
-        body["build_id"] = build_id
+    """`PUT` an update body as given: the deployment as the platform returns it."""
     response = api.put(f"/api/users/{user_id}/deployments/{deployment_id}", json=body)
     if response.status_code == 409:
-        raise _conflict(response, move=move)
+        raise _conflict(response, move=move, built=built)
     if not response.is_success:
         raise FreepodError(
             f"could not update the deployment: HTTP {response.status_code} "
@@ -721,7 +617,7 @@ def wait_until_settled(
         if status in GONE_STATUSES:
             raise FreepodError(
                 f"the deployment is {status} and cannot be updated. Run "
-                f"`freepod deploy --recreate` to create a new one."
+                f"`freepod init --force` to create a new one."
             )
         if status != reported:
             echo(f"  Waiting for the deployment to settle (currently {status})...")
@@ -791,37 +687,6 @@ def address(deployment: Dict[str, Any]) -> Optional[str]:
 # --------------------------------------------------------------------------
 
 
-def ensure_deployment(
-    api: ApiClient, state: Preflight, *, echo: Callable[[str], None] = _log
-) -> Dict[str, Any]:
-    """The project's deployment, created first when it has none.
-
-    Created with no image, so the product serves its placeholder until the
-    first build is released, and recorded in the project file straight away:
-    a deployment that exists but is not recorded is one this project can never
-    address again. The environment travels with the pointer, in the same write:
-    a file that recorded a deployment while still declaring another environment
-    would point at an id the declared environment cannot answer.
-    """
-    if state.deployment is not None:
-        return state.deployment
-
-    plan = state.plan or select_free_plan(api, state.product)
-    echo(f"Creating a deployment on the '{plan.get('name')}' plan...")
-    record = create_deployment(
-        api, state.user_id, state.template_id, plan["template"]["id"], dict(state.values)
-    )
-    if state.project.env != api.env.name:
-        state.project.env = api.env.name
-    state.project.record_deployment(record["id"], record["name"])
-    echo(
-        f"Created deployment '{record['name']}' ({record['id']}); it serves a "
-        f"placeholder until this build is released."
-    )
-    state.deployment = record
-    return record
-
-
 def release(
     api: ApiClient,
     state: Preflight,
@@ -832,38 +697,46 @@ def release(
     poll: float = POLL_SECONDS,
     echo: Callable[[str], None] = _log,
 ) -> str:
-    """Update the deployment to `image`, then follow the rollout. Returns the address.
+    """Release `image` with the file's keys in one update, then follow it. Returns the address.
 
-    `build_id` names the build that produced `image`, and is recorded on the
-    platform's release rather than on the deployment. It must be one of this
-    deployment's own builds. Optional so that a caller releasing an image it
-    did not just build still works.
+    The update is built as apply builds it, plus the current template, the
+    build and its image. `image` is never claimed as managed: it is a build
+    output.
     """
-    if state.deployment is None:
-        raise FreepodError("there is no deployment to release to — this is a client bug")
-
     values = dict(state.values)
     values[IMAGE_KEY] = image
+    body: Dict[str, Any] = {
+        "desired_template_id": state.template_id,
+        "user_values_json": values,
+        **claimed_body(state.project),
+    }
+    if build_id is not None:
+        body["build_id"] = build_id
 
-    # A deployment created moments ago is still provisioning; this waits it out.
+    # A deployment init created moments ago may still be provisioning.
     settled = wait_until_settled(
         api, state.user_id, state.deployment, timeout=timeout, poll=poll, echo=echo
     )
     move = _announce_move(state, echo)
     echo(f"Releasing to deployment '{settled.get('name')}'...")
-    record = update_deployment(
-        api,
-        state.user_id,
-        settled["id"],
-        state.template_id,
-        values,
-        move=move,
-        build_id=build_id,
-    )
+    record = put_update(api, state.user_id, settled["id"], body, move=move, built=True)
 
+    return finish_rollout(api, state.user_id, record, timeout=timeout, poll=poll, echo=echo)
+
+
+def finish_rollout(
+    api: ApiClient,
+    user_id: int,
+    record: Dict[str, Any],
+    *,
+    timeout: int = ROLLOUT_WAIT_SECONDS,
+    poll: float = POLL_SECONDS,
+    echo: Callable[[str], None] = _log,
+) -> str:
+    """Follow the rollout the update in `record` started. Returns the address."""
     final = follow_rollout(
         api,
-        state.user_id,
+        user_id,
         record["id"],
         record.get("generation", 0),
         timeout=timeout,
@@ -925,27 +798,35 @@ def release_current(
     poll: float = POLL_SECONDS,
     echo: Callable[[str], None] = _log,
 ) -> str:
-    """Roll the deployment again on the image it already runs. Returns the address.
+    """Roll the build the deployment runs again, so staged vars take effect.
 
-    No build is named: the platform carries the applied release's build over
-    to a release that keeps its image.
+    Naming the running build is what makes the platform release; the project
+    file is not sent. Returns the address.
     """
-    state = preflight(api, env_name, root=root, interactive=interactive, echo=echo)
-    if state.deployment is None:
+    project = require_project(root)
+    if not project.deployment_id:
         raise FreepodError(
-            "this project has no deployment yet, so there is nothing to roll.\n"
-            "  Run `freepod deploy` to create one."
+            f"{project.path} records no deployment, so there is nothing to roll.\n"
+            f"  Run `freepod init` to create one."
         )
-    image = applied_image(state.deployment)
-    if image is None:
+    user_id = api.me()["id"]
+    record = read_linked(api, user_id, project)
+    build = (record.get("applied_release") or {}).get("build_id")
+    if not build:
         raise FreepodError(
-            f"deployment '{state.deployment.get('name')}' has never completed a "
-            f"rollout, so there is no image to release.\n"
-            f"  Run `freepod deploy` to build and release one."
+            f"deployment '{record.get('name')}' runs no build yet, so there is nothing "
+            f"to roll again.\n"
+            f"  Pending vars take effect with the next `freepod deploy`."
         )
-    announce_pending_vars(api, state, echo=echo)
-    echo(f"Releasing {image} again.")
-    return release(api, state, image, timeout=timeout, poll=poll, echo=echo)
+    record = wait_until_settled(api, user_id, record, timeout=timeout, poll=poll, echo=echo)
+    echo(f"Releasing '{record.get('name')}' again on its current build.")
+    updated = put_update(
+        api,
+        user_id,
+        record["id"],
+        {"user_values_json": record.get("user_values_json") or {}, "build_id": str(build)},
+    )
+    return finish_rollout(api, user_id, updated, timeout=timeout, poll=poll, echo=echo)
 
 
 def deploy(
@@ -953,7 +834,6 @@ def deploy(
     env_name: str,
     *,
     root: Optional[Path] = None,
-    recreate: bool = False,
     honor_gitignore: bool = True,
     interactive: bool = True,
     verbose: bool = False,
@@ -965,7 +845,7 @@ def deploy(
     store: Optional[httpx.Client] = None,
     echo: Callable[[str], None] = _log,
 ) -> str:
-    """Preflight, create if needed, pack, upload, build, release. Returns the live address.
+    """Preflight, pack, upload, build, release. Returns the live address.
 
     `store` reaches the object store, which is a different host with a
     different credential model; left unset the upload opens its own client.
@@ -980,49 +860,28 @@ def deploy(
         echo = _silence
         out = out if out is not None else _Discard()
 
-    state = preflight(
-        api,
-        env_name,
-        root=root,
-        recreate=recreate,
-        interactive=interactive,
-        echo=echo,
-    )
+    state = preflight(api, env_name, root=root, interactive=interactive, echo=echo)
     announce_pending_vars(api, state, echo=echo)
 
-    created = state.deployment is None
-    deployment = ensure_deployment(api, state, echo=echo)
-
-    try:
-        with packed_archive(
-            state.project.root,
-            honor_gitignore=honor_gitignore,
-            on_skip=None if quiet else (lambda name, reason: echo(f"  skipped {name}: {reason}")),
-        ) as (handle, size, members):
-            if not quiet:
-                report(size, members, verbose=verbose, echo=echo)
-            built = build_image(
-                api,
-                state.user_id,
-                deployment["id"],
-                handle,
-                size,
-                client=store,
-                out=out,
-                timeout=build_timeout,
-                quiet=quiet,
-                echo=echo,
-            )
-    except FreepodError:
-        if created:
-            # Not an orphan: the pointer is recorded, so the next deploy builds
-            # into this same deployment rather than creating another.
-            echo(
-                f"Deployment '{deployment['name']}' was created and keeps serving its "
-                f"placeholder. The next `freepod deploy` builds into it again; "
-                f"`freepod delete` removes it."
-            )
-        raise
+    with packed_archive(
+        state.project.root,
+        honor_gitignore=honor_gitignore,
+        on_skip=None if quiet else (lambda name, reason: echo(f"  skipped {name}: {reason}")),
+    ) as (handle, size, members):
+        if not quiet:
+            report(size, members, verbose=verbose, echo=echo)
+        built = build_image(
+            api,
+            state.user_id,
+            state.deployment["id"],
+            handle,
+            size,
+            client=store,
+            out=out,
+            timeout=build_timeout,
+            quiet=quiet,
+            echo=echo,
+        )
 
     echo(f"Built {built.image}.")
     return release(

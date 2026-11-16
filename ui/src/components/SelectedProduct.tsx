@@ -1,13 +1,10 @@
-import { useCallback, useRef, useState } from 'react'
+import { useState } from 'react'
 import {
-  Avatar,
-  Badge,
   Button,
   Stack,
   TextField,
   Typography,
 } from '@mui/material'
-import EditIcon from '@mui/icons-material/Edit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteProduct, getProductListing, updateProduct } from '../api/endpoints'
 import { resolveApiPath } from '../api/client'
@@ -16,6 +13,7 @@ import { formatDateTime } from '../utils/format'
 import { CatalogManagedNotice } from './CatalogManagedNotice'
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog'
 import { InlineEditField } from './InlineEditField'
+import { IconPicker } from './image/IconPicker'
 import { ProductVisibilityControl } from './ProductVisibilityControl'
 
 interface SelectedProductProps {
@@ -28,7 +26,6 @@ export function SelectedProduct({ product, onError }: SelectedProductProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [draftName, setDraftName] = useState('')
-  const iconInputRef = useRef<HTMLInputElement>(null)
   // Everything the catalog declares is read-only for a curated product. Only
   // `visibility` stays editable, since it is runtime state the catalog does not
   // own and withdrawing a product is often incident response.
@@ -59,23 +56,7 @@ export function SelectedProduct({ product, onError }: SelectedProductProps) {
   const uploadIconMutation = useMutation({
     mutationFn: (file: File) => updateProduct(product.id, {}, file),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
-    onError,
   })
-
-  const handleIconClick = useCallback(() => {
-    iconInputRef.current?.click()
-  }, [])
-
-  const handleIconChange = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0]
-      if (!file) return
-      if (iconInputRef.current) iconInputRef.current.value = ''
-      if (!file.type.startsWith('image/')) return
-      uploadIconMutation.mutate(file)
-    },
-    [uploadIconMutation],
-  )
 
   const deleteProductMutation = useMutation({
     mutationFn: () => deleteProduct(product.id),
@@ -93,13 +74,6 @@ export function SelectedProduct({ product, onError }: SelectedProductProps) {
 
   return (
     <Stack spacing={1} sx={{ p: 2 }}>
-      <input
-        ref={iconInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        onChange={handleIconChange}
-      />
       <Stack direction="row" spacing={2} alignItems="flex-start">
         <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
           {curated ? (
@@ -204,35 +178,15 @@ export function SelectedProduct({ product, onError }: SelectedProductProps) {
         </Stack>
         {/* The icon is catalog state as well, so a curated product loses the
             edit affordance rather than offering an upload the API refuses. */}
-        <Badge
-          overlap="circular"
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-          badgeContent={
-            curated ? undefined : (
-              <EditIcon
-                sx={{
-                  width: 18,
-                  height: 18,
-                  bgcolor: 'primary.main',
-                  color: 'white',
-                  borderRadius: '50%',
-                  p: 0.3,
-                }}
-              />
-            )
-          }
-          sx={{ cursor: curated ? 'default' : 'pointer', flexShrink: 0 }}
-          onClick={curated ? undefined : handleIconClick}
-        >
-          <Avatar
-            src={product.icon_url ? resolveApiPath(product.icon_url) : undefined}
-            alt={product.name}
-            variant="rounded"
-            sx={{ width: 64, height: 64 }}
-          >
-            {product.name[0]}
-          </Avatar>
-        </Badge>
+        <IconPicker
+          src={product.icon_url ? resolveApiPath(product.icon_url) : undefined}
+          alt={product.name}
+          fallback={product.name[0]}
+          readOnly={curated}
+          busy={uploadIconMutation.isPending}
+          error={uploadIconMutation.error?.message}
+          onPick={(file) => uploadIconMutation.mutate(file)}
+        />
       </Stack>
     </Stack>
   )

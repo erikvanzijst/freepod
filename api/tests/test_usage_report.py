@@ -49,6 +49,7 @@ def _deployment(session, user: UserORM, name: str, template_id: int):
         user_id=user.id,
         desired_template_id=template_id,
         name=name,
+        display_name=name,
         hostname=f"{name}.example.test",
         namespace=f"ns-{uuid4().hex[:8]}",
     )
@@ -215,6 +216,18 @@ def test_a_deleted_deployment_keeps_its_usage(db_session, ledger_data):
     report = _query(db_session, user, group_by={UsageDimension.DEPLOYMENT})
 
     assert "web" in {r["deployment_name"] for r in _as_dicts(report)}
+
+
+def test_rows_name_the_deployment_as_its_owner_does(db_session, ledger_data):
+    user, web, _ = ledger_data
+    web.display_name = "Shop front"
+    db_session.add(web)
+    db_session.commit()
+
+    report = _query(db_session, user, group_by={UsageDimension.DEPLOYMENT})
+
+    names = {r["deployment_name"] for r in _as_dicts(report)}
+    assert "Shop front" in names and "web" not in names
 
 
 def test_filters_narrow_to_one_deployment_and_metric(db_session, ledger_data):

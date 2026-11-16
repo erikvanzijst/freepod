@@ -12,7 +12,7 @@ pip install freepod                       # Mac, Linux, Windows
 ```bash
 cd myapp
 freepod login      # sign in through the browser
-freepod init       # choose a hostname for this project
+freepod init       # name the app and claim its hostname
 freepod deploy     # https://myapp-<handle>.freepod.app
 ```
 
@@ -43,7 +43,9 @@ project that *does* have a `Dockerfile` in its root is built from that instead.
 | Command            | What it does                                                                         |
 |--------------------|--------------------------------------------------------------------------------------|
 | `freepod login`    | Sign in, and remember the credential.                                                |
-| `freepod init`     | Set the current directory up as a project: choose a hostname, write `.freepod.json`. |
+| `freepod init`     | Create this directory's app: name it, claim its hostname, write `.freepod.json`.     |
+| `freepod link`     | Point this directory at an app you already have, by name or id, or from a list.      |
+| `freepod apply`    | Send `.freepod.json` to the app without building: name, icon, sign-in and more.      |
 | `freepod deploy`   | Pack, build and release the current project.                                         |
 | `freepod var`      | Read and change the environment your application runs with.                          |
 | `freepod log`      | Stream your application's pod output, or with `--http` its HTTP access log.          |
@@ -177,26 +179,41 @@ freepod var rm LOG_LEVEL
 
 Setting a var rolls the deployment, because that is what makes it take effect.
 Several in one command produce one rollout. `--stage` records them for your
-next deploy instead, and `freepod deploy --no-build` applies staged vars
-without rebuilding your entire project.
+next deploy instead, and `freepod apply` applies staged vars without
+rebuilding your entire project.
 
 A var marked `--secret` is **write-only**: the platform never returns it, so
 `var list` shows its key with the value hidden and nothing can print it back.
 
 ## Sign in with Freepod
 
-Need to know who your users are? Opt in with `"auth": {"enabled": true}`
-under `user_values` in `.freepod.json`, and visitors sign in with their Freepod
+Need to know who your users are? Add `"auth": {"enabled": true}` to
+`.freepod.json` and run `freepod apply`, and visitors sign in with their Freepod
 account before reaching your app, which receives their identity in request
 headers. There's no login code to write. Add `"access": "listed"` to admit only
 you and the people you add on the dashboard.
 
 ## .freepod.json
 
-`init` writes it, and it is meant to be committed. It records the hostname you
-chose and which deployment this directory belongs to, so the next `deploy` —
-yours, a coworker's, or CI's — updates that same app instead of creating a
-second one. To change a value, edit the file; the next deploy applies it.
+`init` writes it, and it is meant to be committed. It records which deployment
+this directory belongs to, so the next `deploy` — yours, a coworker's, or CI's —
+updates that same app. Add the settings you want to keep in version control,
+such as `name`, `description`, `icon` (a path to an image) or `auth`, and run
+`freepod apply` to send them without building; the next deploy sends them too.
+Settings in the file are managed by it, and the dashboard shows them read-only.
+
+```json
+{
+  "$schema": "https://freepod.eu/api/products/custom/project-schema",
+  "version": 2,
+  "deployment": "40bd8dea-54f3-430d-8ee0-f1689f9629cb",
+  "name": "My app",
+  "auth": { "enabled": true }
+}
+```
+
+A fresh clone, or a directory that lost its file, does not need a new app:
+`freepod link <name>` points it at the one you have.
 
 ## What gets uploaded
 

@@ -89,9 +89,9 @@ def _insert_deployment(session, parents, *, deployment_id, desired_release_id, s
     session.exec(
         text(
             "INSERT INTO deployment "
-            "(id, user_id, desired_template_id, hostname, name, namespace, status, "
+            "(id, user_id, desired_template_id, hostname, name, display_name, namespace, status, "
             " generation, created_at, desired_release_id, subscription_id) "
-            "VALUES (:id, :uid, :tid, :host, :name, :ns, 'provisioning', 1, now(), "
+            "VALUES (:id, :uid, :tid, :host, :name, :name, :ns, 'provisioning', 1, now(), "
             "        :rid, :sid)"
         ).bindparams(
             id=deployment_id,

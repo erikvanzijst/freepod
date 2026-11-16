@@ -58,8 +58,8 @@ def project_at(tmp_path: Path, *, env="prod", deployment=DEPLOYMENT) -> Path:
     Project(
         root=tmp_path,
         env=env,
-        deployment={"id": deployment, "name": "custom-d8dtx4"} if deployment else None,
-        user_values={"hostname": "myapp.freepod.eu"},
+        deployment_id=deployment,
+        fields={"hostname": "myapp"},
     ).save()
     return tmp_path
 
@@ -422,7 +422,7 @@ def test_the_command_adds_no_package_dependency():
 
     declared = importlib.metadata.requires("freepod") or []
     names = sorted(re.split(r"[\s><=!~;\[]", spec)[0] for spec in declared)
-    assert names == ["click", "httpx", "pathspec"]
+    assert names == ["click", "httpx", "pathspec", "prompt-toolkit"]
 
 
 def test_a_rollover_is_announced_on_stderr_and_never_prefixed_onto_a_line(make_api):
@@ -711,3 +711,57 @@ def test_no_requests_is_reported_on_stderr(make_api, tmp_path):
     assert run(api, "prod", root=tmp_path, http=True, out=out, say=said.append) == 0
     assert out.getvalue() == ""
     assert any("No HTTP requests" in line for line in said)
+
+
+# --------------------------------------------------------------------------
+# The project file's unapplied changes (cli-apply)
+# --------------------------------------------------------------------------
+
+
+def _logs_with_deployment(record):
+    def handler(request):
+        path = request.url.path
+        if path == "/api/me":
+            return httpx.Response(200, json={"id": 7, "email": "dev@example.com"})
+        if path == f"/api/users/7/deployments/{DEPLOYMENT}":
+            return httpx.Response(200, json=record)
+        return stream_response(sse(log_event(TS1, "hello"), end()))
+
+    return handler
+
+
+def test_logs_warn_about_unapplied_changes_without_failing(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsys
+):
+    Project(
+        root=tmp_path, deployment_id=DEPLOYMENT, fields={"description": "New", "icon": "i.png"}
+    ).save()
+    monkeypatch.chdir(tmp_path)
+    stub_api(
+        _logs_with_deployment({"id": DEPLOYMENT, "description": "Old", "user_values_json": {}})
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main(["log"])
+
+    assert exc.value.code == 0
+    out, err = capsys.readouterr()
+    assert out == "hello\n"
+    assert "changes not yet applied (description)" in err
+    assert "freepod apply" in err
+    assert "icon" not in err
+
+
+def test_logs_say_nothing_when_the_file_matches(
+    stub_api, cached_credential, tmp_path, monkeypatch, capsys
+):
+    Project(root=tmp_path, deployment_id=DEPLOYMENT, fields={"description": "Same"}).save()
+    monkeypatch.chdir(tmp_path)
+    stub_api(
+        _logs_with_deployment({"id": DEPLOYMENT, "description": "Same", "user_values_json": {}})
+    )
+
+    with pytest.raises(SystemExit):
+        main(["log"])
+
+    assert "not yet applied" not in capsys.readouterr().err

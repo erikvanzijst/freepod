@@ -1,4 +1,5 @@
 from __future__ import annotations
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import logging
@@ -33,6 +34,7 @@ from app.models.core import DeploymentPowerORM
 from app.network_policy import deployment_namespace_labels
 from app.services.jobs import JobService
 from app.services import admin_notices, app_access, object_storage, relational_storage
+from app.services import deployment_identity as identity
 from app.services import image_retention
 from app.services import power as power_service
 from app.services import ssh_keys as ssh_keys_service
@@ -411,6 +413,16 @@ def create_deployment(
 
     storage_class = _choose_storage_class()
 
+    # Before any subscription or checkout exists (deployment-create-contract).
+    if payload.name is not None:
+        display_name = identity.normalize_name(payload.name)
+        identity.require_name_free(session, user_id=user.id, name=display_name)
+    else:
+        display_name = identity.default_name(session, user_id=user.id, base=template.product.name)
+    description = identity.normalize_description(payload.description)
+    managed_fields = identity.validate_managed_fields(payload.managed_fields or [], template)
+    icon = identity.prepare_icon(payload.icon, current_sha256=None) if payload.icon is not None else None
+
     # Determine if this is a paid plan requiring payment.
     is_paid = payment_provider is not None and plan_template.price_cents > 0
 
@@ -448,11 +460,21 @@ def create_deployment(
             subscription_id=sub.id,
             desired_release_id=release_id,
             storage_class=storage_class,
+            display_name=display_name,
+            description=description,
+            rel_icon_path=icon.rel_icon_path if icon else None,
+            icon_source_sha256=icon.source_sha256 if icon else None,
+            managed_fields=managed_fields,
             # `build_id` and `vars` join `plan_template_id` here: all three are
             # request-only fields that the deployment row does not store. The
             # build lands on the release below; the vars land in their own
             # table, and `vars` never comes back out on a read model.
-            **payload.model_dump(exclude={"plan_template_id", "build_id", "vars"}),
+            **payload.model_dump(
+                exclude={
+                    "plan_template_id", "build_id", "vars",
+                    "name", "description", "icon", "managed_fields",
+                }
+            ),
         )
     )
     session.add(deployment)
@@ -471,7 +493,13 @@ def create_deployment(
             values_json=payload.user_values_json,
         )
     )
-    session.flush()  # ensure deployment.subscription_id is available
+    try:
+        session.flush()  # ensure deployment.subscription_id is available
+    except IntegrityError as exc:
+        session.rollback()
+        if identity.is_name_conflict(exc):
+            raise identity.NameInUse(display_name) from exc
+        raise IntegrityException("Deployment already exists") from exc
 
     # Vars, and the release's snapshot of them, in this same transaction --
     # which is what stops a first release from rolling out with an empty
@@ -561,6 +589,8 @@ def create_deployment(
     except IntegrityError as exc:
         session.rollback()
         logger.warning("Deployment create failed due to integrity conflict for user_id=%s", payload.user_id)
+        if identity.is_name_conflict(exc):
+            raise identity.NameInUse(display_name) from exc
         raise IntegrityException("Deployment already exists") from exc
 
 
@@ -772,25 +802,84 @@ def delete_deployment(session: Session, *, user_id: int, deployment_id: UUID) ->
     return DeploymentRead.model_validate(deployment)
 
 
+def _identity_changes(
+    deployment: DeploymentORM, update: DeploymentUpdate
+) -> tuple[dict[str, Any], set[str]]:
+    """The identity columns *update* writes, and which identity keys change.
+
+    The icon is only compared here; `prepare_icon` decodes and stores it once
+    the update is known to be allowed.
+    """
+    fields = update.model_fields_set
+    columns: dict[str, Any] = {}
+    changed: set[str] = set()
+    if "name" in fields:
+        columns["display_name"] = identity.normalize_name(update.name)
+        if columns["display_name"] != deployment.display_name:
+            changed.add("name")
+    if "description" in fields:
+        columns["description"] = identity.normalize_description(update.description)
+        if columns["description"] != deployment.description:
+            changed.add("description")
+    if "icon" in fields and identity.icon_differs(
+        update.icon, current_sha256=deployment.icon_source_sha256
+    ):
+        changed.add("icon")
+    return columns, changed
+
+
+def _releases(
+    deployment: DeploymentORM,
+    update: DeploymentUpdate,
+    *,
+    target_template_id: int,
+    values_changed: bool,
+) -> bool:
+    """Whether *update* would change the running app (edit-deployment-backend)."""
+    return (
+        values_changed
+        or target_template_id != deployment.desired_template_id
+        or update.build_id is not None
+        or bool(update.vars)
+        or deployment.status == DEPLOYMENT_STATUS_ERROR
+    )
+
+
+def _raise_integrity(exc: IntegrityError, display_name: str | None) -> None:
+    if identity.is_name_conflict(exc):
+        raise identity.NameInUse(display_name or "") from exc
+    raise IntegrityException("Deployment update conflicts with another deployment") from exc
+
+
 def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentRead:
     deployment = _get_deployment_orm(
         session,
         user_id=update.user_id,
         deployment_id=update.id,
     )
-    power_service.refuse_under_maintenance(deployment, "updated")
-    if update.desired_template_id < deployment.desired_template_id:
+    if deployment.status in (DEPLOYMENT_STATUS_DELETING, DEPLOYMENT_STATUS_DELETED):
+        raise IntegrityException("Deployment is being deleted")
+    target_template_id = (
+        update.desired_template_id
+        if update.desired_template_id is not None
+        else deployment.desired_template_id
+    )
+    if target_template_id < deployment.desired_template_id:
         raise IntegrityException("Can only upgrade to newer versions, not downgrade")
 
-    if not (target_template := session.get(ProductTemplateVersionORM, update.desired_template_id)):
+    if not (target_template := session.get(ProductTemplateVersionORM, target_template_id)):
         raise NotFoundException("Template not found")
 
     current_template = session.get(ProductTemplateVersionORM, deployment.desired_template_id)
     if current_template and target_template.product_id != current_template.product_id:
         raise IntegrityException("Upgrade template must belong to the same product")
 
-    # Determine the effective user values for validation
-    new_user_values = update.user_values_json if update.user_values_json is not None else deployment.user_values_json
+    stored_values = deepcopy(deployment.user_values_json)
+    new_user_values = (
+        update.user_values_json
+        if update.user_values_json is not None
+        else deepcopy(deployment.user_values_json)
+    )
 
     derived_hostname = normalize_and_return_hostname(
         values_schema_json=target_template.values_schema_json,
@@ -805,6 +894,22 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
     # Pre-flight the user-provided values against the template's schema:
     _validate_user_values(target_template, new_user_values)
 
+    columns, changed = _identity_changes(deployment, update)
+    changed_values = identity.changed_chart_keys(stored_values, new_user_values)
+    if update.managed_fields is not None:
+        columns["managed_fields"] = identity.validate_managed_fields(
+            update.managed_fields, target_template
+        )
+    else:
+        identity.refuse_managed_changes(deployment.managed_fields, changed | changed_values)
+    if "name" in changed:
+        identity.require_name_free(
+            session,
+            user_id=deployment.user_id,
+            name=columns["display_name"],
+            exclude_id=deployment.id,
+        )
+
     # A named build must be this deployment's own -- see
     # `_validate_build_reference`.
     _validate_build_reference(session, deployment_id=deployment.id, build_id=update.build_id)
@@ -815,6 +920,22 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
         user_values=new_user_values,
         deployment=deployment,
     )
+
+    if "icon" in changed:
+        icon = identity.prepare_icon(update.icon, current_sha256=deployment.icon_source_sha256)
+        if icon is not None:
+            columns["rel_icon_path"] = icon.rel_icon_path
+            columns["icon_source_sha256"] = icon.source_sha256
+
+    if not _releases(
+        deployment,
+        update,
+        target_template_id=target_template_id,
+        values_changed=bool(changed_values),
+    ):
+        return _update_row(session, deployment, columns)
+
+    power_service.refuse_under_maintenance(deployment, "updated")
     build_id = _release_build_id(session, deployment, update, new_user_values)
 
     # Minted before the guarded UPDATE so the pointer can move in the same
@@ -826,33 +947,38 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
     # This prevents races with the reconciler and concurrent updates.
     # Uses session.execute (not session.exec) because this is a DML UPDATE,
     # not a SELECT — we need result.rowcount, not model instances.
-    result = session.execute(
-        sa_update(DeploymentORM)
-        .where(
-            DeploymentORM.id == update.id,
-            DeploymentORM.status.in_([DEPLOYMENT_STATUS_READY, DEPLOYMENT_STATUS_ERROR]),
-            ~exists().where(
-                DeploymentPowerORM.id == DeploymentORM.desired_power_id,
-                DeploymentPowerORM.reason == POWER_REASON_MAINTENANCE,
-            ),
+    try:
+        result = session.execute(
+            sa_update(DeploymentORM)
+            .where(
+                DeploymentORM.id == update.id,
+                DeploymentORM.status.in_([DEPLOYMENT_STATUS_READY, DEPLOYMENT_STATUS_ERROR]),
+                ~exists().where(
+                    DeploymentPowerORM.id == DeploymentORM.desired_power_id,
+                    DeploymentPowerORM.reason == POWER_REASON_MAINTENANCE,
+                ),
+            )
+            .values(
+                desired_template_id=target_template_id,
+                user_values_json=new_user_values,
+                hostname=derived_hostname,
+                status=DEPLOYMENT_STATUS_PROVISIONING,
+                # Points at a release row that does not exist yet; the FK is
+                # DEFERRABLE INITIALLY DEFERRED and is checked at COMMIT, by which
+                # time the INSERT below has run. `applied_release_id` is untouched:
+                # what is running has not changed just because a rollout was asked
+                # for.
+                desired_release_id=release_id,
+                # SQL expression: generates SET generation = generation + 1
+                # evaluated atomically by the database, not from Python state.
+                generation=DeploymentORM.generation + 1,
+                last_error=None,
+                **columns,
+            )
         )
-        .values(
-            desired_template_id=update.desired_template_id,
-            user_values_json=new_user_values,
-            hostname=derived_hostname,
-            status=DEPLOYMENT_STATUS_PROVISIONING,
-            # Points at a release row that does not exist yet; the FK is
-            # DEFERRABLE INITIALLY DEFERRED and is checked at COMMIT, by which
-            # time the INSERT below has run. `applied_release_id` is untouched:
-            # what is running has not changed just because a rollout was asked
-            # for.
-            desired_release_id=release_id,
-            # SQL expression: generates SET generation = generation + 1
-            # evaluated atomically by the database, not from Python state.
-            generation=DeploymentORM.generation + 1,
-            last_error=None,
-        )
-    )
+    except IntegrityError as exc:
+        session.rollback()
+        _raise_integrity(exc, columns.get("display_name"))
     if result.rowcount == 0:
         # The guard rejected the write, so no release is created: a rejected
         # update must leave nothing behind. Nothing has been inserted at this
@@ -861,15 +987,12 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
         power_service.refuse_under_maintenance(deployment, "updated")
         raise IntegrityException("Deployment is not in ready state")
 
-    # Only now, and unconditionally distinct from any previous release: two
-    # byte-identical updates produce two releases, because identity comes from
-    # the row rather than from the content.
     session.add(
         DeploymentReleaseORM(
             id=release_id,
             number=release_number,
             deployment_id=deployment.id,
-            template_id=update.desired_template_id,
+            template_id=target_template_id,
             build_id=build_id,
             values_json=new_user_values,
         )
@@ -915,3 +1038,34 @@ def update_deployment(session: Session, update: DeploymentUpdate) -> DeploymentR
         deployment.desired_template_id,
     )
     return _read_with_vars(session, deployment)
+
+
+def _update_row(
+    session: Session, deployment: DeploymentORM, columns: dict[str, Any]
+) -> DeploymentRead:
+    """An update that changes nothing the app runs: the row only, in any
+    status but deleting, with no release and no reconcile."""
+    if columns:
+        try:
+            result = session.execute(
+                sa_update(DeploymentORM)
+                .where(
+                    DeploymentORM.id == deployment.id,
+                    DeploymentORM.status.not_in(
+                        [DEPLOYMENT_STATUS_DELETING, DEPLOYMENT_STATUS_DELETED]
+                    ),
+                )
+                .values(**columns)
+            )
+        except IntegrityError as exc:
+            session.rollback()
+            _raise_integrity(exc, columns.get("display_name"))
+        if result.rowcount == 0:
+            session.rollback()
+            raise IntegrityException("Deployment is being deleted")
+        session.commit()
+        logger.info(
+            "Updated deployment id=%s without a release: %s", deployment.id, sorted(columns)
+        )
+    session.expire(deployment)
+    return _read_with_vars(session, _get_deployment_orm(session, deployment_id=deployment.id))

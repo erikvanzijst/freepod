@@ -34,6 +34,7 @@ from app.models import (
 )
 from app.services import templates as template_service, products as product_service
 from app.services import listings as listing_service
+from app.services import project_schema as project_schema_service
 
 T = TypeVar("T", bound=SQLModel)
 
@@ -299,6 +300,33 @@ def get_product_listing(
     - **404 Not Found** — no product with this id exists.
     """
     return listing_service.get_listing(session, product_id=product_id)
+
+
+@router.get(
+    "/{slug}/project-schema",
+    summary="Get the JSON Schema of a product's project file",
+    response_description="A JSON Schema 2020-12 document for `.freepod.json`.",
+    responses={404: {"description": "No visible product has this slug."}},
+)
+def get_project_schema(
+    slug: str = Path(..., description="Slug of the product, such as `custom`."),
+    session: Session = Depends(get_session),
+) -> dict:
+    """The schema an editor validates a project file (`.freepod.json`) against.
+
+    ## Authorization
+    Public — no authentication required.
+
+    ## Behavior
+    Built from the product's canonical template: the file's own keys
+    (`$schema`, `version`, `env`, `deployment`), the deployment's `name`,
+    `description` and `icon`, and the product's top-level chart properties.
+    Every other key is refused.
+
+    ## Errors
+    - **404 Not Found** — no visible product has this slug.
+    """
+    return project_schema_service.project_schema(session, slug=slug)
 
 
 @router.get(

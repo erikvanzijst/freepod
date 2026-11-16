@@ -8,8 +8,8 @@ title: CI deploys
 
 ## Prerequisites
 
-- The project's `.freepod.json` is committed, and its deployment exists. Run the first `freepod deploy` from your machine.
-- The Terms of Service have been accepted. `freepod deploy` cannot ask for acceptance without a terminal.
+- The project's `.freepod.json` is committed, and its deployment exists. Run `freepod init` from your machine.
+- The Terms of Service have been accepted. `freepod init` asks for acceptance on a terminal.
 
 ## Credential
 

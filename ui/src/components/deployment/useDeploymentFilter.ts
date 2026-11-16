@@ -15,7 +15,7 @@ export const sortOptions = [
 export type SortKey = (typeof sortOptions)[number]['key']
 
 const time = (iso?: string | null) => (iso ? new Date(iso).getTime() : 0)
-const appName = (d: Deployment) => d.desired_template?.product?.name ?? ''
+const appName = (d: Deployment) => d.name || d.desired_template?.product?.name || ''
 
 const comparators: Record<SortKey, (a: Deployment, b: Deployment) => number> = {
   newest: (a, b) => time(b.created_at) - time(a.created_at),
@@ -26,8 +26,8 @@ const comparators: Record<SortKey, (a: Deployment, b: Deployment) => number> = {
 
 /**
  * Search and sort for the user's deployments, kept in the URL as `search` and
- * `sort` (apart from the catalog panel's `q`). A search looks in the same
- * fields as the catalog's, plus the deployment's address and plan.
+ * `sort` (apart from the catalog panel's `q`). A search looks in the
+ * deployment's name, the same fields as the catalog's, its address and plan.
  */
 export function useDeploymentFilter(deployments: Deployment[]) {
   const [params, setParams] = useSearchParams()
@@ -53,7 +53,7 @@ export function useDeploymentFilter(deployments: Deployment[]) {
         const product = d.desired_template?.product
         const listed = product ? byId.get(product.id) : undefined
         const fields = listed ? catalogSearchFields(listed) : [product?.name, product?.tagline]
-        return matchesQuery([...fields, d.hostname, d.subscription?.plan_template?.plan?.name], search)
+        return matchesQuery([d.name, ...fields, d.hostname, d.subscription?.plan_template?.plan?.name], search)
       })
       .sort(comparators[sort])
   }, [deployments, products.data, search, sort])

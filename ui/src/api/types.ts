@@ -209,7 +209,13 @@ export interface Deployment {
   applied_template?: ProductTemplate | null
   subscription_id?: number | null
   subscription?: Subscription | null
+  /** The owner's name for the deployment. */
   name: string
+  /** The deployment's own; null where the product's applies. */
+  description?: string | null
+  icon_url?: string | null
+  /** Top-level keys `.freepod.json` manages; read-only on the dashboard. */
+  managed_fields?: string[]
   namespace: string
   status?: DeploymentStatus
   generation?: number

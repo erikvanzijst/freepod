@@ -13,7 +13,7 @@ whole workflow is:
 
 ```bash
 freepod login      # once; the user approves it in their browser
-freepod init       # choose a hostname, writes .freepod.json
+freepod init       # name the app, claim its hostname, write .freepod.json
 freepod deploy     # pack, upload, build, release
 ```
 
@@ -313,14 +313,11 @@ login, password reset or email verification. Opt in, and the platform puts
 every request through a Freepod sign-in first and hands the app the user's
 identity in request headers. Anyone with a Freepod account can sign in —
 registration is open — and each person is asked once per app whether to share
-their name and email with it. Add to `.freepod.json`, under `user_values`, and
-redeploy:
+their name and email with it. Add `auth` to `.freepod.json`, next to its other
+keys, and run `freepod apply`:
 
 ```json
-"user_values": {
-  "hostname": "myapp",
-  "auth": { "enabled": true, "public": ["^/$", "^/static/"] }
-}
+"auth": { "enabled": true, "public": ["^/$", "^/static/"] }
 ```
 
 Every request that reaches the app then carries:
@@ -552,15 +549,20 @@ log says the code expired, start again from `freepod login`.
 
 ### 2. Initialize the project
 
-`freepod init` **prompts interactively** for a hostname. To run it
-non-interactively, pipe the answer:
+`freepod init` asks for the app's name, offering the directory's, and then for
+its hostname, offering the name as a label. To run it without prompts, give
+both:
 
 ```bash
-printf 'myapp\n' | freepod init
+freepod init --name "My app" --hostname myapp
 ```
 
-A bare label is an app name: the platform completes it with the account's handle
-(`myapp` → `myapp-{handle}.freepod.app`), and `freepod deploy` prints the address.
+It creates the deployment, which serves a placeholder until the first deploy,
+and returns without waiting for it to be provisioned. Vars can be set right
+away. A name already used by one of the account's apps is refused.
+
+A bare hostname label is completed with the account's handle
+(`myapp` → `myapp-{handle}.freepod.app`), and init prints the address.
 The app name is letters, digits and hyphens, at most 34 characters, with no `--`
 and not starting with `preview-`. A value containing a dot is taken as already
 qualified, for a custom domain
@@ -569,11 +571,19 @@ such as `example.com`, with A/AAAA records carrying the addresses `freepod.app`
 resolves to (flattened CNAME or ALIAS records work too; proxying must be off).
 Certificates are issued either way.
 
-This writes `.freepod.json`, which records the hostname and — after the first
-deploy — the deployment this directory belongs to. It is meant to be committed.
-To change a value, edit the file. Do not re-run `init --force` or
-`deploy --recreate` on an initialized project unless the user asks: both
-discard the deployment pointer and orphan the running deployment.
+This writes `.freepod.json`, which records the deployment this directory
+belongs to. It is meant to be committed. To change the app's settings, add them
+to the file — `name`, `description`, `icon` (a path to a PNG, JPEG or WebP of
+at most 256 KiB), `auth`, `hostname` — and run `freepod apply`, which sends
+them without building and prints what changed. `freepod deploy` sends them too,
+with the build. The file must never hold `image`. Keys in the file are managed
+by it: the dashboard shows them read-only. Do not run `init --force` on an
+initialized project unless the user asks: it points the file at a new
+deployment and leaves the old one running.
+
+A checkout without `.freepod.json`, or one whose file was lost, does not need a
+new deployment: `freepod link <name>` points it at the existing one and writes
+back the settings the old file managed.
 
 ### 3. Verify locally — this step is not optional
 
@@ -774,8 +784,10 @@ redeploy.
 |--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `freepod login`    | Sign in; the user approves it in a browser (*1. Confirm authentication*).                                                                                            |
 | `freepod whoami`   | Report the authenticated account. Never starts a login.                                                                                                              |
-| `freepod init`     | Set up the directory; prompts for a hostname.                                                                                                                        |
-| `freepod deploy`   | Pack, build, release. Prints the URL on stdout.                                                                                                                      |
+| `freepod init`     | Create the app: name, hostname (`--name`, `--hostname`), deployment. Writes `.freepod.json`.                                                                         |
+| `freepod link`     | Point this directory at an existing app: `freepod link <name-or-id>`; on a terminal without an argument, pick from a list.                                           |
+| `freepod apply`    | Send `.freepod.json` (name, description, icon, `auth`, …) without building; prints what changed. Also rolls out staged vars. Same as `deploy --no-build`.          |
+| `freepod deploy`   | Pack, build, release, together with `.freepod.json`. Prints the URL on stdout.                                                                                       |
 | `freepod log`      | Read the application's output. `-f` follows, `-r N` pins one release, `-t` adds timestamps, `--http` shows the requests instead.                                     |
 | `freepod shell`    | Run a command in the application container: `freepod shell env`. Always pass one — with no command it is interactive. Needs a registered key and `ssh`.              |
 | `freepod cp`       | Copy a file or directory between here and the deployment: `freepod cp :/app/app.log ./app.log`. Mark the deployment's side with `:`; the direction follows. Needs a registered key and `sftp`. |

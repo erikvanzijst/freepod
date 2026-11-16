@@ -15,12 +15,10 @@ from freepod.deploy import (
     deploy,
     follow_rollout,
     preflight,
-    ensure_deployment,
     release,
     select_free_plan,
     wait_until_settled,
 )
-from freepod.project import load
 
 from conftest import json_response
 
@@ -321,14 +319,21 @@ class Platform:
         raise AssertionError(f"no {method} {pattern} in {self.calls}")
 
 
-def project_at(tmp_path, *, values=None, pointer=None, env="prod", files=True):
-    """Write a `.freepod.json` and a token file to pack."""
-    document = {
-        "version": 1,
-        "env": env,
-        "deployment": pointer,
-        "user_values": {"hostname": "myapp-erik.freepod.app"} if values is None else values,
-    }
+LINKED = object()
+
+
+def project_at(tmp_path, *, values=None, pointer=LINKED, env="prod", files=True):
+    """Write a format 2 `.freepod.json` and a token file to pack.
+
+    `pointer` is the deployment's id, or a dict carrying it; by default the
+    project is linked to `deployment()`, and None leaves it unlinked.
+    """
+    if pointer is LINKED:
+        pointer = deployment()["id"]
+    document = {"version": 2, "env": env}
+    if pointer:
+        document["deployment"] = pointer["id"] if isinstance(pointer, dict) else pointer
+    document.update({"hostname": "myapp-erik.freepod.app"} if values is None else values)
     (tmp_path / ".freepod.json").write_text(json.dumps(document))
     if files:
         (tmp_path / "index.js").write_text("console.log('hi')\n")
@@ -374,11 +379,11 @@ def test_a_deleted_deployment_is_reported_before_a_build_is_spent(make_api, tmp_
     with pytest.raises(FreepodError) as raised:
         run(make_api, platform, tmp_path)
 
-    assert "--recreate" in str(raised.value)
+    assert "freepod init --force" in str(raised.value)
     assert "no longer exists" in str(raised.value)
     # Nothing was packed, uploaded, or built.
     assert "/api/artifacts" not in platform.paths()
-    assert f"/api/users/7/builds" not in platform.paths()
+    assert "/api/users/7/builds" not in platform.paths()
 
 
 def test_preflight_completes_before_anything_is_packed(make_api, tmp_path):
@@ -429,11 +434,9 @@ def test_a_template_that_cannot_carry_an_image_is_refused_before_the_build(
 # --------------------------------------------------------------------------
 
 
-def test_a_newly_required_value_is_prompted_for_and_the_pointer_survives(
-    make_api, tmp_path, monkeypatch
-):
-    """Re-initializing would discard the deployment pointer, which is the one
-    thing in the file that cannot be reconstructed."""
+def test_a_newly_required_value_is_prompted_for_and_not_written(make_api, tmp_path, monkeypatch):
+    """One question, sent with the release; the file holds only what the
+    developer chose to manage."""
     schema = json.loads(json.dumps(SCHEMA))
     schema["properties"]["region"] = {"type": "string"}
     schema["required"] = ["hostname", "region"]
@@ -448,32 +451,8 @@ def test_a_newly_required_value_is_prompted_for_and_the_pointer_survives(
 
     assert state.values["region"] == "eu-west"
     saved = json.loads((tmp_path / ".freepod.json").read_text())
-    assert saved["user_values"]["region"] == "eu-west"
-    assert saved["deployment"] == pointer
-
-
-def test_recreate_keeps_the_old_pointer_until_the_replacement_exists(
-    make_api, tmp_path, monkeypatch
-):
-    """`--recreate` discards the pointer at release, not at preflight. The
-    value prompt in between writes the file, and a deploy that failed after
-    that write would otherwise leave a deployment nothing can address."""
-    schema = json.loads(json.dumps(SCHEMA))
-    schema["properties"]["region"] = {"type": "string"}
-    schema["required"] = ["hostname", "region"]
-    platform = Platform(catalog=[product(template=template(schema=schema))])
-    pointer = {"id": deployment()["id"], "name": "custom-d8dtx4"}
-    project_at(tmp_path, pointer=pointer)
-
-    monkeypatch.setattr("click.prompt", lambda *a, **k: "eu-west")
-    api, _, _ = make_api(platform)
-
-    state = preflight(api, "prod", root=tmp_path, recreate=True, echo=lambda _m: None)
-
-    # Nothing was asked about the abandoned deployment: this deploy creates.
-    assert state.deployment is None
-    saved = json.loads((tmp_path / ".freepod.json").read_text())
-    assert saved["deployment"] == pointer
+    assert "region" not in saved
+    assert saved["deployment"] == pointer["id"]
 
 
 def test_a_missing_value_without_a_terminal_names_the_field(make_api, tmp_path):
@@ -495,79 +474,6 @@ def test_a_missing_value_without_a_terminal_names_the_field(make_api, tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_an_unchanged_hostname_is_not_re_checked(make_api, tmp_path):
-    """The platform's check runs without `exclude_deployment_id`, so
-    re-checking a name we already hold reports `in_use` against ourselves."""
-    platform = Platform(reads=[deployment(hostname="myapp-erik.freepod.app")])
-    project_at(
-        tmp_path,
-        values={"hostname": "myapp-erik.freepod.app"},
-        pointer={"id": deployment()["id"], "name": "custom-d8dtx4"},
-    )
-    api, _, _ = make_api(platform)
-
-    preflight(api, "prod", root=tmp_path, echo=lambda _m: None)
-
-    assert platform.hostname_checks == []
-
-
-def test_a_changed_hostname_is_checked_before_packing(make_api, tmp_path):
-    platform = Platform(
-        reads=[
-            deployment(hostname="old.freepod.eu"),
-            deployment(hostname="new.freepod.eu", generation=4),
-        ],
-        update=deployment(status="provisioning", generation=4, hostname="new.freepod.eu"),
-    )
-    project_at(
-        tmp_path,
-        values={"hostname": "new.freepod.eu"},
-        pointer={"id": deployment()["id"], "name": "custom-d8dtx4"},
-    )
-
-    run(make_api, platform, tmp_path)
-
-    assert platform.hostname_checks == ["new.freepod.eu"]
-    assert platform.index_of("GET", "/api/hostnames/.+") < platform.index_of(
-        "POST", "/api/artifacts"
-    )
-
-
-def test_an_unusable_changed_hostname_stops_the_deploy(make_api, tmp_path):
-    platform = Platform(
-        reads=[deployment(hostname="old.freepod.eu")],
-        hostname_usable=False,
-        hostname_reason="in_use",
-    )
-    project_at(
-        tmp_path,
-        values={"hostname": "taken.freepod.eu"},
-        pointer={"id": deployment()["id"], "name": "custom-d8dtx4"},
-    )
-
-    with pytest.raises(FreepodError) as raised:
-        run(make_api, platform, tmp_path)
-
-    assert "already taken by another deployment" in str(raised.value)
-    assert "/api/artifacts" not in platform.paths()
-
-
-def test_a_bare_label_is_submitted_as_a_label(make_api, tmp_path):
-    """The platform completes a bare label beneath the account's handle; the
-    client neither builds the name nor second-guesses it."""
-    platform = Platform(
-        create=deployment(status="provisioning", generation=1, hostname="myapp-erik.freepod.app"),
-        reads=[deployment(status="ready", generation=1, hostname="myapp-erik.freepod.app")],
-    )
-    project_at(tmp_path, values={"hostname": "MyApp"})
-
-    live = run(make_api, platform, tmp_path)
-
-    assert platform.hostname_checks == ["myapp"]
-    assert platform.bodies["create"]["user_values_json"]["hostname"] == "myapp"
-    assert live == "https://myapp-erik.freepod.app"
-
-
 def test_an_unchanged_bare_label_is_not_rechecked(make_api, tmp_path):
     platform = Platform(
         reads=[
@@ -587,61 +493,14 @@ def test_an_unchanged_bare_label_is_not_rechecked(make_api, tmp_path):
     assert platform.hostname_checks == []
 
 
-def test_a_custom_domain_is_left_alone(make_api, tmp_path):
-    platform = Platform(
-        create=deployment(status="provisioning", generation=1, hostname="photos.example.com"),
-        reads=[deployment(status="ready", generation=1, hostname="photos.example.com")],
-    )
-    project_at(tmp_path, values={"hostname": "photos.example.com"})
-
-    run(make_api, platform, tmp_path)
-
-    assert platform.hostname_checks == ["photos.example.com"]
-    assert platform.bodies["create"]["user_values_json"]["hostname"] == "photos.example.com"
-
-
-def test_a_hostname_is_lowercased_before_it_is_submitted(make_api, tmp_path):
-    """The platform lowercases what it stores, so an uppercased value in the
-    file would make every subsequent comparison a false difference."""
-    platform = Platform(
-        reads=[
-            deployment(status="ready", generation=3, hostname="myapp-erik.freepod.app"),
-            deployment(status="ready", generation=4, hostname="myapp-erik.freepod.app"),
-        ],
-        update=deployment(status="provisioning", generation=4),
-    )
-    project_at(
-        tmp_path,
-        values={"hostname": "MyApp-Erik.Freepod.APP"},
-        pointer={"id": deployment()["id"], "name": "custom-d8dtx4"},
-    )
-
-    run(make_api, platform, tmp_path)
-
-    assert platform.bodies["update"]["user_values_json"]["hostname"] == "myapp-erik.freepod.app"
-    assert platform.hostname_checks == []
-
-
-def test_a_first_deploy_checks_its_hostname(make_api, tmp_path):
-    """No deployment means the name is new, whatever `init` concluded earlier."""
-    platform = Platform()
-    project_at(tmp_path)
-    api, _, _ = make_api(platform)
-
-    preflight(api, "prod", root=tmp_path, echo=lambda _m: None)
-
-    assert platform.hostname_checks == ["myapp-erik.freepod.app"]
-
-
 # --------------------------------------------------------------------------
 # Cross-environment deploys
 # --------------------------------------------------------------------------
 
 
-def test_a_deploy_to_another_environment_needs_recreate(make_api, tmp_path):
+def test_a_deploy_to_another_environment_names_init_force(make_api, tmp_path):
     """The recorded deployment is minted on the file's environment and cannot
-    be reached from the target one, so pointing the project elsewhere needs
-    the same confirmation as discarding it."""
+    be reached from the target one."""
     platform = Platform()
     project_at(
         tmp_path, env="dev", pointer={"id": "40bd8dea-54f3-430d", "name": "custom-dev123"}
@@ -653,45 +512,9 @@ def test_a_deploy_to_another_environment_needs_recreate(make_api, tmp_path):
 
     message = str(raised.value)
     assert "'dev'" in message and "'prod'" in message
-    assert "--recreate" in message
+    assert "freepod init --force" in message
     # Nothing was read from the platform: the file already answers.
     assert platform.calls == []
-
-
-def test_recreate_points_the_project_at_the_target_environment(make_api, tmp_path):
-    """The old deployment keeps running; the file follows the new pointer,
-    environment and all, in the same write."""
-    platform = Platform(
-        create=deployment(status="provisioning", generation=1),
-        reads=[deployment(status="ready", generation=1)],
-    )
-    project_at(
-        tmp_path, env="dev", pointer={"id": "40bd8dea-54f3-430d", "name": "custom-dev123"}
-    )
-
-    run(make_api, platform, tmp_path, recreate=True)
-
-    recorded = load(tmp_path)
-    assert recorded.env == "prod"
-    assert recorded.deployment_id == deployment()["id"]
-
-
-def test_a_deploy_to_another_environment_without_a_pointer_starts_fresh(
-    make_api, tmp_path
-):
-    """No recorded deployment means nothing is orphaned: the file simply
-    follows the pointer it gains."""
-    platform = Platform(
-        create=deployment(status="provisioning", generation=1),
-        reads=[deployment(status="ready", generation=1)],
-    )
-    project_at(tmp_path, env="dev")
-
-    run(make_api, platform, tmp_path)
-
-    recorded = load(tmp_path)
-    assert recorded.env == "prod"
-    assert recorded.deployment_id == deployment()["id"]
 
 
 # --------------------------------------------------------------------------
@@ -733,87 +556,59 @@ def test_a_product_with_no_plans_at_all_is_reported_as_a_platform_problem(make_a
     assert "publishes no plans" in str(raised.value)
 
 
-def test_nothing_is_created_when_no_free_plan_exists(make_api, tmp_path):
-    platform = Platform(plans=[plan(name="Pro", price_cents=900)])
-    project_at(tmp_path)
-
-    with pytest.raises(FreepodError):
-        run(make_api, platform, tmp_path)
-
-    assert "POST" not in [m for m, p in platform.calls if p == "/api/users/7/deployments"]
-
-
-def test_no_free_plan_is_refused_before_a_build_is_spent(make_api, tmp_path):
-    """An instance with no free plan refuses every time, so discovering it
-    after the build is a four-minute wait for a foregone conclusion. Read at
-    preflight, and only when a deployment has to be created."""
-    platform = Platform(plans=[])
-    project_at(tmp_path)
-
-    with pytest.raises(FreepodError) as raised:
-        run(make_api, platform, tmp_path)
-
-    assert "publishes no plans" in str(raised.value)
-    assert "/api/artifacts" not in platform.paths()
-    assert f"/api/users/7/builds" not in platform.paths()
-
-
-def test_plans_are_not_read_when_a_deployment_already_exists(make_api, tmp_path):
-    """An update reuses the deployment's subscription; the plan is settled."""
-    platform = Platform(
-        reads=[
-            deployment(status="ready", generation=3),
-            deployment(status="ready", generation=4),
-        ],
-        update=deployment(status="provisioning", generation=4),
-    )
-    project_at(tmp_path, pointer={"id": deployment()["id"], "name": "custom-d8dtx4"})
-
-    run(make_api, platform, tmp_path)
-
-    assert not any(p.endswith("/plans") for p in platform.paths())
-
-
 # --------------------------------------------------------------------------
 # First deploy (tasks 10.5, 10.6)
 # --------------------------------------------------------------------------
 
 
 def _first_deploy():
+    """A deployment `freepod init` created moments ago, still provisioning."""
     return Platform(
-        create=deployment(id="new-id-1", name="custom-fresh", status="provisioning", generation=1),
-        reads=[deployment(id="new-id-1", status="ready", generation=1)],
+        reads=[
+            deployment(status="provisioning", generation=1),
+            deployment(status="ready", generation=1),
+        ],
     )
 
 
-def test_a_first_deploy_creates_then_builds_then_releases(make_api, tmp_path):
-    """A build belongs to a deployment, so the deployment has to exist first."""
+def test_the_first_deploy_waits_out_provisioning_then_releases(make_api, tmp_path):
     platform = _first_deploy()
     project_at(tmp_path)
 
     run(make_api, platform, tmp_path)
 
-    create = platform.index_of("POST", "/api/users/7/deployments")
-    build = platform.index_of("POST", "/api/users/7/deployments/new-id-1/builds")
-    update = platform.index_of("PUT", "/api/users/7/deployments/new-id-1")
-    assert create < platform.index_of("POST", "/api/artifacts") < build < update
-    assert [c for c in platform.calls if c == ("POST", "/api/users/7/deployments")] == [
-        ("POST", "/api/users/7/deployments")
+    reads = [
+        i for i, (method, path) in enumerate(platform.calls)
+        if method == "GET" and "/deployments/" in path
     ]
+    update = platform.index_of("PUT", r"/api/users/7/deployments/.*")
+    assert len([i for i in reads if i < update]) >= 2
 
 
-def test_the_creation_carries_no_image_and_no_build(make_api, tmp_path):
-    """The placeholder serves until the first build is released."""
+def test_the_release_carries_the_file_and_the_build_in_one_update(make_api, tmp_path):
     platform = _first_deploy()
-    project_at(tmp_path)
+    project_at(tmp_path, values={"name": "Arkanoid", "auth": {"enabled": True}})
 
     run(make_api, platform, tmp_path)
 
-    body = platform.bodies["create"]
-    assert body["desired_template_id"] == 49
-    assert body["plan_template_id"] == 11
-    assert body["user_values_json"] == {"hostname": "myapp-erik.freepod.app"}
-    assert "build_id" not in body
+    body = platform.bodies["update"]
+    assert body["name"] == "Arkanoid"
+    assert body["managed_fields"] == ["auth", "name"]
+    assert body["user_values_json"]["auth"] == {"enabled": True}
+    assert body["user_values_json"]["image"] == IMAGE
+    assert body["desired_template_id"] == template()["id"]
+    assert body["build_id"] == "b-1"
+
+
+def test_an_unlinked_project_names_init_and_link_before_building(make_api, tmp_path):
+    platform = Platform()
+    project_at(tmp_path, pointer=None)
+
+    with pytest.raises(FreepodError) as raised:
+        run(make_api, platform, tmp_path)
+
+    assert "freepod init" in str(raised.value) and "freepod link" in str(raised.value)
+    assert "/api/artifacts" not in platform.paths()
 
 
 def test_the_first_release_carries_the_built_image(make_api, tmp_path):
@@ -828,44 +623,6 @@ def test_the_first_release_carries_the_built_image(make_api, tmp_path):
     }
 
 
-def test_the_pointer_is_written_before_anything_is_packed(make_api, tmp_path):
-    """A failed pack, upload or build must leave a deployment the next deploy reuses."""
-    seen = {}
-
-    class Watcher(Platform):
-        def __call__(self, request):
-            if request.url.path == "/api/artifacts":
-                seen.setdefault("file", json.loads((tmp_path / ".freepod.json").read_text()))
-            return super().__call__(request)
-
-    platform = Watcher(
-        create=deployment(id="new-id-1", name="custom-fresh", status="provisioning", generation=1),
-        reads=[deployment(id="new-id-1", status="ready", generation=1)],
-    )
-    project_at(tmp_path)
-
-    run(make_api, platform, tmp_path)
-
-    assert seen["file"]["deployment"] == {"id": "new-id-1", "name": "custom-fresh"}
-
-
-def test_a_failed_first_build_keeps_the_deployment_and_names_delete(make_api, tmp_path):
-    platform = Platform(
-        create=deployment(id="new-id-1", name="custom-fresh", status="provisioning", generation=1),
-        build_status="failed",
-    )
-    project_at(tmp_path)
-    said = []
-
-    with pytest.raises(BuildFailed):
-        run(make_api, platform, tmp_path, echo=said.append)
-
-    saved = json.loads((tmp_path / ".freepod.json").read_text())
-    assert saved["deployment"] == {"id": "new-id-1", "name": "custom-fresh"}
-    assert any("freepod delete" in line and "custom-fresh" in line for line in said)
-    assert not any(method == "PUT" for method, _ in platform.calls)
-
-
 def test_a_failed_build_of_an_existing_deployment_says_nothing_about_delete(make_api, tmp_path):
     platform = Platform(build_status="failed")
     project_at(tmp_path, pointer={"id": deployment()["id"], "name": "custom-d8dtx4"})
@@ -876,42 +633,6 @@ def test_a_failed_build_of_an_existing_deployment_says_nothing_about_delete(make
 
     assert not any("freepod delete" in line for line in said)
     assert "create" not in platform.bodies
-
-
-def test_the_pointer_is_written_before_the_rollout_is_awaited(make_api, tmp_path):
-    """Task 10.6. A deployment that exists but is not recorded is one the
-    project can never address again."""
-    created = deployment(id="new-id-1", name="custom-fresh", status="provisioning", generation=1)
-    seen = {}
-
-    class Watcher(Platform):
-        def __call__(self, request):
-            path = request.url.path
-            if request.method == "GET" and re.fullmatch(r"/api/users/\d+/deployments/.+", path):
-                seen.setdefault(
-                    "file", json.loads((tmp_path / ".freepod.json").read_text())
-                )
-            return super().__call__(request)
-
-    platform = Watcher(create=created, reads=[deployment(id="new-id-1", generation=1)])
-    project_at(tmp_path)
-
-    run(make_api, platform, tmp_path)
-
-    assert seen["file"]["deployment"] == {"id": "new-id-1", "name": "custom-fresh"}
-
-
-def test_a_checkout_url_is_refused(make_api, tmp_path):
-    platform = Platform(
-        create=deployment(status="pending", generation=1),
-        checkout_url="https://pay.example/abc",
-    )
-    project_at(tmp_path)
-
-    with pytest.raises(FreepodError) as raised:
-        run(make_api, platform, tmp_path)
-
-    assert "only supports free plans" in str(raised.value)
 
 
 # --------------------------------------------------------------------------
@@ -1190,38 +911,6 @@ def test_a_release_to_a_deployment_under_maintenance_is_worth_retrying(make_api,
     assert "a re-run reuses it" in str(raised.value)
 
 
-def test_a_creation_conflict_is_read_the_same_way(make_api, tmp_path):
-    platform = Platform(
-        create_status=409, create_detail="Template is not the current canonical for this product"
-    )
-    project_at(tmp_path)
-
-    with pytest.raises(FreepodError) as raised:
-        run(make_api, platform, tmp_path)
-
-    assert "moved while this deploy was running" in str(raised.value)
-
-
-@pytest.mark.parametrize(
-    "detail",
-    [
-        "product template has an invalid values_schema_json: bad",
-        "user_values_json is invalid: 'x' is a required property",
-        "A deployment job is already queued or running",
-    ],
-)
-def test_a_refused_creation_claims_no_build(make_api, tmp_path, detail):
-    """The deployment is created before anything is built, so there is no image to reassure about."""
-    platform = Platform(create_status=409, create_detail=detail)
-    project_at(tmp_path)
-
-    with pytest.raises(FreepodError) as raised:
-        run(make_api, platform, tmp_path)
-
-    assert "built" not in str(raised.value) and "build succeeded" not in str(raised.value)
-    assert not any("/builds" in path for _method, path in platform.calls)
-
-
 # --------------------------------------------------------------------------
 # The rollout (task 10.10)
 # --------------------------------------------------------------------------
@@ -1296,14 +985,10 @@ def test_a_deployment_deleted_mid_rollout_is_reported(make_api):
 
 
 def test_a_ready_deployment_without_a_hostname_is_a_platform_condition(make_api, tmp_path):
-    platform = Platform(
-        create=deployment(status="provisioning", generation=1),
-        reads=[deployment(status="ready", generation=1, hostname=None)],
-    )
+    platform = Platform(reads=[deployment(status="ready", generation=1, hostname=None)])
     project_at(tmp_path)
     api, _, _ = make_api(platform)
     state = preflight(api, "prod", root=tmp_path, echo=lambda _m: None)
-    ensure_deployment(api, state, echo=lambda _m: None)
 
     with pytest.raises(FreepodError) as raised:
         release(api, state, IMAGE, poll=0, echo=lambda _m: None)
@@ -1314,50 +999,6 @@ def test_a_ready_deployment_without_a_hostname_is_a_platform_condition(make_api,
 # --------------------------------------------------------------------------
 # --recreate (task 10.12)
 # --------------------------------------------------------------------------
-
-
-def test_recreate_discards_the_pointer_and_creates_a_new_deployment(make_api, tmp_path):
-    platform = Platform(
-        create=deployment(id="new-id-2", name="custom-second", status="provisioning", generation=1),
-        reads=[deployment(id="new-id-2", status="ready", generation=1)],
-    )
-    project_at(tmp_path, pointer={"id": "40bd8dea-old", "name": "custom-old"})
-
-    run(make_api, platform, tmp_path, recreate=True)
-
-    assert "create" in platform.bodies
-    # The build and the release go to the new deployment, never the old one.
-    assert ("POST", "/api/users/7/deployments/new-id-2/builds") in platform.calls
-    assert [p for m, p in platform.calls if m == "PUT"] == ["/api/users/7/deployments/new-id-2"]
-    saved = json.loads((tmp_path / ".freepod.json").read_text())
-    assert saved["deployment"] == {"id": "new-id-2", "name": "custom-second"}
-
-
-def test_recreate_never_reads_the_discarded_deployment(make_api, tmp_path):
-    """The pointer is gone before preflight looks it up, so a deployment
-    already deleted cannot make `--recreate` — the fix for exactly that — fail."""
-    platform = Platform(deployment_missing=True)
-    project_at(tmp_path, pointer={"id": "40bd8dea-old", "name": "custom-old"})
-    api, _, _ = make_api(platform)
-
-    state = preflight(api, "prod", root=tmp_path, recreate=True, echo=lambda _m: None)
-
-    assert state.deployment is None
-    assert not any(p.startswith("/api/users/7/deployments/") for p in platform.paths())
-
-
-def test_recreate_does_not_persist_the_discard_until_the_new_deployment_exists(
-    make_api, tmp_path
-):
-    """A create that fails must not leave the file pointing at nothing."""
-    platform = Platform(create_status=409, create_detail="Deployment already exists")
-    project_at(tmp_path, pointer={"id": "40bd8dea-old", "name": "custom-old"})
-
-    with pytest.raises(FreepodError):
-        run(make_api, platform, tmp_path, recreate=True)
-
-    saved = json.loads((tmp_path / ".freepod.json").read_text())
-    assert saved["deployment"] == {"id": "40bd8dea-old", "name": "custom-old"}
 
 
 # --------------------------------------------------------------------------
@@ -1385,20 +1026,15 @@ def test_the_build_log_and_the_address_are_kept_apart(make_api, tmp_path):
 # --------------------------------------------------------------------------
 
 
-def test_a_first_release_names_the_build_that_produced_its_image(make_api, tmp_path):
+def test_the_release_names_the_build_that_produced_its_image(make_api, tmp_path):
     """Without this every release records a null build and the chain from
     source archive through build to running pod is broken at its last link.
-
-    The platform stores it on the *release*, never on the deployment, so it
-    rides as a plain request field on the update. The creation names none: no
-    build can belong to a deployment that does not exist yet.
-    """
+    The platform stores it on the *release*, so it rides on the update."""
     platform = _first_deploy()
     project_at(tmp_path, values={"hostname": "myapp-erik.freepod.app"})
 
     run(make_api, platform, tmp_path)
 
-    assert "build_id" not in platform.bodies["create"]
     assert platform.bodies["update"]["build_id"] == "b-1"
     # And the image it names is the one that build produced.
     assert platform.bodies["update"]["user_values_json"]["image"] == IMAGE
@@ -1430,7 +1066,6 @@ def test_releasing_without_a_build_sends_no_build_reference(make_api, tmp_path):
     project_at(tmp_path, values={"hostname": "myapp-erik.freepod.app"})
     api, _, _ = make_api(platform)
     state = preflight(api, "prod", root=tmp_path, echo=lambda _m: None)
-    ensure_deployment(api, state, echo=lambda _m: None)
 
     release(api, state, IMAGE, poll=0, echo=lambda _m: None)
 

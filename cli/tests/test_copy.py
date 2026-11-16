@@ -108,7 +108,7 @@ def test_the_long_form_names_this_projects_deployment(
     ready(tmp_path, monkeypatch, stub_api)
 
     with pytest.raises(SystemExit) as exc:
-        main(["cp", f"{DEPLOYMENT_NAME}:/app/out.log", "out.log"])
+        main(["cp", f"{DEPLOYMENT_ID}:/app/out.log", "out.log"])
     assert exc.value.code == EXIT_OK
     assert '"/app/out.log"' in capture_transfer["script"]
 
@@ -160,7 +160,7 @@ def test_a_marked_path_naming_another_deployment_is_refused(
     assert main(["cp", "some-other-app-9x8y7z:/app/out.log", "out.log"]) == EXIT_USAGE
     err = capsys.readouterr().err
     assert "some-other-app-9x8y7z" in err
-    assert DEPLOYMENT_NAME in err
+    assert DEPLOYMENT_ID in err
     assert "args" not in capture_transfer
 
 

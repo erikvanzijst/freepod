@@ -37,8 +37,8 @@ public final class AppContext {
     private AppContext() {}
 
     /**
-     * Exposed to templates as {@code freepodApp}. {@code name} is a catalog app's
-     * own name; an app without one (custom) has only its {@code host}.
+     * Exposed to templates as {@code freepodApp}. {@code name} is the deployment's
+     * own name; an app whose name app-auth could not read has only its {@code host}.
      * {@code label} is whichever of the two prose should use.
      */
     public static final class App {

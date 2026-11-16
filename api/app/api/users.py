@@ -315,7 +315,7 @@ def get_user(
         400: {"description": "`user_values_json` fails validation against the template schema, the plan template is invalid, or (code `image_not_retained`) the values carry an image that is no longer retained."},
         403: {"description": "Caller may only create deployments for their own account."},
         404: {"description": "The user or desired template does not exist."},
-        409: {"description": "The desired template is not the product's current version, the chosen hostname is already in use, an operation is already in progress, or a duplicate deployment exists."},
+        409: {"description": "The desired template is not the product's current version, the chosen hostname or (code `name_in_use`) name is already in use, an operation is already in progress, or a duplicate deployment exists."},
     },
 )
 def create_deployment(
@@ -347,9 +347,14 @@ def create_deployment(
       (case-insensitive), if present, is normalized to lowercase and used as the
       deployment hostname.
 
+    - **payload.name**, **payload.description**, **payload.icon** — the
+      deployment's own identity, all optional. Without a name it is named after
+      its product, suffixed ` 2`, ` 3`... while that is taken.
+    - **payload.managed_fields** — the top-level keys a project file manages.
+
     ## Behavior
-    - The deployment's `name` is generated server-side and cannot be set by the
-      client.
+    - A name already in use is refused before any subscription or checkout is
+      created.
     - **Free plan** (`price_cents == 0`, or when payment is not enabled): the
       deployment is created in the `provisioning` state, provisioning begins
       immediately, and `checkout_url` is `null`.
@@ -360,7 +365,9 @@ def create_deployment(
     ## Errors
     - **400 Bad Request** — a var fails validation, or the plan template is
       invalid. Code `image_not_retained` — the values carry one of the owner's
-      images that is no longer retained; rebuild to deploy it.
+      images that is no longer retained; rebuild to deploy it. Codes
+      `invalid_name`, `invalid_description`, `invalid_icon` and
+      `invalid_managed_fields` — that identity field is refused.
     - **403 Forbidden** — creating a deployment for another account without
       administrator privileges.
     - **404 Not Found** — the user or desired template does not exist.
@@ -368,7 +375,8 @@ def create_deployment(
       taken together, fail the template's schema; the desired template is not
       the product's current version, the chosen hostname is already in use, an
       operation is already in progress, or a duplicate deployment already
-      exists.
+      exists. Code `name_in_use` — the owner has a live deployment of that
+      name.
     """
     payload.user_id = user_id
     result = deployment_service.create_deployment(
@@ -652,13 +660,13 @@ def get_deployment_bucket(
 @router.put(
     "/{user_id}/deployments/{deployment_id}",
     response_model=DeploymentRead,
-    summary="Update (upgrade) a deployment",
-    response_description="The updated deployment, now re-entering provisioning.",
+    summary="Update a deployment",
+    response_description="The updated deployment.",
     responses={
         400: {"description": "`user_values_json` fails validation against the target template schema, `build_id` does not belong to the deployment, or (code `image_not_retained`) a referenced image is no longer retained."},
         403: {"description": "Caller may only update their own deployments."},
         404: {"description": "No such deployment exists for this user, or the target template does not exist."},
-        409: {"description": "Downgrade attempt, cross-product template, an operation is already in progress, the deployment is not in a ready/error state, or (code `under_maintenance`) the platform holds it for maintenance."},
+        409: {"description": "Downgrade attempt, cross-product template, an operation is already in progress, a releasing update to a deployment not in a ready/error state, a deployment being deleted, (code `under_maintenance`) the platform holds it for maintenance, (code `name_in_use`) the name is taken, or (code `managed_by_project_file`) a managed field would change."},
     },
 )
 def update_deployment(
@@ -668,7 +676,7 @@ def update_deployment(
     current_user: UserORM = Depends(require_self),
     session: Session = Depends(get_session),
 ) -> DeploymentRead:
-    """Update a deployment, typically to upgrade its template version.
+    """Update a deployment's configuration, template or identity.
 
     ## Authorization
     You may only update your own deployments; administrators may update any
@@ -679,20 +687,28 @@ def update_deployment(
       `deployment.user_id`, **overriding** any value in the body.
     - **deployment_id** (path) — UUID of the deployment. Written onto
       `deployment.id`, **overriding** any value in the body.
-    - **deployment.desired_template_id** — the template version to move to. Must
-      be greater than or equal to the current version (upgrades only) and belong
-      to the same product.
+    - **deployment.desired_template_id** — the template version to move to,
+      defaulting to the current one. Must be greater than or equal to the
+      current version (upgrades only) and belong to the same product.
     - **deployment.user_values_json** — new configuration; when omitted the
       existing stored values are reused. When provided it is validated against
       the target template schema, and the `hostname`-titled field is re-derived.
     - **deployment.build_id** — the build this release deploys. When omitted,
       the applied release's build carries over as long as its image is still
       among the user values; an explicit `null` records no build.
+    - **deployment.name**, **deployment.description**, **deployment.icon** —
+      the deployment's identity. Omitted, each keeps its value; a null
+      `description` or `icon` clears it.
+    - **deployment.managed_fields** — the keys a project file manages. Carried,
+      it sets the list; without it, an update may not change a managed value.
 
     ## Behavior
-    The update is accepted only when the deployment is currently in the `ready`
-    or `error` state; the deployment then returns to the `provisioning` state
-    while the change is applied.
+    An update releases, and the deployment returns to `provisioning`, when its
+    chart values differ from the stored ones, it names another template or a
+    build, it carries vars or vars are staged, or the deployment is in
+    `error`. A releasing update is accepted only in the `ready` or `error`
+    state. Any other update changes only the deployment's row, in any state but
+    `deleting`, and creates no release.
 
     ## Errors
     - **400 Bad Request** — a var fails validation, or `build_id` names
@@ -700,7 +716,8 @@ def update_deployment(
       the named build's image, or one of the owner's images in the values, is
       no longer retained: only the running image, the one being rolled out,
       the two images before them and recent builds are kept. Rebuild to
-      deploy it.
+      deploy it. Codes `invalid_name`, `invalid_description`, `invalid_icon`
+      and `invalid_managed_fields` — that identity field is refused.
     - **403 Forbidden** — updating another account's deployment without
       administrator privileges.
     - **404 Not Found** — no such deployment exists for this user, or the target
@@ -708,10 +725,13 @@ def update_deployment(
     - **409 Conflict** — the effective `user_values_json`, or it and the
       resulting vars taken together, fail the target template's schema; the
       target version is older than the current one, the target template belongs
-      to a different product, an operation is already in progress, or the
-      deployment is not in a `ready`/`error` state. Code `under_maintenance`
-      — the platform holds the deployment stopped for maintenance; retry once
-      it is lifted.
+      to a different product, an operation is already in progress, a releasing
+      update finds the deployment not in a `ready`/`error` state, or the
+      deployment is being deleted. Code `under_maintenance` — the platform
+      holds the deployment stopped for maintenance; retry once it is lifted.
+      Code `name_in_use` — the owner has another live deployment of that name.
+      Code `managed_by_project_file` — the update carries no
+      `managed_fields` and would change a field the project file manages.
     """
     deployment.user_id = user_id
     deployment.id = deployment_id

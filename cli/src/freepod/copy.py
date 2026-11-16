@@ -69,7 +69,7 @@ def direction(source: str, destination: str, deployment: str) -> Tuple[str, str,
             "neither path names the deployment, so this is a local copy your "
             "own shell already does.\n"
             "  Mark the deployment's side with ':', as in "
-            f"`freepod cp report.csv :/app/report.csv`."
+            "`freepod cp report.csv :/app/report.csv`."
         )
     if remote_source is not None:
         return destination, remote_source, False

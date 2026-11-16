@@ -171,9 +171,9 @@ func (f *fixture) deploymentOf(productID int, hostname, status, values, system s
 	tx.Exec(ctx, `SET CONSTRAINTS ALL DEFERRED`)
 	name := fmt.Sprintf("d%d", time.Now().UnixNano())
 	if _, err := tx.Exec(ctx, `INSERT INTO deployment
-		  (id, user_id, desired_template_id, desired_release_id, applied_release_id, name, namespace,
-		   status, generation, subscription_id, hostname, created_at)
-		VALUES ($1, $2, $3, $4, $4, $5, $5, $6, 1, $7, $8, now())`,
+		  (id, user_id, desired_template_id, desired_release_id, applied_release_id, name, display_name,
+		   namespace, status, generation, subscription_id, hostname, created_at)
+		VALUES ($1, $2, $3, $4, $4, $5, $5, $5, $6, 1, $7, $8, now())`,
 		id, f.userID, templateID, releaseID, name, status, subID, hostname); err != nil {
 		f.t.Fatal(err)
 	}
@@ -543,10 +543,11 @@ func TestRoleIsLeastPrivilege(t *testing.T) {
 	}
 
 	allowed := map[string]string{
-		"read the owner":        `SELECT d.user_id, u.email, u.keycloak_subject FROM deployment d JOIN "user" u ON u.id = d.user_id LIMIT 1`,
-		"read a product's name": `SELECT t.product_id, p.name, p.slug, p.rel_icon_path FROM product_template_version t JOIN product p ON p.id = t.product_id LIMIT 1`,
-		"read access entries":   `SELECT id, email, subject, name, created_at, bound_at FROM app_access_entry LIMIT 1`,
-		"bind an access entry":  `UPDATE app_access_entry SET subject = subject, name = name, bound_at = bound_at WHERE false`,
+		"read the owner":               `SELECT d.user_id, u.email, u.keycloak_subject FROM deployment d JOIN "user" u ON u.id = d.user_id LIMIT 1`,
+		"read a product's name":        `SELECT t.product_id, p.name, p.slug, p.rel_icon_path FROM product_template_version t JOIN product p ON p.id = t.product_id LIMIT 1`,
+		"read a deployment's identity": `SELECT display_name, description, rel_icon_path FROM deployment LIMIT 1`,
+		"read access entries":          `SELECT id, email, subject, name, created_at, bound_at FROM app_access_entry LIMIT 1`,
+		"bind an access entry":         `UPDATE app_access_entry SET subject = subject, name = name, bound_at = bound_at WHERE false`,
 		"write sign-ins": `INSERT INTO app_auth_sign_in (keycloak_sid, deployment_id, subject, sid, signed_in_at)
 			VALUES ('kc-` + f.unique + `', '` + dep + `', 's', 'sid', now())
 			ON CONFLICT (keycloak_sid, deployment_id) DO UPDATE SET signed_in_at = excluded.signed_in_at`,
@@ -883,20 +884,27 @@ func TestSignOutRetention(t *testing.T) {
 	}
 }
 
-func TestProduct(t *testing.T) {
+func TestIdentity(t *testing.T) {
 	f := newFixture(t)
 	st := f.store(rolePool(t))
 	ctx := context.Background()
-	dep := f.deployment("p-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
-	f.exec(`UPDATE product SET rel_icon_path = 'icons/t.png' WHERE id = $1`, f.productID)
-	got, err := st.product(ctx, dep)
-	want := product{Name: "app-auth-test-" + f.unique, Slug: "app-auth-test-" + f.unique, IconPath: "icons/t.png"}
-	if err != nil || got != want {
-		t.Fatalf("%+v, %v", got, err)
+	f.exec(`UPDATE product SET rel_icon_path = 'icons/p.png' WHERE id = $1`, f.productID)
+
+	inherits := f.deployment("p-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
+	f.exec(`UPDATE deployment SET display_name = 'Family photos' WHERE id = $1::uuid`, inherits)
+	if got, err := st.identity(ctx, inherits); err != nil || got != (appIdentity{Name: "Family photos", IconPath: "icons/p.png"}) {
+		t.Fatalf("without its own icon: %+v, %v", got, err)
 	}
-	other := f.deploymentOf(f.otherProductID, "q-"+f.unique+"-erik.freepod.app", "provisioned", authOn, "")
-	if got, err := st.product(ctx, other); err != nil || got != (product{Name: "app-auth-other-" + f.unique}) {
-		t.Fatalf("product without slug or icon: %+v, %v", got, err)
+
+	own := f.deployment("q-"+f.unique+"-erik.freepod.app", "provisioned", authOn)
+	f.exec(`UPDATE deployment SET display_name = 'Arkanoid', rel_icon_path = 'icons/d.png' WHERE id = $1::uuid`, own)
+	if got, err := st.identity(ctx, own); err != nil || got != (appIdentity{Name: "Arkanoid", IconPath: "icons/d.png"}) {
+		t.Fatalf("with its own icon: %+v, %v", got, err)
+	}
+
+	bare := f.deploymentOf(f.otherProductID, "r-"+f.unique+"-erik.freepod.app", "provisioned", authOn, "")
+	if got, err := st.identity(ctx, bare); err != nil || got.IconPath != "" || got.Name == "" {
+		t.Fatalf("no icon anywhere: %+v, %v", got, err)
 	}
 }
 

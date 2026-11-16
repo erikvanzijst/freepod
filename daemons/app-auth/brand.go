@@ -16,43 +16,40 @@ import (
 const (
 	brandParam    = "freepod_app"
 	brandKeyLabel = "freepod-app-context:v1"
-	// customSlug is the catalog product whose deployments carry the tenant's
-	// own code under one shared name, so they are shown by hostname instead.
-	customSlug = "custom"
 )
 
-// product is the catalog product a deployment runs, as far as branding needs it.
-type product struct {
+// appIdentity is how a deployment presents itself: its own name, and its own
+// icon or else its product's (deployment-identity).
+type appIdentity struct {
 	Name     string
-	Slug     string
 	IconPath string // under the platform's /api/static/
 }
 
-// appBrand is what Keycloak may say about the app: a catalog app by its own
-// name and icon, any other by its hostname alone.
+// appBrand is what Keycloak may say about the app: its name and icon, or its
+// hostname alone when the deployment's identity could not be read.
 type appBrand struct {
 	Name string `json:"name,omitempty"`
 	Host string `json:"host,omitempty"`
 	Icon string `json:"icon,omitempty"`
 }
 
-// brand looks up the deployment's product for Keycloak. Branding is never
-// worth a failed sign-in: without the product, the app is shown by hostname.
+// brand looks up the deployment's identity for Keycloak. Branding is never
+// worth a failed sign-in: without it, the app is shown by hostname.
 func (b *broker) brand(ctx context.Context, deploymentID, host string) appBrand {
-	p, err := b.store.product(ctx, deploymentID)
+	id, err := b.store.identity(ctx, deploymentID)
 	if err != nil {
 		b.log.Warn("signing in without the app's name", "deployment", deploymentID, "err", err)
 	}
-	return newAppBrand(host, p, b.platformURL)
+	return newAppBrand(host, id, b.platformURL)
 }
 
-func newAppBrand(host string, p product, platformURL string) appBrand {
-	if p.Name == "" || p.Slug == customSlug {
+func newAppBrand(host string, id appIdentity, platformURL string) appBrand {
+	if id.Name == "" {
 		return appBrand{Host: host}
 	}
-	b := appBrand{Name: p.Name, Host: host}
-	if p.IconPath != "" && platformURL != "" {
-		b.Icon = platformURL + "/api/static/" + p.IconPath
+	b := appBrand{Name: id.Name, Host: host}
+	if id.IconPath != "" && platformURL != "" {
+		b.Icon = platformURL + "/api/static/" + id.IconPath
 	}
 	return b
 }

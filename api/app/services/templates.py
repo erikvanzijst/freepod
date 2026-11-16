@@ -17,7 +17,7 @@ from app.models import (
     UserORM,
 )
 from app.services.errors import NotFoundException, IntegrityException, ValidationException
-from app.services.template_values import check_var_markers, derive_projections
+from app.services.template_values import check_reserved_keys, check_var_markers, derive_projections
 from app.services.products import _assert_deletable, _assert_mutable
 
 
@@ -66,6 +66,7 @@ def _check_values_schema(schema: dict[str, Any] | None) -> None:
     except SchemaError as exc:
         raise ValidationException(f"values_schema_json is not a valid JSON Schema: {exc.message}") from exc
     check_var_markers(schema)
+    check_reserved_keys(schema)
 
     chart = derive_projections(schema).chart
     if chart is not None and chart.get("additionalProperties") is not False:

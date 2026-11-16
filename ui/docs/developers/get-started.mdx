@@ -49,7 +49,7 @@ Every deployment's hostname ends in your account's handle, for example `alice` i
 
 The handle is 2 to 20 lowercase letters and digits. It cannot be changed or released later.
 
-**Not now** postpones the choice. Until a handle is chosen, `freepod deploy` stops with an error that links to the dashboard. The choice is also available under **Settings → Handle**.
+**Not now** postpones the choice. Until a handle is chosen, `freepod init` stops with an error that links to the dashboard. The choice is also available under **Settings → Handle**.
 
 ## 4. Initialize the project
 
@@ -59,11 +59,9 @@ In the root of the project:
 freepod init
 ```
 
-`init` asks for a hostname and suggests one based on the directory name. A name without a dot is an app name, which Freepod completes with your handle: `myapp` becomes `myapp-alice.freepod.app`. A name that contains a dot is used as entered, for a [custom domain](hostnames-and-custom-domains.md).
+`init` asks for the app's name, offering the directory's, and then for its hostname, offering the name. A hostname without a dot is an app name, which Freepod completes with your handle: `myapp` becomes `myapp-alice.freepod.app`. A hostname that contains a dot is used as entered, for a [custom domain](hostnames-and-custom-domains.md). `freepod init --name "My app" --hostname myapp` answers both without prompts.
 
-`init` writes `.freepod.json`. Commit it: it records the hostname and, after the first deploy, which deployment the project belongs to. Every later `freepod deploy` from a checkout of the project, on any machine, updates that same deployment.
-
-`init` creates nothing on the platform.
+`init` creates the app, which serves a placeholder page until the first deploy, and writes `.freepod.json`. Commit it: it records which deployment the project belongs to, so every later `freepod deploy` from a checkout of the project, on any machine, updates that same app. A checkout without the file can use `freepod link` to point at the app instead of creating another.
 
 ## 5. Deploy
 

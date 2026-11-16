@@ -1,14 +1,9 @@
-import { useCallback, useRef, useState } from 'react'
-import {
-  Avatar,
-  Badge,
-  Button,
-  Stack,
-  TextField,
-} from '@mui/material'
-import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate'
+import { useState } from 'react'
+import { Button, Stack, TextField } from '@mui/material'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createProduct } from '../api/endpoints'
+import { IconPicker } from './image/IconPicker'
+import { useObjectUrl } from './image/useObjectUrl'
 
 interface NewProductHeaderProps {
   onCreated: (productId: number) => void
@@ -24,8 +19,6 @@ export function NewProductHeader({ onCreated, onError }: NewProductHeaderProps) 
   const [category, setCategory] = useState('')
   const [replaces, setReplaces] = useState('')
   const [iconFile, setIconFile] = useState<File | null>(null)
-  const [iconPreview, setIconPreview] = useState<string | null>(null)
-  const iconInputRef = useRef<HTMLInputElement>(null)
 
   const createProductMutation = useMutation({
     mutationFn: () =>
@@ -47,32 +40,10 @@ export function NewProductHeader({ onCreated, onError }: NewProductHeaderProps) 
     onError,
   })
 
-  const handleIconClick = useCallback(() => {
-    iconInputRef.current?.click()
-  }, [])
-
-  const handleIconChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0]
-      if (!file) return
-      if (iconInputRef.current) iconInputRef.current.value = ''
-      if (!file.type.startsWith('image/')) return
-      setIconFile(file)
-      const url = URL.createObjectURL(file)
-      setIconPreview(url)
-    },
-    [],
-  )
+  const iconPreview = useObjectUrl(iconFile)
 
   return (
     <Stack spacing={1} sx={{ p: 2 }}>
-      <input
-        ref={iconInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        onChange={handleIconChange}
-      />
       <Stack direction="row" spacing={2} alignItems="flex-start">
         <Stack spacing={0.5} sx={{ minWidth: 0, flex: 1 }}>
           <TextField
@@ -126,32 +97,11 @@ export function NewProductHeader({ onCreated, onError }: NewProductHeaderProps) 
             </Button>
           </Stack>
         </Stack>
-        <Badge
-          overlap="circular"
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-          badgeContent={
-            <AddPhotoAlternateIcon
-              sx={{
-                width: 18,
-                height: 18,
-                bgcolor: 'primary.main',
-                color: 'white',
-                borderRadius: '50%',
-                p: 0.3,
-              }}
-            />
-          }
-          sx={{ cursor: 'pointer', flexShrink: 0 }}
-          onClick={handleIconClick}
-        >
-          <Avatar
-            src={iconPreview || undefined}
-            variant="rounded"
-            sx={{ width: 64, height: 64, bgcolor: 'action.hover' }}
-          >
-            {name.trim() ? name.trim()[0].toUpperCase() : '?'}
-          </Avatar>
-        </Badge>
+        <IconPicker
+          src={iconPreview}
+          fallback={name.trim() ? name.trim()[0].toUpperCase() : '?'}
+          onPick={setIconFile}
+        />
       </Stack>
     </Stack>
   )

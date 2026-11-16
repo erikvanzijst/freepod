@@ -1,18 +1,22 @@
+"""`freepod init`: name, hostname, create, record the pointer (cli-init)."""
+
 from __future__ import annotations
 
 import json
 
+import click
 import httpx
 import pytest
 
 from freepod import EXIT_OK, EXIT_USAGE
 from freepod.auth import store_refresh_token
 from freepod.cli import main
-from freepod.project import PROJECT_FILE, load
+from freepod.project import PROJECT_FILE
 
 from conftest import json_response
 
 ME = {"id": 7, "email": "erik@example.com", "is_admin": False}
+DEV_SCHEMA = "https://dev.freepod.eu/api/products/custom/project-schema"
 
 TEMPLATE = {
     "id": 49,
@@ -27,6 +31,7 @@ TEMPLATE = {
                 "description": "The fully qualified hostname for the app.",
             },
             "image": {"type": "string", "pattern": "^$|^[0-9]+@sha256:[a-f0-9]{64}$"},
+            "auth": {"type": "object"},
         },
         "required": ["hostname"],
         "additionalProperties": False,
@@ -38,44 +43,75 @@ OTHER_PRODUCTS = [
     {"id": 2, "slug": "nextcloud", "name": "Nextcloud"},
     {"id": 1, "slug": None, "name": "Hello World"},
 ]
+FREE_PLAN = {"id": 3, "name": "Free", "template": {"id": 30, "price_cents": 0}}
+
+
+class Platform:
+    """A scripted dev platform: products, plans, terms, handle, hostnames,
+    deployments, and the creates it receives."""
+
+    def __init__(self, *, products=None, verdicts=None, deployments=None, creates=None, tos=True):
+        self.products = OTHER_PRODUCTS + [CUSTOM_PRODUCT] if products is None else products
+        self.verdicts = dict(verdicts or {})
+        self.deployments = list(deployments or [])
+        # Answers to successive creates: a dict is a refusal, None a success.
+        self.create_answers = list(creates or [])
+        self.tos = tos
+        self.created = []
+        self.checked = []
+        self.calls = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        path, method = request.url.path, request.method
+        self.calls.append((method, path))
+        if path == "/api/me":
+            return json_response(200, ME)
+        if path == "/api/products":
+            return json_response(200, self.products)
+        if path == "/api/products/12/plans":
+            return json_response(200, [FREE_PLAN])
+        if path == "/api/me/tos-acceptance":
+            return json_response(
+                200,
+                {
+                    "version": "2026-07-01" if self.tos else None,
+                    "accepted_at": "2026-07-02T00:00:00Z" if self.tos else None,
+                    "current_version": "2026-07-01",
+                },
+            )
+        if path == "/api/me/handle":
+            return json_response(
+                200,
+                {"handle": "erik", "suffix": "-erik.dev.freepod.app", "domain": "dev.freepod.app"},
+            )
+        if path.startswith("/api/hostnames/"):
+            label = path.rsplit("/", 1)[-1]
+            self.checked.append(label)
+            reason = self.verdicts.get(label)
+            return json_response(200, {"fqdn": label, "usable": reason is None, "reason": reason})
+        if path == "/api/users/7/deployments" and method == "GET":
+            return json_response(200, self.deployments)
+        if path == "/api/users/7/deployments" and method == "POST":
+            body = json.loads(request.content)
+            self.created.append(body)
+            refusal = self.create_answers.pop(0) if self.create_answers else None
+            if refusal is not None:
+                return json_response(409, refusal)
+            host = body["user_values_json"]["hostname"]
+            record = {
+                "id": f"new-{len(self.created)}",
+                "name": body["name"],
+                "hostname": host if "." in host else f"{host}-erik.dev.freepod.app",
+                "status": "provisioning",
+            }
+            return json_response(201, {"deployment": record})
+        return json_response(404, {"detail": "Not Found"})
 
 
 @pytest.fixture
-def dev_api(monkeypatch):
-    """Route the command's API client at a scripted dev-shaped platform."""
-
-    def install(*, products=None, hostname_verdicts=None, account=None):
-        products = OTHER_PRODUCTS + [CUSTOM_PRODUCT] if products is None else products
-        verdicts = list(hostname_verdicts) if hostname_verdicts else None
-        state = {"writes": []}
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            path = request.url.path
-            if request.method != "GET":
-                state["writes"].append((request.method, path))
-                return json_response(201, {})
-            if path == "/api/me":
-                return json_response(200, ME)
-            if path == "/api/products":
-                return json_response(200, products)
-            if path == "/api/me/handle":
-                return json_response(
-                    200,
-                    account
-                    if account is not None
-                    else {
-                        "handle": "erik",
-                        "suffix": "-erik.dev.freepod.app",
-                        "domain": "dev.freepod.app",
-                    },
-                )
-            if path.startswith("/api/hostnames/"):
-                fqdn = path.rsplit("/", 1)[-1]
-                reason = verdicts.pop(0) if verdicts else None
-                return json_response(
-                    200, {"fqdn": fqdn, "usable": reason is None, "reason": reason}
-                )
-            return json_response(404, {"detail": "Not Found"})
+def platform(monkeypatch):
+    def install(**kwargs):
+        scripted = Platform(**kwargs)
 
         from freepod.api import ApiClient
         from freepod.cli import Context
@@ -84,12 +120,12 @@ def dev_api(monkeypatch):
             return ApiClient(
                 self.env,
                 session,
-                client=httpx.Client(transport=httpx.MockTransport(handler)),
+                client=httpx.Client(transport=httpx.MockTransport(scripted)),
                 backoff_base=0,
             )
 
         monkeypatch.setattr(Context, "client", client)
-        return state
+        return scripted
 
     return install
 
@@ -99,16 +135,15 @@ def credential(monkeypatch):
     from freepod import auth
 
     store_refresh_token("dev", "freepod-cli-dev", "dev-refresh")
-    monkeypatch.setattr(
-        auth, "post_form", lambda url, fields, timeout=30: {"access_token": "at"}
-    )
+    monkeypatch.setattr(auth, "post_form", lambda url, fields, timeout=30: {"access_token": "at"})
 
 
 @pytest.fixture
 def answers(monkeypatch):
     """Script the answers; `None` accepts whatever the prompt offered.
 
-    Returns the list of values each prompt offered, in order.
+    Returns `(label, offered)` for each prompt, in order. Running out of
+    answers ends input, as a closed stdin would.
     """
 
     def install(*responses):
@@ -117,8 +152,8 @@ def answers(monkeypatch):
 
         def fake_prompt(text, default=None):
             if not queue:
-                raise AssertionError(f"unexpected prompt: {text}")
-            offered.append(default)
+                raise click.Abort()
+            offered.append((text.strip(), default))
             answer = queue.pop(0)
             return default if answer is None else answer
 
@@ -130,263 +165,386 @@ def answers(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def in_tmp_dir(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    return tmp_path
+    project = tmp_path / "arkanoid"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    return project
+
+
+def saved(root):
+    return json.loads((root / PROJECT_FILE).read_text())
+
+
+def init(*args):
+    return main(["--env", "dev", "init", *args])
 
 
 # --------------------------------------------------------------------------
-# Product resolution (task 7.1)
+# Creating and recording
 # --------------------------------------------------------------------------
 
 
-def test_init_writes_the_project_file(dev_api, credential, answers, in_tmp_dir, capsys):
-    dev_api()
-    answers("myapp")
-
-    assert main(["--env", "dev", "init"]) == EXIT_OK
-
-    project = load(in_tmp_dir)
-    assert project.env == "dev"
-    assert project.user_values == {"hostname": "myapp"}
-    assert project.deployment is None
-    capsys.readouterr()
-
-
-def test_a_plain_init_records_no_environment(
-    dev_api, credential, answers, in_tmp_dir, capsys
+def test_init_creates_the_deployment_and_records_only_the_pointer(
+    platform, credential, answers, in_tmp_dir, capsys
 ):
+    scripted = platform()
+    answers(None, None)
+
+    assert init() == EXIT_OK
+
+    [body] = scripted.created
+    assert body["name"] == "arkanoid"
+    assert body["user_values_json"] == {"hostname": "arkanoid"}
+    assert body["plan_template_id"] == 30
+    assert "managed_fields" not in body and "image" not in body["user_values_json"]
+    assert saved(in_tmp_dir) == {
+        "$schema": DEV_SCHEMA,
+        "version": 2,
+        "env": "dev",
+        "deployment": "new-1",
+    }
+    out, err = capsys.readouterr()
+    assert out.strip() == str(in_tmp_dir / PROJECT_FILE)
+    assert "https://arkanoid-erik.dev.freepod.app" in err
+    assert "provisioned in the background" in err
+
+
+def test_init_does_not_wait_for_provisioning(platform, credential, answers):
+    scripted = platform()
+    answers(None, None)
+
+    assert init() == EXIT_OK
+
+    reads_after_create = scripted.calls[
+        scripted.calls.index(("POST", "/api/users/7/deployments")) + 1 :
+    ]
+    assert reads_after_create == []
+
+
+def test_a_project_on_the_default_environment_names_none(platform, credential, answers, in_tmp_dir):
     store_refresh_token("prod", "freepod-cli-prod", "prod-refresh")
-    dev_api()
-    answers("myapp")
+    platform()
+    answers(None, None)
 
     assert main(["init"]) == EXIT_OK
 
-    document = json.loads((in_tmp_dir / PROJECT_FILE).read_text())
+    document = saved(in_tmp_dir)
     assert "env" not in document
-    assert load(in_tmp_dir).env == "prod"
-    assert "prod" not in capsys.readouterr().err
+    assert document["$schema"] == "https://freepod.eu/api/products/custom/project-schema"
 
 
-def test_a_non_default_environment_is_recorded(dev_api, credential, answers, in_tmp_dir, capsys):
-    dev_api()
-    answers("myapp")
+def test_an_agent_initializes_without_any_prompt(platform, credential, answers, in_tmp_dir):
+    scripted = platform()
+    offered = answers()
 
-    assert main(["--env", "dev", "init"]) == EXIT_OK
+    assert init("--name", "Arkanoid", "--hostname", "arkanoid") == EXIT_OK
 
-    assert json.loads((in_tmp_dir / PROJECT_FILE).read_text())["env"] == "dev"
-    capsys.readouterr()
+    assert offered == []
+    assert scripted.created[0]["name"] == "Arkanoid"
+    assert scripted.created[0]["user_values_json"]["hostname"] == "arkanoid"
 
 
-def test_an_environment_chosen_by_the_variable_is_recorded(
-    dev_api, credential, answers, in_tmp_dir, monkeypatch, capsys
+def test_a_missing_name_without_a_terminal_names_the_option(platform, credential, answers, capsys):
+    scripted = platform()
+    answers()
+
+    assert init("--hostname", "arkanoid") == EXIT_USAGE
+
+    assert "--name" in capsys.readouterr().err
+    assert scripted.created == []
+
+
+def test_terms_not_accepted_fail_before_anything_is_created(platform, credential, answers, capsys):
+    scripted = platform(tos=False)
+    answers(None, None)
+
+    assert init() != EXIT_OK
+
+    assert "terms" in capsys.readouterr().err
+    assert scripted.created == []
+
+
+def test_a_file_that_cannot_be_written_names_freepod_link(
+    platform, credential, answers, monkeypatch, capsys
 ):
-    """Otherwise the project would silently fall back to prod the moment the
-    variable is unset, with hostnames minted on dev."""
-    monkeypatch.setenv("FREEPOD_ENV", "dev")
-    dev_api()
-    answers("myapp")
-
-    assert main(["init"]) == EXIT_OK
-
-    assert json.loads((in_tmp_dir / PROJECT_FILE).read_text())["env"] == "dev"
-    capsys.readouterr()
-
-
-def test_a_missing_custom_product_is_explained_in_the_users_terms(
-    dev_api, credential, answers, capsys
-):
-    dev_api(products=OTHER_PRODUCTS)
-
-    assert main(["--env", "dev", "init"]) != EXIT_OK
-
-    stderr = capsys.readouterr().err
-    assert "does not offer user-supplied application deployments" in stderr
-    # Not a lookup failure, not a stack trace.
-    assert "KeyError" not in stderr and "None" not in stderr
-
-
-def test_the_product_is_resolved_by_slug_not_by_name(dev_api, credential, answers, in_tmp_dir):
-    """A product named 'Custom user app' but slugged otherwise must not match."""
-    dev_api(products=[{"id": 9, "slug": "something-else", "name": "Custom user app"}])
-    assert main(["--env", "dev", "init"]) != EXIT_OK
-
-
-def test_a_product_with_a_null_slug_is_not_matched(dev_api, credential, capsys):
-    dev_api(products=[{"id": 1, "slug": None, "name": "Hello World"}])
-    assert main(["--env", "dev", "init"]) != EXIT_OK
-    capsys.readouterr()
-
-
-# --------------------------------------------------------------------------
-# Schema-driven prompting (task 7.2)
-# --------------------------------------------------------------------------
-
-
-def test_the_hostname_is_completed_and_shown(dev_api, credential, answers, in_tmp_dir, capsys):
-    dev_api()
-    answers("myapp")
-    main(["--env", "dev", "init"])
-
-    assert load(in_tmp_dir).hostname == "myapp"
-    assert "myapp-erik.dev.freepod.app" in capsys.readouterr().err
-
-
-def test_the_directory_name_is_offered_as_the_hostname(
-    dev_api, credential, answers, in_tmp_dir, monkeypatch, capsys
-):
-    project_dir = in_tmp_dir / "My_App.v2"
-    project_dir.mkdir()
-    monkeypatch.chdir(project_dir)
-    dev_api()
-    offered = answers(None)
-
-    assert main(["--env", "dev", "init"]) == EXIT_OK
-
-    assert offered == ["my-app-v2"]
-    assert load(project_dir).hostname == "my-app-v2"
-    capsys.readouterr()
-
-
-def test_an_unusable_hostname_re_prompts(dev_api, credential, answers, in_tmp_dir, capsys):
-    dev_api(hostname_verdicts=["in_use", None])
-    answers("taken", "free")
-
-    assert main(["--env", "dev", "init"]) == EXIT_OK
-
-    assert load(in_tmp_dir).hostname == "free"
-    assert "already taken" in capsys.readouterr().err
-
-
-def test_the_optional_image_property_is_not_written(dev_api, credential, answers, in_tmp_dir):
-    dev_api()
-    answers("myapp")
-    main(["--env", "dev", "init"])
-
-    assert "image" not in load(in_tmp_dir).user_values
-
-
-# --------------------------------------------------------------------------
-# No server-side writes (task 7.3)
-# --------------------------------------------------------------------------
-
-
-def test_init_creates_no_resource(dev_api, credential, answers, capsys):
-    state = dev_api()
-    answers("myapp")
-
-    main(["--env", "dev", "init"])
-
-    assert state["writes"] == [], "init must perform reads only"
-    capsys.readouterr()
-
-
-def test_a_failed_file_write_leaves_nothing_behind(
-    dev_api, credential, answers, in_tmp_dir, monkeypatch, capsys
-):
-    state = dev_api()
-    answers("myapp")
+    platform()
+    answers(None, None)
 
     def refuse(self):
-        raise OSError("disk full")
+        raise OSError("read-only file system")
 
     monkeypatch.setattr("freepod.project.Project.save", refuse)
 
-    assert main(["--env", "dev", "init"]) != EXIT_OK
-    assert not (in_tmp_dir / PROJECT_FILE).exists()
-    assert state["writes"] == []
-    capsys.readouterr()
+    assert init() != EXIT_OK
+    assert "freepod link arkanoid" in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------
-# Overwrite protection (task 7.4)
+# The name
 # --------------------------------------------------------------------------
 
 
-def test_an_existing_project_file_is_protected(dev_api, credential, in_tmp_dir, capsys):
-    (in_tmp_dir / PROJECT_FILE).write_text(
-        json.dumps({"version": 1, "env": "dev", "user_values": {"hostname": "old.dev.freepod.eu"}}),
-        encoding="utf-8",
+def test_the_directory_name_is_offered_first(platform, credential, answers):
+    platform()
+    offered = answers(None, None)
+
+    init()
+
+    assert offered[0] == ("name", "arkanoid")
+
+
+def test_a_taken_directory_name_is_made_unique(platform, credential, answers):
+    scripted = platform(deployments=[{"id": "d1", "name": "Arkanoid", "status": "ready"}])
+    offered = answers(None, None)
+
+    init()
+
+    assert offered[0] == ("name", "arkanoid 2")
+    assert scripted.created[0]["name"] == "arkanoid 2"
+
+
+def test_a_name_in_use_is_asked_again_before_the_hostname(platform, credential, answers, capsys):
+    platform(
+        deployments=[
+            {"id": "d1", "name": "Pong", "hostname": "pong-erik.dev.freepod.app", "status": "ready"}
+        ]
     )
+    offered = answers("pong", "Breakout", None)
 
-    assert main(["--env", "dev", "init"]) == EXIT_USAGE
+    assert init() == EXIT_OK
 
-    stderr = capsys.readouterr().err
-    assert "--force" in stderr
-    assert load(in_tmp_dir).hostname == "old.dev.freepod.eu", "the file must be untouched"
+    assert [label for label, _ in offered] == ["name", "name", "hostname"]
+    assert "already uses that name" in capsys.readouterr().err
 
 
-def test_force_warns_that_it_discards_the_deployment_pointer(
-    dev_api, credential, answers, in_tmp_dir, capsys
+def test_a_deleted_deployment_does_not_hold_its_name(platform, credential, answers):
+    scripted = platform(deployments=[{"id": "d1", "name": "arkanoid", "status": "deleted"}])
+    answers(None, None)
+
+    init()
+
+    assert scripted.created[0]["name"] == "arkanoid"
+
+
+def test_a_taken_name_in_the_file_fails_before_anything_is_created(
+    platform, credential, answers, in_tmp_dir, capsys
+):
+    (in_tmp_dir / PROJECT_FILE).write_text(json.dumps({"version": 2, "name": "Pong"}))
+    scripted = platform(
+        deployments=[
+            {"id": "d1", "name": "pong", "hostname": "pong-erik.dev.freepod.app", "status": "ready"}
+        ]
+    )
+    answers()
+
+    assert init() != EXIT_OK
+
+    err = capsys.readouterr().err
+    assert "pong-erik.dev.freepod.app" in err
+    assert scripted.created == []
+
+
+def test_a_name_taken_in_between_is_asked_again(platform, credential, answers):
+    scripted = platform(
+        creates=[
+            {"detail": "You already have a deployment named 'arkanoid'", "code": "name_in_use"}
+        ]
+    )
+    offered = answers(None, None, "Arkanoid II")
+
+    assert init() == EXIT_OK
+
+    assert [label for label, _ in offered] == ["name", "hostname", "name"]
+    assert [body["name"] for body in scripted.created] == ["arkanoid", "Arkanoid II"]
+
+
+# --------------------------------------------------------------------------
+# The hostname
+# --------------------------------------------------------------------------
+
+
+def test_the_name_is_offered_as_a_label(platform, credential, answers, tmp_path, monkeypatch):
+    other = tmp_path / "My_App.v2"
+    other.mkdir()
+    monkeypatch.chdir(other)
+    scripted = platform()
+    offered = answers(None, None)
+
+    init()
+
+    assert offered[1] == ("hostname", "my-app-v2")
+    assert scripted.created[0]["user_values_json"]["hostname"] == "my-app-v2"
+
+
+def test_a_taken_label_is_made_unique(platform, credential, answers):
+    platform(verdicts={"arkanoid": "in_use"})
+    offered = answers(None, None)
+
+    init()
+
+    assert offered[1] == ("hostname", "arkanoid-2")
+
+
+def test_no_label_is_offered_after_five_unusable_candidates(platform, credential, answers):
+    taken = {"arkanoid": "in_use", **{f"arkanoid-{n}": "in_use" for n in range(2, 7)}}
+    scripted = platform(verdicts=taken)
+    offered = answers(None, "breakout")
+
+    init()
+
+    assert offered[1] == ("hostname", None)
+    assert scripted.checked[:5] == [
+        "arkanoid",
+        "arkanoid-2",
+        "arkanoid-3",
+        "arkanoid-4",
+        "arkanoid-5",
+    ]
+
+
+def test_an_unusable_hostname_is_asked_again_with_its_reason(platform, credential, answers, capsys):
+    scripted = platform(verdicts={"admin": "reserved"})
+    offered = answers(None, "admin", "breakout")
+
+    assert init() == EXIT_OK
+
+    assert offered[2] == ("hostname", None)
+    assert "reserved" in capsys.readouterr().err
+    assert scripted.created[0]["user_values_json"]["hostname"] == "breakout"
+
+
+def test_a_hostname_taken_in_between_is_asked_again(platform, credential, answers, capsys):
+    scripted = platform(creates=[{"detail": "in_use"}])
+    offered = answers(None, None, "breakout")
+
+    assert init() == EXIT_OK
+
+    assert offered[2] == ("hostname", None)
+    assert [b["user_values_json"]["hostname"] for b in scripted.created] == ["arkanoid", "breakout"]
+
+
+def test_a_bare_label_is_shown_completed(platform, credential, answers, capsys):
+    platform()
+    answers(None, "Photos")
+
+    init()
+
+    assert "→ photos-erik.dev.freepod.app" in capsys.readouterr().err
+
+
+def test_an_unusable_hostname_option_fails_without_a_terminal(
+    platform, credential, answers, capsys
+):
+    scripted = platform(verdicts={"admin": "reserved"})
+    answers()
+
+    assert init("--name", "A", "--hostname", "admin") != EXIT_OK
+
+    assert "reserved" in capsys.readouterr().err
+    assert scripted.created == []
+
+
+# --------------------------------------------------------------------------
+# An existing project file
+# --------------------------------------------------------------------------
+
+
+def test_a_linked_project_is_protected(platform, credential, answers, in_tmp_dir, capsys):
+    (in_tmp_dir / PROJECT_FILE).write_text(json.dumps({"version": 2, "deployment": "old-1"}))
+    scripted = platform()
+    answers()
+
+    assert init() == EXIT_USAGE
+
+    err = capsys.readouterr().err
+    assert "old-1" in err and "--force" in err
+    assert "freepod init" not in err
+    assert scripted.created == []
+
+
+def test_force_names_the_deployment_it_unlinks_and_keeps_the_files_keys(
+    platform, credential, answers, in_tmp_dir, capsys
 ):
     (in_tmp_dir / PROJECT_FILE).write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "env": "dev",
-                "deployment": {"id": "abc", "name": "custom-old99"},
-                "user_values": {"hostname": "old.dev.freepod.eu"},
-            }
-        ),
-        encoding="utf-8",
+        json.dumps({"version": 2, "env": "dev", "deployment": "old-1", "auth": {"enabled": True}})
     )
-    dev_api()
-    answers("fresh")
+    platform(deployments=[{"id": "old-1", "name": "Old arkanoid", "status": "ready"}])
+    answers(None, None)
 
-    assert main(["--env", "dev", "init", "--force"]) == EXIT_OK
+    assert init("--force") == EXIT_OK
 
-    stderr = capsys.readouterr().err
-    assert "custom-old99" in stderr
-    assert "unlinks deployment" in stderr
-
-    project = load(in_tmp_dir)
-    assert project.deployment is None, "--force discards the whole file, pointer included"
-    assert project.hostname == "fresh"
+    assert "'Old arkanoid'" in capsys.readouterr().err
+    document = saved(in_tmp_dir)
+    assert document["deployment"] == "new-1"
+    assert document["auth"] == {"enabled": True}
 
 
-def test_the_protection_message_does_not_recommend_init_for_a_missing_value(
-    dev_api, credential, in_tmp_dir, capsys
+def test_an_unlinked_files_keys_are_claimed_in_the_create(
+    platform, credential, answers, in_tmp_dir
 ):
-    """init must never be presented as the remedy for a missing value."""
     (in_tmp_dir / PROJECT_FILE).write_text(
-        json.dumps({"version": 1, "env": "dev", "user_values": {}}), encoding="utf-8"
+        json.dumps({"version": 2, "name": "Arkanoid", "auth": {"enabled": True}})
     )
-    main(["--env", "dev", "init"])
+    scripted = platform()
+    offered = answers(None)
+
+    assert init() == EXIT_OK
+
+    assert [label for label, _ in offered] == ["hostname"]
+    [body] = scripted.created
+    assert body["name"] == "Arkanoid"
+    assert body["user_values_json"]["auth"] == {"enabled": True}
+    assert body["managed_fields"] == ["auth", "name"]
+    document = saved(in_tmp_dir)
+    assert document["name"] == "Arkanoid" and document["auth"] == {"enabled": True}
+
+
+def test_a_hostname_the_file_holds_is_not_asked(platform, credential, answers, in_tmp_dir):
+    (in_tmp_dir / PROJECT_FILE).write_text(json.dumps({"version": 2, "hostname": "breakout"}))
+    scripted = platform()
+    offered = answers(None)
+
+    assert init() == EXIT_OK
+
+    assert [label for label, _ in offered] == ["name"]
+    assert scripted.created[0]["user_values_json"]["hostname"] == "breakout"
+    assert scripted.created[0]["managed_fields"] == ["hostname"]
+
+
+# --------------------------------------------------------------------------
+# Product resolution and credentials
+# --------------------------------------------------------------------------
+
+
+def test_a_missing_custom_product_is_explained_in_the_users_terms(
+    platform, credential, answers, capsys
+):
+    platform(products=OTHER_PRODUCTS)
+
+    assert init() != EXIT_OK
 
     stderr = capsys.readouterr().err
-    assert "freepod deploy" in stderr
+    assert "does not offer user-supplied application deployments" in stderr
+    assert "KeyError" not in stderr
 
 
-# --------------------------------------------------------------------------
-# Credential handling
-# --------------------------------------------------------------------------
+def test_the_product_is_resolved_by_slug_not_by_name(platform, credential, answers):
+    platform(products=[{"id": 9, "slug": "something-else", "name": "Custom user app"}])
+    assert init() != EXIT_OK
 
 
-def test_init_without_a_credential_exits_three(dev_api, answers, capsys):
+def test_init_without_a_credential_exits_three(platform, answers, capsys):
     from freepod import EXIT_NOT_AUTHENTICATED
 
-    dev_api()
-    assert main(["--env", "dev", "init"]) == EXIT_NOT_AUTHENTICATED
+    platform()
+    assert init() == EXIT_NOT_AUTHENTICATED
     assert "not authenticated" in capsys.readouterr().err
 
 
-def test_init_checks_the_identity_before_reading_public_data(
-    dev_api, credential, answers, monkeypatch, capsys
-):
-    """`/api/me` first, or a bad credential surfaces as an unrelated failure."""
-    dev_api()
-    answers("myapp")
+def test_init_checks_the_identity_before_reading_public_data(platform, credential, answers):
+    scripted = platform()
+    answers(None, None)
 
-    seen = []
-    from freepod.api import ApiClient
+    init()
 
-    original = ApiClient.get_json
-    monkeypatch.setattr(
-        ApiClient,
-        "get_json",
-        lambda self, path, **kwargs: (seen.append(path), original(self, path, **kwargs))[1],
-    )
-
-    main(["--env", "dev", "init"])
-
-    assert seen[0] == "/api/me", f"public reads happened first: {seen}"
-    capsys.readouterr()
+    assert scripted.calls[0] == ("GET", "/api/me")

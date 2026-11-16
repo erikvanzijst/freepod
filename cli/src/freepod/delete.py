@@ -255,7 +255,7 @@ def delete(
         # silently did nothing on the wrong environment would read as success.
         raise UsageError(
             f"{project.path} records deployment "
-            f"'{project.deployment_name}' on '{project.env}', not on "
+            f"{project.deployment_id} on '{project.env}', not on "
             f"'{env_name}'.\n"
             f"  Re-run without --env (or with --env {project.env}) to delete it."
         )
@@ -263,7 +263,7 @@ def delete(
     if not project.deployment_id:
         raise UsageError(
             f"{project.path} records no deployment, so there is nothing to delete.\n"
-            f"  Run `freepod deploy` to create one."
+            f"  Run `freepod init` to create one."
         )
 
     # `/api/me` first, as everywhere: it is the request that actually exercises
@@ -275,9 +275,8 @@ def delete(
     if record is None:
         # Gone already — deleted from the web UI, or from another checkout.
         # Clearing the stale pointer is the whole of what is left to do.
-        name = project.deployment_name
         echo(
-            f"Deployment {deployment_id}{f' ({name})' if name else ''} no longer "
+            f"Deployment {deployment_id} no longer "
             f"exists{env_suffix(env_name)}; nothing to delete."
         )
         _forget(project, echo)

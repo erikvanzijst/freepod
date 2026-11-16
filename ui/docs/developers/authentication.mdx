@@ -13,20 +13,17 @@ By default every Freepod account can sign in to a deployment that enables it, an
 
 ## Enabling
 
-Add `auth` to `user_values` in `.freepod.json` and release:
+Add `auth` to `.freepod.json` and apply it:
 
 ```json title=".freepod.json"
-"user_values": {
-  "hostname": "myapp",
-  "auth": {
-    "enabled": true,
-    "public": ["^/$", "^/static/"]
-  }
+"auth": {
+  "enabled": true,
+  "public": ["^/$", "^/static/"]
 }
 ```
 
 ```bash
-freepod deploy --no-build
+freepod apply
 ```
 
 | Field | Meaning |
@@ -40,12 +37,9 @@ freepod deploy --no-build
 With `"access": "listed"`, only you and the people you add can sign in:
 
 ```json title=".freepod.json"
-"user_values": {
-  "hostname": "myapp",
-  "auth": {
-    "enabled": true,
-    "access": "listed"
-  }
+"auth": {
+  "enabled": true,
+  "access": "listed"
 }
 ```
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import json
 
 import pytest
 
@@ -114,20 +113,20 @@ def test_every_diagnostic_line_is_on_stderr(run_deploy, tmp_path, capsys):
     run_deploy(ready_platform())
 
     captured = capsys.readouterr()
-    for phrase in ("Packed", "Creating a deployment", "Built ", "Deployed. Live at"):
+    for phrase in ("Packed", "Built ", "Releasing to deployment", "Deployed. Live at"):
         assert phrase in captured.err, phrase
         assert phrase not in captured.out, phrase
 
 
 def test_an_error_leaves_stdout_empty(run_deploy, tmp_path, capsys):
     """A failed deploy must not put a half-result into a pipeline."""
-    project_at(tmp_path)
+    project_at(tmp_path, pointer=None)
 
-    assert run_deploy(Platform(plans=[])) != EXIT_OK
+    assert run_deploy(Platform()) != EXIT_OK
 
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert "publishes no plans" in captured.err
+    assert "freepod init" in captured.err
 
 
 # --------------------------------------------------------------------------
@@ -147,12 +146,12 @@ def test_quiet_silences_diagnostics_but_not_the_address(run_deploy, tmp_path, ca
 
 def test_quiet_still_reports_a_failure(run_deploy, tmp_path, capsys):
     """Silencing progress must not silence the reason a deploy stopped."""
-    project_at(tmp_path)
+    project_at(tmp_path, pointer=None)
 
-    assert run_deploy(Platform(plans=[]), before=["--quiet"]) != EXIT_OK
+    assert run_deploy(Platform(), before=["--quiet"]) != EXIT_OK
 
     captured = capsys.readouterr()
-    assert "publishes no plans" in captured.err
+    assert "freepod init" in captured.err
     assert captured.out == ""
 
 

@@ -50,7 +50,7 @@ _DIMENSION_COLUMNS: dict[UsageDimension, tuple[tuple[str, str], ...]] = {
     ),
     UsageDimension.DEPLOYMENT: (
         ("deployment_id", "d.id"),
-        ("deployment_name", "d.name"),
+        ("deployment_name", "d.display_name"),
         ("deployment_hostname", "d.hostname"),
     ),
     UsageDimension.METRIC: (

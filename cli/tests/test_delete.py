@@ -231,17 +231,23 @@ def test_a_confirmed_delete_issues_the_delete_and_clears_the_pointer(make_api, t
     assert run(make_api, platform, tmp_path) is True
 
     assert platform.deletions == [f"/api/users/7/deployments/{POINTER['id']}"]
-    assert load(tmp_path).deployment is None
+    assert load(tmp_path).deployment_id is None
 
 
-def test_the_user_values_survive_the_deletion(make_api, tmp_path):
-    """The pointer is the only thing the deployment owned. The hostname is
-    intent, so a later `deploy` re-claims the same name."""
-    project_at(tmp_path, pointer=POINTER)
+def test_the_deletion_removes_only_the_pointer(make_api, tmp_path):
+    """The pointer is the only thing the deployment owned. Every other key is
+    intent, so `freepod init` in the unlinked project applies it again."""
+    values = {"name": "Arkanoid", "hostname": "myapp-erik.freepod.app"}
+    project_at(tmp_path, values=values, pointer=POINTER)
 
     run(make_api, Platform(reads=[deployment(), None]), tmp_path)
 
-    assert load(tmp_path).user_values == {"hostname": "myapp-erik.freepod.app"}
+    document = json.loads((tmp_path / ".freepod.json").read_text())
+    assert "deployment" not in document
+    assert {k: v for k, v in document.items() if k not in ("version", "env")} == {
+        "name": "Arkanoid",
+        "hostname": "myapp-erik.freepod.app",
+    }
 
 
 def test_the_pointer_is_cleared_before_the_teardown_is_followed(make_api, tmp_path):
@@ -257,7 +263,7 @@ def test_the_pointer_is_cleared_before_the_teardown_is_followed(make_api, tmp_pa
             timeout=0,
         )
 
-    assert load(tmp_path).deployment is None
+    assert load(tmp_path).deployment_id is None
 
 
 def test_an_operation_already_in_progress_is_reported_as_worth_retrying(
@@ -297,7 +303,7 @@ def test_a_404_on_the_delete_is_success(make_api, tmp_path):
     platform = Platform(reads=[deployment(), None], delete_status=404)
 
     assert run(make_api, platform, tmp_path) is True
-    assert load(tmp_path).deployment is None
+    assert load(tmp_path).deployment_id is None
 
 
 # --------------------------------------------------------------------------
@@ -315,7 +321,7 @@ def test_a_deployment_that_no_longer_exists_leaves_only_the_stale_pointer(
     assert run(make_api, platform, tmp_path, echo=messages.append) is False
 
     assert platform.deletions == []
-    assert load(tmp_path).deployment is None
+    assert load(tmp_path).deployment_id is None
     assert "no longer exists" in "\n".join(messages)
 
 
@@ -331,7 +337,7 @@ def test_a_deployment_already_being_torn_down_is_not_asked_about(make_api, tmp_p
     assert run(make_api, platform, tmp_path, assume_yes=False, ask=explode) is False
 
     assert platform.deletions == []
-    assert load(tmp_path).deployment is None
+    assert load(tmp_path).deployment_id is None
 
 
 # --------------------------------------------------------------------------
@@ -423,4 +429,4 @@ def test_delete_without_a_terminal_exits_two(stub_api, cached_credential, tmp_pa
     assert main(["delete"]) == EXIT_USAGE
 
     assert "no terminal" in capsys.readouterr().err
-    assert json.loads((tmp_path / ".freepod.json").read_text())["deployment"] == POINTER
+    assert json.loads((tmp_path / ".freepod.json").read_text())["deployment"] == POINTER["id"]

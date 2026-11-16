@@ -253,6 +253,23 @@ def _marked_nodes(node: Any, path: str) -> list[tuple[str, dict[str, Any]]]:
     return found
 
 
+RESERVED_TOP_LEVEL_KEYS = ("name", "description", "icon", "tags", "$schema", "version", "env", "deployment")
+
+
+def check_reserved_keys(values_schema_json: dict[str, Any] | None) -> None:
+    """Refuse a top-level property a project file reserves (deployment-project-file)."""
+    properties = (values_schema_json or {}).get("properties")
+    if not isinstance(properties, dict):
+        return
+    reserved = [k for k in RESERVED_TOP_LEVEL_KEYS if k in properties]
+    if reserved:
+        raise ValidationException(
+            f"values_schema_json declares reserved top-level "
+            f"propert{'ies' if len(reserved) > 1 else 'y'} {', '.join(reserved)}: "
+            "these keys belong to the project file and the deployment's identity"
+        )
+
+
 def check_var_markers(values_schema_json: dict[str, Any] | None) -> None:
     """Reject a schema whose routing markers are not usable (design.md D2).
 

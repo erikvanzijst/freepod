@@ -49,7 +49,7 @@ Removing a variable that is not set succeeds and changes nothing.
 ```bash
 freepod var set --stage A=1 B=2
 freepod var rm --stage C
-freepod deploy --no-build      # applies the staged changes in one release
+freepod apply                  # applies the staged changes in one release
 ```
 
 The next release of any kind applies staged changes. `--stage` also works while a release is in progress.

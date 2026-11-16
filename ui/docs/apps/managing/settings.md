@@ -9,6 +9,18 @@ Each app has settings, entered when it is launched: at least its [hostname](host
 
 To change them, select the app on the dashboard to expand its row, select **Settings**, change the values, and select **Update**. The app restarts with the new settings; it may be unavailable for a short time. **Settings** is available while the app is **Running** or **Needs attention**.
 
+## Name, description and icon
+
+Each app has a name, shown on its dashboard row and on its **Sign in with Freepod** page. A new app is named after the product, such as **Nextcloud**, or **Nextcloud 2** when that name is taken. Names are unique among your apps, ignoring case.
+
+**Settings** also changes the app's name, its description and its icon. **Upload** takes any image your browser can open, lets you crop it to a square, and resizes it for you. Until you upload one, the app shows the product's icon; **Reset** returns to it. Changing only the name, description or icon does not restart the app.
+
+## Settings managed by `.freepod.json`
+
+An app deployed with the [`freepod` client](/docs/developers) can keep settings in its project's `.freepod.json` file. **Settings** shows each of those as read-only, with a note that `.freepod.json` manages it, so a change on the dashboard is not undone by the next `freepod apply` or `freepod deploy`.
+
+To change one on the dashboard anyway, select **Take over** next to it and confirm. The setting keeps its value and becomes editable. If the file still holds it, the next `freepod apply` or `freepod deploy` puts the file's value back and manages it again; remove it from `.freepod.json` to keep the dashboard's.
+
 **Docs** on the app's row opens its product guide.
 
 The plan cannot be changed from the dashboard. To change it, contact [support@freepod.eu](mailto:support@freepod.eu).

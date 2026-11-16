@@ -6,26 +6,28 @@ title: Deployments and releases
 
 ## Creating a deployment
 
-The first `freepod deploy` in a project creates its deployment, records it in `.freepod.json`, and serves a placeholder page on the hostname until the first build is released. Release 1 is that placeholder.
+`freepod init` creates a project's deployment, records it in `.freepod.json`, and serves a placeholder page on the hostname until the first build is released. Release 1 is that placeholder. `init` returns while the deployment is still being set up; [variables](variables-and-secrets.md) can be set right away, and the first `freepod deploy` waits for it.
 
-### Starting over with `--recreate`
+### Linking an existing deployment
 
-`freepod deploy --recreate` ignores the deployment recorded in `.freepod.json`, creates a new deployment with the settings in the file, and records the new one. The new deployment starts with an empty database, an empty bucket and no variables.
+`freepod link <name>` points a project at a deployment you already have, by its name or id. Use it in a fresh clone of a project whose `.freepod.json` is not committed, or to recover a lost file: the new file gets back the settings the old one managed. Without a name, on a terminal, `link` lists your deployments to pick from.
 
-The previously recorded deployment is not changed or deleted. Use `--recreate` when:
+### Starting over
 
-- the recorded deployment no longer exists, for example because it was deleted from the dashboard; `freepod deploy` reports this and suggests `--recreate`;
-- you want a second, independent deployment of the same source. Change `hostname` in `.freepod.json` first: a hostname held by the old deployment is refused.
+`freepod init --force` creates a new deployment and points `.freepod.json` at it, keeping the file's settings. The new deployment starts with an empty database, an empty bucket and no variables. The previously recorded deployment is not changed or deleted. Use it when:
+
+- the recorded deployment no longer exists, for example because it was deleted from the dashboard; `freepod deploy` reports this and suggests `init --force` or `link`;
+- you want a second, independent deployment of the same source. Give it another `name` and `hostname`: both are refused while the old deployment holds them.
 
 ## Releasing
 
 | Command | New build | Applies |
 | --- | --- | --- |
 | `freepod deploy` | Yes | Source, settings in `.freepod.json`, staged vars |
-| `freepod deploy --no-build` | No | Settings in `.freepod.json`, staged vars |
+| `freepod apply` (or `freepod deploy --no-build`) | No | Settings in `.freepod.json`, staged vars |
 | `freepod var set`, `freepod var rm` | No | The changed vars, staged vars |
 
-Each of these creates one numbered release. One release runs at a time per deployment: a command that starts a release while another is queued or running fails, and can be retried when the first one finishes. `freepod var set --stage` and `freepod var rm --stage` save changes without starting a release.
+Each of these creates one numbered release when it changes what runs: the image, a setting, or a var. A command that changes none of them creates no release, unless the deployment's last release failed, which it then retries. One release runs at a time per deployment: a command that starts a release while another is queued or running fails, and can be retried when the first one finishes. `freepod var set --stage` and `freepod var rm --stage` save changes without starting a release.
 
 A release replaces the running container. The sequence is described under [Runtime contract: Releases](runtime.mdx#releases):
 
@@ -81,6 +83,8 @@ A stopped deployment runs again only when you start it. `freepod deploy` to a st
 
 Only a deployment that is ready can be stopped or started. If its last release failed, a successful `freepod deploy` is needed first.
 
+A deployment can be renamed, and given a description and an icon, under **Settings** on the [dashboard](app:/), or with `name`, `description` and `icon` in `.freepod.json` and `freepod apply`. This creates no release. The name is shown on the dashboard and on the deployment's **Sign in with Freepod** pages.
+
 A deployment can also be stopped and started from the [dashboard](app:/).
 
 ## Deleting a deployment
@@ -102,7 +106,7 @@ Deleting a deployment:
 
 **Back up any data you need before deleting.** Freepod does not restore deleted deployments.
 
-`.freepod.json` keeps its settings. The next `freepod deploy` in the project creates a new, empty deployment with the same hostname.
+`.freepod.json` keeps its settings and no longer records a deployment. `freepod init` in the project creates a new, empty deployment with them.
 
 ## Exit codes
 

@@ -459,10 +459,10 @@ def test_update_deployment_rejects_non_ready_status(client, db_session):
     )
     dep_id = dep_resp.json()["deployment"]["id"]
 
-    # Deployment is still in 'provisioning' — update should fail
+    # Deployment is still in 'provisioning' — a releasing update should fail
     update_resp = client.put(
         f"/api/users/{user_id}/deployments/{dep_id}",
-        json={"desired_template_id": tmpl_id, "user_values_json": {"domain": "notready.example.test"}},
+        json={"desired_template_id": tmpl_id, "user_values_json": {"domain": "notready2.example.test"}},
     )
     assert update_resp.status_code == 409
     assert "not in ready state" in update_resp.json()["detail"]

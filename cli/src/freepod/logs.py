@@ -115,7 +115,7 @@ def resolve_deployment(root: Path, env_name: str) -> str:
         raise FreepodError(
             f"this project has no deployment{env_suffix(env_name)} yet — there is "
             f"nothing to read.\n"
-            f"  Run `freepod deploy` first."
+            f"  Run `freepod init` first."
         )
     return project.deployment_id
 

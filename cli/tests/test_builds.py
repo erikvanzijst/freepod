@@ -111,12 +111,9 @@ def deployment_running(image):
 
 
 def project_at(tmp_path, *, env="prod", pointer=None):
-    document = {
-        "version": 1,
-        "env": env,
-        "deployment": pointer,
-        "user_values": {"hostname": "myapp.freepod.eu"},
-    }
+    document = {"version": 2, "env": env, "hostname": "myapp"}
+    if pointer:
+        document["deployment"] = pointer["id"]
     (tmp_path / ".freepod.json").write_text(json.dumps(document))
     return tmp_path
 
@@ -426,7 +423,7 @@ def test_a_project_that_has_not_deployed_is_refused(
     assert main(["builds"]) == EXIT_USAGE
 
     err = capsys.readouterr().err
-    assert "no builds" in err and "freepod deploy" in err
+    assert "no builds" in err and "freepod init" in err
     assert platform.calls == []
 
 
@@ -615,7 +612,7 @@ def test_the_log_of_a_project_that_has_not_deployed_is_refused(
 
     assert main(["builds", "log"]) == EXIT_USAGE
 
-    assert "freepod deploy" in capsys.readouterr().err
+    assert "freepod init" in capsys.readouterr().err
     assert platform.calls == []
 
 

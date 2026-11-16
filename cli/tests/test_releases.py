@@ -105,12 +105,9 @@ def deployment_applying(number):
 
 
 def project_at(tmp_path, *, env="prod", pointer=None):
-    document = {
-        "version": 1,
-        "env": env,
-        "deployment": pointer,
-        "user_values": {"hostname": "myapp.freepod.eu"},
-    }
+    document = {"version": 2, "env": env, "hostname": "myapp"}
+    if pointer:
+        document["deployment"] = pointer["id"]
     (tmp_path / ".freepod.json").write_text(json.dumps(document))
     return tmp_path
 
@@ -313,7 +310,7 @@ def test_a_project_that_has_never_deployed_is_refused(
 
     assert main(["releases"]) == EXIT_USAGE
     err = capsys.readouterr().err
-    assert "no deployment" in err and "freepod deploy" in err
+    assert "no deployment" in err and "freepod init" in err
 
 
 def test_a_project_on_another_environment_is_refused(

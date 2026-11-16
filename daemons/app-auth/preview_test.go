@@ -29,6 +29,15 @@ func TestPreview(t *testing.T) {
 			renderConsent(w, consentView{chrome: c, Host: "milk-fred.dev.freepod.app",
 				Name: "Alice Ångström", Email: "alice@example.com", CSRF: "x"})
 		},
+		"/consent-named": func(w http.ResponseWriter) {
+			renderConsent(w, consentView{chrome: c, Host: "custom-erik.dev.freepod.app", AppName: "Pong",
+				AppIcon: "https://dev.freepod.eu/api/static/icons/ad09dd423e4f2469d432f80955015dc835b4f960.png",
+				Name:    "Fred Veiligheidspet", Email: "fred@deprutser.be", CSRF: "x"})
+		},
+		"/consent-named-no-icon": func(w http.ResponseWriter) {
+			renderConsent(w, consentView{chrome: c, Host: "groceries-and-household-supplies.example-custom-domain.com",
+				AppName: "Groceries & household supplies for the whole family", Email: "alice@example.com", CSRF: "x"})
+		},
 		"/consent-long": func(w http.ResponseWriter) {
 			renderConsent(w, consentView{chrome: c, Host: "groceries-and-household-supplies.example-custom-domain.com",
 				Email: "a.very.long.email.address@subdomain.example.org", CSRF: "x"})

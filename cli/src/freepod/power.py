@@ -141,14 +141,14 @@ def change(
     verb = _VERB[target]
     if project.env != env_name and project.deployment_id:
         raise UsageError(
-            f"{project.path} records deployment '{project.deployment_name}' on "
+            f"{project.path} records deployment {project.deployment_id} on "
             f"'{project.env}', not on '{env_name}'.\n"
             f"  Re-run without --env (or with --env {project.env}) to {verb} it."
         )
     if not project.deployment_id:
         raise UsageError(
             f"{project.path} records no deployment, so there is nothing to {verb}.\n"
-            f"  Run `freepod deploy` to create one."
+            f"  Run `freepod init` to create one."
         )
 
     user_id = api.me()["id"]
@@ -157,7 +157,7 @@ def change(
     if record is None:
         raise FreepodError(
             f"deployment {deployment_id} no longer exists{env_suffix(env_name)}.\n"
-            f"  Run `freepod deploy` to create a new one."
+            f"  Run `freepod init --force` to create a new one."
         )
     name = record.get("name")
     current = power(record)

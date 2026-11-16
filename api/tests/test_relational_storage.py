@@ -590,7 +590,9 @@ def test_threshold_notice_names_the_deployment_and_links_the_dashboard(session, 
     owner = UserORM(email="ana@example.com")
     session.add(owner)
     session.commit()
-    deployment = SimpleNamespace(id=uuid4(), name="wiki_1", hostname=hostname, user_id=owner.id)
+    deployment = SimpleNamespace(
+        id=uuid4(), name="wiki-x7k2", display_name="Team wiki_1", hostname=hostname, user_id=owner.id
+    )
     settings = CaelusSettings(base_url="https://freepod.example")
     for threshold in (80, rs.READONLY_THRESHOLD):
         assert rs._notify_threshold(
@@ -602,8 +604,9 @@ def test_threshold_notice_names_the_deployment_and_links_the_dashboard(session, 
     for notice in notices:
         assert notice.recipient_user_id == owner.id
         assert (notice.action_label, notice.action_url) == ("Open your dashboard", "https://freepod.example")
-        assert notice.subject.startswith("wiki_1: ")
-        assert "wiki\\_1" in notice.body
+        assert notice.subject.startswith("Team wiki_1: ")
+        assert "Team wiki\\_1" in notice.body
+        assert "wiki-x7k2" not in notice.subject + notice.body
         assert ("<https://wiki-ana.freepod.app>" in notice.body) == bool(hostname)
 
 
@@ -611,7 +614,7 @@ def test_a_plain_http_dashboard_is_not_linked(session):
     owner = UserORM(email="ana@example.com")
     session.add(owner)
     session.commit()
-    deployment = SimpleNamespace(id=uuid4(), name="wiki", hostname=None, user_id=owner.id)
+    deployment = SimpleNamespace(id=uuid4(), name="wiki", display_name="Wiki", hostname=None, user_id=owner.id)
     rs._notify_threshold(
         session, deployment, threshold=80, size_bytes=900, allowance=1000,
         settings=CaelusSettings(base_url="http://localhost:5173"),

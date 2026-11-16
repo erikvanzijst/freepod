@@ -21,29 +21,28 @@ const (
 )
 
 func TestBrandSignsTheSharedVectors(t *testing.T) {
-	immich := newAppBrand(vectorPhotoHost, product{Name: "Immich", Slug: "immich", IconPath: vectorIconPath}, vectorPlatform)
+	immich := newAppBrand(vectorPhotoHost, appIdentity{Name: "Immich", IconPath: vectorIconPath}, vectorPlatform)
 	if got := immich.sign(vectorSecret); got != vectorCatalog {
-		t.Fatalf("catalog app signed as %s", got)
+		t.Fatalf("named app signed as %s", got)
 	}
-	custom := newAppBrand(vectorWikiHost, product{Name: "Custom user app", Slug: customSlug, IconPath: "icons/c.png"}, vectorPlatform)
-	if got := custom.sign(vectorSecret); got != vectorHostOnly {
-		t.Fatalf("custom app signed as %s", got)
+	unread := newAppBrand(vectorWikiHost, appIdentity{}, vectorPlatform)
+	if got := unread.sign(vectorSecret); got != vectorHostOnly {
+		t.Fatalf("unnamed app signed as %s", got)
 	}
 }
 
 func TestNewAppBrand(t *testing.T) {
 	for name, tc := range map[string]struct {
-		p        product
+		id       appIdentity
 		platform string
 		want     appBrand
 	}{
-		"catalog app":            {product{"Immich", "immich", "icons/i.png"}, "https://freepod.eu", appBrand{"Immich", "h", "https://freepod.eu/api/static/icons/i.png"}},
-		"no platform URL":        {product{"Immich", "immich", "icons/i.png"}, "", appBrand{Name: "Immich", Host: "h"}},
-		"no icon":                {product{"Immich", "immich", ""}, "https://freepod.eu", appBrand{Name: "Immich", Host: "h"}},
-		"custom is its hostname": {product{"Custom user app", customSlug, "icons/c.png"}, "https://freepod.eu", appBrand{Host: "h"}},
-		"product without a slug": {product{Name: "Admin's app"}, "", appBrand{Name: "Admin's app", Host: "h"}},
+		"named app":       {appIdentity{"Family photos", "icons/i.png"}, "https://freepod.eu", appBrand{"Family photos", "h", "https://freepod.eu/api/static/icons/i.png"}},
+		"no platform URL": {appIdentity{"Immich", "icons/i.png"}, "", appBrand{Name: "Immich", Host: "h"}},
+		"no icon":         {appIdentity{"Immich", ""}, "https://freepod.eu", appBrand{Name: "Immich", Host: "h"}},
+		"unread identity": {appIdentity{}, "https://freepod.eu", appBrand{Host: "h"}},
 	} {
-		if got := newAppBrand("h", tc.p, tc.platform); got != tc.want {
+		if got := newAppBrand("h", tc.id, tc.platform); got != tc.want {
 			t.Errorf("%s: %+v", name, got)
 		}
 	}
@@ -68,7 +67,7 @@ func TestKeycloakRequestCarriesTheBrand(t *testing.T) {
 func TestHeaderSignInIsBranded(t *testing.T) {
 	g := newBrokerRig(t)
 	g.b.platformURL = "https://freepod.example"
-	g.st.products["dep-milk"] = product{Name: "Milk", Slug: "milk", IconPath: "icons/m.png"}
+	g.st.identities["dep-milk"] = appIdentity{Name: "Milk", IconPath: "icons/m.png"}
 	g.start(milk)
 	want := appBrand{Name: "Milk", Host: milk, Icon: "https://freepod.example/api/static/icons/m.png"}
 	if g.auth.params.brand != want {
@@ -78,9 +77,9 @@ func TestHeaderSignInIsBranded(t *testing.T) {
 
 func TestOIDCSignInIsBranded(t *testing.T) {
 	g := newProviderRig(t)
-	g.st.products[depWiki] = product{Name: "Custom user app", Slug: customSlug}
+	g.st.identities[depWiki] = appIdentity{Name: "Wiki"}
 	g.authorize(authorizeQuery(depWiki, wikiCallback))
-	if g.auth.params.brand != (appBrand{Host: wiki}) {
+	if g.auth.params.brand != (appBrand{Name: "Wiki", Host: wiki}) {
 		t.Fatalf("%+v", g.auth.params.brand)
 	}
 }
@@ -96,7 +95,7 @@ func TestKeycloakLogoutCarriesTheBrand(t *testing.T) {
 
 func TestHeaderSignOutIsBranded(t *testing.T) {
 	g := newBrokerRig(t)
-	g.st.products["dep-milk"] = product{Name: "Milk", Slug: "milk"}
+	g.st.identities["dep-milk"] = appIdentity{Name: "Milk"}
 	g.logout(milk, "/")
 	if g.auth.logoutBrand != (appBrand{Name: "Milk", Host: milk}) {
 		t.Fatalf("%+v", g.auth.logoutBrand)
@@ -125,7 +124,7 @@ func TestOIDCSignOutIsBranded(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			g := newProviderRig(t)
-			g.st.products[depWiki] = product{Name: "Wiki", Slug: "wiki"}
+			g.st.identities[depWiki] = appIdentity{Name: "Wiki"}
 			g.endSession(tc.params(g.redeem(depWiki, wikiCallback).IDToken))
 			if g.auth.logoutBrand != tc.want {
 				t.Fatalf("%+v", g.auth.logoutBrand)
@@ -139,5 +138,48 @@ func TestOIDCSignOutSurvivesAFailedClientLookup(t *testing.T) {
 	g.st.clientErr = errors.New("database down")
 	if w := g.do("GET", "/oidc/logout?"+url.Values{"client_id": {depWiki}}.Encode(), nil); w.Code != http.StatusFound || g.auth.endSessions != 1 {
 		t.Fatalf("%d endSessions=%d", w.Code, g.auth.endSessions)
+	}
+}
+
+func TestHeaderConsentNamesTheAppBesideItsHostname(t *testing.T) {
+	g := newBrokerRig(t)
+	g.b.platformURL = "https://freepod.example"
+	g.st.identities["dep-milk"] = appIdentity{Name: "Milk <run>", IconPath: "icons/m.png"}
+	w := g.returnFromIdP(g.start(milk))
+	body := w.Body.String()
+	for _, want := range []string{
+		`Continue to <span class="host">Milk &lt;run&gt;</span>?`,
+		`<p class="app-host">` + milk + `</p>`,
+		`<img class="app-icon" src="https://freepod.example/api/static/icons/m.png" alt="">`,
+		`<title>Continue to Milk &lt;run&gt; · Freepod</title>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+	if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "img-src 'self' https://freepod.example;") {
+		t.Fatalf("CSP %s", csp)
+	}
+}
+
+func TestOIDCConsentWithoutAnIconShowsTheInitial(t *testing.T) {
+	g := newProviderRig(t)
+	g.st.identities[depWiki] = appIdentity{Name: "wiki"}
+	w := g.returnFromIdP(g.authorize(authorizeQuery(depWiki, wikiCallback)))
+	body := w.Body.String()
+	if !strings.Contains(body, `<div class="app-icon app-initial" aria-hidden="true">W</div>`) ||
+		!strings.Contains(body, `<p class="app-host">`+wiki+`</p>`) {
+		t.Fatalf("%s", body)
+	}
+	if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "img-src 'self';") {
+		t.Fatalf("CSP %s", csp)
+	}
+}
+
+func TestConsentFallsBackToTheHostname(t *testing.T) {
+	g := newBrokerRig(t)
+	body := g.returnFromIdP(g.start(milk)).Body.String()
+	if !strings.Contains(body, `Continue to <span class="host">`+milk+`</span>?`) || strings.Contains(body, "app-host") {
+		t.Fatalf("%s", body)
 	}
 }

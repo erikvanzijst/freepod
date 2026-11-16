@@ -19,6 +19,19 @@ These go before the command: `freepod --verbose deploy`.
 | `--timeout SECONDS` | how long to wait for the current operation before giving up (defaults: login 300s, build 1800s, rollout 600s) |
 | `--version` | Show the version and exit. |
 
+## `freepod apply`
+
+```
+freepod apply [OPTIONS]
+```
+
+Send .freepod.json to the deployment, without building.
+
+Sets the deployment's name, description, icon and every other setting
+the file holds, and marks them as managed by the file. Prints what
+changed. A change the running app needs, or staged vars, starts a
+release, which this follows until it is live.
+
 ## `freepod bucket`
 
 ```
@@ -293,20 +306,18 @@ freepod deploy [OPTIONS]
 
 Build the current project and release it to its deployment.
 
-Uploads the project directory, builds an image from it and releases it.
-The first deploy also creates the deployment, which shows a placeholder
-page until the first build is live. Settings are checked before anything
-is uploaded, so most mistakes are reported in seconds rather than after a
-build.
+Uploads the project directory, builds an image from it and releases it
+together with .freepod.json, in one release. Run `freepod init` first to
+create the deployment. Settings are checked before anything is uploaded,
+so most mistakes are reported in seconds rather than after a build.
 
 The live address is the only output on stdout; build output and progress
 go to stderr, so `URL=$(freepod deploy)` captures the address.
 
 | Option | Description |
 | --- | --- |
-| `--recreate` | create a new deployment instead of updating the current one, which keeps running |
 | `--no-gitignore` | also upload files that .gitignore excludes |
-| `--no-build` | redeploy the current image without building, e.g. to apply staged vars |
+| `--no-build` | apply .freepod.json and staged vars without building; same as `freepod apply` |
 
 ## `freepod init`
 
@@ -314,15 +325,18 @@ go to stderr, so `URL=$(freepod deploy)` captures the address.
 freepod init [OPTIONS]
 ```
 
-Set up the current directory as a Freepod project.
+Create this directory's app on Freepod.
 
-Asks for the project's settings, such as its hostname, and writes them to
-.freepod.json, which is meant to be committed. Nothing is deployed until
-you run `freepod deploy`.
+Asks for the app's name and hostname, creates its deployment, which serves
+a placeholder until the first `freepod deploy`, and records it in
+.freepod.json, which is meant to be committed. Returns without waiting for
+the deployment to be provisioned.
 
 | Option | Description |
 | --- | --- |
-| `--force` | overwrite an existing .freepod.json; its deployment keeps running but is no longer linked to this project |
+| `--force` | create a new deployment even though .freepod.json records one; that one keeps running and stays on your dashboard |
+| `--name TEXT` | the app's name; the directory's name is offered otherwise |
+| `--hostname TEXT` | the app's hostname: a label completed beneath your handle, or a custom domain |
 
 ## `freepod key`
 
@@ -377,6 +391,23 @@ freepod key rm [OPTIONS] FINGERPRINT
 Revoke a key by the fingerprint `freepod key list` shows.
 
 Works for keys this machine does not hold, such as one on a lost laptop.
+
+## `freepod link`
+
+```
+freepod link [OPTIONS] [DEPLOYMENT]
+```
+
+Point this project at an existing deployment, by name or id.
+
+Without an argument, lists your deployments to pick from. A new
+.freepod.json gets the deployment's managed settings back; an existing one
+keeps its own, and link reports how they differ. Nothing is sent to the
+deployment: run `freepod apply` for that.
+
+| Option | Description |
+| --- | --- |
+| `--force` | replace the deployment .freepod.json records; that one is left as it is |
 
 ## `freepod log`
 
@@ -619,7 +650,7 @@ Accepts `KEY=VALUE` pairs, a bare `KEY` to be prompted for without echo,
 or `-f FILE`. Several vars in one command are applied in one redeploy.
 
 `--stage` saves them without redeploying, which also works while a deploy
-is in progress. `freepod deploy --no-build` applies staged vars.
+is in progress. `freepod apply` applies staged vars.
 
 | Option | Description |
 | --- | --- |

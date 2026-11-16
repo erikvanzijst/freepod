@@ -458,17 +458,32 @@ a#social-google span {
 .fp-app-brand::before {
   display: none;
 }
+/* The address, when there is a name, sits on its own row under the icon. */
+.fp-app-brand {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.fp-app-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+/* As tall as the name and "on Freepod" together. */
 .fp-app-icon {
   flex: none;
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 58px;
+  height: 58px;
+  border-radius: 13px;
   object-fit: cover;
 }
 .fp-app-titles {
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
   gap: 8px;
+  text-align: left;
 }
 .fp-app-name {
   font-size: 34px;
@@ -482,6 +497,16 @@ a#social-google span {
   font-weight: 500;
   letter-spacing: 0;
   color: var(--fg-muted);
+}
+/* The address beside a name the owner chose: what the visitor can check. */
+.fp-app-address {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.4;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
 }
 .fp-app-on::before {
   content: '';
@@ -511,6 +536,17 @@ body.fp-app .pf-v5-c-login__main-header::before {
   line-height: 1.25;
   overflow-wrap: anywhere;
   text-align: center;
+}
+.fp-app-brand:has(.fp-app-host) {
+  align-items: center;
+}
+.fp-app-brand:has(.fp-app-host) .fp-app-head {
+  align-items: center;
+}
+.fp-app-brand:has(.fp-app-host) .fp-app-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
 }
 .fp-app-brand:has(.fp-app-host) .fp-app-titles {
   align-items: center;

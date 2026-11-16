@@ -22,11 +22,11 @@ function list(entries: AccessEntry[]): AccessList {
   return { enabled: true, protocol: 'header', access: 'listed', owner_email: 'you@example.com', limit: 500, entries }
 }
 
-function renderDialog() {
+function renderDialog({ signOutBlocked = false } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <AccessDialog userId={1} deploymentId="d1" hostname="cloud-yourname.freepod.app" appName="Nextcloud" onClose={vi.fn()} />
+      <AccessDialog userId={1} deploymentId="d1" hostname="cloud-yourname.freepod.app" appName="Nextcloud" signOutBlocked={signOutBlocked} onClose={vi.fn()} />
     </QueryClientProvider>,
   )
 }
@@ -119,6 +119,20 @@ describe('AccessDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('could not be reached')
     expect(screen.getByText('Remove Ana Costa?')).toBeInTheDocument()
+  })
+
+  it('asks to start a stopped app before removing someone it must sign out', async () => {
+    getMock.mockResolvedValue(list([ana, jules]))
+    removeMock.mockResolvedValue(null)
+    renderDialog({ signOutBlocked: true })
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove ana@example.com' }))
+    expect(screen.getByText("Nextcloud is stopped, so it can't sign Ana Costa out. Start it, then remove them.")).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove jules@example.org' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(removeMock).toHaveBeenCalledWith(1, 'd1', 'e-jules'))
   })
 
   it('offers no search for a short list', async () => {

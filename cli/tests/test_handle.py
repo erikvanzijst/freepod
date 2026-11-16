@@ -7,13 +7,11 @@ cannot carry. It refuses, names the cause, and points at the browser.
 
 from __future__ import annotations
 
-import pytest
 
-from freepod import FreepodError
 from freepod.deploy import preflight
-from freepod.handle import DEPLOY_REFUSAL_CODE, explain, read, suffix
+from freepod.handle import explain, read, suffix
 
-from test_deploy import Platform, deployment, project_at, run
+from test_deploy import Platform, deployment, project_at
 
 NO_HANDLE = {"handle": None, "suffix": None, "domain": "freepod.app"}
 
@@ -39,29 +37,6 @@ def test_an_absent_handle_is_a_value_not_an_error(make_api):
 
 # --- Refusing ----------------------------------------------------------------
 
-def test_a_create_without_a_handle_stops_in_preflight(make_api, tmp_path):
-    platform = without_handle()
-    project_at(tmp_path, values={"hostname": "myapp"})
-    api, _, _ = make_api(platform)
-
-    with pytest.raises(FreepodError) as raised:
-        preflight(api, "prod", root=tmp_path, echo=lambda _m: None, interactive=False)
-
-    assert "does not have a handle" in str(raised.value)
-
-
-def test_nothing_is_packed_or_built(make_api, tmp_path):
-    """The refusal lands before any write, so no archive and no build exist."""
-    platform = without_handle()
-    project_at(tmp_path, values={"hostname": "myapp"})
-    api, _, _ = make_api(platform)
-
-    with pytest.raises(FreepodError):
-        preflight(api, "prod", root=tmp_path, echo=lambda _m: None, interactive=False)
-
-    assert platform.bodies == {}
-
-
 def test_the_refusal_is_actionable(make_api):
     api, _, _ = make_api(without_handle())
     message = explain(api.env)
@@ -70,20 +45,6 @@ def test_the_refusal_is_actionable(make_api):
     assert "permanent" in message
     assert api.env.api_base in message
     assert "Nothing has been packed, built or deployed" in message
-
-
-def test_a_missing_handle_is_not_reported_as_something_else(make_api, tmp_path):
-    platform = without_handle()
-    project_at(tmp_path, values={"hostname": "myapp"})
-    api, _, _ = make_api(platform)
-
-    with pytest.raises(FreepodError) as raised:
-        preflight(api, "prod", root=tmp_path, echo=lambda _m: None, interactive=False)
-
-    message = str(raised.value)
-    assert "terms" not in message
-    assert "log in" not in message and "authenticat" not in message
-    assert "invalid" not in message
 
 
 def test_an_update_never_asks_for_a_handle(make_api, tmp_path):
@@ -125,22 +86,6 @@ def test_the_client_offers_no_way_to_claim_one():
 
     source = inspect.getsource(handle)
     assert "api.post" not in source and "POST" not in source
-
-
-def test_the_platforms_own_refusal_is_recognized_by_its_code(make_api, tmp_path):
-    """Matched by identifier, not by prose the client does not own: the race in
-    which preflight passed and the create still found no handle."""
-    assert DEPLOY_REFUSAL_CODE == "handle_required"
-    platform = Platform(
-        create_status=400, create_detail="A handle must be claimed before deploying",
-        create_code="handle_required",
-    )
-    project_at(tmp_path, values={"hostname": "myapp"})
-
-    with pytest.raises(FreepodError) as raised:
-        run(make_api, platform, tmp_path)
-
-    assert "does not have a handle" in str(raised.value)
 
 
 # --- Everything else is unaffected -------------------------------------------

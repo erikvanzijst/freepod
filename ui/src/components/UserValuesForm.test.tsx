@@ -845,7 +845,8 @@ describe('UserValuesForm conditionals', () => {
 
     fireEvent.click(signIn())
     await waitFor(() => expect(onVarsChange).toHaveBeenLastCalledWith({}))
-    expect(onChange).toHaveBeenLastCalledWith({ host: 'cloud.example.test', auth: { enabled: true } })
+    // Back at the default it was never set to, so nothing is sent for it.
+    expect(onChange).toHaveBeenLastCalledWith({ host: 'cloud.example.test' })
 
     // The typed value is kept, and comes back with the field.
     fireEvent.click(signIn())
