@@ -4,7 +4,9 @@
 Removing a project's deployment from the command line: what the client refuses to
 address, what it insists on being told before destroying anything, and how it reports a
 teardown that the platform performs asynchronously.
+
 ## Requirements
+
 ### Requirement: Deletion addresses only the deployment the project records
 
 The client SHALL delete the deployment recorded in the project file, and SHALL NOT
@@ -97,9 +99,10 @@ finish. From that moment the deployment can never serve the project again, so re
 the pointer would only make the next deploy fail against something the user has already
 asked to be rid of — and an interrupted wait must not leave the pointer behind.
 
-Everything else in the project file SHALL be retained. The recorded values are the
-user's intent rather than the deployment's state, so a later deploy SHALL be able to
-recreate the application under the same hostname without being asked again.
+The pointer SHALL be removed by deleting the `deployment` key, leaving the project
+unlinked. Every other key in the project file SHALL be retained. They are the
+developer's intent rather than the deployment's state, so `freepod init` in the
+unlinked project SHALL create a new deployment and apply them to it.
 
 Where the platform refuses the deletion, the pointer SHALL be retained, because it still
 describes a deployment that exists.
@@ -107,8 +110,8 @@ describes a deployment that exists.
 #### Scenario: A successful deletion clears only the pointer
 
 - **WHEN** the platform accepts the deletion
-- **THEN** the project file no longer records a deployment
-- **AND** the recorded user values are unchanged
+- **THEN** the project file has no `deployment` key
+- **AND** its other keys are unchanged
 
 #### Scenario: The pointer is cleared before the teardown is awaited
 

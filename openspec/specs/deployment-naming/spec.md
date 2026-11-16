@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Every deployment is given a generated release name, which is the name of its Helm release. This capability defines how that name is generated and stored, and how its uniqueness follows from the namespace rather than from a constraint of its own.
+Every deployment is given a generated release name, which is the name of its Helm release. This capability defines how that name is generated and stored, and how its uniqueness follows from the namespace rather than from a constraint of its own. The release name is internal: reads report the name the owner chose (deployment-identity).
 
 ## Requirements
 
@@ -32,15 +32,16 @@ The system MUST generate a release name for each new deployment using the formul
 - **THEN** the system MUST use a fallback base (e.g., `dep`) before appending the random suffix
 
 ### Requirement: Column rename from deployment_uid to name
-The `deployment_uid` column on the `deployment` table MUST be renamed to `name`. All code, schemas, API responses, and TypeScript types MUST reference `name` instead of `deployment_uid`.
+The generated release name MUST stay in the `name` column of the `deployment` table, and code MUST reference it as `deployment.name`. Deployment reads MUST NOT report it: the `name` field of a read is the owner-chosen name of deployment-identity, stored in its own column.
 
 #### Scenario: API response uses name field
 - **WHEN** a client reads a deployment via the API
-- **THEN** the response includes a `name` field (not `deployment_uid`)
+- **THEN** the response's `name` field is the owner-chosen name
+- **AND** the response does not include the generated release name under any field
 
 #### Scenario: ORM model uses name field
 - **WHEN** application code accesses the deployment's release name
-- **THEN** it uses `deployment.name` (not `deployment.deployment_uid`)
+- **THEN** it uses `deployment.name`, and the owner-chosen name is a separate attribute
 
 ### Requirement: Deployment name is persisted and immutable
 The system MUST store the generated name in the `name` column of the `deployment` table. The name MUST be set at deployment creation time and MUST NOT be modified after creation.

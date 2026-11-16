@@ -44,11 +44,11 @@ This repository is a monorepo with:
   as `name`. A project file claims top-level keys as `managed_fields`, which
   only a request carrying the list may change. An update releases only when
   the running app would change, so a rename is a row update. Spec:
-  [deployment-identity](openspec/changes/deployment-identity-and-project-file/specs/deployment-identity/spec.md),
-  [deployment-project-file](openspec/changes/deployment-identity-and-project-file/specs/deployment-project-file/spec.md),
+  [deployment-identity](openspec/specs/deployment-identity/spec.md),
+  [deployment-project-file](openspec/specs/deployment-project-file/spec.md),
   [edit-deployment-backend](openspec/specs/edit-deployment-backend/spec.md) ·
   Rationale:
-  [deployment-identity-and-project-file](openspec/changes/deployment-identity-and-project-file/design.md)
+  [deployment-identity-and-project-file](openspec/changes/archive/2026-11-16-deployment-identity-and-project-file/design.md)
 - **Tenant images live in a per-environment registry where every operation
   authenticates**, reachable only inside the cluster. A build pushes with a
   short-lived capability the build worker mints for exactly its own

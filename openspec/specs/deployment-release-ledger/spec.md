@@ -10,8 +10,11 @@ without any field being revised after it is written.
 
 ### Requirement: A release is created by the request that asks for a rollout
 
-Creating or updating a deployment SHALL create exactly one release, in the **same transaction** as
-the deployment write, and SHALL record it as the deployment's desired release.
+Creating a deployment SHALL create exactly one release. Updating a deployment SHALL
+create exactly one release when the update releases, as edit-deployment-backend's "An
+update releases only when the running app would change" defines, and none otherwise. A
+release SHALL be created in the **same transaction** as the deployment write, and SHALL
+be recorded as the deployment's desired release.
 
 A release SHALL carry a `uuid4` primary key, generated before anything exists in the cluster to
 carry it. That identifier SHALL be the value stamped onto the release's pods, and SHALL be
@@ -33,7 +36,7 @@ point after its creating transaction commits, including deployments that predate
 
 #### Scenario: A deployment is updated
 
-- **WHEN** a deployment is updated
+- **WHEN** a deployment's chart values are updated
 - **THEN** a new release exists, and the deployment names the new one as its desired release
 
 #### Scenario: A rejected update
@@ -49,8 +52,13 @@ point after its creating transaction commits, including deployments that predate
 
 #### Scenario: Two byte-identical redeploys
 
-- **WHEN** a deployment is updated twice with the same values, template and build
-- **THEN** two distinct releases exist, distinguished by identity rather than by content
+- **WHEN** a `ready` deployment receives the same update twice, naming no build and carrying no vars
+- **THEN** the second update creates no release
+
+#### Scenario: An identity-only update
+
+- **WHEN** an update changes only the deployment's description
+- **THEN** no release is created and the desired release is unchanged
 
 ### Requirement: A release records the intent that produced it
 

@@ -33,10 +33,11 @@ to `/apps`.
   `unlisted` or `admin`
 
 ### Requirement: Each deployment is a row with a plain-language status
-Each deployment SHALL be shown as a row with the app's icon and name, a
-status in plain words, the deployment's address, its plan and price, its
-running version and an Open action. A deployment in progress SHALL show a
-progress indicator. Open SHALL be disabled until the app can be reached.
+Each deployment SHALL be shown as a row with the deployment's own name and its
+effective icon (its own, or else its product's), a status in plain words, the
+deployment's address, its plan and price, its running version and an Open
+action. A deployment in progress SHALL show a progress indicator. Open SHALL be
+disabled until the app can be reached.
 
 #### Scenario: Statuses in plain words
 - **WHEN** deployments are `ready`, `pending`, `error` and `deleting`
@@ -62,6 +63,11 @@ progress indicator. Open SHALL be disabled until the app can be reached.
 #### Scenario: Plan and price
 - **WHEN** a deployment is on the Personal plan at 4.99 euros a month
 - **THEN** its row reads "Personal · €4.99/mo"
+
+#### Scenario: Custom deployments are told apart
+- **WHEN** an owner has Custom deployments named `Arkanoid` and `Recipes`, one with an icon of its own
+- **THEN** the rows read `Arkanoid` and `Recipes`, not the product's name
+- **AND** the one with its own icon shows it, the other the Custom product's
 
 ### Requirement: A row expands to the deployment's details and actions
 Selecting a row SHALL expand it in place to the deployment's address (with a
@@ -107,17 +113,21 @@ separate payment notice.
 - **THEN** its row shows a "Payment failed" notice
 
 ### Requirement: The list can be searched and sorted
-The dashboard SHALL offer a search over each deployment's app (the same
-fields as the catalog search), address and plan name, and a sort by newest
-first (the default), oldest first, app name, or most recently updated. Both
-SHALL be kept in the address (`search` and `sort`). Pressing `/` outside a
-text field SHALL focus the search.
+The dashboard SHALL offer a search over each deployment's name, its app (the
+same fields as the catalog search), address and plan name, and a sort by newest
+first (the default), oldest first, name, or most recently updated. Both SHALL
+be kept in the address (`search` and `sort`). Pressing `/` outside a text field
+SHALL focus the search.
 
 #### Scenario: Search by address
 - **WHEN** a user searches their apps for part of a deployment's address
 - **THEN** only deployments whose address or other searched fields contain
   it are listed
 
+#### Scenario: Search by name
+- **WHEN** a user searches for `ark`
+- **THEN** a deployment named `Arkanoid` is listed
+
 #### Scenario: Sort by name
 - **WHEN** a user sorts by name
-- **THEN** deployments are ordered by app name, then by address
+- **THEN** deployments are ordered by deployment name, then by address

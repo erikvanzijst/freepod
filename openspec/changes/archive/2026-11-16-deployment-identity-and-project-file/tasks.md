@@ -36,8 +36,8 @@ Plan. Run the full `api/` suite before every push.
 
 ## 5. Server rollout (PR 1)
 
-- [ ] 5.1 Roll out the API, the grants and app-auth on dev, then prod; confirm on dev that a rename from the dashboard creates no release and that a sign-in page shows the deployment's name
-  - Dev done 2026-11-15 (API/UI 191453c pinned, daemons 0.11.0); prod after merge
+- [x] 5.1 Roll out the API, the grants and app-auth on dev, then prod; confirm on dev that a rename from the dashboard creates no release and that a sign-in page shows the deployment's name
+  - Dev done 2026-11-15; prod done 2026-11-16 after merge (migration f1d7c3a9e5b2, app-auth 0.12.0, Keycloak 26.8.1-6)
 
 ## 6. Client: project file format 2 (PR 2)
 
@@ -60,7 +60,7 @@ Plan. Run the full `api/` suite before every push.
 - [x] 8.1 Update `cli/src/freepod/assets/SKILL.md` (init with `--name`/`--hostname`, editing the file plus `freepod apply`, `link`, no `--recreate`), `cli/README.md` and `cli/DEVELOPMENT.md`; verify the skill's command examples run against dev
 - [x] 8.2 Update the developer guides in `ui/docs`, describe fields "managed by `.freepod.json`" and Take over on `apps/managing/settings.md` (left out of PR 1, when no client sets them yet), and run `npm run cli:reference`; verify CI's stale-reference check passes locally
 - [x] 8.3 End-to-end on dev: `init` (returns before provisioning ends, the placeholder comes up, vars settable), `deploy` (app online, one release), rename and icon in the file plus `apply` (no release), a dashboard take-over and re-apply, a format 1 project migrated; record the results in the PR
-- [ ] 8.4 After the `freepod` release, raise the server's minimum client version; verify an older client is told to upgrade before it reads a format 2 file
+- [x] 8.4 After the `freepod` release, raise the server's minimum client version; verify an older client is told to upgrade before it reads a format 2 file
 
 ## Workflow follow-up
 

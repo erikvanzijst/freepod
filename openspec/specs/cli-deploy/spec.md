@@ -10,16 +10,21 @@ built image.
 ### Requirement: Deploy validates against current platform state before doing expensive work
 
 Before packing or building anything, the client SHALL establish the authenticated
-account, read the user-application product's current template, and — when a deployment
-is already recorded — read that deployment. A deployment recorded in the project file
-but absent from the platform SHALL be reported at this point, before any archive is
-built.
+account, read the user-application product's current template, and read the deployment
+the project file records. A project that records no deployment, or whose recorded
+deployment is absent from the platform, SHALL be reported at this point, before any
+archive is built.
 
 #### Scenario: A deleted deployment is reported before a build is spent
 
 - **WHEN** the deployment recorded in the project file no longer exists
-- **THEN** the client reports it and names how to recreate the deployment
+- **THEN** the client reports it and names `freepod init --force` and `freepod link`
 - **AND** no archive is packed and no build is created
+
+#### Scenario: An unlinked project is reported before a build is spent
+
+- **WHEN** a deploy runs in a project whose file records no deployment
+- **THEN** the client names `freepod init` and `freepod link`, and builds nothing
 
 #### Scenario: Preflight precedes packing
 
@@ -28,77 +33,23 @@ built.
 
 ### Requirement: A newly required value is collected by prompting, not by re-initializing
 
-When the product template requires a value the project file does not carry, the client
-SHALL prompt for it using the same rules initialization uses, record it in the project
-file, and continue the deploy. It SHALL NOT direct the user to re-initialize the
-project, because re-initialization discards the deployment pointer.
+When the product template requires a value that neither the deployment nor the project
+file carries, the client SHALL prompt for it using the same rules initialization uses,
+send it with the deploy's release, and continue. It SHALL NOT write it to the project
+file, and SHALL NOT direct the user to re-initialize the project.
 
 Where no prompt is possible, the client SHALL fail and name the missing value.
 
 #### Scenario: A template that gained a required field costs one question
 
-- **WHEN** the product's current template requires a value absent from the project file
-- **THEN** the client prompts for it, records it, and continues
-- **AND** the deployment pointer is preserved
+- **WHEN** the product's current template requires a value the deployment does not have
+- **THEN** the client prompts for it, sends it with the release, and continues
+- **AND** the project file is unchanged
 
 #### Scenario: A non-interactive run fails with the field named
 
 - **WHEN** a required value is missing and no prompt can be presented
 - **THEN** the client fails and names the missing value
-
-### Requirement: A first deploy creates the deployment before building
-
-When the project records no deployment, or recreation is requested, the client SHALL
-create the deployment before packing, uploading or building anything, supplying no image,
-so that the product serves its placeholder until the first build is released. The client
-SHALL record the new deployment in the project file immediately after the platform
-creates it, before any further step.
-
-The client SHALL then build against that deployment and release the build into it,
-exactly as on any later deploy, including waiting for the deployment to become ready
-before updating it.
-
-A first build that does not succeed SHALL leave the deployment in place and recorded, so
-that the next deploy reuses it rather than creating another. The client SHALL say that
-the deployment exists and name `freepod delete` as the way to remove it.
-
-`freepod init` SHALL continue to write nothing to the platform.
-
-#### Scenario: A first deploy creates, then builds, then releases
-
-- **WHEN** a project with no recorded deployment is deployed
-- **THEN** the deployment is created with no image and recorded in the project file
-- **AND** the build is created against that deployment
-- **AND** the build's image is released into it
-
-#### Scenario: The pointer survives a failed first build
-
-- **WHEN** a first deploy's build does not succeed
-- **THEN** the project file still records the new deployment
-- **AND** the client states that it exists and that `freepod delete` removes it
-- **AND** the next deploy builds against that same deployment
-
-#### Scenario: Recreation creates before building
-
-- **WHEN** a deploy runs with recreation requested
-- **THEN** the new deployment is created and recorded before the build is created against it
-
-### Requirement: A first deploy selects a free plan
-
-When creating a deployment, the client SHALL read the product's plans and select the
-first plan whose current plan template carries a zero price. When no such plan exists,
-the client SHALL refuse and state that only free plans are supported.
-
-#### Scenario: The free plan is selected automatically
-
-- **WHEN** the product offers a plan whose current template carries a zero price
-- **THEN** the client creates the deployment against that plan's current template
-
-#### Scenario: An instance with no free plan is refused clearly
-
-- **WHEN** no plan's current template carries a zero price
-- **THEN** the client refuses and states that only free plans are supported
-- **AND** creates nothing
 
 ### Requirement: A deployment always targets the product's canonical template
 
@@ -122,20 +73,29 @@ report the move rather than performing it silently.
 
 ### Requirement: User values are submitted as a complete document
 
-When the client supplies user values on an update, it SHALL supply the complete set —
-the project file's declared values together with the built image reference — because the
-platform replaces the stored values wholesale rather than merging them field by field.
+The client SHALL submit a deploy as one update, built as apply builds it: the file's
+identity keys, the deployment's stored chart values with the file's chart keys over
+them, and the file's keys as `managed_fields`. The update SHALL also carry the product's
+current template, the successful build, and the build's image as the chart's `image`
+value. The platform SHALL apply them in one release. `image` SHALL NOT be listed in
+`managed_fields`.
 
-Consequently a value edited in the project file SHALL take effect on the next deploy.
+Consequently a key edited in the project file SHALL take effect on the next deploy, in
+the same release as the new code.
 
 #### Scenario: A partial document is never sent
 
-- **WHEN** the client updates a deployment with a new image
-- **THEN** the submitted user values also carry every value declared in the project file
+- **WHEN** the client deploys a new build
+- **THEN** the update carries every chart value of the deployment, with every key of the project file over them
+
+#### Scenario: One release for the file and the build
+
+- **WHEN** a developer edits `auth` in the project file and deploys
+- **THEN** exactly one release is created, running the new build with the edited `auth`
 
 #### Scenario: An edited value is applied by the next deploy
 
-- **WHEN** a user changes a declared value in the project file and deploys
+- **WHEN** a user changes a key in the project file and deploys
 - **THEN** the deployment reflects the changed value
 
 ### Requirement: Deploy waits for a deployment that is not ready to update
@@ -210,32 +170,14 @@ it SHALL report the platform's recorded error.
   status
 - **THEN** the client continues waiting until the status reflects its own generation
 
-### Requirement: A deployment deleted out of band can be recreated
-
-The client SHALL provide a way to discard the recorded deployment pointer and create a
-new deployment for the project, so that a deployment removed on the platform does not
-require editing the project file by hand.
-
-#### Scenario: Recreation replaces the pointer
-
-- **WHEN** a deploy runs with recreation requested
-- **THEN** the client creates a new deployment and records its identifier and name
-
 ### Requirement: Deploy can roll a deployment without rebuilding it
-`freepod deploy --no-build` SHALL create a release from the deployment's current image,
-skipping the project archive upload and the build. This is what applies a staged
-configuration change, and it also rolls a deployment whose source has not changed.
-
-The command SHALL submit the same image the applied release runs and SHALL NOT name a
-build. The platform carries the applied release's build over to a release that keeps its
-image, so the new release still records which build produced the code it is running.
-
-`--no-build` SHALL be refused when the deployment has no applied release to take an image
-from.
+`freepod deploy --no-build` SHALL be an alias of `freepod apply`. It SHALL skip the
+project archive upload and the build, apply the project file, and roll out pending vars
+from the deployment's current image.
 
 #### Scenario: Applying a staged var change
 - **WHEN** a developer runs `freepod deploy --no-build` on a deployment with staged vars
-- **THEN** a release is created from the current image, with no build
+- **THEN** a release is created from the current image, naming the build it runs
 - **AND** the staged vars take effect
 
 #### Scenario: The build reference is preserved
@@ -245,39 +187,8 @@ from.
 
 #### Scenario: No image to roll
 - **WHEN** a developer runs `freepod deploy --no-build` on a deployment that has never
-  been applied
-- **THEN** the command fails and explains that there is nothing to roll
-
-### Requirement: A hostname is sent as entered and re-checked only when it changes
-
-The client SHALL send the project file's hostname as entered: a bare label for the
-platform to complete, or a dotted FQDN left alone. It SHALL check the hostname only when it
-differs from the recorded deployment's, since the check would report an unchanged name as in
-use by its own deployment. For that comparison it SHALL append the account's reported
-`suffix` to a bare label as opaque text, and SHALL NOT otherwise build a hostname.
-
-#### Scenario: An unchanged hostname is not re-checked
-
-- **WHEN** a deploy runs, the project file's hostname is `photos`, the account's suffix is
-  `-alice.freepod.app`, and the deployment's hostname is `photos-alice.freepod.app`
-- **THEN** the client performs no hostname check
-
-#### Scenario: A changed hostname is checked before packing
-
-- **WHEN** the project file's hostname differs from the deployment's
-- **THEN** the client checks it before packing
-- **AND** stops with the reported reason when it is unusable
-
-#### Scenario: A bare label is submitted as a label
-
-- **WHEN** the project file's hostname is `photos`
-- **THEN** the client checks and submits `photos`, and reports the hostname the platform
-  completed it to
-
-#### Scenario: A full FQDN is left alone
-
-- **WHEN** the project file's hostname is `photos.example.com`
-- **THEN** the client submits it unchanged and the custom-domain path applies
+  been released with a build, and the file and vars hold no change
+- **THEN** the command reports that nothing changed
 
 ### Requirement: An old-format hostname in the project file is rewritten to its label
 
@@ -301,3 +212,20 @@ fixed in the client: it only corrects the client's own earlier output.
 - **WHEN** the project file's hostname is `photos`, `photos-alice.freepod.app`,
   `grafana.freepod.eu`, or `photos.example.com`
 - **THEN** the client leaves it unchanged
+
+### Requirement: The first deploy replaces the placeholder
+
+A deploy into a deployment that has never run a build SHALL proceed like any other
+deploy. When the deployment is still being provisioned, the client SHALL wait until it
+settles before releasing, then follow the rollout until the app serves the build in place
+of the placeholder.
+
+#### Scenario: The first deploy after init
+
+- **WHEN** a developer runs `freepod deploy` in a project just initialized
+- **THEN** the build is released, the deployment runs it, and the client prints its address
+
+#### Scenario: Provisioning still in flight
+
+- **WHEN** the build finishes while the deployment's first reconcile is still running
+- **THEN** the client waits for the deployment to settle, then releases the build
