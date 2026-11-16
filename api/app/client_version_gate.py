@@ -8,7 +8,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 # The oldest `freepod` CLI release the API supports. Raised in the same change
 # as any backend change a released client cannot survive.
-MIN_CLIENT_VERSION = Version("0.22.0")
+MIN_CLIENT_VERSION = Version("0.26.0")
 
 _CLIENT_AGENT = re.compile(r"^freepod/(\S+)")
 
