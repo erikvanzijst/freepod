@@ -7,10 +7,11 @@ replaces both.
 
 from datetime import datetime
 from typing import Literal, Optional
+from uuid import UUID
 
 from pydantic import ConfigDict
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Identity, Index, Integer, String, Text
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Identity, Index, Integer, String, Text, Uuid
 from sqlmodel import Field, SQLModel
 
 from app.models.core import _utcnow
@@ -102,3 +103,61 @@ class GitCredentialRead(SQLModel):
     username: str
     password: str
     expires_at: datetime
+
+
+class DeploymentSourceORM(SQLModel, table=True):
+    """The repository a deployment is built from. Its absence means "not linked".
+
+    Keyed on the host's own repository id, which survives renames and
+    transfers; `full_name` is the last name seen. Several deployments may come
+    from one repository, such as two directories of a monorepo.
+    """
+
+    __tablename__ = "deployment_source"
+    __table_args__ = (
+        Index("ix_deployment_source_repository", "provider", "host", "repository_id"),
+    )
+
+    deployment_id: UUID = Field(
+        sa_column=Column(
+            Uuid, ForeignKey("deployment.id", ondelete="CASCADE"), primary_key=True
+        )
+    )
+    provider: str = Field(sa_column=Column(String(16), nullable=False))
+    host: str = Field(sa_column=Column(String(253), nullable=False))
+    repository_id: str = Field(sa_column=Column(String(64), nullable=False))
+    full_name: str = Field(sa_column=Column(String(255), nullable=False))
+    branch: str = Field(sa_column=Column(String(255), nullable=False))
+    root_dir: str = Field(default="", sa_column=Column(String(1024), nullable=False, server_default=""))
+    installation_id: Optional[str] = Field(default=None, sa_column=Column(String(64), nullable=True))
+    created_at: datetime = Field(default_factory=_utcnow, nullable=False)
+    updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
+
+
+class DeploymentSourceWrite(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["github"] = "github"
+    repository: str
+    branch: Optional[str] = None
+    root_dir: str = ""
+
+
+class DeploymentSourceRead(SQLModel):
+    provider: str
+    host: str
+    repository_id: str
+    full_name: str
+    html_url: str
+    branch: str
+    root_dir: str
+    linked_at: datetime
+
+
+class GitHubRepositoryListing(SQLModel):
+    id: int
+    full_name: str
+    private: bool
+    default_branch: Optional[str] = None
+    html_url: str
+    pushed_at: Optional[datetime] = None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
+from uuid import UUID
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
@@ -11,16 +12,19 @@ from app.config import get_settings
 from app.db import get_session
 from app.deps import get_current_user, require_self
 from app.models import (
+    DeploymentSourceRead,
+    DeploymentSourceWrite,
     GitConnectionRead,
     GitCredentialRead,
     GitCredentialRequest,
     GitHubRepositoryCreate,
+    GitHubRepositoryListing,
     GitHubRepositoryRead,
     GitHubConnectStart,
     GitHubInstallationRead,
     UserORM,
 )
-from app.services import github
+from app.services import deployment_sources, github
 from app.services.errors import CaelusException
 
 router = APIRouter(tags=["git"])
@@ -230,3 +234,105 @@ def mint_git_credential(
             session, user_id, repository=payload.repository, access=payload.access
         )
     )
+
+
+@router.get(
+    "/users/{user_id}/git/github/repositories",
+    response_model=list[GitHubRepositoryListing],
+    summary="List the GitHub repositories the Freepod app can reach",
+    responses={
+        403: {"description": "Caller may only list their own repositories."},
+        409: {"description": "The account is not connected (`git_not_connected`)."},
+    },
+)
+def list_github_repositories(
+    user_id: int = Path(..., description="ID of the account."),
+    current_user: UserORM = Depends(require_self),
+    session: Session = Depends(get_session),
+) -> list[GitHubRepositoryListing]:
+    """Every repository of every installation the connected user can see, most
+    recently pushed first, up to 1000."""
+    return [
+        GitHubRepositoryListing(**item) for item in github.list_repositories(session, user_id)
+    ]
+
+
+SOURCE_PATH = "/users/{user_id}/deployments/{deployment_id}/source"
+
+
+@router.get(
+    SOURCE_PATH,
+    response_model=DeploymentSourceRead,
+    summary="Show the repository a deployment is built from",
+    responses={404: {"description": "No such deployment, or it is not linked (`source_not_linked`)."}},
+)
+def get_deployment_source(
+    user_id: int = Path(..., description="ID of the deployment's owner."),
+    deployment_id: UUID = Path(..., description="ID of the deployment."),
+    current_user: UserORM = Depends(require_self),
+    session: Session = Depends(get_session),
+) -> DeploymentSourceRead:
+    return deployment_sources.get_source(session, user_id=user_id, deployment_id=deployment_id)
+
+
+@router.put(
+    SOURCE_PATH,
+    response_model=DeploymentSourceRead,
+    summary="Link a deployment to the repository it is built from",
+    responses={
+        403: {"description": "Only the deployment's owner may link it."},
+        404: {
+            "description": "No such deployment, or the repository does not exist or the app "
+            "cannot reach it (`github_repo_not_found`, `github_app_not_installed`)."
+        },
+        409: {"description": "The account is not connected to GitHub (`git_not_connected`)."},
+        422: {
+            "description": "The repository, branch or path is not valid "
+            "(`github_repo_name_invalid`, `source_branch_invalid`, `source_root_invalid`)."
+        },
+    },
+)
+def put_deployment_source(
+    payload: DeploymentSourceWrite,
+    user_id: int = Path(..., description="ID of the deployment's owner."),
+    deployment_id: UUID = Path(..., description="ID of the deployment."),
+    current_user: UserORM = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> DeploymentSourceRead:
+    """Record which GitHub repository, branch and directory in it the deployment is
+    built from, replacing any earlier link.
+
+    The repository is identified by GitHub's own id, so a rename or a transfer
+    keeps the link. `branch` defaults to the repository's default branch, and
+    `root_dir`, the directory holding the project, to the repository's root.
+    Nothing is built or released.
+    """
+    _require_owner(user_id, current_user)
+    return deployment_sources.link(
+        session,
+        user_id=user_id,
+        deployment_id=deployment_id,
+        repository=payload.repository,
+        branch=payload.branch,
+        root_dir=payload.root_dir,
+    )
+
+
+@router.delete(
+    SOURCE_PATH,
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Unlink a deployment from its repository",
+    responses={
+        403: {"description": "Only the deployment's owner may unlink it."},
+        404: {"description": "No such deployment, or it is not linked (`source_not_linked`)."},
+    },
+)
+def delete_deployment_source(
+    user_id: int = Path(..., description="ID of the deployment's owner."),
+    deployment_id: UUID = Path(..., description="ID of the deployment."),
+    current_user: UserORM = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    _require_owner(user_id, current_user)
+    deployment_sources.unlink(session, user_id=user_id, deployment_id=deployment_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

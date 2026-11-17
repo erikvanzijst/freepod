@@ -372,6 +372,39 @@ def access_token(session: Session, user_id: Any, *, client: Optional[httpx.Clien
     return fresh.access_token
 
 
+def _revoke(cfg: AppConfig, http: httpx.Client, row: GitConnectionORM) -> None:
+    """Revoke the app's authorization for this connection's user, as best GitHub allows.
+
+    GitHub identifies the grant by a token that still works, so an expired one is
+    refreshed first. A refused refresh means the grant is already gone.
+    """
+    tokens = _load(row)
+    token = tokens["access_token"]
+    expires = row.access_token_expires_at
+    if expires is not None and expires <= _utcnow().replace(tzinfo=None):
+        refresh_token = tokens.get("refresh_token")
+        if not refresh_token:
+            return
+        try:
+            token = _token_request(
+                cfg, http, {"grant_type": "refresh_token", "refresh_token": refresh_token}
+            ).access_token
+        except (_TokenError, UpstreamException):
+            return
+    try:
+        response = http.request(
+            "DELETE",
+            f"{API_URL}/applications/{cfg.client_id}/grant",
+            auth=(cfg.client_id, cfg.client_secret),
+            json={"access_token": token},
+            headers=API_HEADERS,
+        )
+        if response.status_code not in (204, 404, 422):
+            logger.warning("GitHub refused to revoke a grant: %s", response.status_code)
+    except httpx.HTTPError as exc:
+        logger.warning("Could not reach GitHub to revoke a grant: %s", exc)
+
+
 def disconnect(session: Session, user_id: Any, *, client: Optional[httpx.Client] = None) -> None:
     """Revoke the app's authorization on GitHub, then forget the connection.
 
@@ -381,22 +414,32 @@ def disconnect(session: Session, user_id: Any, *, client: Optional[httpx.Client]
     if row is None:
         raise GitNotConnectedException()
     cfg = config()
-    token = _load(row)["access_token"]
     with _http(client) as http:
-        try:
-            response = http.request(
-                "DELETE",
-                f"{API_URL}/applications/{cfg.client_id}/grant",
-                auth=(cfg.client_id, cfg.client_secret),
-                json={"access_token": token},
-                headers=API_HEADERS,
-            )
-            if response.status_code not in (204, 404, 422):
-                logger.warning("GitHub refused to revoke a grant: %s", response.status_code)
-        except httpx.HTTPError as exc:
-            logger.warning("Could not reach GitHub to revoke a grant: %s", exc)
+        _revoke(cfg, http, row)
     session.delete(row)
     session.commit()
+
+
+def forget_connections(session: Session, user_id: Any, *, client: Optional[httpx.Client] = None) -> None:
+    """Revoke and delete every connection of an account that is being deleted.
+
+    Leaves the commit to the caller. A GitHub that cannot be reached, or an
+    environment without the app, does not stop the deletion.
+    """
+    rows = session.exec(
+        select(GitConnectionORM).where(GitConnectionORM.user_id == user_id).with_for_update()
+    ).all()
+    if not rows:
+        return
+    try:
+        cfg: Optional[AppConfig] = config()
+    except UnavailableException:
+        cfg = None
+    with _http(client) as http:
+        for row in rows:
+            if cfg is not None and row.provider == GitProvider.GITHUB and row.host == HOST:
+                _revoke(cfg, http, row)
+            session.delete(row)
 
 
 def _installations(http: httpx.Client, token: str) -> list[dict[str, Any]]:
@@ -603,3 +646,75 @@ def mint_credential(
         "password": body["token"],
         "expires_at": body["expires_at"],
     }
+
+
+def resolve_repository(
+    session: Session, user_id: Any, repository: str, *, client: Optional[httpx.Client] = None
+) -> dict[str, Any]:
+    """A repository the user can see and the app can reach, with the installation that reaches it."""
+    if not FULL_NAME.match(repository):
+        raise InvalidInputException(
+            "A repository is named as owner/name.", code="github_repo_name_invalid"
+        )
+    cfg = config()
+    token = access_token(session, user_id, client=client)
+    with _http(client) as http:
+        response = _call(http, "GET", f"/repos/{repository}", token)
+        if response.status_code == 401:
+            raise GitNotConnectedException("GitHub no longer accepts this connection. Connect again.")
+        if response.status_code == 404:
+            raise CodedNotFoundException(
+                f"GitHub repository {repository} does not exist, or the Freepod app is not "
+                "installed on it.",
+                code="github_repo_not_found",
+            )
+        if response.status_code != 200:
+            raise _refused(f"/repos/{repository}", response)
+        repo = response.json()
+        found = _call(http, "GET", f"/repos/{repo['full_name']}/installation", app_jwt(cfg))
+        if found.status_code == 404:
+            raise _not_installed(repo["owner"]["login"])
+        if found.status_code != 200:
+            raise _refused("/repos/.../installation", found)
+    return {
+        "id": repo["id"],
+        "full_name": repo["full_name"],
+        "default_branch": repo.get("default_branch"),
+        "html_url": repo["html_url"],
+        "installation_id": found.json()["id"],
+    }
+
+
+REPOSITORY_LISTING_LIMIT = 1000
+
+
+def list_repositories(
+    session: Session, user_id: Any, *, client: Optional[httpx.Client] = None
+) -> list[dict[str, Any]]:
+    """The repositories the app can reach for this user, most recently pushed first."""
+    token = access_token(session, user_id, client=client)
+    repositories: dict[int, dict[str, Any]] = {}
+    with _http(client) as http:
+        for installation in _installations(http, token):
+            page = 1
+            while len(repositories) < REPOSITORY_LISTING_LIMIT:
+                body = _get(
+                    http,
+                    f"/user/installations/{installation['id']}/repositories",
+                    token,
+                    per_page=100,
+                    page=page,
+                )
+                for repo in body["repositories"]:
+                    repositories[repo["id"]] = {
+                        "id": repo["id"],
+                        "full_name": repo["full_name"],
+                        "private": repo["private"],
+                        "default_branch": repo.get("default_branch"),
+                        "html_url": repo["html_url"],
+                        "pushed_at": repo.get("pushed_at"),
+                    }
+                if page * 100 >= body["total_count"] or not body["repositories"]:
+                    break
+                page += 1
+    return sorted(repositories.values(), key=lambda r: r["pushed_at"] or "", reverse=True)

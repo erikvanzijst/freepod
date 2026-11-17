@@ -816,6 +816,14 @@ def _project_deployment(context: Context, *, lacks: str = "vars") -> project.Pro
     return project_file
 
 
+def _linkable_project(context: Context) -> Optional[project.Project]:
+    """The project here, when it records a deployment on this environment; else None."""
+    try:
+        return _project_deployment(context)
+    except UsageError:
+        return None
+
+
 def _refuse_unreachable(deployment, project_file, env_name) -> dict:
     """The deployment, or a refusal when it has no container to connect to.
 
@@ -1527,8 +1535,14 @@ def git_status(context: Context) -> None:
         if connection is None:
             raise FreepodError(git_module.NOT_CONNECTED)
         installed = git_module.installations(api, user_id)
+        project_file = _linkable_project(context)
+        linked = (
+            git_module.source(api, user_id, project_file.deployment_id) if project_file else None
+        )
 
     click.echo(f"github: {connection['login']}")
+    if project_file is not None:
+        click.echo(f"this project: {git_module.describe(linked) if linked else 'not linked'}")
     if not installed:
         context.say(
             "The Freepod app is not installed on any GitHub account yet; "
@@ -1590,6 +1604,7 @@ def git_create(
     credentials from Freepod, so `git push` works without a password.
     """
     root = git_module.repository_root()
+    project_file = _linkable_project(context)
     if name is None:
         if root is None:
             raise UsageError("name the repository, or run this inside a git repository")
@@ -1609,15 +1624,113 @@ def git_create(
         repo = git_module.create(
             api, user_id, name=name, owner=owner, private=not public, description=description
         )
-
-    visibility = "private" if repo.get("private") else "public"
-    context.say(f"Created {repo['full_name']} ({visibility}) on GitHub.")
-    if root is not None:
-        git_module.add_remote(root, remote, repo["clone_url"])
-        git_module.configure(context.env, root=root, everywhere=False)
-        branch = git_module.current_branch(root) or "main"
-        context.say(f"Added the remote {remote!r}. Push with: git push -u {remote} {branch}")
+        visibility = "private" if repo.get("private") else "public"
+        context.say(f"Created {repo['full_name']} ({visibility}) on GitHub.")
+        branch = git_module.current_branch(root) if root is not None else None
+        if root is not None:
+            git_module.add_remote(root, remote, repo["clone_url"])
+            git_module.configure(context.env, root=root, everywhere=False)
+            context.say(
+                f"Added the remote {remote!r}. Push with: git push -u {remote} {branch or 'main'}"
+            )
+        if project_file is not None and root is not None:
+            try:
+                linked = git_module.link(
+                    api,
+                    user_id,
+                    project_file.deployment_id,
+                    repository=repo["full_name"],
+                    branch=branch,
+                    root_dir=git_module.project_path(project_file.root, root),
+                )
+                context.say(f"This project's deployment is linked to {git_module.describe(linked)}.")
+            except FreepodError as exc:
+                context.say(f"Could not link this project's deployment to it: {exc}")
     click.echo(repo["html_url"])
+
+
+@git.command("link")
+@click.argument("repository", required=False)
+@click.option("--branch", help="the branch it is built from (default: the checked-out one)")
+@click.option(
+    "--path",
+    "root_dir",
+    help="the project's directory in the repository (default: where .freepod.json is)",
+)
+@click.pass_obj
+def git_link(
+    context: Context,
+    repository: Optional[str],
+    branch: Optional[str],
+    root_dir: Optional[str],
+) -> None:
+    """Link this project's deployment to the GitHub repository it is built from.
+
+    REPOSITORY is OWNER/NAME. Without it, the repository's `origin` remote is
+    used when it is on GitHub; otherwise, at a terminal, you pick one of the
+    repositories the Freepod app can reach. Linking again replaces the link.
+    """
+    project_file = _project_deployment(context, lacks="deployment to link")
+    git_root = git_module.repository_root(project_file.root)
+    origin = git_module.github_repository(
+        git_module.remote_url(git_root, "origin") if git_root else None
+    )
+
+    session = context.session()
+    session.authenticate(interactive=False)
+    with context.client(session) as api:
+        user_id = api.me()["id"]
+        if repository is None:
+            if origin is not None:
+                repository = origin
+            elif sys.stdin.isatty():
+                found = git_module.repositories(api, user_id)
+                if not found:
+                    raise FreepodError(
+                        "the Freepod app reaches no GitHub repositories yet. Install it on "
+                        "an account under Git in your Freepod settings."
+                    )
+                chosen = git_module.pick_repository(found)
+                if chosen is None:
+                    raise click.Abort()
+                repository = chosen["full_name"]
+            else:
+                raise UsageError(
+                    "name the repository as OWNER/NAME: this project has no GitHub remote "
+                    "named origin"
+                )
+        here = git_root is not None and origin is not None and origin.lower() == repository.lower()
+        if branch is None and here:
+            branch = git_module.current_branch(git_root)
+        if root_dir is None:
+            root_dir = git_module.project_path(project_file.root, git_root) if here else ""
+        linked = git_module.link(
+            api,
+            user_id,
+            project_file.deployment_id,
+            repository=repository,
+            branch=branch,
+            root_dir=root_dir,
+        )
+
+    context.say(f"This project's deployment is linked to {git_module.describe(linked)}.")
+    click.echo(linked["html_url"])
+
+
+@git.command("unlink")
+@click.pass_obj
+def git_unlink(context: Context) -> None:
+    """Unlink this project's deployment from its GitHub repository."""
+    project_file = _project_deployment(context, lacks="link")
+    session = context.session()
+    session.authenticate(interactive=False)
+    with context.client(session) as api:
+        removed = git_module.unlink(api, api.me()["id"], project_file.deployment_id)
+    context.say(
+        "This project's deployment is no longer linked to a repository."
+        if removed
+        else "This project's deployment was not linked to a repository."
+    )
 
 
 @git.command("setup")

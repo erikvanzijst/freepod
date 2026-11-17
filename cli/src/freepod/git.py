@@ -207,3 +207,96 @@ def configure(env: Environment, *, root: Optional[Path], everywhere: bool) -> st
     _git("config", scope, "--add", HELPER_KEY, helper_command(env), cwd=root)
     _git("config", scope, HTTP_PATH_KEY, "true", cwd=root)
     return "every repository" if everywhere else str(root)
+
+
+# --------------------------------------------------------------------------
+# The repository a deployment is built from
+# --------------------------------------------------------------------------
+
+_REMOTE = re.compile(
+    r"^(?:https://(?:[^@/]+@)?github\.com/|ssh://git@github\.com/|git@github\.com:)"
+    r"(?P<repo>[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}?)(?:\.git)?/?$"
+)
+
+
+def github_repository(url: Optional[str]) -> Optional[str]:
+    """`owner/name` of a github.com remote URL, or None for anything else."""
+    if not url:
+        return None
+    match = _REMOTE.match(url.strip())
+    return match.group("repo") if match else None
+
+
+def project_path(project_root: Path, git_root: Path) -> str:
+    """Where the project sits in its repository, as `dir/sub`; "" at the root."""
+    relative = project_root.resolve().relative_to(git_root.resolve())
+    return "" if str(relative) == "." else relative.as_posix()
+
+
+def source(api: ApiClient, user_id: Any, deployment_id: str) -> Optional[Dict[str, Any]]:
+    response = api.get(f"/api/users/{user_id}/deployments/{deployment_id}/source")
+    if response.status_code == 404 and _json_code(response) == "source_not_linked":
+        return None
+    if not response.is_success:
+        raise _refusal(response)
+    return response.json()
+
+
+def link(
+    api: ApiClient,
+    user_id: Any,
+    deployment_id: str,
+    *,
+    repository: str,
+    branch: Optional[str],
+    root_dir: str,
+) -> Dict[str, Any]:
+    body: Dict[str, Any] = {"repository": repository, "root_dir": root_dir}
+    if branch:
+        body["branch"] = branch
+    response = api.put(f"/api/users/{user_id}/deployments/{deployment_id}/source", json=body)
+    if not response.is_success:
+        raise _refusal(response)
+    return response.json()
+
+
+def unlink(api: ApiClient, user_id: Any, deployment_id: str) -> bool:
+    """False when there was no link to remove."""
+    response = api.delete(f"/api/users/{user_id}/deployments/{deployment_id}/source")
+    if response.status_code == 404 and _json_code(response) == "source_not_linked":
+        return False
+    if not response.is_success:
+        raise _refusal(response)
+    return True
+
+
+def repositories(api: ApiClient, user_id: Any) -> List[Dict[str, Any]]:
+    response = api.get(f"/api/users/{user_id}/git/github/repositories")
+    if not response.is_success:
+        raise _refusal(response)
+    return response.json()
+
+
+def describe(linked: Dict[str, Any]) -> str:
+    where = f", in {linked['root_dir']}" if linked.get("root_dir") else ""
+    return f"{linked['full_name']} (branch {linked['branch']}{where})"
+
+
+def pick_repository(
+    found: List[Dict[str, Any]], *, input: Any = None, output: Any = None
+) -> Optional[Dict[str, Any]]:
+    from .picker import pick
+
+    width = max(len(r["full_name"]) for r in found)
+    labels = [
+        f"{r['full_name'].ljust(width)}  {'private' if r.get('private') else 'public'}"
+        for r in found
+    ]
+    return pick(
+        found,
+        labels,
+        title="Link to which repository? Type to narrow, ↑↓ to move, Enter to pick.",
+        empty="no repository matches",
+        input=input,
+        output=output,
+    )

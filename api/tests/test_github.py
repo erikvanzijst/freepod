@@ -70,6 +70,7 @@ class FakeGitHub:
             "html_url": f"https://github.com/{full_name}",
             "clone_url": f"https://github.com/{full_name}.git",
             "default_branch": None,
+            "pushed_at": f"2026-11-{10 + len(self.repos):02d}T00:00:00Z",
             "permissions": {"pull": True, "push": push, "admin": push},
         }
         self.repos[full_name.lower()] = repo
@@ -157,6 +158,10 @@ class FakeGitHub:
                     ],
                 },
             )
+        if method == "GET" and path.startswith("/user/installations/") and path.endswith("/repositories"):
+            installation = next(i for i in self.installations if i["id"] == int(path.split("/")[3]))
+            reached = [r for r in self.repos.values() if self._covers(r) is installation]
+            return httpx.Response(200, json={"total_count": len(reached), "repositories": reached})
         if method == "PUT" and path.startswith("/user/installations/"):
             if self.refuse_add:
                 return httpx.Response(403)
@@ -450,6 +455,52 @@ def test_other_accounts_cannot_read_connections(client, fake_github):
     assert response.status_code == 403
 
 
+# ── Account deletion ──────────────────────────────────────────────────
+
+
+def _delete_account(db_session, user_id):
+    from app.services import users
+
+    users.delete_user(db_session, user_id=user_id)
+
+
+def test_deleting_the_account_revokes_the_grant_and_forgets_it(client, fake_github, db_session):
+    user = create_user(client, USER_EMAIL)
+    _connect(client, USER_EMAIL, user["id"])
+    _delete_account(db_session, user["id"])
+    assert fake_github.revoked == ["ghu_1"]
+    assert db_session.exec(select(GitConnectionORM)).first() is None
+
+
+def test_an_expired_token_is_refreshed_to_revoke_the_grant(client, fake_github, db_session):
+    user = create_user(client, USER_EMAIL)
+    _connect(client, USER_EMAIL, user["id"])
+    _expire(db_session)
+    _delete_account(db_session, user["id"])
+    assert fake_github.revoked == ["ghu_2"]
+
+
+def test_an_unreachable_github_does_not_stop_the_deletion(client, fake_github, db_session, monkeypatch):
+    user = create_user(client, USER_EMAIL)
+    _connect(client, USER_EMAIL, user["id"])
+
+    def down(request):
+        raise httpx.ConnectError("down", request=request)
+
+    monkeypatch.setattr(github, "http_client", lambda: httpx.Client(transport=httpx.MockTransport(down)))
+    _delete_account(db_session, user["id"])
+    assert db_session.exec(select(GitConnectionORM)).first() is None
+
+
+def test_an_environment_without_the_app_still_forgets_the_connection(client, fake_github, db_session, monkeypatch):
+    user = create_user(client, USER_EMAIL)
+    _connect(client, USER_EMAIL, user["id"])
+    monkeypatch.setattr(github, "get_settings", lambda: CaelusSettings(_env_file=None))
+    _delete_account(db_session, user["id"])
+    assert fake_github.revoked == []
+    assert db_session.exec(select(GitConnectionORM)).first() is None
+
+
 # ── Repositories ──────────────────────────────────────────────────────
 
 
@@ -580,6 +631,105 @@ def test_only_the_owner_gets_credentials(client, alice):
     assert response.status_code == 403
 
 
+# ── Deployment sources ────────────────────────────────────────────────
+
+
+@pytest.fixture
+def alice_deployment(alice, db_session):
+    from tests.conftest import make_bare_deployment
+
+    return make_bare_deployment(db_session, alice["id"])
+
+
+def _source(client, user, deployment, method="GET", **body):
+    return client.request(
+        method,
+        f"/api/users/{user['id']}/deployments/{deployment.id}/source",
+        json=body or None,
+        headers=auth_header(USER_EMAIL),
+    )
+
+
+def test_repositories_are_listed_most_recently_pushed_first(client, alice, fake_github):
+    fake_github.add_repo("alice/newer", installed=True)
+    response = client.get(
+        f"/api/users/{alice['id']}/git/github/repositories", headers=auth_header(USER_EMAIL)
+    )
+    assert response.status_code == 200
+    assert [r["full_name"] for r in response.json()] == ["alice/newer", "acme/tools", "alice/existing"]
+
+
+def test_a_deployment_is_linked_to_its_repository(client, alice, alice_deployment, fake_github):
+    fake_github.repos["alice/existing"]["default_branch"] = "trunk"
+    response = _source(client, alice, alice_deployment, "PUT", repository="alice/existing")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["full_name"] == "alice/existing"
+    assert body["repository_id"] == str(fake_github.repos["alice/existing"]["id"])
+    assert body["html_url"] == "https://github.com/alice/existing"
+    assert (body["branch"], body["root_dir"]) == ("trunk", "")
+    assert _source(client, alice, alice_deployment).json() == body
+
+
+def test_a_link_names_its_branch_and_directory(client, alice, alice_deployment):
+    response = _source(
+        client, alice, alice_deployment, "PUT", repository="acme/tools", branch="release/1.x", root_dir="./services/api/"
+    )
+    assert response.status_code == 200, response.text
+    assert (response.json()["branch"], response.json()["root_dir"]) == ("release/1.x", "services/api")
+
+
+def test_linking_again_replaces_the_link(client, alice, alice_deployment):
+    _source(client, alice, alice_deployment, "PUT", repository="alice/existing")
+    _source(client, alice, alice_deployment, "PUT", repository="acme/tools", branch="main")
+    assert _source(client, alice, alice_deployment).json()["full_name"] == "acme/tools"
+
+
+@pytest.mark.parametrize(
+    "body, status, code",
+    [
+        ({"repository": "bob/elsewhere"}, 404, "github_repo_not_found"),
+        ({"repository": "nonsense"}, 422, "github_repo_name_invalid"),
+        ({"repository": "alice/existing", "root_dir": "../outside"}, 422, "source_root_invalid"),
+        ({"repository": "alice/existing", "root_dir": "/etc"}, 422, "source_root_invalid"),
+        ({"repository": "alice/existing", "branch": "a..b"}, 422, "source_branch_invalid"),
+        ({"repository": "alice/existing", "branch": "-x"}, 422, "source_branch_invalid"),
+    ],
+)
+def test_a_link_is_refused_with_a_reason(client, alice, alice_deployment, body, status, code):
+    response = _source(client, alice, alice_deployment, "PUT", **body)
+    assert response.status_code == status
+    assert response.json()["code"] == code
+    assert _source(client, alice, alice_deployment).status_code == 404
+
+
+def test_unlinking(client, alice, alice_deployment):
+    _source(client, alice, alice_deployment, "PUT", repository="alice/existing")
+    assert _source(client, alice, alice_deployment, "DELETE").status_code == 204
+    gone = _source(client, alice, alice_deployment)
+    assert gone.status_code == 404 and gone.json()["code"] == "source_not_linked"
+    assert _source(client, alice, alice_deployment, "DELETE").status_code == 404
+
+
+def test_only_the_owner_links_their_deployment(client, alice, alice_deployment):
+    create_user(client, OTHER_EMAIL)
+    response = client.put(
+        f"/api/users/{alice['id']}/deployments/{alice_deployment.id}/source",
+        json={"repository": "alice/existing"},
+        headers=auth_header(OTHER_EMAIL),
+    )
+    assert response.status_code == 403
+
+
+def test_another_accounts_deployment_cannot_be_linked(client, alice, fake_github, db_session):
+    from tests.conftest import make_bare_deployment
+
+    other = create_user(client, OTHER_EMAIL)
+    theirs = make_bare_deployment(db_session, other["id"])
+    response = _source(client, alice, theirs, "PUT", repository="alice/existing")
+    assert response.status_code == 404
+
+
 # ── Operator CLI ──────────────────────────────────────────────────────
 
 
@@ -606,6 +756,18 @@ def test_cli_lists_and_disconnects(cli_runner, fake_github, db_session):
     assert minted.exit_code == 0, minted.output
     assert "username: x-access-token" in minted.output
     assert fake_github.minted[-1]["permissions"] == {"contents": "read"}
+
+    from tests.conftest import make_bare_deployment
+
+    deployment = make_bare_deployment(db_session, user.id)
+    linked = runner.invoke(cli, ["git", "link", str(deployment.id), "alice/recipes", "--root-dir", "web"])
+    assert linked.exit_code == 0, linked.output
+    assert "root_dir: web" in linked.output
+    shown = runner.invoke(cli, ["git", "source", str(deployment.id)])
+    assert "full_name: alice/recipes" in shown.output
+    assert runner.invoke(cli, ["git", "unlink", str(deployment.id)]).exit_code == 0
+    assert runner.invoke(cli, ["git", "source", str(deployment.id)]).exit_code == 1
+    assert "alice/recipes" in runner.invoke(cli, ["git", "repos"]).output
 
     gone = runner.invoke(cli, ["git", "disconnect"])
     assert gone.exit_code == 0, gone.output

@@ -19,6 +19,7 @@ from freepod.config import ENVIRONMENTS
 
 from conftest import json_response
 
+DEPLOYMENT = "0f6d3c1e-3a54-4a9b-9a1b-6b2a7f1e9c11"
 USER = {"id": 7, "email": "dev@example.com", "is_admin": False, "created_at": "2026-01-01T00:00:00"}
 CONNECTION = {
     "provider": "github",
@@ -45,6 +46,8 @@ class Platform:
         self.polls = 0
         self.requests: List[httpx.Request] = []
         self.forbid_write = False
+        self.source: Optional[dict] = None
+        self.refuse_link = False
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         request.read()
@@ -61,7 +64,7 @@ class Platform:
             if not self.connected:
                 return json_response(409, {"detail": "not connected", "code": "git_not_connected"})
             return json_response(200, INSTALLATIONS)
-        if path == "/api/users/7/git/github/repositories":
+        if path == "/api/users/7/git/github/repositories" and request.method == "POST":
             body = json.loads(request.content)
             if body["name"] == "taken":
                 return json_response(409, {"detail": "alice/taken already exists on GitHub.",
@@ -75,6 +78,34 @@ class Platform:
                 "private": body["private"],
                 "default_branch": None,
             })
+        if path == f"/api/users/7/deployments/{DEPLOYMENT}/source":
+            if request.method == "GET":
+                if self.source is None:
+                    return json_response(404, {"detail": "not linked", "code": "source_not_linked"})
+                return json_response(200, self.source)
+            if request.method == "DELETE":
+                if self.source is None:
+                    return json_response(404, {"detail": "not linked", "code": "source_not_linked"})
+                self.source = None
+                return httpx.Response(204)
+            if self.refuse_link:
+                return json_response(404, {"detail": "GitHub repository x/y does not exist.",
+                                           "code": "github_repo_not_found"})
+            body = json.loads(request.content)
+            self.source = {
+                "provider": "github", "host": "github.com", "repository_id": "5001",
+                "full_name": body["repository"], "html_url": f"https://github.com/{body['repository']}",
+                "branch": body.get("branch") or "main", "root_dir": body.get("root_dir", ""),
+                "linked_at": "2026-11-17T10:00:00",
+            }
+            return json_response(200, self.source)
+        if path == "/api/users/7/git/github/repositories" and request.method == "GET":
+            return json_response(200, [
+                {"id": 5001, "full_name": "alice/recipes", "private": True, "default_branch": "main",
+                 "html_url": "https://github.com/alice/recipes", "pushed_at": None},
+                {"id": 5002, "full_name": "acme/site", "private": False, "default_branch": "main",
+                 "html_url": "https://github.com/acme/site", "pushed_at": None},
+            ])
         if path == "/api/users/7/git/github/credentials":
             body = json.loads(request.content)
             if body["access"] == "write" and self.forbid_write:
@@ -133,6 +164,18 @@ def repo(tmp_path, monkeypatch):
         )
     monkeypatch.chdir(root)
     return root
+
+
+@pytest.fixture
+def project(repo):
+    """A Freepod project in `web/` of the repository, whose origin is on GitHub."""
+    from freepod.project import Project
+
+    web = repo / "web"
+    web.mkdir()
+    Project(web, deployment_id=DEPLOYMENT).save()
+    subprocess.run(["git", "remote", "add", "origin", "git@github.com:alice/recipes.git"], cwd=repo, check=True)
+    return web
 
 
 def git_config(root: Path, *args: str) -> str:
@@ -391,3 +434,134 @@ def test_setup_globally(run, repo, isolated_home):
 def test_setup_outside_a_repository_needs_global(run, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert run(Platform(), ["git", "setup"]) == EXIT_USAGE
+
+
+# --- link and unlink -------------------------------------------------------
+
+
+def test_link_takes_the_origin_branch_and_directory(run, project, monkeypatch, capsys):
+    monkeypatch.chdir(project)
+    platform = Platform()
+    assert run(platform, ["git", "link"]) == EXIT_OK
+    assert platform.bodies(f"/api/users/7/deployments/{DEPLOYMENT}/source") == [
+        {"repository": "alice/recipes", "root_dir": "web", "branch": "main"}
+    ]
+    captured = capsys.readouterr()
+    assert captured.out == "https://github.com/alice/recipes\n"
+    assert "alice/recipes (branch main, in web)" in captured.err
+
+
+def test_link_to_another_repository_assumes_nothing_from_this_one(run, project, monkeypatch):
+    monkeypatch.chdir(project)
+    platform = Platform()
+    run(platform, ["git", "link", "acme/site"])
+    assert platform.bodies(f"/api/users/7/deployments/{DEPLOYMENT}/source") == [
+        {"repository": "acme/site", "root_dir": ""}
+    ]
+
+
+def test_link_with_a_branch_and_path(run, project, monkeypatch):
+    monkeypatch.chdir(project)
+    platform = Platform()
+    run(platform, ["git", "link", "--branch", "release", "--path", "apps/web"])
+    assert platform.bodies(f"/api/users/7/deployments/{DEPLOYMENT}/source") == [
+        {"repository": "alice/recipes", "root_dir": "apps/web", "branch": "release"}
+    ]
+
+
+def test_link_without_a_github_origin_offers_a_pick(run, project, repo, monkeypatch):
+    subprocess.run(["git", "remote", "remove", "origin"], cwd=repo, check=True)
+    monkeypatch.chdir(project)
+    picked = []
+
+    def pick(found):
+        picked.append([r["full_name"] for r in found])
+        return found[1]
+
+    monkeypatch.setattr("freepod.git.pick_repository", pick)
+
+    class Terminal(io.StringIO):
+        def isatty(self):
+            return True
+
+    platform = Platform()
+    from freepod.api import ApiClient
+
+    monkeypatch.setattr("freepod.cli.Context.session", lambda self, force_flow=None: _StubSession())
+    monkeypatch.setattr(
+        "freepod.cli.Context.client",
+        lambda self, session: ApiClient(self.env, session, client=httpx.Client(transport=httpx.MockTransport(platform)), backoff_base=0),
+    )
+    monkeypatch.setattr("freepod.cli.sys.stdin", Terminal(""))
+    assert main(["git", "link"]) == EXIT_OK
+    assert picked == [["alice/recipes", "acme/site"]]
+    assert platform.bodies(f"/api/users/7/deployments/{DEPLOYMENT}/source") == [
+        {"repository": "acme/site", "root_dir": ""}
+    ]
+
+
+def test_link_without_an_origin_or_a_terminal_asks_for_the_name(run, project, repo, monkeypatch, capsys):
+    subprocess.run(["git", "remote", "remove", "origin"], cwd=repo, check=True)
+    monkeypatch.chdir(project)
+    assert run(Platform(), ["git", "link"]) == EXIT_USAGE
+    assert "OWNER/NAME" in capsys.readouterr().err
+
+
+def test_link_needs_a_project(run, repo, capsys):
+    platform = Platform()
+    assert run(platform, ["git", "link", "alice/recipes"]) == EXIT_USAGE
+    assert platform.requests == []
+
+
+def test_link_reports_the_platforms_refusal(run, project, monkeypatch, capsys):
+    monkeypatch.chdir(project)
+    platform = Platform()
+    platform.refuse_link = True
+    assert run(platform, ["git", "link"]) == EXIT_ERROR
+    assert "does not exist" in capsys.readouterr().err
+
+
+def test_unlink(run, project, monkeypatch, capsys):
+    monkeypatch.chdir(project)
+    platform = Platform()
+    run(platform, ["git", "link"])
+    assert run(platform, ["git", "unlink"]) == EXIT_OK
+    assert "no longer linked" in capsys.readouterr().err
+    assert run(platform, ["git", "unlink"]) == EXIT_OK
+    assert "was not linked" in capsys.readouterr().err
+
+
+def test_status_shows_this_projects_link(run, project, monkeypatch, capsys):
+    monkeypatch.chdir(project)
+    platform = Platform()
+    run(platform, ["git", "status"])
+    assert "this project: not linked" in capsys.readouterr().out
+    run(platform, ["git", "link"])
+    capsys.readouterr()
+    run(platform, ["git", "status"])
+    assert "this project: alice/recipes (branch main, in web)" in capsys.readouterr().out
+
+
+def test_create_links_this_projects_deployment(run, repo, monkeypatch, capsys):
+    from freepod.project import Project
+
+    Project(repo, deployment_id=DEPLOYMENT).save()
+    platform = Platform()
+    assert run(platform, ["git", "create"]) == EXIT_OK
+    assert platform.bodies(f"/api/users/7/deployments/{DEPLOYMENT}/source") == [
+        {"repository": "alice/recipes", "root_dir": "", "branch": "main"}
+    ]
+    assert "linked to alice/recipes (branch main)" in capsys.readouterr().err
+
+
+def test_create_survives_a_refused_link(run, repo, capsys):
+    from freepod.project import Project
+
+    Project(repo, deployment_id=DEPLOYMENT).save()
+    platform = Platform()
+    platform.refuse_link = True
+    assert run(platform, ["git", "create"]) == EXIT_OK
+    captured = capsys.readouterr()
+    assert captured.out == "https://github.com/alice/recipes\n"
+    assert "Could not link" in captured.err
+    assert git_module.remote_url(repo, "origin") == "https://github.com/alice/recipes.git"

@@ -2151,6 +2151,79 @@ def git_credential(
         _echo_yaml_entity(credential)
 
 
+@git_app.command("repos")
+def git_repos() -> None:
+    """List the GitHub repositories the Freepod app can reach for the acting account."""
+    from app.services import github
+
+    with session_scope() as session:
+        user = _require_cli_user(session)
+        try:
+            _echo_yaml_entity(github.list_repositories(session, user.id))
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+
+
+@git_app.command("link")
+def git_link(
+    deployment_id: UUID = typer.Argument(..., help="The deployment to link"),
+    repository: str = typer.Argument(..., help="owner/name"),
+    branch: str | None = typer.Option(None, "--branch", help="Default: the repository's default branch"),
+    root_dir: str = typer.Option("", "--root-dir", help="The directory holding the project"),
+) -> None:
+    """Link one of the acting account's deployments to the repository it is built from."""
+    from app.services import deployment_sources
+
+    with session_scope() as session:
+        user = _require_cli_user(session)
+        try:
+            source = deployment_sources.link(
+                session,
+                user_id=user.id,
+                deployment_id=deployment_id,
+                repository=repository,
+                branch=branch,
+                root_dir=root_dir,
+            )
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        _echo_yaml_entity(source)
+
+
+@git_app.command("source")
+def git_source(
+    deployment_id: UUID = typer.Argument(..., help="The deployment"),
+    user_id: int | None = typer.Option(None, "--user-id", help="Its owner (admin only)"),
+) -> None:
+    """Show the repository a deployment is linked to."""
+    from app.services import deployment_sources
+
+    with session_scope() as session:
+        target = _ssh_key_target(session, user_id)
+        try:
+            _echo_yaml_entity(
+                deployment_sources.get_source(session, user_id=target, deployment_id=deployment_id)
+            )
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+
+
+@git_app.command("unlink")
+def git_unlink(
+    deployment_id: UUID = typer.Argument(..., help="The deployment to unlink"),
+) -> None:
+    """Unlink one of the acting account's deployments from its repository."""
+    from app.services import deployment_sources
+
+    with session_scope() as session:
+        user = _require_cli_user(session)
+        try:
+            deployment_sources.unlink(session, user_id=user.id, deployment_id=deployment_id)
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        typer.echo(f"Unlinked {deployment_id}")
+
+
 # ── Vars ──────────────────────────────────────────────────────────────
 
 var_app = typer.Typer(

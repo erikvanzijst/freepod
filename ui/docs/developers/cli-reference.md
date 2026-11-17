@@ -361,6 +361,23 @@ credentials from Freepod, so `git push` works without a password.
 | `--description TEXT` | the repository's description on GitHub |
 | `--remote TEXT` | the git remote to add [default: origin] |
 
+### `freepod git link`
+
+```
+freepod git link [OPTIONS] [REPOSITORY]
+```
+
+Link this project's deployment to the GitHub repository it is built from.
+
+REPOSITORY is OWNER/NAME. Without it, the repository's `origin` remote is
+used when it is on GitHub; otherwise, at a terminal, you pick one of the
+repositories the Freepod app can reach. Linking again replaces the link.
+
+| Option | Description |
+| --- | --- |
+| `--branch TEXT` | the branch it is built from (default: the checked-out one) |
+| `--path TEXT` | the project's directory in the repository (default: where .freepod.json is) |
+
 ### `freepod git setup`
 
 ```
@@ -385,6 +402,14 @@ freepod git status [OPTIONS]
 Show the GitHub account this Freepod account is connected to.
 
 Exits non-zero when it is not connected.
+
+### `freepod git unlink`
+
+```
+freepod git unlink [OPTIONS]
+```
+
+Unlink this project's deployment from its GitHub repository.
 
 ## `freepod init`
 
