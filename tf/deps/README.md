@@ -465,7 +465,7 @@ tag is never re-pushed: every theme or base-image change takes the next build
 number. Build, push and roll out:
 
 ```bash
-./scripts/build-images.sh 26.8.1-8 --keycloak  # build + push ghcr.io/<owner>/freepod/keycloak
+./scripts/build-images.sh 26.8.2-1 --keycloak  # build + push ghcr.io/<owner>/freepod/keycloak
 # set keycloak_image in variables.tf to the new tag, then:
 cd tf/deps && terraform apply -target=module.keycloak
 ```
@@ -518,7 +518,7 @@ docker run -d --name freepod-kc \
   --network "container:$DEVCTR" \
   -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
   -v "$HOST_WS/tf/deps/keycloak/theme/freepod:/opt/keycloak/themes/freepod:ro" \
-  quay.io/keycloak/keycloak:26.8.1 \
+  quay.io/keycloak/keycloak:26.8.2 \
   start-dev --http-port=8501 \
     --spi-theme--cache-themes=false --spi-theme--cache-templates=false \
     --spi-theme--static-max-age=-1

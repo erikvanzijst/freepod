@@ -16,7 +16,7 @@
 # Build + push with: ./scripts/build-images.sh <version>-<build> --keycloak
 # (see keycloak_image in variables.tf for the tag scheme).
 
-ARG KEYCLOAK=quay.io/keycloak/keycloak:26.8.1
+ARG KEYCLOAK=quay.io/keycloak/keycloak:26.8.2
 
 FROM ${KEYCLOAK} AS keycloak
 
