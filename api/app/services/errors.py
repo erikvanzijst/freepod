@@ -39,6 +39,10 @@ class RateLimitedException(CodedException):
     pass
 
 
+class UnavailableException(CodedException):
+    """A feature this environment is not configured to offer."""
+
+
 class UpstreamException(CodedException):
     """Something the request depends on outside the platform did not answer as needed."""
 

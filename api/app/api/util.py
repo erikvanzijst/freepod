@@ -9,6 +9,7 @@ from app.services.errors import (
     DeploymentInProgressException,
     InvalidInputException,
     RateLimitedException,
+    UnavailableException,
     UpstreamException,
     HostnameException,
     IntegrityException,
@@ -26,6 +27,7 @@ ERROR_STATUS = {
     InvalidInputException: 422,
     RateLimitedException: 429,
     UpstreamException: 502,
+    UnavailableException: 503,
 }
 
 logger = logging.getLogger(__name__)

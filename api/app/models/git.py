@@ -46,3 +46,25 @@ class GitConnectionORM(SQLModel, table=True):
     )
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
+
+
+class GitConnectionRead(SQLModel):
+    provider: str
+    host: str
+    account_id: str
+    login: str
+    connected_at: datetime
+    expires_at: Optional[datetime] = None
+
+
+class GitHubConnectStart(SQLModel):
+    authorize_url: str
+    install_url: str
+
+
+class GitHubInstallationRead(SQLModel):
+    id: int
+    account: str
+    account_type: str
+    repository_selection: str
+    html_url: str

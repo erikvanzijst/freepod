@@ -2040,6 +2040,72 @@ def ssh_key_rm(
         typer.echo(f"Removed {fingerprint}")
 
 
+# ── Git hosting connections ───────────────────────────────────────────
+
+git_app = typer.Typer(
+    help="Manage an account's connections to git hosts.",
+    no_args_is_help=True,
+)
+app.add_typer(git_app, name="git")
+
+
+@git_app.command("list")
+def git_list(
+    user_id: int | None = typer.Argument(None, help="Whose connections to list (admin only)"),
+) -> None:
+    """List the git hosts an account is connected to."""
+    from app.services import github
+
+    with session_scope() as session:
+        target = _ssh_key_target(session, user_id)
+        _echo_yaml_entity(github.list_connections(session, target))
+
+
+@git_app.command("connect")
+def git_connect() -> None:
+    """Print the links that connect the acting account to GitHub, for a browser
+    signed in to Freepod as the same account."""
+    from app.services import github
+
+    with session_scope() as session:
+        user = _require_cli_user(session)
+        try:
+            _echo_yaml_entity(github.connect_urls(user.id))
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+
+
+@git_app.command("installations")
+def git_installations(
+    user_id: int | None = typer.Option(None, "--user-id", help="Whose installations (admin only)"),
+) -> None:
+    """List the GitHub accounts the Freepod app is installed on, as the connected user sees them."""
+    from app.services import github
+
+    with session_scope() as session:
+        target = _ssh_key_target(session, user_id)
+        try:
+            _echo_yaml_entity(github.list_installations(session, target))
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+
+
+@git_app.command("disconnect")
+def git_disconnect(
+    user_id: int | None = typer.Option(None, "--user-id", help="Whose connection (admin only)"),
+) -> None:
+    """Revoke the Freepod GitHub App's authorization and forget the connection."""
+    from app.services import github
+
+    with session_scope() as session:
+        target = _ssh_key_target(session, user_id)
+        try:
+            github.disconnect(session, target)
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        typer.echo("Disconnected from GitHub")
+
+
 # ── Vars ──────────────────────────────────────────────────────────────
 
 var_app = typer.Typer(

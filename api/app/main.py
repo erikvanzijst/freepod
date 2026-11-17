@@ -22,6 +22,7 @@ from app.api import (
     releases,
     ssh,
     ssh_keys,
+    git,
     usage,
     subscriptions,
     vars,
@@ -114,6 +115,7 @@ app.include_router(builds.router, prefix="/api")
 app.include_router(vars.router, prefix="/api")
 app.include_router(access.router, prefix="/api")
 app.include_router(ssh_keys.router, prefix="/api")
+app.include_router(git.router, prefix="/api")
 app.include_router(usage.router, prefix="/api")
 app.include_router(usage.admin_router, prefix="/api")
 app.include_router(ssh.router, prefix="/api")
