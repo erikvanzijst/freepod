@@ -568,6 +568,22 @@ Waits until it runs again.
 | --- | --- |
 | `--no-wait` | return once the platform has accepted the change instead of waiting for it |
 
+## `freepod status`
+
+```
+freepod status [OPTIONS]
+```
+
+Show what this project's deployment is and what it is doing.
+
+Its name, address, product, whether it runs (and if stopped, why), the
+release it serves, its plan, sign-in, changes not yet rolled out, and
+database and bucket usage. `--verbose` adds the raw platform values.
+
+| Option | Description |
+| --- | --- |
+| `--json` | print the report as JSON |
+
 ## `freepod stop`
 
 ```
