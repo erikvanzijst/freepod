@@ -633,6 +633,55 @@ Then read `freepod log`. An application can answer requests correctly and still
 be logging a failure on every one of them, and the log is the only place that
 shows. It is also the fastest way to see that a redeploy actually took effect.
 
+## The code on GitHub
+
+Freepod can create the project's GitHub repository, and records which
+repository a deployment is built from. Do this when the user asks to put the
+project on GitHub or to link it to its repository; it is never needed to
+deploy. Linking does not deploy on push: `freepod deploy` still builds the
+local working tree.
+
+```bash
+freepod git status      # exit 0: connected; names the GitHub account, and this project's link
+```
+
+When it exits non-zero, run `freepod git connect`. It prints a link for the
+user to open, which signs them in to Freepod and to GitHub, and waits until
+they have authorized the Freepod GitHub App. Tell the user to open the link;
+never ask for a GitHub password or token.
+
+**A new repository**, from inside the project's git repository:
+
+```bash
+freepod git create              # private, named after the directory; NAME, --public, --owner ORG
+git push -u origin HEAD
+```
+
+`git create` creates an empty repository, adds it as `origin` (`--remote`
+names another), points this repository's git at Freepod for GitHub
+credentials, and links the project's deployment to it. It refuses when the
+remote name is taken. Pushing then needs no GitHub credentials on this
+machine: git asks `freepod git credential`, which returns a one-hour token
+for this one repository, so `freepod` must be on the `PATH` git runs with.
+`freepod git setup` configures that for a repository cloned from GitHub;
+skip it when the user's own git credentials for GitHub already work.
+
+**An existing repository:**
+
+```bash
+freepod git link                # origin, the checked-out branch, and where .freepod.json sits
+freepod git link OWNER/NAME --branch main --path services/api
+```
+
+Without an argument and without a GitHub `origin`, it lists the repositories
+the app can reach to pick from, on a terminal only. `freepod git unlink`
+removes the link.
+
+The Freepod GitHub App reaches only the GitHub accounts it is installed on.
+When `create` or `link` says it is not installed on an account, the user
+installs it under Git in their Freepod settings (**Add account**), then run
+the command again.
+
 ## What gets uploaded
 
 The working tree, minus `.git/`, minus your `.gitignore`, minus built-in
@@ -801,6 +850,7 @@ redeploy.
 | `freepod db proxy` | Forward a local port to the database and print a connection URL for the local end; the tunnel runs until Ctrl+C. Needs a registered key and `ssh`.                   |
 | `freepod bucket`   | The deployment's S3 bucket, reached directly from here: `bucket status` (credentials, usage; `--show-secret`), `ls [-l] [-r]`, `cp`, `mv`, `rm [-r]`, `cat`, `link [--put] [--expires]`. Mark the bucket's side with `:`. |
 | `freepod key`      | Register the SSH keys that identify you: `key add` (generates one if you name no file), `key list`, `key rm <fingerprint>`. The prerequisite for the SSH commands.   |
+| `freepod git`      | GitHub: `git status`, `git connect` (the user approves a link), `git create` (new repository, remote and credentials), `git link [OWNER/NAME]`, `git unlink`. Pushing needs no GitHub credentials here. |
 | `freepod logout`   | Forget the cached credential.                                                                                                                                        |
 
 Exit codes: `0` ok, `2` usage, `3` not authenticated, `4` build failed,
