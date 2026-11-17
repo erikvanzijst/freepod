@@ -39,6 +39,7 @@ from . import project
 from . import releases as releases_module
 from . import s3 as s3_module
 from . import skill as skill_module
+from . import status as status_module
 from . import ssh as ssh_module
 from . import tos
 from . import update as update_module
@@ -568,6 +569,26 @@ def start(context: Context, no_wait: bool) -> None:
     Waits until it runs again.
     """
     _power(context, power_module.RUNNING, no_wait)
+
+
+@cli.command()
+@click.option("--json", "as_json", is_flag=True, help="print the report as JSON")
+@click.pass_obj
+def status(context: Context, as_json: bool) -> None:
+    """Show what this project's deployment is and what it is doing.
+
+    Its name, address, product, whether it runs (and if stopped, why), the
+    release it serves, its plan, sign-in, changes not yet rolled out, and
+    database and bucket usage. `--verbose` adds the raw platform values.
+    """
+    session = context.session()
+    session.authenticate(interactive=False)
+    with context.client(session) as api:
+        summary = status_module.collect(api, context.env.name)
+    if as_json:
+        click.echo(json.dumps(summary, indent=2))
+    else:
+        click.echo(status_module.render_table(summary, verbose=context.verbose))
 
 
 def _power(context: Context, target: str, no_wait: bool) -> None:
