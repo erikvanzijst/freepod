@@ -380,6 +380,13 @@ class CaelusSettings(BaseSettings):
     mollie_redirect_url: str | None = None
     mollie_webhook_base_url: str | None = None
 
+    # The environment's GitHub App. Unset leaves the GitHub integration off.
+    github_app_id: int | None = None
+    github_app_slug: str | None = None
+    github_client_id: str | None = None
+    github_client_secret: str | None = None
+    github_private_key: str | None = None
+
     @model_validator(mode="after")
     def _storage_class_is_allowed(self) -> CaelusSettings:
         if self.storage_class is not None and self.storage_class not in self.storage_classes:

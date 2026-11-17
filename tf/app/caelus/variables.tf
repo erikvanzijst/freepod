@@ -96,6 +96,24 @@ variable "mollie_api_key" {
   sensitive   = true
 }
 
+variable "github_app" {
+  description = "This environment's GitHub App: its ID, slug and client ID"
+  type = object({
+    id        = number
+    slug      = string
+    client_id = string
+  })
+}
+
+variable "github_app_secrets" {
+  description = "This environment's GitHub App client secret and PEM private key"
+  type = object({
+    client_secret = string
+    private_key   = string
+  })
+  sensitive = true
+}
+
 variable "reserved_handles" {
   description = "Handles no account may claim"
   type        = list(string)

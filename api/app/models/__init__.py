@@ -13,6 +13,7 @@ The models are split across three modules:
                 a deployment, whose owner is the build's owner.
   - ssh_key.py: SshKey (and its Create/Read variants). Owned by a user and
                 scoped to no deployment.
+  - git.py:     GitConnection -- a user's OAuth connection to a git host.
   - app_auth.py: AppAuthConsent, AppAuthCode -- written only by `daemons/app-auth/`;
                 AppAccessEntry, AppAccessInvitation -- the access lists of
                 `listed` deployments, written by the API.
@@ -96,6 +97,10 @@ from app.models.ssh_key import (  # noqa: F401
     SshKeyCreate,
     SshKeyORM,
     SshKeyRead,
+)
+from app.models.git import (  # noqa: F401
+    GitConnectionORM,
+    GitProvider,
 )
 
 from app.models.usage import (  # noqa: F401

@@ -191,6 +191,28 @@ variable "sshpiper_host_private_keys" {
   }
 }
 
+variable "github_apps" {
+  description = "The GitHub App's client secret and PEM private key, per Terraform workspace. Set in secrets.auto.tfvars."
+  type = map(object({
+    client_secret = string
+    private_key   = string
+  }))
+  sensitive = true
+
+  validation {
+    condition     = alltrue([for k in ["default", "prod"] : contains(keys(var.github_apps), k)])
+    error_message = "github_apps must have both a \"default\" (dev) and a \"prod\" key. The dev workspace is named `default`, not `dev`."
+  }
+
+  validation {
+    condition = (
+      !alltrue([for k in ["default", "prod"] : contains(keys(var.github_apps), k)])
+      || var.github_apps["default"].private_key != var.github_apps["prod"].private_key
+    )
+    error_message = "The dev and prod GitHub Apps must be different apps."
+  }
+}
+
 # The tenant registry's keys, keyed by Terraform workspace
 # (authenticated-tenant-registry D14). Generate the signing key and its JWKS
 # with `caelus registry-keygen`, once per environment, and the pull HMAC key

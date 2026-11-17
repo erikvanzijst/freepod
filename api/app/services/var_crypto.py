@@ -40,6 +40,7 @@ from app.models.core import (
     DeploymentVarORM,
     ProductTemplateVersionORM,
 )
+from app.models.git import GitConnectionORM
 from app.services.errors import CaelusException
 from app.services.template_values import schema_declares_vars
 
@@ -79,6 +80,7 @@ class EncryptedColumn:
 ENCRYPTED_COLUMNS: tuple[EncryptedColumn, ...] = (
     EncryptedColumn(DeploymentVarORM, "value_encrypted", "key_id"),
     EncryptedColumn(DeploymentDatabaseORM, "password_encrypted", "key_id"),
+    EncryptedColumn(GitConnectionORM, "tokens_encrypted", "key_id"),
 )
 
 

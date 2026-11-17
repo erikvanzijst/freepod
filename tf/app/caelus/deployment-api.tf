@@ -137,6 +137,12 @@ resource "kubernetes_deployment" "api" {
             }
           }
 
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.github_app.metadata[0].name
+            }
+          }
+
           # Both registry keys: the token endpoint verifies a pull credential
           # by recomputing it, then signs the token it issues.
           env_from {
