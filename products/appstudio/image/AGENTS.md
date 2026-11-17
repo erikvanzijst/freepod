@@ -166,6 +166,8 @@ freepod deploy                                  # takes a few minutes
   the name, description or sign-in, edit `.freepod.json` and run
   `freepod apply`.
 - Commit `.freepod.json`.
+- If the app is already on GitHub, run `freepod git link` once after
+  `freepod init`, so Freepod records the repository it is built from.
 - The skill suggests stubbing S3 when testing locally; here, `dev-app` already
   provides a real local S3.
 - Harmless build-log warnings to ignore: npm's `config production` notice,
