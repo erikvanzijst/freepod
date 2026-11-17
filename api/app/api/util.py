@@ -8,6 +8,7 @@ from app.services.errors import (
     ConflictException,
     DeploymentInProgressException,
     InvalidInputException,
+    PermissionDeniedException,
     RateLimitedException,
     UnavailableException,
     UpstreamException,
@@ -28,6 +29,7 @@ ERROR_STATUS = {
     RateLimitedException: 429,
     UpstreamException: 502,
     UnavailableException: 503,
+    PermissionDeniedException: 403,
 }
 
 logger = logging.getLogger(__name__)

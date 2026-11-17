@@ -6,7 +6,9 @@ replaces both.
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
+
+from pydantic import ConfigDict
 
 from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Identity, Index, Integer, String, Text
 from sqlmodel import Field, SQLModel
@@ -68,3 +70,35 @@ class GitHubInstallationRead(SQLModel):
     account_type: str
     repository_selection: str
     html_url: str
+
+
+class GitHubRepositoryCreate(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    owner: Optional[str] = None
+    private: bool = True
+    description: Optional[str] = None
+
+
+class GitHubRepositoryRead(SQLModel):
+    id: int
+    full_name: str
+    html_url: str
+    clone_url: str
+    private: bool
+    default_branch: Optional[str] = None
+
+
+class GitCredentialRequest(SQLModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repository: str
+    access: Literal["read", "write"] = "write"
+
+
+class GitCredentialRead(SQLModel):
+    repository: str
+    username: str
+    password: str
+    expires_at: datetime

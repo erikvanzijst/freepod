@@ -1,4 +1,4 @@
-"""The GitHub connection: state, authorization, token refresh, and disconnecting."""
+"""The GitHub connection, the repositories it creates, and the git credentials it mints."""
 
 from __future__ import annotations
 
@@ -32,7 +32,12 @@ PRIVATE_PEM = _KEY.private_bytes(
 
 
 class FakeGitHub:
-    """GitHub's token endpoint and the few API calls the service makes."""
+    """GitHub's token endpoint and the API calls the service makes.
+
+    alice owns `alice/existing` and has installed the app on her account with
+    selected repositories (77) and on the organization acme with all of them (88),
+    where she may only read `acme/tools`. `bob/elsewhere` has no installation.
+    """
 
     def __init__(self) -> None:
         self.accounts = {"code-alice": {"id": 1001, "login": "alice"}}
@@ -42,6 +47,44 @@ class FakeGitHub:
         self.revoked: list[str] = []
         self.calls: list[str] = []
         self.refuse_refresh = False
+        self.installations = [
+            {"id": 77, "account": "alice", "type": "User", "selection": "selected", "repos": set()},
+            {"id": 88, "account": "acme", "type": "Organization", "selection": "all", "repos": set()},
+        ]
+        self.repos: dict[str, dict] = {}
+        self.add_repo("alice/existing", installed=True)
+        self.add_repo("acme/tools", push=False)
+        self.add_repo("bob/elsewhere")
+        self.auto_add = False
+        self.refuse_add = False
+        self.minted: list[dict] = []
+
+    def add_repo(self, full_name: str, *, push: bool = True, installed: bool = False, private: bool = True) -> dict:
+        owner, name = full_name.split("/")
+        repo = {
+            "id": 5000 + len(self.repos),
+            "name": name,
+            "full_name": full_name,
+            "owner": {"login": owner},
+            "private": private,
+            "html_url": f"https://github.com/{full_name}",
+            "clone_url": f"https://github.com/{full_name}.git",
+            "default_branch": None,
+            "permissions": {"pull": True, "push": push, "admin": push},
+        }
+        self.repos[full_name.lower()] = repo
+        if installed:
+            self._installation_of(owner)["repos"].add(repo["id"])
+        return repo
+
+    def _installation_of(self, owner: str):
+        return next((i for i in self.installations if i["account"].lower() == owner.lower()), None)
+
+    def _covers(self, repo: dict):
+        installation = self._installation_of(repo["owner"]["login"])
+        if installation and (installation["selection"] == "all" or repo["id"] in installation["repos"]):
+            return installation
+        return None
 
     def _issue(self, account: dict) -> dict:
         self.issued += 1
@@ -57,9 +100,14 @@ class FakeGitHub:
             "scope": "",
         }
 
+    def _app(self, request: httpx.Request) -> None:
+        token = request.headers["authorization"].removeprefix("Bearer ")
+        assert jwt.decode(token, _KEY.public_key(), algorithms=["RS256"])["iss"] == CLIENT_ID
+
     def handler(self, request: httpx.Request) -> httpx.Response:
-        self.calls.append(f"{request.method} {request.url.path}")
-        if request.url.path == "/login/oauth/access_token":
+        path, method = request.url.path, request.method
+        self.calls.append(f"{method} {path}")
+        if path == "/login/oauth/access_token":
             form = parse_qs(request.content.decode())
             assert form["client_id"] == [CLIENT_ID] and form["client_secret"] == [CLIENT_SECRET]
             if "code" in form:
@@ -74,29 +122,57 @@ class FakeGitHub:
             self.valid_refresh.discard(refresh)
             return httpx.Response(200, json=self._issue({"id": 1001, "login": "alice"}))
 
-        token = request.headers.get("authorization", "").removeprefix("Bearer ")
-        if request.url.path == "/user":
-            return httpx.Response(200, json=self.tokens[token])
-        if request.url.path == "/user/installations":
-            return httpx.Response(
-                200,
-                json={
-                    "total_count": 1,
-                    "installations": [
-                        {
-                            "id": 77,
-                            "account": {"login": "alice", "type": "User"},
-                            "repository_selection": "selected",
-                            "html_url": "https://github.com/settings/installations/77",
-                        }
-                    ],
-                },
-            )
-        if request.method == "DELETE" and request.url.path == f"/applications/{CLIENT_ID}/grant":
+        if method == "DELETE" and path == f"/applications/{CLIENT_ID}/grant":
             basic = base64.b64decode(request.headers["authorization"].removeprefix("Basic ")).decode()
             assert basic == f"{CLIENT_ID}:{CLIENT_SECRET}"
             self.revoked.append(json.loads(request.content)["access_token"])
             return httpx.Response(204)
+
+        if path.startswith("/app/") or path.endswith("/installation"):
+            self._app(request)
+            if path.endswith("/installation"):
+                repo = self.repos.get(path.removeprefix("/repos/").removesuffix("/installation").lower())
+                installation = repo and self._covers(repo)
+                return httpx.Response(200, json={"id": installation["id"]}) if installation else httpx.Response(404)
+            body = json.loads(request.content)
+            self.minted.append({"installation": int(path.split("/")[3]), **body})
+            return httpx.Response(201, json={"token": f"ghs_{len(self.minted)}", "expires_at": "2026-11-17T16:00:00Z"})
+
+        user = self.tokens[request.headers.get("authorization", "").removeprefix("Bearer ")]
+        if path == "/user":
+            return httpx.Response(200, json=user)
+        if path == "/user/installations":
+            return httpx.Response(
+                200,
+                json={
+                    "total_count": len(self.installations),
+                    "installations": [
+                        {
+                            "id": i["id"],
+                            "account": {"login": i["account"], "type": i["type"]},
+                            "repository_selection": i["selection"],
+                            "html_url": f"https://github.com/settings/installations/{i['id']}",
+                        }
+                        for i in self.installations
+                    ],
+                },
+            )
+        if method == "PUT" and path.startswith("/user/installations/"):
+            if self.refuse_add:
+                return httpx.Response(403)
+            _, _, _, iid, _, rid = path.split("/")
+            next(i for i in self.installations if i["id"] == int(iid))["repos"].add(int(rid))
+            return httpx.Response(204)
+        if method == "POST" and (path == "/user/repos" or path.startswith("/orgs/")):
+            owner = user["login"] if path == "/user/repos" else path.split("/")[2]
+            body = json.loads(request.content)
+            if f"{owner}/{body['name']}".lower() in self.repos:
+                return httpx.Response(422, json={"message": "Repository creation failed.", "errors": [{"message": "name already exists on this account"}]})
+            repo = self.add_repo(f"{owner}/{body['name']}", installed=self.auto_add, private=body["private"])
+            return httpx.Response(201, json=repo)
+        if method == "GET" and path.startswith("/repos/"):
+            repo = self.repos.get(path.removeprefix("/repos/").lower())
+            return httpx.Response(200, json=repo) if repo and self._covers(repo) else httpx.Response(404)
         return httpx.Response(404)
 
 
@@ -339,14 +415,9 @@ def test_installations_are_listed(client, fake_github):
         f"/api/users/{user['id']}/git/github/installations", headers=auth_header(USER_EMAIL)
     )
     assert response.status_code == 200
-    assert response.json() == [
-        {
-            "id": 77,
-            "account": "alice",
-            "account_type": "User",
-            "repository_selection": "selected",
-            "html_url": "https://github.com/settings/installations/77",
-        }
+    assert [(i["id"], i["account"], i["account_type"], i["repository_selection"]) for i in response.json()] == [
+        (77, "alice", "User", "selected"),
+        (88, "acme", "Organization", "all"),
     ]
 
 
@@ -379,6 +450,136 @@ def test_other_accounts_cannot_read_connections(client, fake_github):
     assert response.status_code == 403
 
 
+# ── Repositories ──────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def alice(client, fake_github):
+    user = create_user(client, USER_EMAIL)
+    _connect(client, USER_EMAIL, user["id"])
+    return user
+
+
+def _create(client, user, **body):
+    return client.post(
+        f"/api/users/{user['id']}/git/github/repositories", json=body, headers=auth_header(USER_EMAIL)
+    )
+
+
+def test_a_repository_is_created_private_and_added_to_a_selected_installation(client, alice, fake_github):
+    response = _create(client, alice, name="recipes")
+    assert response.status_code == 201, response.text
+    assert response.json()["full_name"] == "alice/recipes"
+    assert response.json()["private"] is True
+    assert response.json()["clone_url"] == "https://github.com/alice/recipes.git"
+    repo = fake_github.repos["alice/recipes"]
+    assert repo["id"] in fake_github.installations[0]["repos"]
+    assert "PUT /user/installations/77/repositories/" + str(repo["id"]) in fake_github.calls
+
+
+def test_a_repository_github_already_added_is_not_added_again(client, alice, fake_github):
+    fake_github.auto_add = True
+    assert _create(client, alice, name="recipes").status_code == 201
+    assert not [c for c in fake_github.calls if c.startswith("PUT ")]
+
+
+def test_a_repository_on_an_organization_with_all_repositories(client, alice, fake_github):
+    response = _create(client, alice, name="site", owner="acme", private=False)
+    assert response.status_code == 201, response.text
+    assert response.json()["full_name"] == "acme/site"
+    assert response.json()["private"] is False
+    assert "POST /orgs/acme/repos" in fake_github.calls
+    assert not [c for c in fake_github.calls if c.startswith("PUT ")]
+
+
+@pytest.mark.parametrize(
+    "body, status, code",
+    [
+        ({"name": "existing"}, 409, "github_repo_exists"),
+        ({"name": "x", "owner": "bob"}, 404, "github_app_not_installed"),
+        ({"name": "my app"}, 422, "github_repo_name_invalid"),
+    ],
+)
+def test_repository_creation_is_refused_with_a_reason(client, alice, body, status, code):
+    response = _create(client, alice, **body)
+    assert response.status_code == status
+    assert response.json()["code"] == code
+
+
+def test_a_repository_the_app_cannot_reach_is_reported(client, alice, fake_github):
+    fake_github.refuse_add = True
+    response = _create(client, alice, name="recipes")
+    assert response.status_code == 409
+    assert response.json()["code"] == "github_repo_not_reachable"
+    assert "alice/recipes" in fake_github.repos
+
+
+def test_only_the_owner_creates_repositories(client, alice):
+    response = client.post(f"/api/users/{alice['id']}/git/github/repositories", json={"name": "x"})
+    assert response.status_code == 403
+
+
+# ── Credentials ───────────────────────────────────────────────────────
+
+
+def _mint(client, user, repository, access="write"):
+    return client.post(
+        f"/api/users/{user['id']}/git/github/credentials",
+        json={"repository": repository, "access": access},
+        headers=auth_header(USER_EMAIL),
+    )
+
+
+def test_a_credential_is_limited_to_one_repository_and_its_contents(client, alice, fake_github):
+    response = _mint(client, alice, "alice/existing")
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {
+        "repository": "alice/existing",
+        "username": "x-access-token",
+        "password": "ghs_1",
+        "expires_at": "2026-11-17T16:00:00Z",
+    }
+    assert fake_github.minted == [
+        {
+            "installation": 77,
+            "repository_ids": [fake_github.repos["alice/existing"]["id"]],
+            "permissions": {"contents": "write"},
+        }
+    ]
+
+
+def test_a_read_credential_needs_only_read_access(client, alice, fake_github):
+    assert _mint(client, alice, "acme/tools", access="read").status_code == 200
+    assert fake_github.minted[-1]["permissions"] == {"contents": "read"}
+
+
+def test_write_access_the_user_lacks_is_never_minted(client, alice, fake_github):
+    response = _mint(client, alice, "acme/tools")
+    assert response.status_code == 403
+    assert response.json()["code"] == "github_repo_forbidden"
+    assert fake_github.minted == []
+
+
+@pytest.mark.parametrize("repository", ["bob/elsewhere", "alice/missing"])
+def test_a_repository_out_of_reach_has_no_credential(client, alice, fake_github, repository):
+    response = _mint(client, alice, repository)
+    assert response.status_code == 404
+    assert response.json()["code"] == "github_repo_not_found"
+    assert fake_github.minted == []
+
+
+def test_a_malformed_repository_is_refused(client, alice):
+    assert _mint(client, alice, "../../etc").json()["code"] == "github_repo_name_invalid"
+
+
+def test_only_the_owner_gets_credentials(client, alice):
+    response = client.post(
+        f"/api/users/{alice['id']}/git/github/credentials", json={"repository": "alice/existing"}
+    )
+    assert response.status_code == 403
+
+
 # ── Operator CLI ──────────────────────────────────────────────────────
 
 
@@ -396,6 +597,15 @@ def test_cli_lists_and_disconnects(cli_runner, fake_github, db_session):
 
     connect = runner.invoke(cli, ["git", "connect"])
     assert connect.exit_code == 0 and "authorize_url: https://github.com/login/oauth/authorize" in connect.output
+
+    created = runner.invoke(cli, ["git", "create", "recipes"])
+    assert created.exit_code == 0, created.output
+    assert "full_name: alice/recipes" in created.output
+
+    minted = runner.invoke(cli, ["git", "credential", "alice/recipes", "--read"])
+    assert minted.exit_code == 0, minted.output
+    assert "username: x-access-token" in minted.output
+    assert fake_github.minted[-1]["permissions"] == {"contents": "read"}
 
     gone = runner.invoke(cli, ["git", "disconnect"])
     assert gone.exit_code == 0, gone.output

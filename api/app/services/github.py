@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import secrets
 import time
 from contextlib import AbstractContextManager, nullcontext
@@ -29,8 +30,10 @@ from app.models.core import _utcnow
 from app.models.git import GitConnectionORM, GitConnectionRead, GitProvider
 from app.services import var_crypto
 from app.services.errors import (
+    CodedNotFoundException,
     ConflictException,
     InvalidInputException,
+    PermissionDeniedException,
     UnavailableException,
     UpstreamException,
 )
@@ -211,21 +214,38 @@ def _load(row: GitConnectionORM) -> dict[str, Optional[str]]:
     return json.loads(var_crypto.decrypt(row.tokens_encrypted, row.key_id))
 
 
-def _get(client: httpx.Client, path: str, token: str, **params: Any) -> Any:
+def _call(
+    client: httpx.Client,
+    method: str,
+    path: str,
+    token: str,
+    *,
+    body: Optional[dict[str, Any]] = None,
+    params: Optional[dict[str, Any]] = None,
+) -> httpx.Response:
     try:
-        response = client.get(
+        return client.request(
+            method,
             f"{API_URL}{path}",
-            params=params or None,
+            json=body,
+            params=params,
             headers={**API_HEADERS, "Authorization": f"Bearer {token}"},
         )
     except httpx.HTTPError as exc:
         raise UpstreamException(f"GitHub did not answer: {exc}", code="github_unreachable") from exc
+
+
+def _refused(path: str, response: httpx.Response) -> UpstreamException:
+    return UpstreamException(f"GitHub refused {path} ({response.status_code}).", code="github_error")
+
+
+def _get(client: httpx.Client, path: str, token: str, **params: Any) -> Any:
+    """A read made with a user's token."""
+    response = _call(client, "GET", path, token, params=params or None)
     if response.status_code == 401:
         raise GitNotConnectedException("GitHub no longer accepts this connection. Connect again.")
     if response.status_code >= 400:
-        raise UpstreamException(
-            f"GitHub refused {path} ({response.status_code}).", code="github_error"
-        )
+        raise _refused(path, response)
     return response.json()
 
 
@@ -379,27 +399,207 @@ def disconnect(session: Session, user_id: Any, *, client: Optional[httpx.Client]
     session.commit()
 
 
+def _installations(http: httpx.Client, token: str) -> list[dict[str, Any]]:
+    installations: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        body = _get(http, "/user/installations", token, per_page=100, page=page)
+        for item in body["installations"]:
+            installations.append(
+                {
+                    "id": item["id"],
+                    "account": item["account"]["login"],
+                    "account_type": item["account"]["type"],
+                    "repository_selection": item["repository_selection"],
+                    "html_url": item["html_url"],
+                }
+            )
+        if len(installations) >= body["total_count"] or not body["installations"]:
+            return installations
+        page += 1
+
+
 def list_installations(
     session: Session, user_id: Any, *, client: Optional[httpx.Client] = None
 ) -> list[dict[str, Any]]:
     """The app's installations this user can see, on their account and their orgs."""
     token = access_token(session, user_id, client=client)
-    installations: list[dict[str, Any]] = []
     with _http(client) as http:
-        page = 1
-        while True:
-            body = _get(http, "/user/installations", token, per_page=100, page=page)
-            for item in body["installations"]:
-                installations.append(
-                    {
-                        "id": item["id"],
-                        "account": item["account"]["login"],
-                        "account_type": item["account"]["type"],
-                        "repository_selection": item["repository_selection"],
-                        "html_url": item["html_url"],
-                    }
+        return _installations(http, token)
+
+
+# ── Repositories ──────────────────────────────────────────────────────
+
+REPO_NAME = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+FULL_NAME = re.compile(r"^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$")
+
+
+def _not_installed(account: str) -> CodedNotFoundException:
+    return CodedNotFoundException(
+        f"The Freepod GitHub App is not installed on {account}. Install it from Freepod's "
+        "Git settings, then try again.",
+        code="github_app_not_installed",
+    )
+
+
+def _repository_read(repo: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": repo["id"],
+        "full_name": repo["full_name"],
+        "html_url": repo["html_url"],
+        "clone_url": repo["clone_url"],
+        "private": repo["private"],
+        "default_branch": repo.get("default_branch"),
+    }
+
+
+def create_repository(
+    session: Session,
+    user_id: Any,
+    *,
+    name: str,
+    owner: Optional[str] = None,
+    private: bool = True,
+    description: Optional[str] = None,
+    client: Optional[httpx.Client] = None,
+) -> dict[str, Any]:
+    """Create an empty repository on the user's account or one of their organizations.
+
+    The app must already be installed on that account: the repository is useful to
+    Freepod only if the app can reach it, and an installation limited to selected
+    repositories gets the new one added.
+    """
+    if not REPO_NAME.match(name) or name in (".", ".."):
+        raise InvalidInputException(
+            "A repository name is 1 to 100 letters, digits, '.', '-' and '_'.",
+            code="github_repo_name_invalid",
+        )
+    cfg = config()
+    token = access_token(session, user_id, client=client)
+    row = _connection(session, user_id)
+    assert row is not None
+    target = owner or row.login
+
+    with _http(client) as http:
+        installation = next(
+            (i for i in _installations(http, token) if i["account"].lower() == target.lower()),
+            None,
+        )
+        if installation is None:
+            raise _not_installed(target)
+
+        personal = installation["account_type"] == "User"
+        if personal and target.lower() != row.login.lower():
+            raise PermissionDeniedException(
+                f"Repositories can be created on your own account or an organization, not on {target}.",
+                code="github_repo_owner_invalid",
+            )
+        path = "/user/repos" if personal else f"/orgs/{installation['account']}/repos"
+        payload: dict[str, Any] = {"name": name, "private": private, "auto_init": False}
+        if description:
+            payload["description"] = description
+        response = _call(http, "POST", path, token, body=payload)
+        if response.status_code == 422 and "already exists" in response.text:
+            raise ConflictException(
+                f"{installation['account']}/{name} already exists on GitHub.", code="github_repo_exists"
+            )
+        if response.status_code in (403, 404):
+            raise PermissionDeniedException(
+                f"GitHub did not let you create a repository on {installation['account']}.",
+                code="github_repo_create_forbidden",
+            )
+        if response.status_code != 201:
+            raise _refused(path, response)
+        repo = response.json()
+
+        if installation["repository_selection"] == "selected":
+            reachable = _call(http, "GET", f"/repos/{repo['full_name']}/installation", app_jwt(cfg))
+            if reachable.status_code == 404:
+                added = _call(
+                    http,
+                    "PUT",
+                    f"/user/installations/{installation['id']}/repositories/{repo['id']}",
+                    token,
                 )
-            if len(installations) >= body["total_count"] or not body["installations"]:
-                break
-            page += 1
-    return installations
+                if added.status_code != 204:
+                    logger.warning(
+                        "Could not add %s to installation %s: %s",
+                        repo["full_name"],
+                        installation["id"],
+                        added.status_code,
+                    )
+                    raise ConflictException(
+                        f"{repo['full_name']} was created, but the Freepod app cannot reach it. "
+                        f"Add it to the app's repositories at {installation['html_url']}.",
+                        code="github_repo_not_reachable",
+                    )
+    return _repository_read(repo)
+
+
+def mint_credential(
+    session: Session,
+    user_id: Any,
+    *,
+    repository: str,
+    access: str = "write",
+    client: Optional[httpx.Client] = None,
+) -> dict[str, Any]:
+    """A one-hour token for git over HTTPS, limited to one repository's contents.
+
+    The token carries the app's permissions, so the user's own permission on the
+    repository decides first: nobody gets more through Freepod than GitHub gives them.
+    """
+    if not FULL_NAME.match(repository):
+        raise InvalidInputException(
+            "A repository is named as owner/name.", code="github_repo_name_invalid"
+        )
+    if access not in ("read", "write"):
+        raise InvalidInputException("access is read or write.", code="git_access_invalid")
+    cfg = config()
+    token = access_token(session, user_id, client=client)
+
+    with _http(client) as http:
+        response = _call(http, "GET", f"/repos/{repository}", token)
+        if response.status_code == 401:
+            raise GitNotConnectedException("GitHub no longer accepts this connection. Connect again.")
+        if response.status_code == 404:
+            raise CodedNotFoundException(
+                f"GitHub repository {repository} does not exist, or the Freepod app is not "
+                "installed on it.",
+                code="github_repo_not_found",
+            )
+        if response.status_code != 200:
+            raise _refused(f"/repos/{repository}", response)
+        repo = response.json()
+        needed = "push" if access == "write" else "pull"
+        if not repo.get("permissions", {}).get(needed):
+            raise PermissionDeniedException(
+                f"Your GitHub account cannot {'push to' if access == 'write' else 'read'} {repo['full_name']}.",
+                code="github_repo_forbidden",
+            )
+
+        jwt_token = app_jwt(cfg)
+        found = _call(http, "GET", f"/repos/{repo['full_name']}/installation", jwt_token)
+        if found.status_code == 404:
+            raise _not_installed(repo["owner"]["login"])
+        if found.status_code != 200:
+            raise _refused("/repos/.../installation", found)
+        installation_id = found.json()["id"]
+
+        minted = _call(
+            http,
+            "POST",
+            f"/app/installations/{installation_id}/access_tokens",
+            jwt_token,
+            body={"repository_ids": [repo["id"]], "permissions": {"contents": access}},
+        )
+        if minted.status_code != 201:
+            raise _refused("/app/installations/.../access_tokens", minted)
+        body = minted.json()
+
+    return {
+        "repository": repo["full_name"],
+        "username": "x-access-token",
+        "password": body["token"],
+        "expires_at": body["expires_at"],
+    }

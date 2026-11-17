@@ -12,6 +12,10 @@ from app.db import get_session
 from app.deps import get_current_user, require_self
 from app.models import (
     GitConnectionRead,
+    GitCredentialRead,
+    GitCredentialRequest,
+    GitHubRepositoryCreate,
+    GitHubRepositoryRead,
     GitHubConnectStart,
     GitHubInstallationRead,
     UserORM,
@@ -144,3 +148,85 @@ def list_github_installations(
     return [
         GitHubInstallationRead(**item) for item in github.list_installations(session, user_id)
     ]
+
+
+@router.post(
+    "/users/{user_id}/git/github/repositories",
+    response_model=GitHubRepositoryRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a GitHub repository",
+    responses={
+        403: {
+            "description": "Only the account's owner may create repositories, and only where "
+            "GitHub lets them (`github_repo_create_forbidden`, `github_repo_owner_invalid`)."
+        },
+        404: {"description": "The Freepod app is not installed on that account (`github_app_not_installed`)."},
+        409: {
+            "description": "Not connected (`git_not_connected`), the name is taken "
+            "(`github_repo_exists`), or the repository was created but the app cannot reach it "
+            "(`github_repo_not_reachable`)."
+        },
+        422: {"description": "The name is not a valid repository name (`github_repo_name_invalid`)."},
+    },
+)
+def create_github_repository(
+    payload: GitHubRepositoryCreate,
+    user_id: int = Path(..., description="ID of the account."),
+    current_user: UserORM = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> GitHubRepositoryRead:
+    """Create an empty repository on the connected GitHub user's account, or on an
+    organization when `owner` names one, private unless `private` is false.
+
+    The Freepod app must be installed on that account. When the installation is
+    limited to selected repositories, the new repository is added to it.
+    """
+    _require_owner(user_id, current_user)
+    return GitHubRepositoryRead(
+        **github.create_repository(
+            session,
+            user_id,
+            name=payload.name,
+            owner=payload.owner,
+            private=payload.private,
+            description=payload.description,
+        )
+    )
+
+
+@router.post(
+    "/users/{user_id}/git/github/credentials",
+    response_model=GitCredentialRead,
+    summary="Get a short-lived git credential for one repository",
+    responses={
+        403: {
+            "description": "Only the account's owner may get credentials, and only with the "
+            "access their GitHub account has (`github_repo_forbidden`)."
+        },
+        404: {
+            "description": "The repository does not exist or the app cannot reach it "
+            "(`github_repo_not_found`, `github_app_not_installed`)."
+        },
+        409: {"description": "The account is not connected (`git_not_connected`)."},
+    },
+)
+def mint_git_credential(
+    payload: GitCredentialRequest,
+    response: Response,
+    user_id: int = Path(..., description="ID of the account."),
+    current_user: UserORM = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> GitCredentialRead:
+    """A username and password for git over HTTPS that work for one hour, on one
+    repository's contents only, with `read` or `write` access.
+
+    The connected GitHub user must have that access to the repository themselves.
+    This is what `freepod git credential` hands to git; it never stores it.
+    """
+    _require_owner(user_id, current_user)
+    response.headers["Cache-Control"] = "no-store"
+    return GitCredentialRead(
+        **github.mint_credential(
+            session, user_id, repository=payload.repository, access=payload.access
+        )
+    )

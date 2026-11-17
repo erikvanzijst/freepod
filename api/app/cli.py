@@ -2106,6 +2106,51 @@ def git_disconnect(
         typer.echo("Disconnected from GitHub")
 
 
+@git_app.command("create")
+def git_create(
+    name: str = typer.Argument(..., help="The repository's name"),
+    owner: str | None = typer.Option(None, "--owner", help="An organization to create it on"),
+    public: bool = typer.Option(False, "--public", help="Create it public rather than private"),
+    description: str | None = typer.Option(None, "--description"),
+) -> None:
+    """Create an empty GitHub repository as the acting account's GitHub user."""
+    from app.services import github
+
+    with session_scope() as session:
+        user = _require_cli_user(session)
+        try:
+            repo = github.create_repository(
+                session,
+                user.id,
+                name=name,
+                owner=owner,
+                private=not public,
+                description=description,
+            )
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        _echo_yaml_entity(repo)
+
+
+@git_app.command("credential")
+def git_credential(
+    repository: str = typer.Argument(..., help="owner/name"),
+    read_only: bool = typer.Option(False, "--read", help="Read access instead of write"),
+) -> None:
+    """Mint a one-hour git credential for one repository, as the acting account."""
+    from app.services import github
+
+    with session_scope() as session:
+        user = _require_cli_user(session)
+        try:
+            credential = github.mint_credential(
+                session, user.id, repository=repository, access="read" if read_only else "write"
+            )
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        _echo_yaml_entity(credential)
+
+
 # ── Vars ──────────────────────────────────────────────────────────────
 
 var_app = typer.Typer(

@@ -101,8 +101,12 @@ from app.models.ssh_key import (  # noqa: F401
 from app.models.git import (  # noqa: F401
     GitConnectionORM,
     GitConnectionRead,
+    GitCredentialRead,
+    GitCredentialRequest,
     GitHubConnectStart,
     GitHubInstallationRead,
+    GitHubRepositoryCreate,
+    GitHubRepositoryRead,
     GitProvider,
 )
 
