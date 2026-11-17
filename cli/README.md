@@ -65,6 +65,7 @@ project that *does* have a `Dockerfile` in its root is built from that instead.
 | `freepod bucket`   | Report this deployment's bucket: endpoint, credentials (secret masked), and usage.   |
 | `freepod bucket ls`, `cp`, `mv`, `rm`, `cat`, `link` | List, copy, move, delete and stream the bucket's objects, or print a presigned URL. |
 | `freepod skill`    | Install deployment instructions for your coding agents.                              |
+| `freepod git`      | Connect GitHub, create a repository for this project, and push without a GitHub password. |
 
 `freepod --help` and `freepod <command> --help` cover the flags.
 

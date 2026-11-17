@@ -1,5 +1,6 @@
 import { Alert, Card, CircularProgress, Stack, Typography } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { listGitConnections } from '../../api/endpoints'
 import { useAuth } from '../../state/AuthContext'
 import { AppStudioLink } from './AppStudioLink'
@@ -15,6 +16,13 @@ export function GitPanel() {
     enabled: Boolean(user?.id),
   })
   const github = connections.data?.find((c) => c.provider === 'github')
+  const [params, setParams] = useSearchParams()
+  const autoConnect = params.get('connect') === 'github'
+  const clearAutoConnect = () => {
+    const next = new URLSearchParams(params)
+    next.delete('connect')
+    setParams(next, { replace: true })
+  }
 
   return (
     <Card sx={{ p: { xs: 2.5, sm: 3 } }}>
@@ -37,7 +45,14 @@ export function GitPanel() {
         </Alert>
       )}
 
-      {connections.isSuccess && user && <GitHubSection userId={user.id} connection={github} />}
+      {connections.isSuccess && user && (
+        <GitHubSection
+          userId={user.id}
+          connection={github}
+          autoConnect={autoConnect}
+          onAutoConnect={clearAutoConnect}
+        />
+      )}
     </Card>
   )
 }

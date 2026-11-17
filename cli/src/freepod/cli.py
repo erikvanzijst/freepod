@@ -14,6 +14,7 @@ import json
 import os
 import socket
 import sys
+import webbrowser
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import quote
@@ -27,6 +28,7 @@ from . import build as build_module
 from . import copy as copy_module
 from . import database as database_module
 from . import delete as delete_module
+from . import git as git_module
 from . import deploy as deploy_module
 from . import history
 from . import initialize
@@ -44,7 +46,7 @@ from . import tos
 from . import update as update_module
 from . import vars as vars_module
 from .api import ApiClient
-from .auth import Session, forget_environment, format_claims, log
+from .auth import Session, detect_browser, forget_environment, format_claims, log
 from .config import (
     BUILD_WAIT_SECONDS,
     DEFAULT_HTTP_TIMEOUT,
@@ -174,6 +176,11 @@ def cli(
     ctx.obj = Context(env_name, verbose, quiet, timeout)
 
 
+#: Set while git runs `freepod git credential`: git reads its stdout, and it runs
+#: on every fetch and push, so it does no housekeeping.
+GIT_HELPER_RUN = "freepod.git_helper"
+
+
 @cli.result_callback()
 @click.pass_context
 def after_command(ctx: click.Context, _result: object, **_options: object) -> None:
@@ -185,6 +192,8 @@ def after_command(ctx: click.Context, _result: object, **_options: object) -> No
     own output.
     """
     context: Context = ctx.obj
+    if ctx.meta.get(GIT_HELPER_RUN):
+        return
     sync_skill(ctx, context)
     notify_update(context)
 
@@ -1491,6 +1500,174 @@ def bucket_link(context: Context, put: bool, expires: str, path: str) -> None:
     with _open_bucket(context) as store:
         url = objects_module.link(store, remote, path, put=put, expires=seconds)
     click.echo(url)
+
+
+@cli.group()
+def git() -> None:
+    """Connect GitHub, create repositories, and push without a GitHub password.
+
+    Your GitHub credentials stay on Freepod. `freepod git create` points the
+    repository's git at Freepod for them, and every push or fetch then uses a
+    token that reaches that one repository for an hour.
+    """
+
+
+@git.command("status")
+@click.pass_obj
+def git_status(context: Context) -> None:
+    """Show the GitHub account this Freepod account is connected to.
+
+    Exits non-zero when it is not connected.
+    """
+    session = context.session()
+    session.authenticate(interactive=False)
+    with context.client(session) as api:
+        user_id = api.me()["id"]
+        connection = git_module.github(api, user_id)
+        if connection is None:
+            raise FreepodError(git_module.NOT_CONNECTED)
+        installed = git_module.installations(api, user_id)
+
+    click.echo(f"github: {connection['login']}")
+    if not installed:
+        context.say(
+            "The Freepod app is not installed on any GitHub account yet; "
+            "add one under Git in your Freepod settings."
+        )
+    for item in installed:
+        kind = "organization" if item.get("account_type") == "Organization" else "personal account"
+        reach = "all repositories" if item.get("repository_selection") == "all" else "selected repositories"
+        click.echo(f"  {item['account']} ({kind}, {reach})")
+
+
+@git.command("connect")
+@click.pass_obj
+def git_connect(context: Context) -> None:
+    """Connect this Freepod account to GitHub, through a link to open in a browser.
+
+    Waits until the connection is made in the browser, then prints the GitHub
+    account.
+    """
+    session = context.session()
+    session.authenticate(interactive=False)
+    with context.client(session) as api:
+        user_id = api.me()["id"]
+        connection = git_module.github(api, user_id)
+        if connection is None:
+            url = git_module.connect_url(context.env)
+            log("Open this link to connect GitHub to your Freepod account:")
+            log(f"  {url}")
+            if _at_terminal() and detect_browser()[0] and webbrowser.open(url):
+                log("Opened it in your browser.")
+            connection = git_module.wait_for_connection(
+                api, user_id, wait_seconds(context.timeout, LOGIN_WAIT_SECONDS)
+            )
+            context.say(f"Connected to GitHub as {connection['login']}.")
+        else:
+            context.say(f"Already connected to GitHub as {connection['login']}.")
+    click.echo(connection["login"])
+
+
+@git.command("create")
+@click.argument("name", required=False)
+@click.option("--owner", help="an organization to create it on (default: your own account)")
+@click.option("--public", is_flag=True, help="make it public (default: private)")
+@click.option("--description", help="the repository's description on GitHub")
+@click.option("--remote", default="origin", show_default=True, help="the git remote to add")
+@click.pass_obj
+def git_create(
+    context: Context,
+    name: Optional[str],
+    owner: Optional[str],
+    public: bool,
+    description: Optional[str],
+    remote: str,
+) -> None:
+    """Create an empty GitHub repository, and point this repository at it.
+
+    NAME defaults to this repository's directory name. Inside a git
+    repository, adds REMOTE for the new repository and has git get GitHub
+    credentials from Freepod, so `git push` works without a password.
+    """
+    root = git_module.repository_root()
+    if name is None:
+        if root is None:
+            raise UsageError("name the repository, or run this inside a git repository")
+        name = root.name
+    if root is not None:
+        existing = git_module.remote_url(root, remote)
+        if existing is not None:
+            raise UsageError(
+                f"this repository already has a remote named {remote!r} ({existing}); "
+                "pass --remote with another name"
+            )
+
+    session = context.session()
+    session.authenticate(interactive=False)
+    with context.client(session) as api:
+        user_id = api.me()["id"]
+        repo = git_module.create(
+            api, user_id, name=name, owner=owner, private=not public, description=description
+        )
+
+    visibility = "private" if repo.get("private") else "public"
+    context.say(f"Created {repo['full_name']} ({visibility}) on GitHub.")
+    if root is not None:
+        git_module.add_remote(root, remote, repo["clone_url"])
+        git_module.configure(context.env, root=root, everywhere=False)
+        branch = git_module.current_branch(root) or "main"
+        context.say(f"Added the remote {remote!r}. Push with: git push -u {remote} {branch}")
+    click.echo(repo["html_url"])
+
+
+@git.command("setup")
+@click.option(
+    "--global",
+    "everywhere",
+    is_flag=True,
+    help="for every repository of this user, instead of this one",
+)
+@click.pass_obj
+def git_setup(context: Context, everywhere: bool) -> None:
+    """Have git get GitHub credentials from Freepod.
+
+    `freepod git create` does this for the repository it creates a remote in.
+    Use it for a repository cloned from GitHub, or with --global for all.
+    """
+    where = git_module.configure(
+        context.env, root=git_module.repository_root(), everywhere=everywhere
+    )
+    context.say(f"git now gets GitHub credentials from Freepod for {where}.")
+
+
+@git.command("credential", hidden=True)
+@click.argument("operation")
+@click.pass_context
+def git_credential(ctx: click.Context, operation: str) -> None:
+    """git's credential helper: answers `get` for github.com repositories."""
+    ctx.meta[GIT_HELPER_RUN] = True
+    context: Context = ctx.obj
+    if sys.stdin.isatty():
+        raise UsageError(
+            "this is git's credential helper: git runs it and writes the request on its "
+            "input. To try it by hand:\n"
+            "  printf 'protocol=https\\nhost=github.com\\npath=OWNER/REPO.git\\n\\n' "
+            "| freepod git credential get"
+        )
+    request = git_module.read_request(sys.stdin)
+    if operation != "get" or request.get("protocol") != "https" or request.get("host") != git_module.HOST:
+        return
+    repository = git_module.repository_of(request)
+    if repository is None:
+        raise FreepodError(
+            "git did not say which repository it needs; run `freepod git setup` here "
+            f"(it sets {git_module.HTTP_PATH_KEY})"
+        )
+    session = context.session()
+    session.authenticate(interactive=False)
+    with context.client(session) as api:
+        issued = git_module.credential(api, api.me()["id"], repository)
+    sys.stdout.write(git_module.format_response(issued))
 
 
 @cli.group()

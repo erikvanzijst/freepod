@@ -158,4 +158,21 @@ describe('GitPanel', () => {
 
     expect(await screen.findByText(/your account is connected to github/i)).toBeInTheDocument()
   })
+
+  it('starts authorizing at once when a link from the CLI asks', async () => {
+    listGitConnectionsMock.mockResolvedValue([])
+    renderPanel('/settings/git?connect=github')
+
+    await waitFor(() => expect(redirectToMock).toHaveBeenCalledWith(links.authorize_url))
+    expect(startGitHubConnectMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not reconnect an account that is already connected', async () => {
+    listGitConnectionsMock.mockResolvedValue([connection])
+    listGitHubInstallationsMock.mockResolvedValue([])
+    renderPanel('/settings/git?connect=github')
+
+    expect(await screen.findByRole('link', { name: 'alice' })).toBeInTheDocument()
+    expect(startGitHubConnectMock).not.toHaveBeenCalled()
+  })
 })

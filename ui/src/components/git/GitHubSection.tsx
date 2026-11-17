@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Alert, Box, Button, Stack, Typography } from '@mui/material'
 import AddRoundedIcon from '@mui/icons-material/AddRounded'
 import GitHubIcon from '@mui/icons-material/GitHub'
@@ -51,10 +51,13 @@ function GitHubBadge() {
 interface GitHubSectionProps {
   userId: number
   connection: GitConnection | undefined
+  /** Start authorizing at once, as a link from `freepod git connect` asks. */
+  autoConnect?: boolean
+  onAutoConnect?: () => void
 }
 
 /** Connecting to GitHub, and once connected, the account and its installations. */
-export function GitHubSection({ userId, connection }: GitHubSectionProps) {
+export function GitHubSection({ userId, connection, autoConnect, onAutoConnect }: GitHubSectionProps) {
   const queryClient = useQueryClient()
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
 
@@ -63,6 +66,14 @@ export function GitHubSection({ userId, connection }: GitHubSectionProps) {
       startGitHubConnect(userId).then((links) => links[target]),
     onSuccess: (url) => redirectTo(url),
   })
+
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (!autoConnect || autoStarted.current) return
+    autoStarted.current = true
+    onAutoConnect?.()
+    if (!connection) connect.mutate('authorize_url')
+  }, [autoConnect, connection, connect, onAutoConnect])
 
   const installations = useQuery({
     queryKey: ['git', userId, 'github', 'installations'],
