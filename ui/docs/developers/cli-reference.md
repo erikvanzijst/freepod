@@ -171,8 +171,7 @@ freepod builds [OPTIONS] [COMMAND] [ARGS]...
 List this project's builds, most recent first.
 
 The build the deployment is currently running is marked with `*`.
-`--verbose` shows image references in full. `freepod builds log` prints
-a build's log.
+`freepod builds log` prints a build's log.
 
 | Option | Description |
 | --- | --- |
@@ -475,8 +474,7 @@ List this project's releases, most recent first.
 
 A release is one rollout of the deployment: a new build, changed vars, or
 changed settings. The release currently running is marked with `*`, and
-its number is what `freepod log -r` takes. `--verbose` shows image
-references in full.
+its number is what `freepod log -r` takes.
 
 | Option | Description |
 | --- | --- |
@@ -567,6 +565,22 @@ Waits until it runs again.
 | Option | Description |
 | --- | --- |
 | `--no-wait` | return once the platform has accepted the change instead of waiting for it |
+
+## `freepod status`
+
+```
+freepod status [OPTIONS]
+```
+
+Show what this project's deployment is and what it is doing.
+
+Its name, address, product, whether it runs (and if stopped, why), the
+release it serves, its plan, sign-in, changes not yet rolled out, and
+database and bucket usage.
+
+| Option | Description |
+| --- | --- |
+| `--json` | print the report as JSON |
 
 ## `freepod stop`
 

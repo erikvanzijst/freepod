@@ -104,6 +104,7 @@ that locks users out until they upgrade.
 | `deploy.py`   | The pipeline: preflight → pack → upload → build → release, plus rollout following.                                                     |
 | `delete.py`   | The teardown: confirming it, requesting it, and following it to gone.                                                                  |
 | `history.py`  | The build history: reading the project's builds and rendering the table.                                                               |
+| `status.py`   | `freepod status`: the summary object behind `--json`, the state derivation, and the table rendered from it.                            |
 | `releases.py` | The release history: this project's deployment's rollouts, and the live mark.                                                          |
 | `vars.py`     | `freepod var`: the vars sub-resource, input parsing, and the hidden-value table.                                                       |
 | `table.py`    | Shared listing rendering: timestamps, durations, digest abbreviation, columns. A leaf.                                                 |
@@ -157,10 +158,20 @@ Spec: [cli-environments](../openspec/specs/cli-environments/spec.md) · Rational
 | `apply`  | Send `.freepod.json` to the deployment without building; rolls out staged vars.                              |                                     |
 | `deploy` | Preflight → pack → upload → build → release, with `.freepod.json` in the same release.                       | `--no-build` (= `apply`), `--no-gitignore` |
 | `delete` | Tear down the project's deployment, and follow the teardown to gone.                                         | `--yes/-y`, `--no-wait`             |
+| `status` | Report the project's deployment: identity, state (status × power × stop reason), release, plan, sign-in, drift, storage. | `--json`                            |
 | `builds` | List the project's builds, marking the one this project runs. `builds log` prints one build's log.           | `--limit`, `--all`; `-f` (log)      |
 | `log`    | Stream the project deployment's application output.                                                          | `-f`, `-n`, `-r`, `-t`              |
 | `db`     | Group holding the deployment's database. `db status` reports identity, credential (masked), and quota state. | `--show-password` (status)          |
 | `bucket` | Group holding the deployment's bucket: `status`, and `ls`, `cp`, `mv`, `rm`, `cat`, `link` on its objects.  | `--show-secret` (status), `-l`, `-r` |
+
+`status --json` prints the summary object the table is rendered from, so the two
+forms cannot disagree. Its top-level keys are pinned by `tests/test_status.py`;
+keys are added, never renamed or removed, within a major version. `state` is the
+derived word (`running`, `stopping`, `starting`, `stopped`, `pending`,
+`provisioning`, `failed`, `deleting`) and `status`/`power` carry the platform's
+raw values beside it. A storage read that fails becomes `{"error": …}` rather than
+failing the command; an absent database or bucket is `null`. The report never
+carries a credential or an in-cluster address.
 
 Global: `--env` (hidden from `--help`, as is `FREEPOD_ENV`), `--verbose`, `--quiet`, `--timeout`, `--version`, `-h/--help`.
 `--verbose` and `--quiet` together are a usage error.

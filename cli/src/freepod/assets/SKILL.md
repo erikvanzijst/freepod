@@ -658,6 +658,10 @@ things those rules miss. Two wrinkles:
 
 ## When it goes wrong
 
+Start with `freepod status`. It says whether the deployment runs at all — a
+stopped one serves a "stopped" page, and a stop for payment or maintenance is
+not one you can lift — which release is live, and what has not been rolled out.
+
 | Symptom                               | What it means                                   | What to do                                                                                                                                                                |
 |---------------------------------------|-------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Exit 3                                | Not authenticated                               | Sign in: *1. Confirm authentication*                                                                                                                                      |
@@ -793,6 +797,7 @@ redeploy.
 | `freepod shell`    | Run a command in the application container: `freepod shell env`. Always pass one — with no command it is interactive. Needs a registered key and `ssh`.              |
 | `freepod cp`       | Copy a file or directory between here and the deployment: `freepod cp :/app/app.log ./app.log`. Mark the deployment's side with `:`; the direction follows. Needs a registered key and `sftp`. |
 | `freepod builds`   | List this project's builds, most recent first. `builds log [BUILD]` prints the most recent (or the named) build's log to stdout; `-f` follows one still running.     |
+| `freepod status`   | Report the deployment: address, state (running, stopped and why, failed with the platform's error), live release, plan, sign-in, unapplied changes, storage usage. `--json` for a parseable object. Never prints credentials. |
 | `freepod releases` | List this project's rollouts, newest first, marking the live one. Where `log -r N` gets its N.                                                                       |
 | `freepod var`      | Read and change the app's environment: `var list`, `var get KEY`, `var set KEY=VALUE`, `var rm KEY`. `--secret` stores write-only; `--stage` defers the rollout.     |
 | `freepod delete`   | Delete the deployment **and everything it stores**. Destructive; confirm with the user first, and note it prompts unless given `-y`.                                 |

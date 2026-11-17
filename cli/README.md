@@ -52,6 +52,7 @@ project that *does* have a `Dockerfile` in its root is built from that instead.
 | `freepod shell`    | Open a shell in the deployment's application container, or run a command in it.      |
 | `freepod cp`       | Copy a file or directory between here and the deployment, either direction.          |
 | `freepod builds`   | List your builds, most recent first; `builds log` prints a build's log.              |
+| `freepod status`   | Report this project's deployment: address, whether it runs and why not, plan, usage. |
 | `freepod releases` | List this project's rollouts, most recent first; the live one is marked.             |
 | `freepod stop`     | Take this project's deployment offline, keeping all of its data.                     |
 | `freepod start`    | Run this project's stopped deployment again.                                         |

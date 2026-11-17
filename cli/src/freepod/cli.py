@@ -39,6 +39,7 @@ from . import project
 from . import releases as releases_module
 from . import s3 as s3_module
 from . import skill as skill_module
+from . import status as status_module
 from . import ssh as ssh_module
 from . import tos
 from . import update as update_module
@@ -570,6 +571,26 @@ def start(context: Context, no_wait: bool) -> None:
     _power(context, power_module.RUNNING, no_wait)
 
 
+@cli.command()
+@click.option("--json", "as_json", is_flag=True, help="print the report as JSON")
+@click.pass_obj
+def status(context: Context, as_json: bool) -> None:
+    """Show what this project's deployment is and what it is doing.
+
+    Its name, address, product, whether it runs (and if stopped, why), the
+    release it serves, its plan, sign-in, changes not yet rolled out, and
+    database and bucket usage.
+    """
+    session = context.session()
+    session.authenticate(interactive=False)
+    with context.client(session) as api:
+        summary = status_module.collect(api, context.env.name)
+    if as_json:
+        click.echo(json.dumps(summary, indent=2))
+    else:
+        click.echo(status_module.render_table(summary, verbose=context.verbose))
+
+
 def _power(context: Context, target: str, no_wait: bool) -> None:
     session = context.session()
     session.authenticate(interactive=False)
@@ -599,8 +620,7 @@ def builds(ctx: click.Context, limit: int, show_all: bool) -> None:
     """List this project's builds, most recent first.
 
     The build the deployment is currently running is marked with `*`.
-    `--verbose` shows image references in full. `freepod builds log` prints
-    a build's log.
+    `freepod builds log` prints a build's log.
     """
     if ctx.invoked_subcommand is not None:
         return
@@ -717,8 +737,7 @@ def releases(context: Context, limit: int, show_all: bool) -> None:
 
     A release is one rollout of the deployment: a new build, changed vars, or
     changed settings. The release currently running is marked with `*`, and
-    its number is what `freepod log -r` takes. `--verbose` shows image
-    references in full.
+    its number is what `freepod log -r` takes.
     """
     if limit <= 0 and not show_all:
         raise UsageError("--limit must be a positive number of releases")
