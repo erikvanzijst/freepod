@@ -1,5 +1,5 @@
 import { requestBlob, requestJson, requestMultipart } from './client'
-import type { AccessEntry, AccessList, Deployment, DeploymentCreateResponse, DeploymentDatabase, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductListing, ProductRelease, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Handle, TosAcceptance, UsageQuery, UsageReport, User, VarWrite } from './types'
+import type { AccessEntry, AccessList, Deployment, DeploymentCreateResponse, DeploymentDatabase, GitConnection, GitHubConnectStart, GitHubInstallation, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductListing, ProductRelease, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Handle, TosAcceptance, UsageQuery, UsageReport, User, VarWrite } from './types'
 
 export function getMe() {
   return requestJson<User>('/me')
@@ -288,6 +288,22 @@ export function deleteSshKey(userId: number, fingerprint: string) {
     `/users/${userId}/ssh-keys/${encodeURIComponent(fingerprint)}`,
     { method: 'DELETE' },
   )
+}
+
+export function listGitConnections(userId: number) {
+  return requestJson<GitConnection[]>(`/users/${userId}/git`)
+}
+
+export function startGitHubConnect(userId: number) {
+  return requestJson<GitHubConnectStart>(`/users/${userId}/git/github/connect`, { method: 'POST' })
+}
+
+export function listGitHubInstallations(userId: number) {
+  return requestJson<GitHubInstallation[]>(`/users/${userId}/git/github/installations`)
+}
+
+export function disconnectGitHub(userId: number) {
+  return requestJson<null>(`/users/${userId}/git/github`, { method: 'DELETE' })
 }
 
 function usageParams(query: UsageQuery) {

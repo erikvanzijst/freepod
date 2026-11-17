@@ -40,6 +40,9 @@ const UsagePanel = lazy(() =>
 const SshKeysPanel = lazy(() =>
   import('./components/SshKeysPanel').then((m) => ({ default: m.SshKeysPanel })),
 )
+const GitPanel = lazy(() =>
+  import('./components/git/GitPanel').then((m) => ({ default: m.GitPanel })),
+)
 
 /**
  * Layout route that wraps the signed-in app pages in the AppShell chrome. The
@@ -82,6 +85,7 @@ function AuthedApp() {
             <Route index element={<Navigate to="handle" replace />} />
             <Route path="handle" element={<HandlePanel />} />
             <Route path="ssh-keys" element={<SshKeysPanel />} />
+            <Route path="git" element={<GitPanel />} />
             <Route path="usage" element={<UsagePanel />} />
           </Route>
           <Route path="/admin" element={<Admin />}>

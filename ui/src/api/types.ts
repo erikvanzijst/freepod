@@ -339,6 +339,32 @@ export interface SshKey {
   created_at: IsoDate
 }
 
+/** A connection from the account to a git host. */
+export interface GitConnection {
+  provider: 'github'
+  host: string
+  account_id: string
+  login: string
+  connected_at: IsoDate
+  /** When the connection lapses unless it is used before then; every use renews it. */
+  expires_at: IsoDate | null
+}
+
+/** Where to send the browser to authorize the GitHub App, or to install it. */
+export interface GitHubConnectStart {
+  authorize_url: string
+  install_url: string
+}
+
+/** A GitHub account or organization the Freepod app is installed on. */
+export interface GitHubInstallation {
+  id: number
+  account: string
+  account_type: 'User' | 'Organization'
+  repository_selection: 'all' | 'selected'
+  html_url: string
+}
+
 export type UsageBucket = 'hour' | 'day' | 'week' | 'month'
 export type UsageDimension = 'product' | 'deployment' | 'metric'
 
