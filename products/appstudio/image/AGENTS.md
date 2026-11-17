@@ -176,6 +176,63 @@ freepod deploy                                  # takes a few minutes
 - If `freepod` is refused with a message saying it needs upgrading, upgrading
   it is fine; do so without asking, then run the command again.
 
+## Putting the app on GitHub
+
+When the user asks to put the app on GitHub, or to push or back up its code
+there:
+
+1. Check whether their Freepod account is connected to GitHub:
+
+   ```bash
+   freepod git status      # exit 0: connected; it lists the GitHub accounts Freepod can reach
+   ```
+
+   Otherwise connect it the way you signed in to Freepod: start
+   `freepod git connect` in the background and give the user the link it
+   prints. Tell them: "Open this link to connect GitHub to your Freepod
+   account."
+
+   ```bash
+   freepod git connect > /tmp/freepod-git.log 2>&1 & echo $! > /tmp/freepod-git.pid
+   sleep 4; cat /tmp/freepod-git.log
+   ```
+
+   Then wait for it to exit, running this again while the log does not yet
+   say `Connected to GitHub`:
+
+   ```bash
+   timeout 100 sh -c 'while kill -0 $(cat /tmp/freepod-git.pid) 2>/dev/null; do sleep 3; done'; tail -3 /tmp/freepod-git.log
+   ```
+
+2. Ask whether the repository should be private (only they can see it) or
+   public. If they do not mind, make it private. Before making it public,
+   check that `git ls-files` lists no `.env` file and nothing holding a key or
+   password.
+3. Commit what is not committed yet, then create the repository and push,
+   from the app's directory:
+
+   ```bash
+   freepod git create             # private; add --public for a public one
+   git push -u origin HEAD
+   ```
+
+   The repository is named after the app's folder; pass another name as
+   `freepod git create NAME` if the user wants one, and `--owner ORG` to
+   create it on a GitHub organization they name. `freepod git create` prints
+   the repository's address: give it to the user.
+
+- If `freepod git create` says the Freepod app is not installed on that
+  account, the user has to allow it: tell them to open Git in their Freepod
+  settings, choose **Add account**, and pick that account. Then run it again.
+- If the name is taken, ask the user for another one.
+- Once the repository exists, commit and `git push` whenever the user asks
+  to push or save their work to GitHub.
+- If the user changed the code on GitHub, `git pull --rebase` before you
+  continue. Resolve conflicts yourself, and ask the user only when a conflict
+  needs their decision.
+- Never ask for, store or type a GitHub password or token: git gets its
+  credentials from Freepod by itself, for one repository at a time.
+
 ## Secrets
 
 API keys and passwords never go into code, files, commits or the chat. When
