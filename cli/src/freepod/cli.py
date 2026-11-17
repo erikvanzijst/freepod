@@ -579,7 +579,8 @@ def status(context: Context, as_json: bool) -> None:
 
     Its name, address, product, whether it runs (and if stopped, why), the
     release it serves, its plan, sign-in, changes not yet rolled out, and
-    database and bucket usage. `--verbose` adds the raw platform values.
+    database and bucket usage. `freepod --verbose status` adds the raw
+    platform values.
     """
     session = context.session()
     session.authenticate(interactive=False)
