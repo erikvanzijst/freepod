@@ -1,0 +1,99 @@
+{{- /*
+Bundled Redis for PeerTube's job queues, sessions and caches, at the major
+upstream's compose file runs, persisted so queued jobs survive a restart. The
+image starts as root and drops to the redis user itself. A StatefulSet for the
+reason postgres.yaml gives.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  labels:
+    {{- include "peertube.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.redis.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.redis.persistence.size }}
+  {{- if .Values.redis.persistence.storageClassName }}
+  storageClassName: {{ .Values.redis.persistence.storageClassName }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-redis
+  labels:
+    {{- include "peertube.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "peertube.componentSelector" (dict "root" . "name" "redis") | nindent 4 }}
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-redis
+  labels:
+    {{- include "peertube.labels" . | nindent 4 }}
+    {{- include "peertube.componentSelector" (dict "root" . "name" "redis") | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: {{ .Release.Name }}-redis
+  selector:
+    matchLabels:
+      {{- include "peertube.componentSelector" (dict "root" . "name" "redis") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "peertube.componentSelector" (dict "root" . "name" "redis") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- include "peertube.podPlacement" . | nindent 6 }}
+      initContainers:
+        # storage-chart-contract: the entrypoint skips its ownership fix while a
+        # fresh volume's lost+found is there.
+        - name: lost-found
+          image: {{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          command: ["sh", "-c", "rmdir /data/lost+found 2>/dev/null || true"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          ports:
+            - containerPort: 6379
+              name: redis
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "redis-cli ping | grep -q PONG"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "redis-cli ping | grep -q PONG"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- with .Values.redis.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: redis-data

@@ -1,0 +1,8 @@
+- version: "8.3.2"
+  notes: |-
+    A security and maintenance release.
+
+    - Fixes a critical vulnerability in image processing and a federation vulnerability that let a remote server impersonate accounts of another
+    - Automatic transcription installs correctly again
+    - Fixes audio downloads of videos with a WebP thumbnail
+    - Uses fewer resources when generating thumbnails

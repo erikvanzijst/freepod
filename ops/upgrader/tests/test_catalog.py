@@ -40,6 +40,7 @@ def test_the_repositorys_own_catalog():
         "mattermost",
         "nextcloud",
         "openproject",
+        "peertube",
         "photoprism",
         "vaultwarden",
     ]

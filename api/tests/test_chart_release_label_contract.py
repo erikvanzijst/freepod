@@ -49,6 +49,7 @@ DATASTORES = {
         "openproject/templates/postgres.yaml",
         "openproject/templates/memcached.yaml",
     },
+    "peertube": {"peertube/templates/postgres.yaml", "peertube/templates/redis.yaml"},
     "photoprism": {"photoprism/templates/mariadb.yaml"},
 }
 

@@ -1,0 +1,124 @@
+# Bespoke PeerTube chart values. Flat and explicit: every image, size and env
+# the deployment uses is declared here.
+
+image:
+  repository: docker.io/chocobozzz/peertube
+  # Defaults to the chart appVersion. Upstream rebuilds a version's tag, so
+  # the catalog pins it with a digest.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Public hostname: the ingress rule host and PEERTUBE_WEBSERVER_HOSTNAME.
+# Federation bakes it into every account and video address.
+host: "peertube.local"
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+
+# The `root` administrator PeerTube creates on its first start. Its email is
+# caelus.owner.email under Caelus and `email` standalone.
+admin:
+  email: admin@example.com
+  # Blank generates one on first install; a tenant-supplied
+  # PEERTUBE_ADMIN_PASSWORD var overrides it.
+  password: ""
+
+smtp:
+  host: ""
+  port: 25
+  from: peertube@example.com
+
+# ffmpeg threads per transcoding job, and jobs at once. Pinned: the admin UI
+# cannot raise them.
+transcoding:
+  threads: 2
+  concurrency: 1
+
+persistence:
+  # data/: videos, thumbnails, plugins, logs. config/: admin UI settings.
+  # caelus.plan.storageSize overrides the size.
+  data:
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    storageClassName: ""
+
+# Idle: ~170Mi fresh, ~250Mi with a few videos. ffmpeg and plugins run inside this
+# container, so the limit leaves room for a 1080p transcode beside them.
+resources:
+  requests:
+    cpu: 10m
+    memory: 256Mi
+  limits:
+    memory: 4Gi
+
+# The first-start install and password, and the wait for the database and
+# Redis on every start.
+setup:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 256Mi
+    limits:
+      memory: 2Gi
+
+postgres:
+  image:
+    repository: docker.io/library/postgres
+    tag: 17-alpine
+    pullPolicy: IfNotPresent
+  auth:
+    username: peertube
+    database: peertube
+    # Blank generates one on first install and reuses it from the
+    # <release>-peertube Secret thereafter.
+    password: ""
+  persistence:
+    accessMode: ReadWriteOnce
+    size: 5Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 1Gi
+
+redis:
+  image:
+    repository: docker.io/library/redis
+    tag: 8-alpine
+    pullPolicy: IfNotPresent
+  persistence:
+    accessMode: ReadWriteOnce
+    size: 1Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 8m
+      memory: 8Mi
+    limits:
+      memory: 512Mi
+
+# The node pool every pod prefers: nodes labeled and tainted
+# `caelus.dev/node-pool=<pool>`. A system value; empty schedules the pods like
+# any other.
+nodePool: ""
+
+# Escape hatch for PeerTube settings this chart does not model, as
+# PEERTUBE_* variables (support/docker/production/config/
+# custom-environment-variables.yaml upstream). Each one overrides the admin UI.
+extraEnv: {}
+
+# Injected per deployment by the Caelus reconciler.
+caelus:
+  releaseId: ""
+  plan: {}
+  owner: {}
+  ingress:
+    enabled: false
+    tls: {}
+  vars: {}
+
+sshSidecarImage: ghcr.io/erikvanzijst/freepod/ssh-sidecar:0.5.2

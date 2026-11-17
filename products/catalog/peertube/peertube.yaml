@@ -1,0 +1,119 @@
+# yaml-language-server: $schema=../catalog.schema.json
+schema_version: 1
+product:
+  slug: peertube
+  name: PeerTube
+  tagline: Your own video platform, part of a network of video sites across the web.
+  description: |-
+    PeerTube is a video platform: upload videos, organize them into channels and playlists, and share them with anyone. Viewers watch in any browser, with captions, chapters and a choice of quality, and can subscribe, like and comment.
+
+    With Freepod you run your own PeerTube instance, hosted in the EU, and decide who may sign up and what they may upload. It's part of a federated network, so people on other PeerTube sites, and on Mastodon, can follow your channels and comment on your videos, and you can follow theirs.
+
+    Your videos are yours to keep: every account can export its videos and data as an archive, and import it into any other PeerTube site.
+  category: Video
+  replaces: YouTube · Vimeo
+  icon: icon.png
+  license: AGPL-3.0
+  features:
+  - icon: video
+    title: Channels
+    body: Organize videos into channels, each with its own name, banner and followers.
+  - icon: playlist
+    title: Playlists
+    body: Collect your videos, or anyone's, into public or private playlists.
+  - icon: lock
+    title: Privacy per video
+    body: Public, unlisted, private, or only for members of your instance.
+  - icon: subtitles
+    title: Captions and chapters
+    body: Add subtitles in any language and chapter marks for long videos.
+  - icon: federation
+    title: Federated
+    body: Followed and discussed from other PeerTube sites and from Mastodon.
+  - icon: moderation
+    title: Moderation tools
+    body: Sign-up approval, video quotas, reports and block lists.
+  links:
+  - label: Website
+    href: https://joinpeertube.org
+    kind: website
+  - label: Documentation
+    href: https://docs.joinpeertube.org
+    kind: docs
+  - label: Source code
+    href: https://github.com/Chocobozzz/PeerTube
+    kind: source
+  - label: Release notes
+    href: https://github.com/Chocobozzz/PeerTube/releases
+    kind: releases
+  - label: PeerTube for iOS
+    href: https://apps.apple.com/us/app/peertube/id6737834858
+    kind: ios
+  - label: PeerTube for Android
+    href: https://play.google.com/store/apps/details?id=org.framasoft.peertube
+    kind: android
+  screenshots:
+  - file: screenshots/watch.webp
+    caption: Watching a video
+    form: desktop
+    credit:
+      text: Sintel © Blender Foundation · CC BY 3.0
+      href: https://durian.blender.org
+  - file: screenshots/browse.webp
+    caption: The newest videos on your site
+    form: desktop
+    credit:
+      text: Sintel, Big Buck Bunny © Blender Foundation · CC BY 3.0
+      href: https://studio.blender.org/films/
+  - file: screenshots/watch-mobile.webp
+    caption: Watching on a phone
+    form: mobile
+    credit:
+      text: Sintel © Blender Foundation · CC BY 3.0
+      href: https://durian.blender.org
+upstream:
+  source:
+    type: docker-tag
+    image: docker.io/chocobozzz/peertube
+  # Upstream rebuilds a version's tag after release, so it is pinned with a
+  # digest. The -trixie aliases point at the same image.
+  match: ^v(?P<version>\d+\.\d+\.\d+)(?:@sha256:[0-9a-f]{64})?$
+  version_path: template.system_values.image.tag
+template:
+  chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/peertube
+  chart_version: 0.1.3
+  system_values:
+    image:
+      tag: v8.3.2@sha256:4e42ed326723a18736a794d7ded9630ae0a6a204f2bb0c8a9d3b9a756d7c0678
+    smtp:
+      host: smtp.mailer.svc.cluster.local
+      port: 25
+      from: peertube@freepod.eu
+    nodePool: tenant
+  values_schema:
+    $schema: https://json-schema.org/draft/2020-12/schema
+    type: object
+    additionalProperties: false
+    properties:
+      host:
+        type: string
+        title: Hostname
+        minLength: 1
+        maxLength: 253
+        description: The address of your video site, such as videos-alice.freepod.app, or a domain of your
+          own. Federation builds it into every channel and video address, so it cannot be changed later
+          without losing your followers on other sites.
+      PEERTUBE_ADMIN_PASSWORD:
+        type: string
+        title: Password
+        minLength: 8
+        maxLength: 50
+        pattern: ^[^\u0000-\u001f\u007f]+$
+        x-caelus-target: runtime
+        x-caelus-sensitive: true
+        description: 'The password for your account, which administers the site. You sign in with the email
+          address of your Freepod account. It is set on first start only; to change it later, use PeerTube''s
+          own account settings.'
+    required:
+    - host
+    - PEERTUBE_ADMIN_PASSWORD
