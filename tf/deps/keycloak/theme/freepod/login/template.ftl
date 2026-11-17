@@ -1,4 +1,4 @@
-<#-- keycloak.v2's template.ftl (26.8.1), plus the app header and hosted-on line when
+<#-- keycloak.v2's template.ftl (26.8.2), plus the app header and hosted-on line when
      the sign-in or logout is for an app (freepodApp, from the freepod login provider). -->
 <#import "field.ftl" as field>
 <#import "footer.ftl" as loginFooter>
