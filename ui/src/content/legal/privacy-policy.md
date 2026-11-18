@@ -2,7 +2,7 @@
 
 ---
 
-**Effective date:** 2026-09-28  
+**Effective date:** 2026-11-18  
 **Controller:** Freepod (`[entity type]`), `[REGISTERED ADDRESS]`,
 enterprise number `[BE 0xxx.xxx.xxx]` ("**Freepod**", "**we**").  
 **Contact / data-protection queries:** privacy@freepod.eu  
@@ -45,6 +45,7 @@ what it received (see Sections 3 and 4).
 | **Cookies / similar** | session and analytics identifiers | Automatically — see Section 8 |
 | **Sign in with Google data** | name, email address, Google account identifier | Google, when you choose to sign in with your Google account |
 | **Sign in with Freepod records** | which applications you consented to share your identity with, and when | You, when you consent |
+| **GitHub connection data** | your GitHub account identifier and username, the access tokens GitHub issues to the Freepod GitHub App for you (stored encrypted), and the names of repositories you create or use through Freepod | GitHub, when you connect your GitHub account |
 
 We do not intentionally collect special-category data about account holders.
 
@@ -61,6 +62,7 @@ We do not intentionally collect special-category data about account holders.
 | Send service/administrative messages | **Contract** / **Legitimate interests** |
 | Send marketing (if any) | **Consent** (Art. 6(1)(a)), withdrawable at any time |
 | Share your name, email address and account identifier with a Third-Party Application you choose to sign in to with Freepod | **Consent** (Art. 6(1)(a)), asked separately for each application |
+| Act on GitHub for you when you ask: create repositories, push and pull code, and link your apps to their repositories | **Contract** (Art. 6(1)(b)) |
 | Product analytics / improvement | **Legitimate interests** or **Consent**, as applicable |
 
 Where we rely on legitimate interests, we have balanced those interests against
@@ -81,6 +83,11 @@ We share Personal Data with:
   them with that application on the consent screen. The operator is another
   Freepod customer, not Freepod, and processes what it receives under its own
   terms and privacy notice;
+- **GitHub**, when you have connected your GitHub account — only the requests
+  you ask Freepod to make there, such as creating a repository or pushing code
+  to it, with the access you granted the Freepod GitHub App. GitHub processes
+  the data in your GitHub account as an independent controller, under its own
+  terms and privacy statement;
 - **Authorities** where required by law or valid legal request;
 - **Successors** in the event of a merger, acquisition, or asset sale, subject to
   this policy.
@@ -95,6 +102,10 @@ Where we transfer Personal Data outside the EEA, we rely on an adequacy decision
 or appropriate safeguards (in particular the **EU Standard Contractual
 Clauses**), with supplementary measures where required. Details are available on
 request at privacy@freepod.eu.
+
+When you connect your GitHub account, the code and repository details you ask
+Freepod to send to GitHub go to GitHub, Inc. in the United States, at your
+request and under GitHub's terms.
 
 ---
 
@@ -129,7 +140,9 @@ We keep Personal Data only as long as necessary for the purposes above:
 - **Support data** — `[retention period]`;
 - **Sign in with Freepod consent records** — for the life of your account, or
   until the application is deleted; single-use sign-in codes are deleted within
-  an hour of being issued.
+  an hour of being issued;
+- **GitHub connection data** — until you disconnect GitHub or delete your
+  account, when we also revoke the Freepod GitHub App's access at GitHub.
 
 We then delete or anonymise the data.
 

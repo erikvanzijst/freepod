@@ -114,6 +114,16 @@ Each app is a git repository in App Studio, in `/workspace/apps/<name>`. The ter
 
 Sharing a session as a public link is not available.
 
+### On GitHub
+
+Ask the agent to put the app on GitHub. It creates a repository for the app and pushes the code, then gives you the repository's address. The repository is private unless you ask for a public one, and is named after the app; name another, or a GitHub organization to create it on, if you want.
+
+The first time, the agent shows a link that connects GitHub to your Freepod account. Open it, sign in to GitHub if asked, and authorize **Freepod Developer Hosting**. The app also needs to be installed on the GitHub account or organization the repository goes on: install it, and choose which repositories it may reach, under **Git** in your [settings](app:/settings/git). Repositories the agent creates are added to that selection by themselves.
+
+After that, ask the agent to push whenever you want GitHub to have your latest work. If you change the code on GitHub, tell the agent, and it pulls your changes in before it continues.
+
+App Studio never holds your GitHub password or a token of yours. Each push and pull uses a token Freepod issues for that one repository, valid for an hour. Commits carry your Freepod account's email address. To disconnect, choose **Disconnect** under **Git** in your settings; the Freepod app stays installed on GitHub until you remove it there.
+
 ## Documentation
 
 - [Freepod for developers](/developers): how published apps are built and run

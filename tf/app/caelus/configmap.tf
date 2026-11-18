@@ -21,6 +21,9 @@ resource "kubernetes_config_map" "api" {
     CAELUS_MOLLIE_API_KEY           = var.mollie_api_key
     CAELUS_MOLLIE_REDIRECT_URL      = "https://${var.domain}"
     CAELUS_MOLLIE_WEBHOOK_BASE_URL  = "https://${var.domain}/api/"
+    CAELUS_GITHUB_APP_ID            = tostring(var.github_app.id)
+    CAELUS_GITHUB_APP_SLUG          = var.github_app.slug
+    CAELUS_GITHUB_CLIENT_ID         = var.github_app.client_id
     CAELUS_SSHPIPER_NAMESPACE       = var.sshpiper_namespace
     CAELUS_SFTP_PLATFORM_PUBLIC_KEY = var.sftp_platform_public_key
     CAELUS_SSH_EDGE_HOST_PUBLIC_KEY = var.ssh_edge_host_public_key

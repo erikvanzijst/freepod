@@ -122,3 +122,17 @@ resource "kubernetes_secret" "registry_pull_hmac" {
     CAELUS_REGISTRY_PULL_HMAC_KEY = var.registry_pull_hmac_key
   }
 }
+
+resource "kubernetes_secret" "github_app" {
+  metadata {
+    name      = "caelus-github-app"
+    namespace = var.namespace
+  }
+
+  type = "Opaque"
+
+  data = {
+    CAELUS_GITHUB_CLIENT_SECRET = var.github_app_secrets.client_secret
+    CAELUS_GITHUB_PRIVATE_KEY   = var.github_app_secrets.private_key
+  }
+}

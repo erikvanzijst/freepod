@@ -39,6 +39,18 @@ class RateLimitedException(CodedException):
     pass
 
 
+class CodedNotFoundException(CodedException, NotFoundException):
+    """A missing thing a client tells apart from other missing things by `code`."""
+
+
+class PermissionDeniedException(CodedException):
+    """The caller is known but may not do this."""
+
+
+class UnavailableException(CodedException):
+    """A feature this environment is not configured to offer."""
+
+
 class UpstreamException(CodedException):
     """Something the request depends on outside the platform did not answer as needed."""
 

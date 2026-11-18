@@ -21,6 +21,7 @@ from app.services.errors import (
     ValidationException,
 )
 from app.services.hostnames import HANDLE_MAX_LENGTH, HANDLE_MIN_LENGTH, HANDLE_RE
+from app.services import github
 
 
 def create_user(session: Session, payload: UserCreate) -> UserRead:
@@ -180,6 +181,7 @@ def delete_user(session: Session, *, user_id: int) -> UserRead:
     user.deleted_at = datetime.now(UTC)
     session.add(user)
     session.exec(delete(SshKeyORM).where(SshKeyORM.user_id == user.id))
+    github.forget_connections(session, user.id)
     session.commit()
     session.refresh(user)
     return UserRead.model_validate(user)

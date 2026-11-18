@@ -63,6 +63,9 @@ COPY --from=freepod-cli pyproject.toml README.md LICENSE /tmp/freepod-cli/
 COPY --from=freepod-cli src /tmp/freepod-cli/src
 RUN uv tool install /tmp/freepod-cli \
  && rm -rf /tmp/freepod-cli
+RUN git config --system --add credential.https://github.com.helper '' \
+ && git config --system --add credential.https://github.com.helper '!freepod git credential' \
+ && git config --system credential.https://github.com.useHttpPath true
 
 # User configuration (opencode's, freepod's credentials and keys, git's) lives
 # on the workspace volume. Settings the platform owns are opencode's managed

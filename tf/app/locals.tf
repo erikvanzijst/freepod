@@ -4,6 +4,16 @@ locals {
   ns_caelus = local.is_prod_workspace ? "caelus" : "caelus-dev"
   domain    = local.is_prod_workspace ? "freepod.eu" : "dev.freepod.eu"
 
+  github_app = local.is_prod_workspace ? {
+    id        = 5801257
+    slug      = "freepod-developer-hosting"
+    client_id = "Iv23lixLS3TEy6vAplDO"
+    } : {
+    id        = 5800037
+    slug      = "freepod-developer-hosting-dev"
+    client_id = "Iv23liNTdJOL76rHM0PI"
+  }
+
   # Tenant hostnames are `<app>-<handle>.<tenant_domain>`, on a domain of their
   # own so no tenant shares a site with the platform.
   tenant_domain = local.is_prod_workspace ? "freepod.app" : "dev.freepod.app"

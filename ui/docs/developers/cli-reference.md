@@ -318,6 +318,98 @@ go to stderr, so `URL=$(freepod deploy)` captures the address.
 | `--no-gitignore` | also upload files that .gitignore excludes |
 | `--no-build` | apply .freepod.json and staged vars without building; same as `freepod apply` |
 
+## `freepod git`
+
+```
+freepod git [OPTIONS] COMMAND [ARGS]...
+```
+
+Connect GitHub, create repositories, and push without a GitHub password.
+
+Your GitHub credentials stay on Freepod. `freepod git create` points the
+repository's git at Freepod for them, and every push or fetch then uses a
+token that reaches that one repository for an hour.
+
+### `freepod git connect`
+
+```
+freepod git connect [OPTIONS]
+```
+
+Connect this Freepod account to GitHub, through a link to open in a browser.
+
+Waits until the connection is made in the browser, then prints the GitHub
+account.
+
+### `freepod git create`
+
+```
+freepod git create [OPTIONS] [NAME]
+```
+
+Create an empty GitHub repository, and point this repository at it.
+
+NAME defaults to this repository's directory name. Inside a git
+repository, adds REMOTE for the new repository and has git get GitHub
+credentials from Freepod, so `git push` works without a password.
+
+| Option | Description |
+| --- | --- |
+| `--owner TEXT` | an organization to create it on (default: your own account) |
+| `--public` | make it public (default: private) |
+| `--description TEXT` | the repository's description on GitHub |
+| `--remote TEXT` | the git remote to add [default: origin] |
+
+### `freepod git link`
+
+```
+freepod git link [OPTIONS] [REPOSITORY]
+```
+
+Link this project's deployment to the GitHub repository it is built from.
+
+REPOSITORY is OWNER/NAME. Without it, the repository's `origin` remote is
+used when it is on GitHub; otherwise, at a terminal, you pick one of the
+repositories the Freepod app can reach. Linking again replaces the link.
+
+| Option | Description |
+| --- | --- |
+| `--branch TEXT` | the branch it is built from (default: the checked-out one) |
+| `--path TEXT` | the project's directory in the repository (default: where .freepod.json is) |
+
+### `freepod git setup`
+
+```
+freepod git setup [OPTIONS]
+```
+
+Have git get GitHub credentials from Freepod.
+
+`freepod git create` does this for the repository it creates a remote in.
+Use it for a repository cloned from GitHub, or with --global for all.
+
+| Option | Description |
+| --- | --- |
+| `--global` | for every repository of this user, instead of this one |
+
+### `freepod git status`
+
+```
+freepod git status [OPTIONS]
+```
+
+Show the GitHub account this Freepod account is connected to.
+
+Exits non-zero when it is not connected.
+
+### `freepod git unlink`
+
+```
+freepod git unlink [OPTIONS]
+```
+
+Unlink this project's deployment from its GitHub repository.
+
 ## `freepod init`
 
 ```

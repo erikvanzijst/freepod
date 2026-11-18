@@ -2040,6 +2040,190 @@ def ssh_key_rm(
         typer.echo(f"Removed {fingerprint}")
 
 
+# ── Git hosting connections ───────────────────────────────────────────
+
+git_app = typer.Typer(
+    help="Manage an account's connections to git hosts.",
+    no_args_is_help=True,
+)
+app.add_typer(git_app, name="git")
+
+
+@git_app.command("list")
+def git_list(
+    user_id: int | None = typer.Argument(None, help="Whose connections to list (admin only)"),
+) -> None:
+    """List the git hosts an account is connected to."""
+    from app.services import github
+
+    with session_scope() as session:
+        target = _ssh_key_target(session, user_id)
+        _echo_yaml_entity(github.list_connections(session, target))
+
+
+@git_app.command("connect")
+def git_connect() -> None:
+    """Print the links that connect the acting account to GitHub, for a browser
+    signed in to Freepod as the same account."""
+    from app.services import github
+
+    with session_scope() as session:
+        user = _require_cli_user(session)
+        try:
+            _echo_yaml_entity(github.connect_urls(user.id))
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+
+
+@git_app.command("installations")
+def git_installations(
+    user_id: int | None = typer.Option(None, "--user-id", help="Whose installations (admin only)"),
+) -> None:
+    """List the GitHub accounts the Freepod app is installed on, as the connected user sees them."""
+    from app.services import github
+
+    with session_scope() as session:
+        target = _ssh_key_target(session, user_id)
+        try:
+            _echo_yaml_entity(github.list_installations(session, target))
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+
+
+@git_app.command("disconnect")
+def git_disconnect(
+    user_id: int | None = typer.Option(None, "--user-id", help="Whose connection (admin only)"),
+) -> None:
+    """Revoke the Freepod GitHub App's authorization and forget the connection."""
+    from app.services import github
+
+    with session_scope() as session:
+        target = _ssh_key_target(session, user_id)
+        try:
+            github.disconnect(session, target)
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        typer.echo("Disconnected from GitHub")
+
+
+@git_app.command("create")
+def git_create(
+    name: str = typer.Argument(..., help="The repository's name"),
+    owner: str | None = typer.Option(None, "--owner", help="An organization to create it on"),
+    public: bool = typer.Option(False, "--public", help="Create it public rather than private"),
+    description: str | None = typer.Option(None, "--description"),
+) -> None:
+    """Create an empty GitHub repository as the acting account's GitHub user."""
+    from app.services import github
+
+    with session_scope() as session:
+        user = _require_cli_user(session)
+        try:
+            repo = github.create_repository(
+                session,
+                user.id,
+                name=name,
+                owner=owner,
+                private=not public,
+                description=description,
+            )
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        _echo_yaml_entity(repo)
+
+
+@git_app.command("credential")
+def git_credential(
+    repository: str = typer.Argument(..., help="owner/name"),
+    read_only: bool = typer.Option(False, "--read", help="Read access instead of write"),
+) -> None:
+    """Mint a one-hour git credential for one repository, as the acting account."""
+    from app.services import github
+
+    with session_scope() as session:
+        user = _require_cli_user(session)
+        try:
+            credential = github.mint_credential(
+                session, user.id, repository=repository, access="read" if read_only else "write"
+            )
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        _echo_yaml_entity(credential)
+
+
+@git_app.command("repos")
+def git_repos() -> None:
+    """List the GitHub repositories the Freepod app can reach for the acting account."""
+    from app.services import github
+
+    with session_scope() as session:
+        user = _require_cli_user(session)
+        try:
+            _echo_yaml_entity(github.list_repositories(session, user.id))
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+
+
+@git_app.command("link")
+def git_link(
+    deployment_id: UUID = typer.Argument(..., help="The deployment to link"),
+    repository: str = typer.Argument(..., help="owner/name"),
+    branch: str | None = typer.Option(None, "--branch", help="Default: the repository's default branch"),
+    root_dir: str = typer.Option("", "--root-dir", help="The directory holding the project"),
+) -> None:
+    """Link one of the acting account's deployments to the repository it is built from."""
+    from app.services import deployment_sources
+
+    with session_scope() as session:
+        user = _require_cli_user(session)
+        try:
+            source = deployment_sources.link(
+                session,
+                user_id=user.id,
+                deployment_id=deployment_id,
+                repository=repository,
+                branch=branch,
+                root_dir=root_dir,
+            )
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        _echo_yaml_entity(source)
+
+
+@git_app.command("source")
+def git_source(
+    deployment_id: UUID = typer.Argument(..., help="The deployment"),
+    user_id: int | None = typer.Option(None, "--user-id", help="Its owner (admin only)"),
+) -> None:
+    """Show the repository a deployment is linked to."""
+    from app.services import deployment_sources
+
+    with session_scope() as session:
+        target = _ssh_key_target(session, user_id)
+        try:
+            _echo_yaml_entity(
+                deployment_sources.get_source(session, user_id=target, deployment_id=deployment_id)
+            )
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+
+
+@git_app.command("unlink")
+def git_unlink(
+    deployment_id: UUID = typer.Argument(..., help="The deployment to unlink"),
+) -> None:
+    """Unlink one of the acting account's deployments from its repository."""
+    from app.services import deployment_sources
+
+    with session_scope() as session:
+        user = _require_cli_user(session)
+        try:
+            deployment_sources.unlink(session, user_id=user.id, deployment_id=deployment_id)
+        except CaelusException as e:
+            _exit_for_domain_error(e)
+        typer.echo(f"Unlinked {deployment_id}")
+
+
 # ── Vars ──────────────────────────────────────────────────────────────
 
 var_app = typer.Typer(
