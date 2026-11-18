@@ -19,14 +19,13 @@ from sqlmodel import Session, select
 
 from app.models import DeploymentORM, ProductTemplateVersionORM
 from app.services.errors import ConflictException, ValidationException
-from app.services.images import generate_icon_filename, process_icon, save_icon
+from app.services.images import IMAGE_FORMATS, generate_icon_filename, process_icon, save_icon
 from app.services.reconcile_constants import DEPLOYMENT_STATUS_DELETED
 from app.services.template_values import derive_projections
 
 NAME_MAX = 100
 DESCRIPTION_MAX = 500
 ICON_MAX_BYTES = 256 * 1024
-ICON_FORMATS = ("PNG", "JPEG", "WEBP")
 IDENTITY_KEYS = ("name", "description", "icon")
 NAME_INDEX = "uq_deployment_display_name"
 
@@ -139,12 +138,9 @@ def prepare_icon(encoded: str | None, *, current_sha256: str | None) -> IconChan
     if digest == current_sha256:
         return None
     try:
-        with Image.open(io.BytesIO(data)) as img:
-            fmt = img.format
+        Image.open(io.BytesIO(data), formats=IMAGE_FORMATS).close()
     except Exception as exc:
         raise _icon_wrong_format() from exc
-    if fmt not in ICON_FORMATS:
-        raise _icon_wrong_format()
     try:
         processed = process_icon(data)
     except ValueError as exc:

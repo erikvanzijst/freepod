@@ -11,6 +11,7 @@ from app.services.images import (
     SCREENSHOT_FULL_MAX_EDGE,
     SCREENSHOT_THUMBNAIL_HEIGHT,
     check_screenshot,
+    process_icon,
     render_screenshot,
     screenshot_rel_path,
 )
@@ -61,3 +62,14 @@ def test_check_accepts_a_valid_screenshot():
 def test_render_rejects_corrupt_bytes():
     with pytest.raises(ValueError, match="not a readable image"):
         render_screenshot(b"garbage")
+
+
+@pytest.mark.parametrize("fmt", ["GIF", "TIFF", "BMP", "PPM"])
+def test_decoders_outside_the_allowlist_are_never_tried(fmt):
+    data = encode((64, 64), fmt)
+    with pytest.raises(ValueError, match="must be PNG, JPEG or WebP"):
+        process_icon(data)
+    with pytest.raises(ValueError, match="must be PNG, JPEG or WebP"):
+        check_screenshot(data)
+    with pytest.raises(ValueError):
+        render_screenshot(data)

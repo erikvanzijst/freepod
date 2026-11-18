@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
+IMAGE_FORMATS = ("PNG", "JPEG", "WEBP")
 MAX_ICON_SIZE = 10 * 1024 * 1024  # 10MB
 MAX_ICON_DIMENSION = 2048
 ICON_SIZE = 256
@@ -29,9 +30,9 @@ def process_icon(image_data: bytes) -> bytes:
         )
 
     try:
-        img = Image.open(io.BytesIO(image_data))
+        img = Image.open(io.BytesIO(image_data), formats=IMAGE_FORMATS)
     except Exception as e:
-        raise ValueError(f"Invalid image file: {e}") from e
+        raise ValueError(f"Invalid image file, must be PNG, JPEG or WebP: {e}") from e
 
     width, height = img.size
     if width > MAX_ICON_DIMENSION or height > MAX_ICON_DIMENSION:
@@ -100,7 +101,6 @@ def save_icon(processed_data: bytes, rel_path: str) -> Path:
 # Screenshots (app-store-listings design D7)
 # ---------------------------------------------------------------------------
 
-SCREENSHOT_FORMATS = ("PNG", "JPEG", "WEBP")
 SCREENSHOT_MAX_BYTES = 1024 * 1024
 SCREENSHOT_MAX_DIMENSION = 4096
 SCREENSHOTS_MAX_COUNT = 12
@@ -124,11 +124,9 @@ def check_screenshot(image_data: bytes) -> None:
             f"is {len(image_data)} bytes; the limit is {SCREENSHOT_MAX_BYTES} bytes (1 MB)"
         )
     try:
-        img = Image.open(io.BytesIO(image_data))
+        img = Image.open(io.BytesIO(image_data), formats=IMAGE_FORMATS)
     except Exception as e:
-        raise ValueError(f"is not a readable image: {e}") from e
-    if img.format not in SCREENSHOT_FORMATS:
-        raise ValueError(f"is {img.format}; screenshots must be PNG, JPEG or WebP")
+        raise ValueError(f"is not a readable image; screenshots must be PNG, JPEG or WebP: {e}") from e
     if max(img.size) > SCREENSHOT_MAX_DIMENSION:
         raise ValueError(
             f"is {img.width}x{img.height}; the long edge limit is {SCREENSHOT_MAX_DIMENSION} px"
@@ -155,7 +153,7 @@ def render_screenshot(image_data: bytes) -> tuple[bytes, bytes]:
         ValueError: If the image cannot be decoded.
     """
     try:
-        img = Image.open(io.BytesIO(image_data))
+        img = Image.open(io.BytesIO(image_data), formats=IMAGE_FORMATS)
         img = ImageOps.exif_transpose(img)
         img.load()
     except Exception as e:
