@@ -9,7 +9,7 @@ locals {
   # PgBouncer >= 1.21 is a hard floor, not a preference: protocol-level prepared
   # statement support (`max_prepared_statements`) arrived there, and asyncpg,
   # SQLAlchemy, Prisma and node-postgres all use prepared statements by default.
-  tenant_pooler_image = "edoburu/pgbouncer:v1.25.2-p0"
+  tenant_pooler_image = "edoburu/pgbouncer:v1.26.1-p0"
 
   # One name for the pooler's pod label. The tenant NetworkPolicy selects
   # egress on it (CAELUS_TENANT_DB_POOLER_POD_LABEL), so a drift between the
