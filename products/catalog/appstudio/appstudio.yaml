@@ -71,12 +71,13 @@ product:
 
 upstream:
   # App Studio's image is Freepod's own and is rebuilt by hand when opencode
-  # moves, so there is no upstream release to track.
+  # moves, so there is no upstream release to track. Its version is the
+  # chart's, which every App Studio release bumps.
   source:
     type: github-release
     repo: OWNER/REPO
-  match: ^v(?P<version>.+)$
-  version_path: template.system_values.image.tag
+  match: ^(?P<version>.+)$
+  version_path: template.chart_version
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/appstudio
   chart_version: 0.2.25

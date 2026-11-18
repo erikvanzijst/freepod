@@ -1,0 +1,55 @@
+- version: "0.2.25"
+  notes: |-
+    App Studio can now put your apps on GitHub.
+
+    - Ask the agent to put an app on GitHub: connect your GitHub account, and it creates the repository and pushes your code
+    - Ask it to push your latest changes, or to pull in changes made elsewhere, whenever you like
+    - An app you put on GitHub before deploying it stays linked once it is deployed
+    - No GitHub password or token is kept in your studio
+- version: "0.2.23"
+  notes: |-
+    The agent uses the latest Freepod tools.
+
+    - Each app the agent deploys gets a name of its own, shown in your dashboard
+    - Maintenance and reliability fixes
+- version: "0.2.21"
+  notes: |-
+    Your studio now runs in a stronger sandbox.
+
+    - The studio runs in an isolated sandbox that keeps it further apart from other apps
+    - Large temporary files no longer use up the studio's memory
+- version: "0.2.18"
+  notes: |-
+    App Studio moves to OpenCode 2, a reworked version of the coding agent behind it.
+
+    - A faster agent and a refreshed interface
+    - Your apps, sessions and AI provider settings carry over
+- version: "0.2.16"
+  notes: |-
+    Studios and the apps you deploy get shorter addresses.
+
+    - Addresses now take the form app-yourname.freepod.app, with the name you chose for your account
+- version: "0.2.14"
+  notes: |-
+    The studio tidies up when you are away, and the apps it builds are safer by default.
+
+    - After 30 minutes without anyone using it, the studio stops the app in its preview and the tools around it, to free memory
+    - When you come back, the app in the preview starts again within seconds, and your work, sessions and open terminals are kept
+    - New apps refuse changes sent from other websites, and the agent follows rules that keep your users' data safe
+    - Other websites can no longer show your studio inside their own pages
+- version: "0.2.11"
+  notes: |-
+    One studio now holds several apps.
+
+    - Start a new app with New project at the top right; each app has its own sessions and is deployed on its own
+    - A Docs link in the bar opens App Studio's documentation, and the bar fits a phone's screen
+    - The agent can install the extra tools an app needs while it builds it
+- version: "0.2.7"
+  notes: |-
+    The first release of App Studio, a coding agent in your browser.
+
+    - Describe the app you want, and the agent plans, writes and tests it
+    - Click through your app in a live preview while it is being built
+    - Ask the agent to publish it, and it runs on Freepod at its own address
+    - Your first visit opens an example prompt, so pressing Enter shows the whole journey
+    - A terminal with git and vim, and read-only SFTP access to your app's files
