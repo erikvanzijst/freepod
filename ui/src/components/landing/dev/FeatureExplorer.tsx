@@ -5,6 +5,7 @@ import SectionHeading from '../SectionHeading'
 import Reveal from '../Reveal'
 import CodeBlock from './CodeBlock'
 import { features, type Feature } from './features'
+import { sectionPy } from './layout'
 
 const skillSnippet = [
   {
@@ -35,9 +36,10 @@ export function FeatureExplorer() {
   const active = features.find((f) => f.id === activeId) ?? features[0]
 
   return (
-    <Box component="section" id="features" sx={{ py: { xs: 9, md: 14 }, scrollMarginTop: 80 }}>
+    <Box component="section" id="features" sx={{ py: sectionPy, scrollMarginTop: 80 }}>
       <Container maxWidth="lg">
         <SectionHeading
+          anchor="features"
           eyebrow="Batteries included"
           title="All the basics covered."
           subtitle="Each deployment comes with its own database, bucket, config and authentication."
@@ -52,7 +54,7 @@ export function FeatureExplorer() {
             alignItems: 'start',
           }}
         >
-          <Stack role="tablist" aria-orientation="vertical" sx={{ border: `1px solid ${line.soft}`, borderRadius: '16px', overflow: 'hidden' }}>
+          <Stack role="tablist" aria-orientation="vertical" sx={{ border: `1px solid ${line.soft}`, borderRadius: '12px', overflow: 'hidden' }}>
             {features.map((feature, i) => {
               const Icon = feature.icon
               const selected = feature.id === active.id
@@ -138,7 +140,7 @@ export function FeatureExplorer() {
             sx={{
               mt: { xs: 6, md: 10 },
               p: { xs: 3, md: 5 },
-              borderRadius: 5,
+              borderRadius: '12px',
               ...cardSurface,
               display: 'grid',
               gridTemplateColumns: { xs: '1fr', md: '5fr 7fr' },

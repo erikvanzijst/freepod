@@ -1,12 +1,15 @@
 import type { ReactNode } from 'react'
 import { Box, Typography } from '@mui/material'
 import { accent, DISPLAY, fg, MONO, SANS } from './landingTokens'
+import SectionAnchor from './SectionAnchor'
 
 interface SectionHeadingProps {
   eyebrow: string
   title: ReactNode
   subtitle?: string
   align?: 'left' | 'center'
+  /** The section's id: shows a permalink beside the title while it is hovered. */
+  anchor?: string
 }
 
 /** Consistent eyebrow + serif title + optional subtitle block for sections. */
@@ -15,6 +18,7 @@ export function SectionHeading({
   title,
   subtitle,
   align = 'center',
+  anchor,
 }: SectionHeadingProps) {
   return (
     <Box
@@ -47,6 +51,7 @@ export function SectionHeading({
           letterSpacing: '-0.02em',
         }}
       >
+        {anchor && <SectionAnchor id={anchor} label={eyebrow} />}
         {title}
       </Typography>
       {subtitle && (

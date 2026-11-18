@@ -3,8 +3,10 @@ import { Box, Container, Stack, Typography } from '@mui/material'
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded'
 import KeyboardRoundedIcon from '@mui/icons-material/KeyboardRounded'
 import { accent, DISPLAY, fg, line, MONO, SANS } from '../landingTokens'
+import SectionAnchor from '../SectionAnchor'
 import DemoPlayer from './DemoPlayer'
 import { demos, type DemoId } from './demos'
+import { sectionPy } from './layout'
 
 const copy: Record<DemoId, { title: string; body: string; steps: [string, string][] }> = {
   agent: {
@@ -38,7 +40,7 @@ export function DemoSection() {
   const text = copy[mode]
 
   return (
-    <Box component="section" id="demo" sx={{ py: { xs: 8, md: 12 }, scrollMarginTop: 80 }}>
+    <Box component="section" id="demo" sx={{ py: sectionPy, scrollMarginTop: 80 }}>
       <Container maxWidth="lg">
         <Box
           sx={{
@@ -107,6 +109,7 @@ export function DemoSection() {
                 mt: 4,
               }}
             >
+              <SectionAnchor id="demo" label="Demo" />
               {text.title}
             </Typography>
             <Typography sx={{ fontFamily: SANS, fontSize: 17, lineHeight: 1.65, color: fg.muted, mt: 2 }}>

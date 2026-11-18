@@ -5,6 +5,7 @@ import Reveal from '../Reveal'
 import { accent, DISPLAY, fg, line, MONO, SANS } from '../landingTokens'
 import { euro, eyebrowSx, hourlyPrice, monthlyPrice, pricingNotes, rates, type ResourceRate } from './devPricing'
 import { buildsColor, formatLevel, presets, toLevel, toPos, type Estimate } from './useEstimate'
+import { sectionPy } from './layout'
 
 export function PresetChips({ estimate }: { estimate: Estimate }) {
   return (
@@ -172,9 +173,10 @@ export function PricingNotes() {
 /** The pricing section around a layout: heading above, small print and notes below. */
 export function PricingFrame({ children }: { children: ReactNode }) {
   return (
-    <Box component="section" id="pricing" sx={{ py: { xs: 9, md: 14 }, scrollMarginTop: 80 }}>
+    <Box component="section" id="pricing" sx={{ py: sectionPy, scrollMarginTop: 80 }}>
       <Container maxWidth="lg">
         <SectionHeading
+          anchor="pricing"
           eyebrow="Pricing"
           title="Pay for what you use."
           subtitle="Your apps are billed by the hour for the CPU, memory and storage they use."

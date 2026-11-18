@@ -93,7 +93,7 @@ function TerminalLine({ line, t, cursor }: { line: Line; t: number; cursor: bool
 }
 
 /** Shared macOS-ish window chrome for the terminal and the browser. */
-function WindowFrame({ title, children, light }: { title: ReactNode; children: ReactNode; light?: boolean }) {
+export function WindowFrame({ title, children, light }: { title: ReactNode; children: ReactNode; light?: boolean }) {
   return (
     <Box
       sx={{
