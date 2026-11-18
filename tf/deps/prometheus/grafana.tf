@@ -14,9 +14,9 @@ resource "kubernetes_secret" "grafana_oidc" {
 resource "helm_release" "grafana" {
   name       = "grafana"
   namespace  = var.namespace
-  repository = "https://grafana.github.io/helm-charts"
+  repository = "https://grafana-community.github.io/helm-charts"
   chart      = "grafana"
-  version    = "9.4.4"
+  version    = "14.5.0"
 
   values = [
     yamlencode({
