@@ -46,9 +46,9 @@ set -euo pipefail
 # read the images out of its log:
 #
 #   kubectl logs -n caelus-builds <build pod> | grep -o 'docker-image://[^ ]*' | sort -u
-RAILPACK_VERSION=0.36.4
-FRONTEND_DIGEST=sha256:282e3d0e542c9299c9fc4f938c9a5c45f0666d954264deaea59d13281121a91a
-MISE_TAG=mise-2026.8.4
+RAILPACK_VERSION=0.43.0
+FRONTEND_DIGEST=sha256:355ef61fae6f2551103cd8b10c710cb07167dd353d561f15c69b8d7ac1c676cc
+MISE_TAG=mise-2026.10.14
 
 # The Dockerfile frontend, for builds that use the project's own Dockerfile.
 # Not part of the Railpack set and on its own cadence, but mirrored by the same

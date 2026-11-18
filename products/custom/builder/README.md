@@ -267,11 +267,11 @@ plan to a frontend that cannot read it; a mirror of the wrong release's images
 is simply never consulted. Tests in `api/tests/test_builder_script.py` fail if
 the script drifts from the other two.
 
-Currently both are v0.36.4:
+Currently both are v0.43.0:
 
 ```
-railpack                     0.36.4
-ghcr.io/railwayapp/railpack-frontend@sha256:282e3d0e542c9299c9fc4f938c9a5c45f0666d954264deaea59d13281121a91a
+railpack                     0.43.0
+ghcr.io/railwayapp/railpack-frontend@sha256:355ef61fae6f2551103cd8b10c710cb07167dd353d561f15c69b8d7ac1c676cc
 ```
 
 The Dockerfile frontend is **not** part of that set — it understands no

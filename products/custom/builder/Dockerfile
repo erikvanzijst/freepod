@@ -16,15 +16,15 @@
 # different blast radius.
 #
 # Build and publish: see README.md in this directory.
-FROM moby/buildkit:v0.33.1-rootless
+FROM moby/buildkit:v0.35.0-rootless
 
 # Version-matched pair. The build plan `railpack prepare` emits is a contract
 # between this binary and the frontend image pinned in build.py: the two must
 # move together or a plan will be handed to a frontend that cannot read it.
-# `ghcr.io/railwayapp/railpack-frontend:v0.36.4` resolves to the digest pinned
+# `ghcr.io/railwayapp/railpack-frontend:v0.43.0` resolves to the digest pinned
 # there.
-ARG RAILPACK_VERSION=0.36.4
-ARG RAILPACK_SHA256=ed75f99fdd3ce10ea7a60128b4ac28788ad33bb93f339fada70d60ddcbf604e8
+ARG RAILPACK_VERSION=0.43.0
+ARG RAILPACK_SHA256=248a8f60f36854aabed6124113631078a802de3461660855fc4de9c26065c1fb
 
 USER root
 

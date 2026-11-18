@@ -33,13 +33,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 # Pinned by digest and version-matched to the `railpack` binary in the
-# Dockerfile (v0.36.4). The build plan is a contract between the two, so this
+# Dockerfile (v0.43.0). The build plan is a contract between the two, so this
 # is about that coupling rather than supply chain: a digest is
-# content-addressed, and `ghcr.io/railwayapp/railpack-frontend:v0.36.4`
+# content-addressed, and `ghcr.io/railwayapp/railpack-frontend:v0.43.0`
 # resolves to exactly this.
 FRONTEND_IMAGE = (
     "ghcr.io/railwayapp/railpack-frontend"
-    "@sha256:282e3d0e542c9299c9fc4f938c9a5c45f0666d954264deaea59d13281121a91a"
+    "@sha256:355ef61fae6f2551103cd8b10c710cb07167dd353d561f15c69b8d7ac1c676cc"
 )
 
 # The name the frontend looks for inside `--local dockerfile=`.
