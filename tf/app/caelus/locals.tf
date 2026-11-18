@@ -4,6 +4,8 @@ locals {
   # decision, not whatever a moving tag resolved to the day a pod restarted.
   tenant_db_image = "postgres:18.7-alpine"
 
+  platform_db_image = "postgres:16.16-alpine"
+
   postgres_exporter_image = "quay.io/prometheuscommunity/postgres-exporter:v0.20.1"
 
   # PgBouncer >= 1.21 is a hard floor, not a preference: protocol-level prepared

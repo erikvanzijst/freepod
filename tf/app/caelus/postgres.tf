@@ -29,7 +29,7 @@ resource "kubernetes_deployment" "postgres" {
 
       spec {
         container {
-          image = "postgres:16-alpine"
+          image = local.platform_db_image
           name  = "postgres"
 
           env {

@@ -71,7 +71,7 @@ resource "kubernetes_deployment" "worker" {
         # order.
         init_container {
           name    = "ssh-resolver-db-bootstrap"
-          image   = "postgres:16-alpine"
+          image   = local.platform_db_image
           command = ["/bin/sh", "-c"]
           args = [
             <<-EOT
@@ -134,7 +134,7 @@ resource "kubernetes_deployment" "worker" {
         # The app authentication service's role, likewise after `migrate`.
         init_container {
           name    = "app-auth-db-bootstrap"
-          image   = "postgres:16-alpine"
+          image   = local.platform_db_image
           command = ["/bin/sh", "-c"]
           args = [
             <<-EOT
@@ -197,7 +197,7 @@ resource "kubernetes_deployment" "worker" {
         # The notifier's role, likewise after `migrate`.
         init_container {
           name    = "notifier-db-bootstrap"
-          image   = "postgres:16-alpine"
+          image   = local.platform_db_image
           command = ["/bin/sh", "-c"]
           args = [
             <<-EOT
@@ -260,7 +260,7 @@ resource "kubernetes_deployment" "worker" {
         # The platform database's metrics sidecar role.
         init_container {
           name    = "postgres-exporter-db-bootstrap"
-          image   = "postgres:16-alpine"
+          image   = local.platform_db_image
           command = ["/bin/sh", "-c"]
           args = [
             <<-EOT

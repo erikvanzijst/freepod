@@ -47,7 +47,7 @@ resource "kubernetes_deployment" "postgres" {
       spec {
         container {
           name  = "postgres"
-          image = "postgres:17-alpine"
+          image = "postgres:17.12-alpine"
 
           env_from {
             config_map_ref {
