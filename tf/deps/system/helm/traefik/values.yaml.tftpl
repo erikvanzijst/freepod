@@ -1,4 +1,4 @@
-# Traefik for freepod — self-managed Helm release (chart 41.5.0 = Traefik app v3.7.13),
+# Traefik for freepod — self-managed Helm release (chart 42.4.1 = Traefik app v3.7.19),
 # replacing the k3s-bundled Traefik (disabled via /etc/rancher/k3s/config.yaml).
 #
 # Rendered by templatefile(); ${haproxy_edge_ip} is the homelab HAProxy edge IP/CIDR.
@@ -10,7 +10,7 @@
 # sees it, so the PROXY header would be rejected and the real client IP lost.
 
 image:
-  tag: "3.7.13"
+  tag: "3.7.19"
 
 # `traefik` IngressClass, marked default — so existing app Ingresses (which carry no explicit
 # class) keep matching this controller after the migration off the bundled chart.
@@ -29,6 +29,8 @@ providers:
     # a window -- the pointer moves only once both stores are valid. Requires
     # Traefik >= 3.7; 3.6.10 rejects the field outright and will not start.
     defaultTLSResourcesNamespace: "${default_tls_resources_namespace}"
+    # Legacy router names: tenants' HTTP access logs select by them (variables.tf).
+    safeNaming: false
 
   # Serve ExternalName-backed Services referenced by some app Ingresses.
   kubernetesIngress:
@@ -50,12 +52,15 @@ providers:
 ports:
   web:
     asDefault: false
+    http:
+      aliasHeadersStrategy: delete
     proxyProtocol:
       trustedIPs:
         - "${haproxy_edge_ip}"
   websecure:
     asDefault: true
     http:
+      aliasHeadersStrategy: delete
       middlewares:
         - "kube-system-headers-hsts@kubernetescrd"
     proxyProtocol:
@@ -64,8 +69,8 @@ ports:
 
 # klipper LoadBalancer owning the node's host :80/:443; Local preserves the edge source IP.
 service:
-  type: LoadBalancer
   spec:
+    type: LoadBalancer
     externalTrafficPolicy: Local
 
 # NO tlsStore here. The default certificate store is a platform-owned object in the namespace

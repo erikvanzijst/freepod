@@ -8,9 +8,9 @@ variable "haproxy_edge_ip" {
 # writes as `<namespace>-<ingress>-<host+path>@kubernetes`. A release that names
 # routers differently leaves `freepod log --http` empty, so check it after a bump.
 variable "traefik_chart_version" {
-  description = "Upstream Traefik Helm chart version. 41.5.0 ships Traefik app v3.7.13, raised from 39.0.5/v3.6.10 for providers.kubernetesCRD.defaultTLSResourcesNamespace, which v3.7 introduced and v3.6 rejects as an unknown field. The chart renamed two keys this release range: providers.kubernetesIngressNginx -> kubernetesIngressNGINX, and logs.{general,access} -> top-level log/accessLog."
+  description = "Upstream Traefik Helm chart version. 42.4.1 ships Traefik app v3.7.19. v3.7 is the floor: providers.kubernetesCRD.defaultTLSResourcesNamespace is rejected by v3.6. Chart 42.4 validates values against a closed schema and moved service.type to service.spec.type."
   type        = string
-  default     = "41.5.0"
+  default     = "42.4.1"
 }
 
 variable "default_tls_resources_namespace" {
