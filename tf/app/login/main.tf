@@ -4,7 +4,7 @@ resource "helm_release" "oauth2_proxy" {
   name             = "oauth2-proxy"
   repository       = "https://oauth2-proxy.github.io/manifests"
   chart            = "oauth2-proxy"
-  version          = "10.1.4"
+  version          = "10.7.4"
   namespace        = var.namespace
   create_namespace = false
 
@@ -123,6 +123,7 @@ resource "helm_release" "oauth2_proxy" {
         set-xauthrequest     = true
         oidc-email-claim     = "email"
         reverse-proxy        = true
+        trusted-proxy-ip     = "10.42.0.0/16"
         skip-provider-button = true
         upstream             = "static://202"
 
