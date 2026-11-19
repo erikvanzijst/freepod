@@ -17,8 +17,8 @@ import (
 // sshpiperd image means re-vendoring, regenerating, and updating these two
 // constants -- in that order, and none of the three on its own.
 const (
-	expectedProtoSHA256 = "1c11ca0b75a1fc06ae6f721724b56106110bc5f57e3a7924cb1357dc796ea178"
-	expectedTag         = "v1.5.4"
+	expectedProtoSHA256 = "b83424604c1b2a25fd61f879e06de00352da93b3401c8f25fba77d1e32cc2bea"
+	expectedTag         = "v1.6.1"
 
 	// Must match ./gen.sh. A different protoc serializes the descriptor these
 	// stubs embed differently, so the byte-for-byte check is only a drift
@@ -71,16 +71,10 @@ func TestGeneratedDescriptorMatchesWhatTheResolverAssumes(t *testing.T) {
 	}
 
 	up := file.Messages().ByName("Upstream")
-	for _, name := range []string{"user_name", "uri", "ignore_host_key"} {
+	for _, name := range []string{"user_name", "uri", "ignore_host_key", "known_hosts_data"} {
 		if up.Fields().ByName(protoreflect.Name(name)) == nil {
-			t.Errorf("Upstream.%s is missing; the resolver sets it", name)
+			t.Errorf("Upstream.%s is missing; the resolver's host-key handling relies on it", name)
 		}
-	}
-	// v1.5.4 has no `known_hosts_data`. If a later revision adds one, host-key
-	// handling is worth revisiting rather than silently keeping
-	// ignore_host_key -- so notice it here rather than in an incident.
-	if up.Fields().ByName("known_hosts_data") != nil {
-		t.Error("Upstream.known_hosts_data now exists; revisit ignore_host_key")
 	}
 	if up.Oneofs().ByName("auth").Fields().ByName("private_key") == nil {
 		t.Error("Upstream.auth has no private_key member")

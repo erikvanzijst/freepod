@@ -86,10 +86,13 @@ func (r *resolver) PublicKeyAuth(ctx context.Context, req *pb.PublicKeyAuthReque
 			UserName: d.username,
 			Uri:      d.uri(),
 			// The sidecars regenerate their host keys on every start, so there
-			// is no stable key to pin -- the same reason the chart's Pipe sets
-			// ignore_hostkey today. The alternative is not "verify" but
-			// "fail": with this false, sshpiperd calls VerifyHostKey, and a
-			// plugin that does not implement it fails the handshake outright.
+			// is no stable key to pin. sshpiperd 1.6 skips verification when
+			// KnownHostsData is empty and no VerifyHostKey callback is listed,
+			// and logs a warning per connection saying so. It no longer reads
+			// IgnoreHostKey, but 1.5 does, and there the alternative is not
+			// "verify" but "fail": with it false, 1.5 calls VerifyHostKey and
+			// the handshake fails outright. Setting it keeps an image rollback
+			// working.
 			IgnoreHostKey: true,
 			// The platform's own credential, never anything the client
 			// supplied. The downstream connection is terminated here and the

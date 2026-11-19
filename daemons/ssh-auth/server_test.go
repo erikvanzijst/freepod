@@ -290,17 +290,23 @@ func TestNoClientSuppliedMaterialReachesTheUpstream(t *testing.T) {
 	}
 }
 
-// The sidecars regenerate host keys on every start; there is none to pin. With
-// this false sshpiperd calls VerifyHostKey, which this plugin does not
-// implement, and the handshake fails outright (spike result #12).
+// The sidecars regenerate host keys on every start; there is none to pin.
+// sshpiperd 1.6 skips verification only while known_hosts_data is empty; 1.5
+// skips it only with ignore_host_key set, and otherwise calls VerifyHostKey,
+// which this plugin does not implement, and fails the handshake outright
+// (spike result #12).
 func TestUpstreamHostKeyIsNotVerified(t *testing.T) {
 	f := newFixture(t)
 	owner := f.user("owner")
 	id, _ := f.deployment(owner, "hello-world-kkk111", "ready")
 	f.registerKey(owner, ownerKey)
 
-	if !newHarness(t, f.pool).mustAdmit(t, id, ownerKey).GetIgnoreHostKey() {
-		t.Error("ignore_host_key is false; the handshake would fail on VerifyHostKey")
+	up := newHarness(t, f.pool).mustAdmit(t, id, ownerKey)
+	if !up.GetIgnoreHostKey() {
+		t.Error("ignore_host_key is false; sshpiperd 1.5 would fail the handshake on VerifyHostKey")
+	}
+	if len(up.GetKnownHostsData()) != 0 {
+		t.Error("known_hosts_data is set; sshpiperd 1.6 would verify against it")
 	}
 }
 

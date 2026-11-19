@@ -4,11 +4,11 @@ image tag and nothing else.
 
   repo    https://github.com/tg123/sshpiper
   path    libplugin/plugin.proto
-  tag     v1.5.4
-  commit  e5c5b904cfa57f7d60e37cb38cdb0bbcaadb022e
-  sha256  1c11ca0b75a1fc06ae6f721724b56106110bc5f57e3a7924cb1357dc796ea178
+  tag     v1.6.1
+  commit  ac26580901731efdf4eb9f12109f7ffff395798d
+  sha256  b83424604c1b2a25fd61f879e06de00352da93b3401c8f25fba77d1e32cc2bea
 
-That tag is the one running in both environments (`farmer1992/sshpiperd:v1.5.4`,
+That tag is the one running in both environments (`farmer1992/sshpiperd:v1.6.1`,
 tf/app/sshpiper). Re-vendor only together with an image bump:
 
   gh api "repos/tg123/sshpiper/contents/libplugin/plugin.proto?ref=<tag>" \
