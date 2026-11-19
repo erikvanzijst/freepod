@@ -13,7 +13,7 @@ RUN wget -qO /tmp/helm.tgz "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64
     echo "${HELM_SHA256}  /tmp/helm.tgz" | sha256sum -c - && \
     tar -xzf /tmp/helm.tgz -C /tmp && mv /tmp/linux-amd64/helm /helm
 # Same image daemons/Dockerfile builds the release binaries with.
-FROM golang:1.25-bookworm AS golang
+FROM golang:1.27.4-trixie AS golang
 FROM mcr.microsoft.com/devcontainers/python:3.13-trixie
 
 # Keep in sync with ops/upgrader/Dockerfile

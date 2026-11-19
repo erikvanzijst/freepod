@@ -278,25 +278,25 @@ variable "registry_pull_hmac_keys" {
 variable "app_auth_image" {
   description = "Daemons image (daemons/) that app-auth runs from, pinned to an immutable version"
   type        = string
-  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.12.0"
+  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.13.0"
 }
 
 variable "ssh_resolver_image" {
   description = "Daemons image (daemons/) that the SSH auth resolver runs from, pinned to an immutable version"
   type        = string
-  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.1.0"
+  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.13.0"
 }
 
 variable "notifier_image" {
   description = "Daemons image (daemons/) that the notifier runs from, pinned to an immutable version"
   type        = string
-  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.9.0"
+  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.13.0"
 }
 
 variable "bucket_exporter_image" {
   description = "Daemons image (daemons/) that the bucket size exporter runs from, pinned to an immutable version"
   type        = string
-  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.2.0"
+  default     = "ghcr.io/erikvanzijst/freepod/daemons:0.13.0"
 }
 
 variable "sshpiper_port" {

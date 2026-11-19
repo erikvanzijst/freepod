@@ -5,7 +5,7 @@
 #
 # Immutable version tag from VERSION, never re-pushed: each consumer pins its
 # own version in Terraform, and rolling back means pointing it at an earlier one.
-FROM golang:1.25-bookworm AS build
+FROM golang:1.27.4-trixie AS build
 
 # Each daemon is its own module and builds against its own go.mod; go.work is
 # for editors only.

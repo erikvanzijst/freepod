@@ -20,7 +20,7 @@
 # rarely changes and is built explicitly with --keycloak.
 #
 # Every build passes --pull, so a floating base tag (nginx:alpine,
-# python:3.13-slim, golang:1.25-bookworm) resolves to what the registry serves
+# python:3.13-slim) resolves to what the registry serves
 # now rather than to whatever this Docker host cached, which can be months old.
 #
 # The SSH sidecar is not part of "both" or "all" either, and for a stronger
