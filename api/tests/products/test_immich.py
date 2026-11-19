@@ -1,11 +1,10 @@
 """The Immich product: its catalog chart and the immich-sso sandbox copy.
 
-Every Immich test lives in this file. The immich-sso chart is the catalog
-chart until SSO is turned on: without `auth.enabled` and `auth.protocol: oidc`
-it must render what the catalog chart renders, apart from waiting for Postgres
-before Immich starts, so a change to one chart is a change to both. With SSO
-on, nothing it renders may carry the client secret. Shells out to a real
-`helm template`; skipped when helm is unavailable.
+Every Immich test lives in this file. The immich-sso chart must render what
+the catalog chart renders, with SSO on or off, so a change to one chart is a
+change to both. With SSO on, nothing the chart renders may carry the client
+secret. Shells out to a real `helm template`; skipped when helm is
+unavailable.
 """
 
 from __future__ import annotations
@@ -21,8 +20,8 @@ import yaml
 
 
 PRODUCTS = Path(__file__).resolve().parents[3] / "products"
-CHART = PRODUCTS / "immich-sso" / "chart"
-CATALOG_CHART = PRODUCTS / "immich" / "chart"
+CHART = PRODUCTS / "immich" / "chart"
+SANDBOX_CHART = PRODUCTS / "immich-sso" / "chart"
 
 HOST = "photos.example.test"
 
@@ -31,7 +30,7 @@ pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not i
 
 @pytest.fixture(scope="module", autouse=True)
 def _resolved_dependencies():
-    for chart in (CHART, CATALOG_CHART):
+    for chart in (CHART, SANDBOX_CHART):
         result = subprocess.run(
             ["helm", "dependency", "build", str(chart)], capture_output=True, text=True
         )
@@ -63,32 +62,15 @@ def _without_chart_label(node):
 
 
 def _comparable(docs: list[dict]) -> dict[tuple[str, str], dict]:
-    """Each object by kind and name, with the chart label dropped, Immich's
-    config parsed, so formatting differences in the config file don't count,
-    and the copy's wait for Postgres left out."""
+    """Each object by kind and name, with the chart label dropped and Immich's
+    config parsed, so formatting differences in the config file don't count."""
     out = {}
     for doc in docs:
         doc = _without_chart_label(doc)
         if doc["kind"] == "ConfigMap":
             doc["data"] = {k: yaml.safe_load(v) for k, v in doc["data"].items()}
-        pod = doc.get("spec", {}).get("template", {}).get("spec", {})
-        if "initContainers" in pod:
-            pod["initContainers"] = [c for c in pod["initContainers"] if c["name"] != "wait-for-postgres"]
-            if not pod["initContainers"]:
-                del pod["initContainers"]
         out[(doc["kind"], doc["metadata"]["name"])] = doc
     return out
-
-
-@pytest.mark.parametrize(
-    "values",
-    [{}, {"smtp": {"host": "smtp.example.test", "port": 25, "from": "immich@example.test"}}],
-    ids=["bare", "smtp"],
-)
-def test_without_sso_it_renders_the_catalog_chart(tmp_path, values):
-    assert _comparable(_render(tmp_path, values)) == _comparable(
-        _render(tmp_path, values, CATALOG_CHART)
-    )
 
 
 SSO = {
@@ -98,6 +80,17 @@ SSO = {
         "owner": {"email": "owner@example.test"},
     },
 }
+
+
+@pytest.mark.parametrize(
+    "values",
+    [{}, {"smtp": {"host": "smtp.example.test", "port": 25, "from": "immich@example.test"}}, SSO],
+    ids=["bare", "smtp", "sso"],
+)
+def test_the_sandbox_renders_what_the_catalog_chart_renders(tmp_path, values):
+    assert _comparable(_render(tmp_path, values)) == _comparable(
+        _render(tmp_path, values, SANDBOX_CHART)
+    )
 
 
 def _with(values: dict, path: str, value) -> dict:
@@ -211,6 +204,15 @@ def test_sso_configures_oauth_against_the_provider(tmp_path):
     assert config["server"] == {"externalDomain": f"https://{HOST}"}
 
 
+def test_sso_hides_create_user_on_the_users_page_only(tmp_path):
+    css = _immich_config(_render(tmp_path, SSO))["theme"]["customCss"]
+    assert css == (
+        ':has(> div.h-16.border-b):has(a[href^="/admin/users/"])'
+        ':not(:has(a[href^="/admin/library-management/"]))'
+        " > div.h-16.border-b > :not(:first-child) { display: none !important; }"
+    )
+
+
 def test_no_rendered_object_carries_a_client_secret(tmp_path):
     """The chart never receives the secret; the init container reads it from
     the published Secret at pod start."""
@@ -316,7 +318,7 @@ def test_an_external_database_needs_no_wait(tmp_path):
     assert "initContainers" not in _server_pod(_render(tmp_path, {"postgresql": {"enabled": False}}))
 
 
-@pytest.mark.parametrize("chart", [CHART, CATALOG_CHART], ids=["immich-sso", "immich"])
+@pytest.mark.parametrize("chart", [CHART, SANDBOX_CHART], ids=["immich", "immich-sso"])
 def test_postgres_clears_an_empty_lost_and_found_first(tmp_path, chart):
     """storage-chart-contract: initdb refuses a fresh volume's lost+found."""
     [db] = [d for d in _render(tmp_path, {}, chart) if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("-postgresql")]

@@ -298,6 +298,53 @@
       ],
       "additionalProperties": false
     },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "protocol": {
+          "type": "string",
+          "enum": [
+            "header",
+            "oidc"
+          ]
+        },
+        "access": {
+          "type": "string",
+          "enum": [
+            "anyone",
+            "listed"
+          ]
+        },
+        "oidc": {
+          "type": "object",
+          "properties": {
+            "redirectPaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nativeRedirectUris": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "pkce": {
+              "type": "boolean"
+            },
+            "backchannelLogoutPath": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "caelus": {
       "type": "object",
       "description": "Reconciler-injected values. Open by design (additionalProperties: true throughout): this namespace is written by the platform, never by a tenant, so new reconciler fields can land without a schema bump in every chart.",
@@ -347,6 +394,22 @@
                 }
               },
               "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "oidc": {
+          "type": "object",
+          "description": "OpenID Provider client, injected by the Caelus reconciler for an SSO-enabled deployment",
+          "properties": {
+            "issuer": {
+              "type": "string"
+            },
+            "clientId": {
+              "type": "string"
+            },
+            "secretName": {
+              "type": "string"
             }
           },
           "additionalProperties": true

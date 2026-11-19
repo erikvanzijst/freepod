@@ -91,7 +91,7 @@ upstream:
   version_path: template.system_values.image.tag
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/immich
-  chart_version: 0.3.1
+  chart_version: 0.4.1
   system_values:
     image:
       tag: v3.4.2
@@ -99,6 +99,16 @@ template:
       host: smtp.mailer.svc.cluster.local
       port: 25
       from: immich@freepod.eu
+    auth:
+      enabled: true
+      protocol: oidc
+      access: listed
+      oidc:
+        redirectPaths:
+        - /auth/login
+        nativeRedirectUris:
+        - app.immich:///oauth-callback
+        backchannelLogoutPath: /api/oauth/backchannel-logout
   values_schema:
     $schema: https://json-schema.org/draft/2020-12/schema
     type: object

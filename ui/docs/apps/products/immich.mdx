@@ -14,20 +14,24 @@ Immich is a photo and video library with mobile apps that back up a phone's came
 |----------|-------------------|
 | Hostname | The app's address |
 
-## First sign-in
+## Signing in
 
-The first account created in Immich becomes its administrator. Open the app soon after launching it:
+Immich uses Freepod accounts: everyone signs in with **Sign in with Freepod**, and nobody has a separate Immich password. You sign in with your own Freepod account and are Immich's administrator.
 
-1. Select **Open** on the app's row.
-2. Select **Getting Started**.
-3. Enter an email address, a password and your name, and select **Sign up**.
-4. Sign in with that email address and password.
+## Adding people
 
-The administrator creates accounts for other people in Immich's administration settings.
+You decide who can use your Immich from the Freepod dashboard:
+
+1. Select **Access** on the app's row.
+2. Enter the person's email address under **Add someone by email** and select **Add**.
+
+Freepod emails them a link to your Immich. They sign in with a Freepod account that uses that address, creating one if they don't have one yet, and Immich sets up their account the first time they sign in.
+
+To take someone's access away, remove them from the list in **Access**. Freepod signs them out of Immich; their account and photos stay, and they can sign in again if you add them back.
 
 ## Mobile apps
 
-Install Immich from the App Store or Google Play and enter `https://<hostname>` as the server URL. See [Immich: Mobile app](https://immich.app/docs/features/mobile-app).
+Install Immich from the App Store or Google Play, enter `https://<hostname>` as the server URL and select **Sign in with Freepod**. See [Immich: Mobile app](https://immich.app/docs/features/mobile-app).
 
 ## File access
 
@@ -35,7 +39,7 @@ Install Immich from the App Store or Google Play and enter `https://<hostname>` 
 
 ## Email
 
-Immich sends email, such as password resets, from `immich@freepod.eu`. See [Email](../email.md).
+Immich sends email, such as notices about shared albums, from `immich@freepod.eu`. See [Email](../email.md).
 
 ## Documentation
 

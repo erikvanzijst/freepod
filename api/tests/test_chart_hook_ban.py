@@ -33,6 +33,12 @@ INJECTED_VALUES = {
         "caelus.objectStorage.secretName": "t-object-storage",
         "caelus.database.secretName": "t-database",
     },
+    "immich": {
+        "caelus.oidc.issuer": "https://login.example.test",
+        "caelus.oidc.clientId": "t-client",
+        "caelus.oidc.secretName": "t-oidc",
+        "caelus.owner.email": "owner@example.test",
+    },
 }
 
 

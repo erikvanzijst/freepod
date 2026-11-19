@@ -14,7 +14,8 @@ OIDC-enabled deployment, and refuses to render without them:
 
 Immich registers whoever the provider admits, as its OAuth docs intend, so the
 chart refuses SSO without `auth.access: listed`: the owner invites people from
-the deployment's Access dialog, not from Immich's Create user.
+the deployment's Access dialog, not from Immich's Create user, which the chart
+hides with Immich's custom CSS.
 
 The template's system values carry the whole `auth` block, which tenants
 cannot change:

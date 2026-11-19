@@ -41,3 +41,29 @@ drift apart.
 caelus.dev/release-id: {{ . | quote }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Non-empty when Sign in with Freepod is on: `auth.enabled` with
+`auth.protocol: oidc`, the only protocol Immich speaks.
+*/}}
+{{- define "immich.sso" -}}
+{{- if and .Values.auth.enabled (eq (.Values.auth.protocol | default "header") "oidc") -}}true{{- end -}}
+{{- end -}}
+
+{{/*
+Fails the render when SSO is on without what it needs: the reconciler's OIDC
+client, the owner who becomes the first admin, and an access list, since Immich
+registers whoever the provider admits.
+*/}}
+{{- define "immich.ssoRequired" -}}
+{{- if include "immich.sso" . -}}
+{{- if ne (.Values.auth.access | default "anyone") "listed" -}}
+{{- fail "immich: auth.protocol oidc needs auth.access listed, because Immich registers whoever the provider admits" -}}
+{{- end -}}
+{{- $oidc := .Values.caelus.oidc | default dict -}}
+{{- $_ := required "immich: auth.enabled with auth.protocol oidc needs caelus.oidc.issuer, which the Caelus reconciler injects" $oidc.issuer -}}
+{{- $_ = required "immich: auth.enabled with auth.protocol oidc needs caelus.oidc.clientId, which the Caelus reconciler injects" $oidc.clientId -}}
+{{- $_ = required "immich: auth.enabled with auth.protocol oidc needs caelus.oidc.secretName, which the Caelus reconciler injects" $oidc.secretName -}}
+{{- $_ = required "immich: auth.enabled with auth.protocol oidc needs caelus.owner.email, the owner who becomes Immich's first admin" (.Values.caelus.owner | default dict).email -}}
+{{- end -}}
+{{- end -}}
