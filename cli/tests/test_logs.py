@@ -416,7 +416,7 @@ def test_the_command_adds_no_package_dependency():
     parsing `pyproject.toml`. It is the stronger claim -- what the built wheel
     declares is what a user actually installs -- and `importlib.metadata` is
     stdlib on every Python this package supports, where `tomllib` is 3.11+ and
-    would fail the 3.9 leg of CI.
+    would fail the 3.10 leg of CI.
     """
     import importlib.metadata
 

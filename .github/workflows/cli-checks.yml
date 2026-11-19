@@ -19,7 +19,7 @@ jobs:
       # hides half the answer.
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.14"]
+        python-version: ["3.10", "3.14"]
         os: [ubuntu-latest, windows-latest]
     defaults:
       run:
@@ -63,7 +63,7 @@ jobs:
         run: |
           # Built against the declared floor, so the wheel is proven on the
           # oldest interpreter it claims to support.
-          uv venv --python 3.9 /tmp/wheel-check
+          uv venv --python 3.10 /tmp/wheel-check
           uv pip install --python /tmp/wheel-check/bin/python cli/dist/*.whl
           # Run from outside the checkout. Inside it, `cli/src` on the path
           # could satisfy the import even if the wheel were empty.

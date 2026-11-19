@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import ast
 import pathlib
-
-import pytest
+import sys
 
 import freepod
 
@@ -89,9 +88,7 @@ def test_the_runtime_dependencies_are_the_declared_four():
     """
     declared = {"click", "httpx", "pathspec", "prompt_toolkit"}
     local = EXPECTED_MODULES | {"freepod"}
-    stdlib = set(getattr(__import__("sys"), "stdlib_module_names", ()))
-    if not stdlib:  # pragma: no cover - Python 3.9 has no stdlib_module_names
-        pytest.skip("stdlib_module_names is 3.10+")
+    stdlib = set(sys.stdlib_module_names)
 
     unexpected = set()
     for path in source_files():

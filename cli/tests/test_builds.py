@@ -170,7 +170,7 @@ def test_a_timestamp_without_an_offset_is_read_as_utc():
 
 
 def test_a_zulu_timestamp_is_understood():
-    """`fromisoformat` only learned `Z` in 3.11, and 3.9 is the floor."""
+    """`fromisoformat` only learned `Z` in 3.11, and 3.10 is the floor."""
     assert parse_time("2026-08-15T21:45:39Z") == datetime(
         2026, 8, 15, 21, 45, 39, tzinfo=timezone.utc
     )

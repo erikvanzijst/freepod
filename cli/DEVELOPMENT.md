@@ -69,9 +69,9 @@ Four rules hold the package's shape. Each is pinned by a test in
    not even constants.
 2. **Runtime dependencies are exactly `click`, `httpx`, `pathspec`** — all pure
    Python, so installation needs no compiler and every wheel works everywhere.
-3. **Python 3.9 is the floor.** The rest of the monorepo targets ≥3.11 and uses
-   syntax 3.9 rejects outright; this package must not. CI runs the suite on 3.9
-   and 3.13.
+3. **Python 3.10 is the floor**, so the client installs on Ubuntu 22.04's
+   system Python. The rest of the monorepo targets ≥3.11; this package must
+   not. CI runs the suite on 3.10 and 3.14.
 4. **Every error class carries its exit code** (`__init__.py`), so the exit-code
    table is a property of the exception hierarchy rather than a `main()` that
    has to remember.
@@ -178,7 +178,7 @@ Global: `--env` (hidden from `--help`, as is `FREEPOD_ENV`), `--verbose`, `--qui
 
 > **A negative flag needs `is_flag=True` and an inverted variable, not
 > `flag_value=False, default=True`.** That declaration resolves to `True` on
-> click 8.1 (the Python 3.9 leg) and to `False` on 8.3+, so `--no-gitignore`
+> click 8.1 and to `False` on 8.3+, so `--no-gitignore`
 > was silently *on* for everyone on a current click — deploy packed everything
 > `.gitignore` excludes. `pyproject.toml` asks only for `click>=8.0`, so both
 > versions are live. `tests/test_cli.py` pins the resolved default of every

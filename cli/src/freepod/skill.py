@@ -173,10 +173,7 @@ def read_skill() -> str:
     `importlib.resources` rather than `__file__` arithmetic, so this keeps
     working from a zipimport or any other non-filesystem loader.
     """
-    try:
-        from importlib.resources import files
-    except ImportError:  # pragma: no cover - Python < 3.9, excluded by requires-python
-        raise FreepodError("reading packaged data needs Python 3.9 or newer.")
+    from importlib.resources import files
 
     try:
         return (files("freepod") / "assets" / SKILL_FILE).read_text(encoding="utf-8")
