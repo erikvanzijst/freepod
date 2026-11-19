@@ -2,46 +2,32 @@
 
 ## Purpose
 
-Defines how an SSO-enabled Immich deployment signs people in with their Freepod account on the web and in the mobile app, who may sign in, how the owner's admin account comes to exist, and what signing out does.
+Defines how catalog Immich signs people in with their Freepod account on the web and in the mobile app, who may sign in, how the owner's admin account comes to exist, and what signing out does.
 
 ## Requirements
 
-### Requirement: The catalog Immich product is untouched
+### Requirement: The Immich chart is off unless enabled
 
-This capability SHALL be delivered only through its own chart, `immich-sso`, and its own product. The catalog Immich chart, its product, its templates and its deployments SHALL NOT change because of it.
-
-#### Scenario: Catalog Immich deployment
-
-- **WHEN** a deployment of the catalog Immich product is reconciled after this capability ships
-- **THEN** it renders from the same chart version with the same resources as before
-
-### Requirement: The immich-sso chart is off unless enabled
-
-The `immich-sso` chart SHALL offer Sign in with Freepod only when its values set `auth.enabled: true` with `auth.protocol: oidc`, and `auth.enabled` SHALL default to false. With it off, the chart SHALL configure Immich as the catalog Immich chart it was copied from does.
+The `immich` chart SHALL offer Sign in with Freepod only when its values set `auth.enabled: true` with `auth.protocol: oidc`, and `auth.enabled` SHALL default to false. With it off, the chart SHALL configure Immich with password login.
 
 #### Scenario: Rendered without SSO
 
-- **WHEN** the `immich-sso` chart is rendered with values that do not mention `auth`
-- **THEN** Immich is configured without Freepod sign-in, with password login, as the catalog chart configures it
+- **WHEN** the `immich` chart is rendered with values that do not mention `auth`
+- **THEN** Immich is configured without Freepod sign-in, with password login
 
 #### Scenario: SSO without an access list
 
 - **WHEN** the chart is rendered with `auth.enabled: true` and `auth.protocol: oidc`, and `auth.access` is not `listed`
 - **THEN** the render fails
 
-### Requirement: The sandbox product always uses SSO
+### Requirement: Catalog Immich always uses SSO
 
-The `immich-sso` product SHALL be visible only to administrators, SHALL set `auth.enabled: true`, `auth.protocol: oidc` and `auth.access: listed` for every deployment as template system values, and SHALL offer tenants no value that changes them. It SHALL declare the web callback path `/auth/login`, the native redirect `app.immich:///oauth-callback` and the back-channel logout path `/api/oauth/backchannel-logout`, and nothing else.
+The catalog Immich product SHALL set `auth.enabled: true`, `auth.protocol: oidc` and `auth.access: listed` for every deployment as template system values, and SHALL offer tenants no value that changes them. It SHALL declare the web callback path `/auth/login`, the native redirect `app.immich:///oauth-callback` and the back-channel logout path `/api/oauth/backchannel-logout`, and nothing else.
 
 #### Scenario: Tenant cannot turn SSO off
 
-- **WHEN** a deployment of `immich-sso` is created with user values that try to set `auth.enabled: false`
+- **WHEN** a deployment of catalog Immich is created with user values that try to set `auth.enabled: false`
 - **THEN** the values are refused as invalid
-
-#### Scenario: Hidden from end users
-
-- **WHEN** an end user lists the products on offer
-- **THEN** `immich-sso` is not among them
 
 ### Requirement: Sign in with Freepod on the web
 
@@ -144,3 +130,17 @@ With SSO enabled, the instance's sign-in settings SHALL be fixed by the deployme
 
 - **WHEN** an Immich admin opens the authentication settings
 - **THEN** the settings are read-only
+
+### Requirement: Immich offers no account creation of its own
+
+With SSO enabled, Immich's user administration SHALL NOT offer to create a user, because an account made there cannot sign in; people get in through the deployment's access list. Other administration actions SHALL stay available.
+
+#### Scenario: Admin opens the user list
+
+- **WHEN** an Immich admin opens the list of users
+- **THEN** it offers no action to create a user
+
+#### Scenario: Admin opens the external libraries
+
+- **WHEN** an Immich admin opens the external libraries, and a library exists
+- **THEN** the actions to create and scan libraries are offered

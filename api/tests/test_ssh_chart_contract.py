@@ -77,7 +77,6 @@ SESSION_ROOTS: dict[str, str | None] = {
     "docmost": "volume:/storage",
     "helloworld": "volume:/data",
     "immich": "volume:/library",
-    "immich-sso": "volume:/library",
     "lemmy": "volume:/media",
     "matrix": None,
     "mattermost": "volume:/data",

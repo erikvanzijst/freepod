@@ -192,9 +192,9 @@ Pitfalls:
     also link to `/admin/library-management/<id>` or extend the exclusion; at
     v3.4.2 the only one is `library-management/(list)/LibraryTableRow.svelte`.
 
-  If the rule no longer holds, update it in `templates/config.yaml` here and
-  in `products/immich-sso`; `api/tests/products/test_immich.py` pins the rule
-  and holds both charts equal. Either way, say in the PR what you checked. If
+  If the rule no longer holds, update it in `templates/config.yaml` and in
+  `api/tests/products/test_immich.py`, which pins it. Either way, say in the
+  PR what you checked. If
   you can't tell from the source, say so in the PR, so that a person checks
   Admin → Users and Admin → External Libraries (with a library) in a browser
   before merging.

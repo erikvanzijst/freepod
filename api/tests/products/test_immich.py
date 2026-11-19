@@ -1,10 +1,8 @@
-"""The Immich product: its catalog chart and the immich-sso sandbox copy.
+"""The Immich product's catalog chart.
 
-Every Immich test lives in this file. The immich-sso chart must render what
-the catalog chart renders, with SSO on or off, so a change to one chart is a
-change to both. With SSO on, nothing the chart renders may carry the client
-secret. Shells out to a real `helm template`; skipped when helm is
-unavailable.
+Every Immich test lives in this file. With SSO on, nothing the chart renders
+may carry the client secret. Shells out to a real `helm template`; skipped
+when helm is unavailable.
 """
 
 from __future__ import annotations
@@ -21,7 +19,6 @@ import yaml
 
 PRODUCTS = Path(__file__).resolve().parents[3] / "products"
 CHART = PRODUCTS / "immich" / "chart"
-SANDBOX_CHART = PRODUCTS / "immich-sso" / "chart"
 
 HOST = "photos.example.test"
 
@@ -30,47 +27,24 @@ pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not i
 
 @pytest.fixture(scope="module", autouse=True)
 def _resolved_dependencies():
-    for chart in (CHART, SANDBOX_CHART):
-        result = subprocess.run(
-            ["helm", "dependency", "build", str(chart)], capture_output=True, text=True
-        )
-        assert result.returncode == 0, result.stderr
+    result = subprocess.run(["helm", "dependency", "build", str(CHART)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
 
 
-def _helm_template(tmp_path: Path, values: dict, chart: Path = CHART) -> subprocess.CompletedProcess:
+def _helm_template(tmp_path: Path, values: dict) -> subprocess.CompletedProcess:
     values_file = tmp_path / "values.yaml"
     values_file.write_text(yaml.safe_dump({"host": HOST, **values}))
     return subprocess.run(
-        ["helm", "template", "t", str(chart), "-f", str(values_file)],
+        ["helm", "template", "t", str(CHART), "-f", str(values_file)],
         capture_output=True,
         text=True,
     )
 
 
-def _render(tmp_path: Path, values: dict, chart: Path = CHART) -> list[dict]:
-    result = _helm_template(tmp_path, values, chart)
+def _render(tmp_path: Path, values: dict) -> list[dict]:
+    result = _helm_template(tmp_path, values)
     assert result.returncode == 0, result.stderr
     return [doc for doc in yaml.safe_load_all(result.stdout) if isinstance(doc, dict)]
-
-
-def _without_chart_label(node):
-    if isinstance(node, dict):
-        return {k: _without_chart_label(v) for k, v in node.items() if k != "helm.sh/chart"}
-    if isinstance(node, list):
-        return [_without_chart_label(v) for v in node]
-    return node
-
-
-def _comparable(docs: list[dict]) -> dict[tuple[str, str], dict]:
-    """Each object by kind and name, with the chart label dropped and Immich's
-    config parsed, so formatting differences in the config file don't count."""
-    out = {}
-    for doc in docs:
-        doc = _without_chart_label(doc)
-        if doc["kind"] == "ConfigMap":
-            doc["data"] = {k: yaml.safe_load(v) for k, v in doc["data"].items()}
-        out[(doc["kind"], doc["metadata"]["name"])] = doc
-    return out
 
 
 SSO = {
@@ -80,17 +54,6 @@ SSO = {
         "owner": {"email": "owner@example.test"},
     },
 }
-
-
-@pytest.mark.parametrize(
-    "values",
-    [{}, {"smtp": {"host": "smtp.example.test", "port": 25, "from": "immich@example.test"}}, SSO],
-    ids=["bare", "smtp", "sso"],
-)
-def test_the_sandbox_renders_what_the_catalog_chart_renders(tmp_path, values):
-    assert _comparable(_render(tmp_path, values)) == _comparable(
-        _render(tmp_path, values, SANDBOX_CHART)
-    )
 
 
 def _with(values: dict, path: str, value) -> dict:
@@ -318,10 +281,9 @@ def test_an_external_database_needs_no_wait(tmp_path):
     assert "initContainers" not in _server_pod(_render(tmp_path, {"postgresql": {"enabled": False}}))
 
 
-@pytest.mark.parametrize("chart", [CHART, SANDBOX_CHART], ids=["immich", "immich-sso"])
-def test_postgres_clears_an_empty_lost_and_found_first(tmp_path, chart):
+def test_postgres_clears_an_empty_lost_and_found_first(tmp_path):
     """storage-chart-contract: initdb refuses a fresh volume's lost+found."""
-    [db] = [d for d in _render(tmp_path, {}, chart) if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("-postgresql")]
+    [db] = [d for d in _render(tmp_path, {}) if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("-postgresql")]
     pod = db["spec"]["template"]["spec"]
     [init] = pod["initContainers"]
     assert init["image"] == pod["containers"][0]["image"]
