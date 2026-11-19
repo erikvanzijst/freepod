@@ -13,7 +13,7 @@ import subprocess
 import time
 from calendar import timegm
 from pathlib import Path
-from typing import Any, Callable, Dict, IO, List, Optional
+from typing import Any, Dict, IO, List, Optional
 from urllib.parse import quote
 
 from . import FreepodError, PermissionError_, UsageError
@@ -62,15 +62,13 @@ def wait_for_connection(
     api: ApiClient,
     user_id: Any,
     timeout: float,
-    *,
-    clock: Callable[[], float] = time.monotonic,
 ) -> Dict[str, Any]:
-    deadline = clock() + timeout
+    deadline = time.monotonic() + timeout
     while True:
         found = github(api, user_id)
         if found is not None:
             return found
-        if clock() >= deadline:
+        if time.monotonic() >= deadline:
             raise FreepodError(
                 "gave up waiting for GitHub to be connected. Run `freepod git connect` again."
             )
