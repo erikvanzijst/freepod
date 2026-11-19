@@ -154,141 +154,70 @@ resource "helm_release" "loki" {
   ]
 }
 
-resource "helm_release" "promtail" {
-  name       = "promtail"
+resource "helm_release" "alloy" {
+  name       = "alloy"
   repository = "https://grafana.github.io/helm-charts"
-  chart      = "promtail"
-  version    = "6.17.0" # check latest version at https://github.com/grafana/helm-charts/blob/main/charts/promtail/Chart.yaml
+  chart      = "alloy"
+  version    = "1.16.0"
   namespace  = var.namespace
 
   values = [
     yamlencode({
-      # Every node, tainted node pools included. Replaces the chart's default
-      # list, which tolerates only the control-plane taints.
-      tolerations = [
-        {
-          operator = "Exists"
-          effect   = "NoSchedule"
+      crds = {
+        create = false
+      }
+      global = {
+        podSecurityContext = {
+          runAsUser  = 0
+          runAsGroup = 0
         }
-      ]
-      config = {
-        server = {
-          http_listen_port = 9080
-          grpc_listen_port = 0
+      }
+      alloy = {
+        configMap = {
+          content = file("${path.module}/config.alloy")
         }
-        clients = [
+        enableReporting = false
+        storagePath     = "/var/lib/alloy"
+        securityContext = {
+          allowPrivilegeEscalation = false
+          readOnlyRootFilesystem   = true
+          capabilities = {
+            drop = ["ALL"]
+          }
+        }
+        mounts = {
+          extra = [
+            {
+              name      = "pods"
+              mountPath = "/var/log/pods"
+              readOnly  = true
+            },
+            {
+              name      = "storage"
+              mountPath = "/var/lib/alloy"
+            },
+          ]
+        }
+      }
+      controller = {
+        # Every node, tainted node pools included.
+        tolerations = [
           {
-            url = "http://loki.${var.namespace}.svc.cluster.local:3100/loki/api/v1/push"
+            operator = "Exists"
+            effect   = "NoSchedule"
           }
         ]
-
-        # Helpful example: https://github.com/grafana/loki/issues/4381
-        snippets = {
-          scrapeConfigs = <<-EOT
-            - job_name: kubernetes-pods
-              pipeline_stages:
-                - cri: {}
-                # Label Traefik's JSON access log (kube-system/traefik). Traefik's
-                # own log lines carry no RequestMethod and skip this stage. The
-                # labels are a contract: the tenant HTTP log selects a
-                # deployment's requests by `router`. Every other field stays in
-                # the line, readable with LogQL `| json`. A request that matched
-                # no router has no RouterName and so gets no `router` label.
-                - match:
-                    selector: '{namespace="kube-system", container="traefik"} |= "RequestMethod"'
-                    stages:
-                      - json:
-                          expressions:
-                            method: RequestMethod
-                            status: DownstreamStatus
-                            router: RouterName
-                      - labels:
-                          method:
-                          status:
-                          router:
-              kubernetes_sd_configs:
-                - role: pod
-              relabel_configs:
-                - source_labels:
-                    - __meta_kubernetes_pod_controller_name
-                  regex: ([0-9a-z-.]+?)(-[0-9a-f]{8,10})?
-                  action: replace
-                  target_label: __tmp_controller_name
-                - source_labels:
-                    - __meta_kubernetes_pod_label_app_kubernetes_io_name
-                    - __meta_kubernetes_pod_label_app
-                    - __tmp_controller_name
-                    - __meta_kubernetes_pod_name
-                  regex: ^;*([^;]+)(;.*)?$
-                  action: replace
-                  target_label: app
-                - source_labels:
-                    - __meta_kubernetes_pod_label_app_kubernetes_io_instance
-                    - __meta_kubernetes_pod_label_instance
-                  regex: ^;*([^;]+)(;.*)?$
-                  action: replace
-                  target_label: instance
-                # Promote the platform's per-rollout pod label to a stream
-                # label, so one release's output is an index lookup rather
-                # than a scan of everything the deployment ever wrote. The
-                # release id is constant within a pod and `pod` is already a
-                # stream label, so this widens each series without creating
-                # new ones. A pod without the label does not match the regex,
-                # so no `release_id` is set and it collects exactly as before
-                # -- which is every platform and system pod, and every tenant
-                # pod from a chart that does not render the label.
-                # `caelus.dev/release-id` -> `caelus_dev_release_id`.
-                - source_labels:
-                    - __meta_kubernetes_pod_label_caelus_dev_release_id
-                  regex: ^;*([^;]+)(;.*)?$
-                  action: replace
-                  target_label: release_id
-                - source_labels:
-                    - __meta_kubernetes_pod_label_app_kubernetes_io_component
-                    - __meta_kubernetes_pod_label_component
-                  regex: ^;*([^;]+)(;.*)?$
-                  action: replace
-                  target_label: component
-                - action: replace
-                  source_labels:
-                  - __meta_kubernetes_pod_node_name
-                  target_label: node_name
-                - action: replace
-                  source_labels:
-                  - __meta_kubernetes_namespace
-                  target_label: namespace
-                - action: replace
-                  replacement: $1
-                  separator: /
-                  source_labels:
-                  - namespace
-                  - app
-                  target_label: job
-                - action: replace
-                  source_labels:
-                  - __meta_kubernetes_pod_name
-                  target_label: pod
-                - action: replace
-                  source_labels:
-                  - __meta_kubernetes_pod_container_name
-                  target_label: container
-                - action: replace
-                  replacement: /var/log/pods/*$1/*.log
-                  separator: /
-                  source_labels:
-                  - __meta_kubernetes_pod_uid
-                  - __meta_kubernetes_pod_container_name
-                  target_label: __path__
-                - action: replace
-                  regex: true/(.*)
-                  replacement: /var/log/pods/*$1/*.log
-                  separator: /
-                  source_labels:
-                  - __meta_kubernetes_pod_annotationpresent_kubernetes_io_config_hash
-                  - __meta_kubernetes_pod_annotation_kubernetes_io_config_hash
-                  - __meta_kubernetes_pod_container_name
-                  target_label: __path__
-          EOT
+        volumes = {
+          extra = [
+            {
+              name     = "pods"
+              hostPath = { path = "/var/log/pods" }
+            },
+            {
+              name     = "storage"
+              hostPath = { path = "/var/lib/alloy", type = "DirectoryOrCreate" }
+            },
+          ]
         }
       }
     })

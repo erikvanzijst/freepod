@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Collect logs from every pod across the cluster into a searchable, filesystem-backed Loki store via a Promtail DaemonSet, including parsed Traefik access logs, so operators can query application and ingress logs centrally — and so the platform API can serve a tenant their own deployment's output, which makes the stream labels a contract rather than operator convenience.
+Collect logs from every pod across the cluster into a searchable, filesystem-backed Loki store via a Grafana Alloy DaemonSet, including parsed Traefik access logs, so operators can query application and ingress logs centrally — and so the platform API can serve a tenant their own deployment's output, which makes the stream labels a contract rather than operator convenience.
 
 ## Requirements
 
@@ -15,7 +15,7 @@ cluster and ship them to a central Loki store, deployed cluster-wide in the
 #### Scenario: Logs from a new pod become available
 
 - **WHEN** a pod in any namespace writes to stdout/stderr
-- **THEN** a Promtail DaemonSet running on that pod's node reads the container
+- **THEN** an Alloy DaemonSet pod running on that pod's node reads the container
   log file and pushes the entries to Loki within seconds
 
 ### Requirement: Logs are labeled for querying

@@ -19,7 +19,7 @@ independent state and does not use Terraform workspaces.
   for `freepod.eu` only and has no submission port; outbound mail leaves through
   the `mailer` relay.
 - `monitoring` namespace with the cluster-wide observability stack (Loki +
-  Promtail, Prometheus + node-exporter + kube-state-metrics + Alertmanager,
+  Alloy, Prometheus + node-exporter + kube-state-metrics + Alertmanager,
   Grafana) — see [Monitoring stack](#monitoring-stack).
 - `ceph-csi` namespace (`ceph-csi/`): the Ceph RBD CSI driver and one
   StorageClass per pool on an external Ceph cluster — see
@@ -116,7 +116,7 @@ terraform apply
 A **cluster-wide** observability stack in the `monitoring` namespace, shared by
 all Caelus environments (it is *not* duplicated per env). Modules:
 
-- `loki/` — Loki (SingleBinary, filesystem-backed, ~10Gi PVC) + a Promtail
+- `loki/` — Loki (SingleBinary, filesystem-backed, ~10Gi PVC) + a Grafana Alloy
   DaemonSet that ships every pod's logs to Loki, including parsed Traefik
   access logs. **Retention is enforced** — see below.
 
@@ -139,8 +139,8 @@ all Caelus environments (it is *not* duplicated per env). Modules:
   > retention without `compactor.delete_request_store` is a hard startup
   > `CONFIG ERROR`.
   >
-  > Promtail's rendered config lives in a **Secret**, not a ConfigMap:
-  > `kubectl -n monitoring get secret promtail -o jsonpath='{.data.promtail\.yaml}' | base64 -d`.
+  > Alloy's pipeline is `loki/config.alloy`; the live copy is the `alloy` ConfigMap, and each
+  > pod's UI (`kubectl -n monitoring port-forward ds/alloy 12345`) shows the component graph.
 - `prometheus/` — the `prometheus-community/prometheus` chart (bundles
   node-exporter for node CPU/mem/net/disk, kube-state-metrics for workload
   state, and Alertmanager), plus **Grafana** (mirrors the homelab layout). A

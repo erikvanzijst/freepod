@@ -30,7 +30,7 @@ from app.services.errors import NotFoundException
 from app.services.log_stream import EVENT_END, LogSource, sse
 from app.services.loki import LogEntry, LokiQueryClient
 
-# The stream label Promtail derives from the `caelus.dev/release-id` pod label
+# The stream label Alloy derives from the `caelus.dev/release-id` pod label
 # (tf/deps/loki). Named here so the one place that depends on the collector's
 # contract is greppable from both ends.
 RELEASE_LABEL = "release_id"

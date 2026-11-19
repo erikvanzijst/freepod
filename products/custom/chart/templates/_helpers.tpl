@@ -31,7 +31,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 `caelus.dev/release-id` identifies the individual rollout that produced a pod,
 so that a log query can attribute a line to one release even while two rollouts'
-pods are writing concurrently. Promtail relabels it into a `release_id` Loki
+pods are writing concurrently. Alloy relabels it into a `release_id` Loki
 stream label (tf/deps/loki).
 
 The value comes from the reconciler as a system override, so a tenant cannot

@@ -132,7 +132,7 @@
         },
         "releaseId": {
           "type": "string",
-          "description": "Identifier of the rollout being applied, injected by the Caelus reconciler. Rendered onto the pod template as the caelus.dev/release-id label and relabelled by Promtail into a Loki stream label, so one release's output is selectable even while two rollouts' pods write concurrently. Empty when the chart renders standalone, in which case no label is emitted."
+          "description": "Identifier of the rollout being applied, injected by the Caelus reconciler. Rendered onto the pod template as the caelus.dev/release-id label and relabelled by Alloy into a Loki stream label, so one release's output is selectable even while two rollouts' pods write concurrently. Empty when the chart renders standalone, in which case no label is emitted."
         },
         "releaseNumber": {
           "type": "string",

@@ -1,0 +1,139 @@
+// Every pod on this node. HOSTNAME is the node name (set by the chart).
+discovery.kubernetes "pods" {
+	role = "pod"
+
+	selectors {
+		role  = "pod"
+		field = "spec.nodeName=" + coalesce(sys.env("HOSTNAME"), constants.hostname)
+	}
+}
+
+discovery.relabel "pods" {
+	targets = discovery.kubernetes.pods.targets
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_controller_name"]
+		regex         = "([0-9a-z-.]+?)(-[0-9a-f]{8,10})?"
+		target_label  = "__tmp_controller_name"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name", "__meta_kubernetes_pod_label_app", "__tmp_controller_name", "__meta_kubernetes_pod_name"]
+		regex         = "^;*([^;]+)(;.*)?$"
+		target_label  = "app"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_instance", "__meta_kubernetes_pod_label_instance"]
+		regex         = "^;*([^;]+)(;.*)?$"
+		target_label  = "instance"
+	}
+
+	// Promote the platform's per-rollout pod label to a stream label, so one
+	// release's output is an index lookup rather than a scan of everything the
+	// deployment ever wrote. The release id is constant within a pod and `pod`
+	// is already a stream label, so this widens each series without creating
+	// new ones. A pod without the label does not match the regex, so no
+	// `release_id` is set and it collects exactly as before -- which is every
+	// platform and system pod, and every tenant pod from a chart that does not
+	// render the label. `caelus.dev/release-id` -> `caelus_dev_release_id`.
+	rule {
+		source_labels = ["__meta_kubernetes_pod_label_caelus_dev_release_id"]
+		regex         = "^;*([^;]+)(;.*)?$"
+		target_label  = "release_id"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_component", "__meta_kubernetes_pod_label_component"]
+		regex         = "^;*([^;]+)(;.*)?$"
+		target_label  = "component"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_node_name"]
+		target_label  = "node_name"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_namespace"]
+		target_label  = "namespace"
+	}
+
+	rule {
+		source_labels = ["namespace", "app"]
+		separator     = "/"
+		target_label  = "job"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_name"]
+		target_label  = "pod"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_container_name"]
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+		separator     = "/"
+		target_label  = "__path__"
+		replacement   = "/var/log/pods/*$1/*.log"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_annotationpresent_kubernetes_io_config_hash", "__meta_kubernetes_pod_annotation_kubernetes_io_config_hash", "__meta_kubernetes_pod_container_name"]
+		separator     = "/"
+		regex         = "true/(.*)"
+		target_label  = "__path__"
+		replacement   = "/var/log/pods/*$1/*.log"
+	}
+}
+
+loki.source.file "pods" {
+	targets    = discovery.relabel.pods.output
+	forward_to = [loki.process.pods.receiver]
+
+	file_match {
+		enabled = true
+	}
+}
+
+loki.process "pods" {
+	forward_to = [loki.write.default.receiver]
+
+	stage.cri { }
+
+	// Label Traefik's JSON access log (kube-system/traefik). Traefik's own log
+	// lines carry no RequestMethod and skip this stage. The labels are a
+	// contract: the tenant HTTP log selects a deployment's requests by
+	// `router`. Every other field stays in the line, readable with LogQL
+	// `| json`. A request that matched no router has no RouterName and so gets
+	// no `router` label.
+	stage.match {
+		selector = "{namespace=\"kube-system\", container=\"traefik\"} |= \"RequestMethod\""
+
+		stage.json {
+			expressions = {
+				method = "RequestMethod",
+				router = "RouterName",
+				status = "DownstreamStatus",
+			}
+		}
+
+		stage.labels {
+			values = {
+				method = null,
+				router = null,
+				status = null,
+			}
+		}
+	}
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+	}
+}

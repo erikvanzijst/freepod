@@ -233,7 +233,7 @@ class DeploymentReconciler:
         Helm runs with `--atomic`, so a rollout whose pods crash on startup is
         rolled back and those pods deleted before anyone can ask -- reaching for
         the pod here would race the thing it wants to observe and usually lose.
-        Promtail shipped the lines seconds earlier, so a query issued *after*
+        Alloy shipped the lines seconds earlier, so a query issued *after*
         the rollback still finds them.
 
         Appended after `str(exc)` rather than folded into it, and that ordering
