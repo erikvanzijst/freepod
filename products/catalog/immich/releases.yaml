@@ -1,3 +1,10 @@
+- version: "3.4.2"
+  notes: |-
+    A small fix-up release with a handful of bug fixes.
+
+    - The slideshow only shows its play and pause buttons when autoplay is on
+    - Integrity reports can be downloaded again
+    - The camera filter works for photos from unknown camera brands
 - version: "3.4.1"
   notes: |-
     A small fix-up release that makes shared links fast again.
