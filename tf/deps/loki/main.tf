@@ -11,17 +11,17 @@ locals {
 }
 
 resource "helm_release" "loki" {
-  name      = "loki"
-  namespace = var.namespace
-  # Bump the version in the URL on upgrade (latest:
-  # https://github.com/grafana/loki/blob/main/production/helm/loki/Chart.yaml).
-  chart = "https://github.com/grafana/helm-charts/releases/download/helm-loki-6.41.1/loki-6.41.1.tgz"
+  name       = "loki"
+  namespace  = var.namespace
+  repository = "oci://ghcr.io/grafana-community/helm-charts"
+  chart      = "loki"
+  version    = "21.4.1"
 
-  # https://github.com/grafana/loki/blob/main/production/helm/loki/values.yaml
+  # https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml
   values = [
     yamlencode({
       # https://grafana.com/docs/loki/latest/setup/install/helm/install-monolithic/
-      deploymentMode = "SingleBinary"
+      deploymentMode = "Monolithic"
       singleBinary = {
         replicas = 1
         persistence = {
@@ -58,7 +58,7 @@ resource "helm_release" "loki" {
         # Distributed -- so do not raise it to "run the compactor"; that
         # would start a second one competing over the same filesystem store.
         #
-        # `delete_request_store` is not optional: Loki 3.5.5 refuses to start
+        # `delete_request_store` is not optional: Loki refuses to start
         # with `compactor.delete-request-store should be configured when
         # retention is enabled`.
         compactor = {
@@ -145,9 +145,6 @@ resource "helm_release" "loki" {
         replicas = 0
       }
       indexGateway = {
-        replicas = 0
-      }
-      bloomCompactor = {
         replicas = 0
       }
       bloomGateway = {
