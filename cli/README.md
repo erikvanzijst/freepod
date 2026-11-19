@@ -4,9 +4,10 @@ Take a local project directory to a running deployment on
 [freepod.dev](https://freepod.dev).
 
 ```bash
-brew install erikvanzijst/tap/freepod     # Mac, Linux
-uv tool install freepod                   # Mac, Linux, Windows
-pip install freepod                       # Mac, Linux, Windows
+brew install erikvanzijst/tap/freepod         # Mac, Linux
+uv tool install freepod                       # Mac, Linux, Windows
+pip install freepod                           # Mac, Linux, Windows
+nix profile add github:erikvanzijst/freepod   # Nix (Mac, Linux)
 ```
 
 ```bash

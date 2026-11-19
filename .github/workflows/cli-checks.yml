@@ -77,3 +77,20 @@ jobs:
           name: freepod-dist
           path: cli/dist/*
           if-no-files-found: error
+
+  nix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Build the flake package and run it
+        run: |
+          nix flake check -L
+          nix run . -- --version
+
