@@ -24,6 +24,7 @@ smtp tcp://0.0.0.0:2525 {
     }
 
     dmarc yes
+    dmarc_reject_invalid_from yes
     check {
         require_mx_record
         dkim

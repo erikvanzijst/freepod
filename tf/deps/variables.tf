@@ -56,7 +56,7 @@ variable "mx_account" {
 }
 
 variable "mx_password_hash" {
-  description = "IMAP password hash for mx_account, from `docker run --rm -i foxcpp/maddy:0.9.6 hash`. Use secrets.auto.tfvars."
+  description = "IMAP password hash for mx_account, from `docker run --rm -i foxcpp/maddy:0.9.7 hash`. Use secrets.auto.tfvars."
   type        = string
   sensitive   = true
 }

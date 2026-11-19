@@ -6,7 +6,7 @@ variable "namespace" {
 variable "image" {
   description = "Maddy container image"
   type        = string
-  default     = "foxcpp/maddy:0.9.6"
+  default     = "foxcpp/maddy:0.9.7"
 }
 
 variable "hostname" {
