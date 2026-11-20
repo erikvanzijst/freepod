@@ -1,3 +1,10 @@
+- version: "2026.7.6"
+  notes: |-
+    The latest maintenance release for the extended support line.
+
+    - Includes 51 security fixes
+    - Quoted and detailed text in posts renders more consistently
+    - Profile visibility settings are applied more strictly
 - version: "2026.7.5"
   notes: |-
     The November 2026 maintenance release for the extended support line.
