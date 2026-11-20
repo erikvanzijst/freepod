@@ -80,7 +80,7 @@ upstream:
   version_path: template.chart_version
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/appstudio
-  chart_version: 0.2.25
+  chart_version: 0.2.26
   system_values:
     nodePool: tenant
     runtimeClassName: gvisor

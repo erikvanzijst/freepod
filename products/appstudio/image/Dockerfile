@@ -3,22 +3,22 @@
 #
 # The CLI is installed from this repository's cli/, passed as a named build
 # context: --build-context freepod-cli=cli (see ../README.md).
-FROM node:24-bookworm
+FROM node:24-trixie
 
 ARG OPENCODE_VERSION=2.1.2
 ARG YQ_VERSION=v4.54.1
 ARG YQ_SHA256=8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f
 
 # PGDG, for a client matching the tenant database's major version (18); a
-# bookworm pg_dump (15) refuses newer servers. The server is for local
+# trixie pg_dump (17) refuses newer servers. The server is for local
 # development and is not started; `dev-postgres` starts it.
 RUN install -d /usr/share/postgresql-common/pgdg \
  && curl -fsSLo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
- && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+ && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt trixie-pgdg main" \
       > /etc/apt/sources.list.d/pgdg.list \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
-      python3 python3-venv python3-pip python-is-python3 \
+      python3 python3-dev python3-venv python3-pip python-is-python3 \
       postgresql-18 postgresql-client-18 openssh-client \
       ripgrep fd-find jq less tini vim bash-completion psmisc \
  && rm -rf /var/lib/apt/lists/* \

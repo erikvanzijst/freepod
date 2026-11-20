@@ -1,3 +1,10 @@
+- version: "0.2.26"
+  notes: |-
+    App Studio runs on Debian 13, with Python 3.13 and newer system packages.
+
+    - Security fixes from the newer Debian release
+    - Python 3.13 replaces 3.11: recreate any Python virtual environment in your apps, for example with `uv venv` or `python -m venv .venv`
+    - Python packages that compile C code now build without extra setup
 - version: "0.2.25"
   notes: |-
     App Studio can now put your apps on GitHub.

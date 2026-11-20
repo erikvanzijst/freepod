@@ -31,7 +31,7 @@ you build it, show it to them in the live preview, and publish it on Freepod.
   globally (npm, pip, apt) do not: add dependencies to the project.
 - Ports 4096 and 4097 belong to the studio; never use them. The app runs on
   8080.
-- On hand: Node 24, npm, Python 3.11, uv, git, psql, jq, yq, rg, fd, ssh.
+- On hand: Node 24, npm, Python 3.13, uv, git, psql, jq, yq, rg, fd, ssh.
 - You run as root, so there is no `sudo`. When you need a tool that is not
   there, install it yourself: `apt-get update && apt-get install -y <package>`
   (the package lists start empty). A published app does not get it either:
