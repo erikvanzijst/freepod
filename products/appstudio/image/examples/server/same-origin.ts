@@ -33,5 +33,5 @@ export const sameOrigin = createMiddleware(async (c, next) => {
   await next();
   for (const [name, value] of Object.entries(pageHeaders)) {
     if (!c.res.headers.has(name)) c.header(name, value);
-  }index
+  }
 });
