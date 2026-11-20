@@ -1,3 +1,11 @@
+- version: "17.9.8"
+  notes: |-
+    A maintenance release with eight security fixes.
+
+    - Meeting details and private work package subjects no longer leak to people who should not see them
+    - Invitations no longer reveal details of work packages the recipient cannot view
+    - Linking a repository by URL is now checked against the server's request protections
+    - Quarantined attachments in external storage can no longer be downloaded before their scan
 - version: "17.9.7"
   notes: |-
     A maintenance release with a speed fix and important security updates.
