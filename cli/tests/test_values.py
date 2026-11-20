@@ -13,6 +13,8 @@ from freepod.values import (
     check_constraints,
     check_public_patterns,
     describe_reason,
+    describe_verdict,
+    proxy_note,
     full_hostname,
     hostname_label,
     is_hostname_property,
@@ -231,6 +233,7 @@ def test_an_unusable_hostname_re_prompts_with_its_reason():
         ("invalid", "not a valid hostname"),
         ("claimed", "another account's handle"),
         ("not_resolving", "A/AAAA"),
+        ("ownership_unverified", "TXT record"),
     ],
 )
 def test_every_platform_reason_has_a_reading(reason, expected):
@@ -239,6 +242,39 @@ def test_every_platform_reason_has_a_reading(reason, expected):
 
 def test_an_unknown_reason_is_passed_through():
     assert "quota_exceeded" in describe_reason("quota_exceeded")
+
+
+PROXIED = {
+    "proxy": "cloudflare",
+    "ownership_record": {"name": "_freepod.photos.example.com", "value": "erik.dev.freepod.app"},
+}
+
+
+def test_an_unverified_proxied_name_names_its_ownership_record():
+    reading = describe_verdict({"usable": False, "reason": "ownership_unverified", **PROXIED})
+    assert "_freepod.photos.example.com" in reading
+    assert "erik.dev.freepod.app" in reading
+
+
+def test_a_verdict_without_a_record_reads_as_its_reason():
+    assert describe_verdict({"usable": False, "reason": "in_use"}) == describe_reason("in_use")
+
+
+def test_a_proxied_hostname_is_accepted_with_a_note():
+    messages = []
+    instance = ValueCollector(
+        CUSTOM_SCHEMA,
+        suffix=SUFFIX,
+        check_hostname=lambda fqdn: {"fqdn": fqdn, "usable": True, "reason": None, **PROXIED},
+        echo=messages.append,
+        ask=Asker("photos.example.com"),
+    )
+    assert instance.collect()["hostname"] == "photos.example.com"
+    assert any("proxied through Cloudflare" in m and "Full (strict)" in m for m in messages)
+
+
+def test_a_direct_hostname_has_no_proxy_note():
+    assert proxy_note({"usable": True, "proxy": None}) is None
 
 
 def test_a_usable_hostname_is_recorded():

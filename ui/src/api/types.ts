@@ -124,10 +124,17 @@ export interface ProductRelease {
   available_at?: IsoDate | null
 }
 
+export interface OwnershipRecord {
+  name: string
+  value: string
+}
+
 export interface HostnameCheckResult {
   fqdn: string
   usable: boolean
   reason: string | null
+  proxy?: string | null
+  ownership_record?: OwnershipRecord | null
 }
 
 export interface Plan {

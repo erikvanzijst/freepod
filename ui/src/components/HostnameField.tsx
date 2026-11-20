@@ -12,8 +12,10 @@ import {
   Typography,
 } from '@mui/material'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import CloudDoneIcon from '@mui/icons-material/CloudDone'
 import ErrorIcon from '@mui/icons-material/Error'
 import { checkHostname } from '../api/endpoints'
+import type { OwnershipRecord } from '../api/types'
 
 const DEBOUNCE_MS = 400
 
@@ -33,8 +35,8 @@ const DEFAULT_CNAME_TARGET = 'freepod.app'
 type ValidationState =
   | { status: 'idle' }
   | { status: 'checking' }
-  | { status: 'valid' }
-  | { status: 'error'; reason: string }
+  | { status: 'valid'; proxy?: string | null }
+  | { status: 'error'; reason: string; record?: OwnershipRecord | null }
 
 interface HostnameFieldProps {
   value: string
@@ -147,7 +149,7 @@ export function HostnameField({ value, onChange, onValidationChange, suffix, cna
         const result = await checkHostname(fqdn)
         if (controller.signal.aborted) return
         if (result.usable) {
-          setValidation({ status: 'valid' })
+          setValidation({ status: 'valid', proxy: result.proxy })
           return
         }
         const auto = autoNameRef.current
@@ -155,7 +157,7 @@ export function HostnameField({ value, onChange, onValidationChange, suffix, cna
           setPrefix(`${auto.base}-${++auto.tries}`)
           return
         }
-        setValidation({ status: 'error', reason: result.reason ?? 'invalid' })
+        setValidation({ status: 'error', reason: result.reason ?? 'invalid', record: result.ownership_record })
       } catch {
         if (controller.signal.aborted) return
         setValidation({ status: 'error', reason: 'invalid' })
@@ -200,20 +202,32 @@ export function HostnameField({ value, onChange, onValidationChange, suffix, cna
   // The platform domain differs per environment (e.g. dev.freepod.eu vs freepod.eu),
   // so the not_resolving message is built from the backend-provided value.
   const cnameDomain = cnameTarget || DEFAULT_CNAME_TARGET
-  const reasonLabel = (reason: string) =>
-    reason === 'not_resolving'
-      ? `Create a CNAME record pointing to ${cnameDomain}, or for a root domain, A/AAAA records with the same addresses as ${cnameDomain}`
-      : REASON_LABELS[reason] ?? reason
+  const reasonLabel = (reason: string, record?: OwnershipRecord | null) => {
+    if (reason === 'not_resolving')
+      return `Create a CNAME record pointing to ${cnameDomain}, or for a root domain, A/AAAA records with the same addresses as ${cnameDomain}`
+    if (reason === 'ownership_unverified')
+      return record
+        ? `Proxied through Cloudflare: add a TXT record ${record.name} with the value ${record.value} to show you own the domain`
+        : 'Proxied through Cloudflare: a TXT record must show you own the domain'
+    return REASON_LABELS[reason] ?? reason
+  }
+  const proxiedLabel = `Proxied through Cloudflare, so Freepod can't confirm it reaches ${cnameDomain}. Set SSL/TLS to Full (strict) and leave Always Use HTTPS off`
 
   const statusIcon = (() => {
     switch (validation.status) {
       case 'checking':
         return <CircularProgress size={20} />
       case 'valid':
-        return <CheckCircleIcon color="success" />
+        return validation.proxy ? (
+          <Tooltip title={proxiedLabel}>
+            <CloudDoneIcon color="warning" />
+          </Tooltip>
+        ) : (
+          <CheckCircleIcon color="success" />
+        )
       case 'error':
         return (
-          <Tooltip title={reasonLabel(validation.reason)}>
+          <Tooltip title={reasonLabel(validation.reason, validation.record)}>
             <ErrorIcon color="error" />
           </Tooltip>
         )
@@ -224,7 +238,8 @@ export function HostnameField({ value, onChange, onValidationChange, suffix, cna
 
   const helperText =
     error ??
-    (validation.status === 'error' ? reasonLabel(validation.reason) : undefined) ??
+    (validation.status === 'error' ? reasonLabel(validation.reason, validation.record) : undefined) ??
+    (validation.status === 'valid' && validation.proxy ? proxiedLabel : undefined) ??
     description
 
   const modeToggle = hasFreepodAddress ? (

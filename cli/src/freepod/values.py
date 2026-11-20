@@ -38,7 +38,13 @@ HOSTNAME_REASONS = {
         "a CNAME to the platform domain, or for a root domain, A/AAAA records "
         "with the platform domain's addresses, in place first"
     ),
+    "ownership_unverified": (
+        "that name is proxied through Cloudflare and needs a TXT record showing "
+        "you own the domain"
+    ),
 }
+
+PROXY_NAMES = {"cloudflare": "Cloudflare"}
 
 
 class ValueError_(FreepodError):
@@ -49,6 +55,30 @@ def describe_reason(reason: Optional[str]) -> str:
     if not reason:
         return "the platform reported it as unusable"
     return HOSTNAME_REASONS.get(reason, f"the platform reported '{reason}'")
+
+
+def describe_verdict(verdict: Dict[str, Any]) -> str:
+    """Why a hostname check refused the name, naming the TXT record a proxied
+    name is missing when the platform reports one."""
+    record = verdict.get("ownership_record")
+    if verdict.get("reason") == "ownership_unverified" and isinstance(record, dict):
+        return (
+            "that name is proxied through Cloudflare; show you own the domain with "
+            f"a TXT record {record.get('name')} whose value is {record.get('value')}"
+        )
+    return describe_reason(verdict.get("reason"))
+
+
+def proxy_note(verdict: Dict[str, Any]) -> Optional[str]:
+    """For a usable name reached through a proxy, what the platform cannot check."""
+    proxy = verdict.get("proxy")
+    if not proxy:
+        return None
+    return (
+        f"proxied through {PROXY_NAMES.get(proxy, proxy)}, so the platform cannot "
+        "confirm it reaches Freepod. Use SSL/TLS mode Full (strict) and leave "
+        "Always Use HTTPS off"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -310,9 +340,12 @@ class ValueCollector:
             if hostname and self.check_hostname is not None:
                 verdict = self.check_hostname(answer)
                 if not verdict.get("usable", False):
-                    self.echo(f"  {answer}: {describe_reason(verdict.get('reason'))}. Try again.")
+                    self.echo(f"  {answer}: {describe_verdict(verdict)}. Try again.")
                     current = default = None
                     continue
+                note = proxy_note(verdict)
+                if note:
+                    self.echo(f"  {answer}: {note}.")
 
             return answer
 

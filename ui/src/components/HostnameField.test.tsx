@@ -300,6 +300,88 @@ describe('HostnameField', () => {
     })
   })
 
+  describe('Cloudflare proxy', () => {
+    it('accepts a proxied hostname with a warning that it is unverified', async () => {
+      const onChange = vi.fn()
+      const onValidationChange = vi.fn()
+      checkHostnameMock.mockResolvedValue({
+        fqdn: 'photos.example.com',
+        usable: true,
+        reason: null,
+        proxy: 'cloudflare',
+        ownership_record: { name: '_freepod.photos.example.com', value: 'alice.dev.freepod.app' },
+      })
+
+      render(
+        <HostnameField
+          value=""
+          onChange={onChange}
+          onValidationChange={onValidationChange}
+          suffix={null}
+          cnameTarget="dev.freepod.app"
+        />,
+      )
+
+      fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'photos.example.com' } })
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            "Proxied through Cloudflare, so Freepod can't confirm it reaches dev.freepod.app. Set SSL/TLS to Full (strict) and leave Always Use HTTPS off",
+          ),
+        ).toBeInTheDocument()
+      })
+      expect(screen.getByTestId('CloudDoneIcon')).toBeInTheDocument()
+      expect(screen.queryByTestId('CheckCircleIcon')).not.toBeInTheDocument()
+      expect(onValidationChange).toHaveBeenLastCalledWith(true)
+    })
+
+    it('names the ownership record a proxied hostname is missing', async () => {
+      const onChange = vi.fn()
+      const onValidationChange = vi.fn()
+      checkHostnameMock.mockResolvedValue({
+        fqdn: 'photos.example.com',
+        usable: false,
+        reason: 'ownership_unverified',
+        proxy: 'cloudflare',
+        ownership_record: { name: '_freepod.photos.example.com', value: 'alice.freepod.app' },
+      })
+
+      render(<HostnameField value="" onChange={onChange} onValidationChange={onValidationChange} suffix={null} />)
+
+      fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'photos.example.com' } })
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            'Proxied through Cloudflare: add a TXT record _freepod.photos.example.com with the value alice.freepod.app to show you own the domain',
+          ),
+        ).toBeInTheDocument()
+      })
+      expect(onValidationChange).toHaveBeenLastCalledWith(false)
+    })
+
+    it('shows a direct hostname with the plain check', async () => {
+      const onChange = vi.fn()
+      checkHostnameMock.mockResolvedValue({
+        fqdn: 'photos.example.com',
+        usable: true,
+        reason: null,
+        proxy: null,
+        ownership_record: null,
+      })
+
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
+
+      fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'photos.example.com' } })
+
+      await waitFor(() => {
+        expect(screen.getByTestId('CheckCircleIcon')).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/Proxied through Cloudflare/)).not.toBeInTheDocument()
+    })
+  })
+
   describe('async account domain name', () => {
     it('switches to Freepod mode when the account domain name arrives after mount', () => {
       const onChange = vi.fn()

@@ -28,8 +28,10 @@ from .values import (
     HOSTNAME_REASONS,
     ValueCollector,
     describe_reason,
+    describe_verdict,
     hostname_label,
     normalize_hostname,
+    proxy_note,
 )
 
 #: How many hostname candidates are checked before none is offered.
@@ -298,8 +300,9 @@ def _prompt_hostname(
         value = normalize_hostname(given)
         verdict = api.check_hostname(value)
         if verdict.get("usable", False):
+            _note_proxy(value, verdict, echo)
             return value
-        reason = describe_reason(verdict.get("reason"))
+        reason = describe_verdict(verdict)
         where = f"'{key}' in {PROJECT_FILE}" if from_file else "--hostname"
         if from_file or not sys.stdin.isatty():
             raise FreepodError(f"{where} {value}: {reason}.")
@@ -319,8 +322,15 @@ def _prompt_hostname(
             echo(f"  → {shown}")
         verdict = api.check_hostname(answer)
         if verdict.get("usable", False):
+            _note_proxy(answer, verdict, echo)
             return answer
-        echo(f"  {answer}: {describe_reason(verdict.get('reason'))}. Try again.")
+        echo(f"  {answer}: {describe_verdict(verdict)}. Try again.")
+
+
+def _note_proxy(hostname: str, verdict: Dict[str, Any], echo: Callable[[str], None]) -> None:
+    note = proxy_note(verdict)
+    if note:
+        echo(f"  {hostname}: {note}.")
 
 
 def _suggest_hostname(api: ApiClient, name: str) -> Optional[str]:
