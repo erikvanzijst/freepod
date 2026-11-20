@@ -10,12 +10,20 @@ from app.deps import get_current_user
 from app.models import UserORM
 from app.services.errors import HostnameException
 from app.services.hostnames import (
+    check_hostname_for_deployment,
     cname_target as platform_cname_target,
     complete_hostname,
-    require_valid_hostname_for_deployment,
+    ownership_record,
 )
 
 router = APIRouter(tags=["hostnames"])
+
+
+class OwnershipRecord(BaseModel):
+    """The TXT record that proves the caller controls a proxied hostname's DNS."""
+
+    name: str
+    value: str
 
 
 class HostnameCheck(BaseModel):
@@ -31,14 +39,22 @@ class HostnameCheck(BaseModel):
       one of: ``invalid`` (malformed name, or not a tenant label of the form
       `<app>-<handle>`), ``reserved`` (reserved by the platform), ``claimed``
       (a tenant hostname ending in another account's handle), ``in_use``
-      (already in use by another deployment), or ``not_resolving`` (neither a
-      CNAME to the platform domain nor A/AAAA records on that domain's
-      addresses).
+      (already in use by another deployment), ``not_resolving`` (neither a
+      CNAME to the platform domain, A/AAAA records on that domain's
+      addresses, nor a Cloudflare-proxied record), or ``ownership_unverified``
+      (proxied, but without the ownership record).
+    - ``proxy``: ``cloudflare`` when the name's addresses are all
+      Cloudflare's, whether or not it is usable; ``None`` otherwise. A usable
+      proxied name is unverified: where Cloudflare forwards it cannot be seen.
+    - ``ownership_record``: with ``proxy``, the TXT record that must exist
+      for a proxied name to be usable; ``None`` without it.
     """
 
     fqdn: str
     usable: bool
     reason: str | None = None
+    proxy: str | None = None
+    ownership_record: OwnershipRecord | None = None
 
 
 @router.get(
@@ -46,8 +62,9 @@ class HostnameCheck(BaseModel):
     response_model=HostnameCheck,
     summary="Check whether a hostname is usable for a deployment",
     response_description=(
-        "A HostnameCheck: the checked `fqdn`, a `usable` boolean, and a "
-        "machine-readable `reason` code when `usable` is false."
+        "A HostnameCheck: the checked `fqdn`, a `usable` boolean, a "
+        "machine-readable `reason` code when `usable` is false, and the "
+        "`proxy` and `ownership_record` of a proxied name."
     ),
     responses={
         200: {
@@ -91,6 +108,12 @@ def check_hostname(
     the platform in DNS. Handle availability is not answered here; see the
     dry run of `POST /me/handle`.
 
+    A custom domain whose addresses are all Cloudflare's is proxied through
+    Cloudflare, and reported with `proxy=cloudflare` and the
+    `ownership_record` it needs: a TXT record `_freepod.<fqdn>` whose value
+    is `<handle>.<cname target>`. With that record it is usable, but
+    unverified: the platform cannot see where Cloudflare forwards it.
+
     Checks stop at the first failure. On success the response is `usable=true`
     with `reason=null`. On failure it is `usable=false` with a machine-readable
     `reason` code; a rejected name is never returned as an error status:
@@ -103,7 +126,10 @@ def check_hostname(
     - `not_resolving` — a custom domain that neither has a CNAME record
       pointing at the platform domain (see `GET /cname-target`) nor A/AAAA
       records that are all among that domain's own addresses, the form a
-      domain apex takes (including flattened CNAMEs and ALIAS records).
+      domain apex takes (including flattened CNAMEs and ALIAS records), nor
+      is proxied through Cloudflare.
+    - `ownership_unverified` — proxied through Cloudflare, without a TXT
+      record at `ownership_record.name` holding `ownership_record.value`.
 
     ## Errors
     Always returns **200** for an authenticated caller. Rejected names are
@@ -113,10 +139,20 @@ def check_hostname(
     fqdn = value.lower()
     try:
         fqdn = complete_hostname(fqdn, handle=current_user.handle)
-        require_valid_hostname_for_deployment(session, fqdn, handle=current_user.handle)
-        return HostnameCheck(fqdn=fqdn, usable=True)
+        verdict = check_hostname_for_deployment(session, fqdn, handle=current_user.handle)
+        return _check(fqdn, current_user, usable=True, proxy=verdict.proxy)
     except HostnameException as exc:
-        return HostnameCheck(fqdn=fqdn, usable=False, reason=exc.reason)
+        return _check(fqdn, current_user, usable=False, reason=exc.reason, proxy=exc.proxy)
+
+
+def _check(fqdn: str, user: UserORM, *, proxy: str | None, **fields) -> HostnameCheck:
+    record = ownership_record(fqdn, handle=user.handle) if proxy else None
+    return HostnameCheck(
+        fqdn=fqdn,
+        proxy=proxy,
+        ownership_record=OwnershipRecord(name=record.name, value=record.value) if record else None,
+        **fields,
+    )
 
 
 @router.get(

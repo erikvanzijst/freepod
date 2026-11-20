@@ -51,7 +51,7 @@ def test_a_bare_label_is_completed_and_checked(client, db_session, tenant_settin
 
     resp = client.get("/api/hostnames/photos", headers=headers)
 
-    assert resp.json() == {"fqdn": "photos-alice.freepod.app", "usable": True, "reason": None}
+    assert resp.json() == {"fqdn": "photos-alice.freepod.app", "usable": True, "reason": None, "proxy": None, "ownership_record": None}
 
 
 def test_mixed_case_is_normalized(client, db_session, tenant_settings):
@@ -67,7 +67,7 @@ def test_the_callers_own_fqdn(client, db_session, tenant_settings):
 
     resp = client.get("/api/hostnames/photos-alice.freepod.app", headers=headers)
 
-    assert resp.json() == {"fqdn": "photos-alice.freepod.app", "usable": True, "reason": None}
+    assert resp.json() == {"fqdn": "photos-alice.freepod.app", "usable": True, "reason": None, "proxy": None, "ownership_record": None}
 
 
 def test_a_name_ending_in_another_handle_is_claimed(client, db_session, tenant_settings):
@@ -75,7 +75,7 @@ def test_a_name_ending_in_another_handle_is_claimed(client, db_session, tenant_s
 
     resp = client.get("/api/hostnames/photos-alice.freepod.app", headers=headers)
 
-    assert resp.json() == {"fqdn": "photos-alice.freepod.app", "usable": False, "reason": "claimed"}
+    assert resp.json() == {"fqdn": "photos-alice.freepod.app", "usable": False, "reason": "claimed", "proxy": None, "ownership_record": None}
 
 
 def test_an_application_name_in_use(client, db_session, tenant_settings, seed_parents):
@@ -101,7 +101,7 @@ def test_a_bare_label_without_a_handle_is_invalid(client, tenant_settings):
 
     resp = client.get("/api/hostnames/photos", headers=auth_header(USER_EMAIL))
 
-    assert resp.json() == {"fqdn": "photos", "usable": False, "reason": "invalid"}
+    assert resp.json() == {"fqdn": "photos", "usable": False, "reason": "invalid", "proxy": None, "ownership_record": None}
 
 
 def test_a_name_under_a_platform_domain_is_reserved(client, db_session, tenant_settings):

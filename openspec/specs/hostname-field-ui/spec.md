@@ -112,8 +112,12 @@ never replaced.
 ### Requirement: HostnameField shows a status icon naming the reason
 
 The component MUST display a status indicator on the right of the input: a green check when
-the hostname is usable, a red error icon with a tooltip when it is not, and a spinner while
-a check is in flight. The tooltip MUST name the cause:
+the hostname is usable, an amber cloud with a tooltip when it is usable but proxied, a red
+error icon with a tooltip when it is not, and a spinner while a check is in flight. The
+proxied tooltip, also shown as helper text, MUST say the name is proxied through Cloudflare,
+so Freepod can't confirm it reaches `<cname-target>`, and to set SSL/TLS to Full (strict) and
+leave Always Use HTTPS off. A proxied hostname counts as valid for the form. The error
+tooltip MUST name the cause:
 
 - `"invalid"` → "Invalid hostname format"
 - `"reserved"` → "Hostname is reserved"
@@ -123,6 +127,8 @@ a check is in flight. The tooltip MUST name the cause:
   domain, A/AAAA records with the same addresses as <cname-target>", where
   `<cname-target>` comes from `GET /api/cname-target`, falling back to `freepod.app` when
   empty or unavailable
+- `"ownership_unverified"` → "Proxied through Cloudflare: add a TXT record <name> with the
+  value <value> to show you own the domain", from the response's `ownership_record`
 
 No message for `nested_subdomain` may remain: the reason is retired.
 
@@ -141,6 +147,14 @@ No message for `nested_subdomain` may remain: the reason is retired.
 #### Scenario: Not-resolving hostname shows DNS instruction in tooltip
 - **WHEN** the API returns `{"fqdn": "myapp.example.com", "usable": false, "reason": "not_resolving"}` and `GET /api/cname-target` returned `"dev.freepod.app"`
 - **THEN** a red Error icon is displayed with tooltip text "Create a CNAME record pointing to dev.freepod.app, or for a root domain, A/AAAA records with the same addresses as dev.freepod.app"
+
+#### Scenario: Proxied hostname shows an amber cloud
+- **WHEN** the API returns `{"fqdn": "photos.example.com", "usable": true, "reason": null, "proxy": "cloudflare", ...}` and `GET /api/cname-target` returned `"dev.freepod.app"`
+- **THEN** an amber cloud icon is displayed instead of the green check, with helper text "Proxied through Cloudflare, so Freepod can't confirm it reaches dev.freepod.app. Set SSL/TLS to Full (strict) and leave Always Use HTTPS off", and the field reports itself valid
+
+#### Scenario: Missing ownership record names the record
+- **WHEN** the API returns `usable` false, `reason` `"ownership_unverified"` and `ownership_record` `{"name": "_freepod.photos.example.com", "value": "alice.freepod.app"}`
+- **THEN** a red Error icon is displayed with tooltip text "Proxied through Cloudflare: add a TXT record _freepod.photos.example.com with the value alice.freepod.app to show you own the domain"
 
 #### Scenario: A retired reason is gone
 - **WHEN** the field's reason messages are examined

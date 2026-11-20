@@ -56,8 +56,9 @@ class UpstreamException(CodedException):
 
 
 class HostnameException(CaelusException):
-    def __init__(self, reason: str):
+    def __init__(self, reason: str, *, proxy: str | None = None):
         self.reason = reason
+        self.proxy = proxy
         super().__init__(reason)
 
 

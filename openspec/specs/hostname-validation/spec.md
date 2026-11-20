@@ -10,11 +10,15 @@ hangs off that.
 ## Requirements
 
 ### Requirement: Hostname validation service exposes a single public function
-The system MUST provide a hostname validation function `require_valid_hostname_for_deployment(session, fqdn, *, handle)` in `api/app/services/hostnames.py` that validates whether a given hostname can be used for a deployment owned by an account holding `handle` (or none). The function MUST lowercase the value and complete a bare label (see *A bare application label is completed beneath the owner's handle*) before performing any checks. The function MUST return the completed, lowercased FQDN on success or raise a `HostnameException` with a `reason` attribute on failure.
+The system MUST provide a hostname validation function `check_hostname_for_deployment(session, fqdn, *, handle)` in `api/app/services/hostnames.py` that validates whether a given hostname can be used for a deployment owned by an account holding `handle` (or none). The function MUST lowercase the value and complete a bare label (see *A bare application label is completed beneath the owner's handle*) before performing any checks. The function MUST return a verdict carrying the completed, lowercased FQDN and the proxy the name is reached through (`cloudflare`, or none) on success, or raise a `HostnameException` with a `reason` attribute on failure. `require_valid_hostname_for_deployment` MUST apply the same checks and return only the FQDN.
 
 #### Scenario: Valid hostname passes all checks
 - **WHEN** `require_valid_hostname_for_deployment` is called with a well-formed custom FQDN that is not under a platform domain, not in use by any active deployment, and points at the platform in DNS (a CNAME to the CNAME target, or A/AAAA records on its addresses)
 - **THEN** the function returns that FQDN
+
+#### Scenario: The verdict names the proxy
+- **WHEN** `check_hostname_for_deployment` accepts a custom FQDN proxied through Cloudflare
+- **THEN** the verdict carries the FQDN and the proxy `cloudflare`; for any other accepted name the proxy is none
 
 #### Scenario: Mixed-case hostname is normalized before checks
 - **WHEN** `require_valid_hostname_for_deployment` is called with `"Foo.Dev.Deprutser.Be"`
@@ -47,15 +51,15 @@ The system MUST provide a hostname validation function `require_valid_hostname_f
 ### Requirement: DNS check validates hostname points at the platform
 The **CNAME target** is the tenant domain, or `settings.domain` where no tenant domain is configured. It is what custom domains are told to point at.
 
-The DNS check MUST accept a custom hostname that reaches the platform in either of two ways: a CNAME record whose target is the CNAME target, or — the only form a domain apex can take, and what CNAME flattening, ALIAS and ANAME records answer with — A/AAAA records on the platform's own addresses. It MUST use the `dnspython` library.
+The DNS check MUST accept a custom hostname that reaches the platform in either of two ways: a CNAME record whose target is the CNAME target, or — the only form a domain apex can take, and what CNAME flattening, ALIAS and ANAME records answer with — A/AAAA records on the platform's own addresses. It MUST also accept, as **proxied through Cloudflare**, a hostname whose A/AAAA records are all Cloudflare's and that carries an ownership record (see *A proxied hostname is accepted, unverified, with an ownership record*). It MUST use the `dnspython` library.
 
 To avoid being misled by a recursive resolver's negative cache (a freshly created record would otherwise be masked by a previously cached "no record" answer until its TTL expires), every lookup MUST query the queried name's zone's authoritative nameservers directly when they can be determined, and MAY fall back to the default system resolver only when those nameservers cannot be determined or reached. A negative answer (NXDOMAIN or no records of the type) from an authoritative nameserver is final and MUST NOT be retried through the system resolver.
 
 The check MUST first query the FQDN's CNAME record. When one exists, its target (trailing dot stripped, lowercased) MUST equal the CNAME target exactly, and the FQDN's addresses MUST NOT be consulted: a CNAME elsewhere is refused even when the name it leads to shares the platform's addresses.
 
-When the FQDN has no CNAME, the check MUST collect its A and AAAA records and the platform's addresses, which are the A and AAAA records the CNAME target itself resolves to at check time, following any CNAME chain. The platform's addresses MUST NOT be hardcoded, and MUST be read from the CNAME target's authoritative nameservers by the same rule, so the cluster's own resolver cannot substitute a different answer. Addresses MUST be compared as IP addresses, not as text. The check MUST pass only when the FQDN has at least one A or AAAA record and **every** one of them is among the platform's addresses. One foreign address refuses the hostname, because the clients — and the certificate authority's HTTP-01 validation — that reach it would not reach the platform. A hostname MAY carry only A records or only AAAA records, and need not carry every address family the platform does.
+When the FQDN has no CNAME, the check MUST collect its A and AAAA records and the platform's addresses, which are the A and AAAA records the CNAME target itself resolves to at check time, following any CNAME chain. The platform's addresses MUST NOT be hardcoded, and MUST be read from the CNAME target's authoritative nameservers by the same rule, so the cluster's own resolver cannot substitute a different answer. Addresses MUST be compared as IP addresses, not as text. The check MUST pass directly only when the FQDN has at least one A or AAAA record and **every** one of them is among the platform's addresses. Otherwise, when every one of them is among Cloudflare's addresses, the hostname is proxied and the ownership rule decides. Any other set of addresses — one foreign address, or Cloudflare's beside the platform's — refuses the hostname, because the clients — and the certificate authority's HTTP-01 validation — that reach it would not reach the platform. A hostname MAY carry only A records or only AAAA records, and need not carry every address family the platform does.
 
-The check MUST be skipped when `settings.domain` is an empty string, or when the FQDN is under the tenant domain (the platform serves those names from its own static record). Any failure — a CNAME elsewhere, no records, a foreign address, NXDOMAIN, the platform's own addresses being unresolvable, or a lookup that no server answers — MUST raise `HostnameException(reason="not_resolving")`.
+The check MUST be skipped when `settings.domain` is an empty string, or when the FQDN is under the tenant domain (the platform serves those names from its own static record). Any failure — a CNAME elsewhere, no records, a foreign address, NXDOMAIN, the platform's own addresses being unresolvable, or a lookup that no server answers — MUST raise `HostnameException(reason="not_resolving")`, except a proxied hostname's missing ownership record, which raises `ownership_unverified`.
 
 #### Scenario: Freshly created record is picked up without waiting for cache expiry
 - **WHEN** an earlier check found no record (a recursive resolver would cache that negative answer), the user then creates the correct CNAME or A/AAAA records, and the check runs again
@@ -105,8 +109,8 @@ The check MUST be skipped when `settings.domain` is an empty string, or when the
 - **WHEN** the FQDN's A/AAAA records include the platform's address and also any address that is not the platform's — including an AAAA record when the platform has none
 - **THEN** the function raises `HostnameException(reason="not_resolving")`
 
-#### Scenario: A proxied record
-- **WHEN** the FQDN sits behind a DNS provider's proxy, so its authoritative A/AAAA records are the proxy's addresses rather than the platform's
+#### Scenario: A record proxied by anyone but Cloudflare
+- **WHEN** the FQDN sits behind another DNS provider's proxy, so its authoritative A/AAAA records are that proxy's addresses rather than the platform's or Cloudflare's
 - **THEN** the function raises `HostnameException(reason="not_resolving")`
 
 #### Scenario: FQDN has no records
@@ -133,6 +137,65 @@ The check MUST be skipped when `settings.domain` is an empty string, or when the
 - **WHEN** the FQDN is under the tenant domain (e.g. `"photos-alice.freepod.app"` with tenant domain `"freepod.app"`)
 - **THEN** the DNS check is skipped and the hostname passes that check
 
+### Requirement: A proxied hostname is accepted, unverified, with an ownership record
+
+Cloudflare's proxy answers a proxied record with its own addresses, so DNS can neither show
+that the name reaches the platform nor that the person claiming it controls it. **Cloudflare's
+addresses** are the IPv4 and IPv6 ranges it publishes at `https://www.cloudflare.com/ips/`,
+held in the service; no other proxy is recognized.
+
+When a custom FQDN has no CNAME and every one of its A/AAAA records is among Cloudflare's
+addresses (and not all among the platform's), the check MUST require its **ownership
+record**: a TXT record at `_freepod.<fqdn>` whose value is `<handle>.<CNAME target>`, with
+the owner's handle (for example `alice.freepod.app`, or `alice.dev.freepod.app` where the
+CNAME target is `dev.freepod.app`). The record MUST be read like every other lookup, from the
+FQDN's authoritative nameservers. One TXT record at that name whose text — its strings
+concatenated, surrounding whitespace and a trailing dot removed — equals the value
+case-insensitively MUST satisfy it; other TXT records beside it are ignored. With it, the
+hostname is accepted as proxied through `cloudflare`. Without it, or for an owner holding no
+handle, the check MUST raise `HostnameException(reason="ownership_unverified")` carrying the
+proxy `cloudflare`.
+
+An accepted proxied hostname is **unverified**: where Cloudflare forwards it cannot be seen,
+and the platform does not try. The ownership record is checked wherever the DNS check runs,
+so removing it refuses the hostname's next release.
+
+#### Scenario: Proxied and owned
+- **WHEN** `photos.example.com` has only A/AAAA records in Cloudflare's ranges, the owner holds `alice`, the CNAME target is `freepod.app`, and `_freepod.photos.example.com` has a TXT record `alice.freepod.app`
+- **THEN** the DNS check passes and reports the proxy `cloudflare`
+
+#### Scenario: Proxied without the ownership record
+- **WHEN** a proxied FQDN has no TXT record at `_freepod.<fqdn>`, or none holding the owner's value
+- **THEN** the function raises `HostnameException(reason="ownership_unverified")`
+
+#### Scenario: Another account's ownership record
+- **WHEN** the ownership record holds `bob.freepod.app` and the owner holds `alice`
+- **THEN** the function raises `HostnameException(reason="ownership_unverified")`
+
+#### Scenario: The other environment's ownership record
+- **WHEN** the CNAME target is `dev.freepod.app` and the ownership record holds `alice.freepod.app`
+- **THEN** the function raises `HostnameException(reason="ownership_unverified")`
+
+#### Scenario: The record is matched loosely
+- **WHEN** the ownership record's text is `Alice.Freepod.App.`, or is split into the strings `alice.` and `freepod.app`, or sits beside other TXT records at that name
+- **THEN** it satisfies the check
+
+#### Scenario: An owner without a handle
+- **WHEN** a proxied FQDN is checked for an owner holding no handle
+- **THEN** the function raises `HostnameException(reason="ownership_unverified")`
+
+#### Scenario: Cloudflare beside other addresses
+- **WHEN** the FQDN's records include a Cloudflare address and any address outside Cloudflare's ranges, including the platform's
+- **THEN** the function raises `HostnameException(reason="not_resolving")` whatever TXT records exist
+
+#### Scenario: A CNAME elsewhere is not rescued
+- **WHEN** the FQDN has a CNAME to a name other than the CNAME target, such as `photos.example.com.cdn.cloudflare.net`, and an ownership record
+- **THEN** the function raises `HostnameException(reason="not_resolving")`
+
+#### Scenario: Direct records need no ownership record
+- **WHEN** the FQDN's records point at the platform directly, by CNAME or by the platform's addresses
+- **THEN** no TXT record is looked up, and the verdict carries no proxy
+
 ### Requirement: Derived hostnames are normalized to lowercase before storage
 The `_derive_hostname()` function in `api/app/services/deployments.py` MUST return hostnames in lowercase form. This ensures the `DeploymentORM.hostname` column always stores the canonical lowercase representation.
 
@@ -149,7 +212,8 @@ The `_derive_hostname()` function in `api/app/services/deployments.py` MUST retu
 The hostname validation MUST execute checks in the following order and MUST short-circuit
 on the first failure: bare-label completion, format, then — under the tenant domain — the
 tenant pattern, ownership, the preview reservation and availability; otherwise the
-platform-domain refusal, availability, and DNS resolution.
+platform-domain refusal, availability, and DNS resolution (including a proxied hostname's
+ownership record).
 
 #### Scenario: A platform-domain name skips availability and DNS checks
 - **WHEN** a well-formed FQDN outside the tenant domain is under a platform domain
@@ -168,7 +232,7 @@ platform-domain refusal, availability, and DNS resolution.
 - **THEN** the function raises `HostnameException(reason="claimed")` without querying the database
 
 ### Requirement: Hostname refusals carry a reason attribute
-The `HostnameException` class in `api/app/services/errors.py` MUST have a `reason` attribute of type `str`. Valid reason values MUST be: `"invalid"`, `"reserved"`, `"in_use"`, `"claimed"`, `"not_resolving"`.
+The `HostnameException` class in `api/app/services/errors.py` MUST have a `reason` attribute of type `str` and a `proxy` attribute, `"cloudflare"` for a refused proxied hostname and `None` otherwise. Valid reason values MUST be: `"invalid"`, `"reserved"`, `"in_use"`, `"claimed"`, `"not_resolving"`, `"ownership_unverified"`.
 
 #### Scenario: Exception reason is accessible
 - **WHEN** a `HostnameException` is raised with `reason="in_use"`

@@ -19,6 +19,8 @@ The record depends on the hostname:
 | A name within your domain, such as `photos.example.com` | `CNAME` to `freepod.app` |
 | The domain itself, such as `example.com` | `ALIAS`, `ANAME` or flattened `CNAME` to `freepod.app`, if your provider offers one |
 
+To route the app's traffic through Cloudflare's proxy, also create a `TXT` record; see [Through Cloudflare's proxy](#through-cloudflares-proxy).
+
 ### A name within your domain
 
 Create a `CNAME` record:
@@ -36,7 +38,7 @@ Create a `CNAME` record:
 1. In the Cloudflare dashboard, select the domain and open **DNS → Records**.
 2. Select **Add record**.
 3. **Type**: `CNAME`. **Name**: `photos`. **Target**: `freepod.app`.
-4. Set **Proxy status** to **DNS only** (grey cloud). Freepod cannot use a proxied record.
+4. Set **Proxy status** to **DNS only** (grey cloud). For **Proxied** (orange cloud), see [Through Cloudflare's proxy](#through-cloudflares-proxy).
 5. Select **Save**.
 
 </TabItem>
@@ -88,7 +90,7 @@ Cloudflare flattens a `CNAME` record on the domain itself automatically.
 1. In the Cloudflare dashboard, select the domain and open **DNS → Records**.
 2. Select **Add record**.
 3. **Type**: `CNAME`. **Name**: `@`. **Target**: `freepod.app`.
-4. Set **Proxy status** to **DNS only** (grey cloud).
+4. Set **Proxy status** to **DNS only** (grey cloud). For **Proxied** (orange cloud), see [Through Cloudflare's proxy](#through-cloudflares-proxy).
 5. Select **Save**.
 
 </TabItem>
@@ -112,6 +114,24 @@ Cloudflare flattens a `CNAME` record on the domain itself automatically.
 
 Remove any `A` and `AAAA` records for the domain itself that do not come from the `ALIAS` or flattened record.
 
+### Through Cloudflare's proxy
+
+A record with **Proxy status** set to **Proxied** sends the app's traffic through Cloudflare, and resolves to Cloudflare's addresses instead of Freepod's. Freepod then cannot see the record, so a `TXT` record shows that the domain is yours. For the account with the handle `alice`:
+
+| Hostname | `TXT` name | `TXT` content |
+| --- | --- | --- |
+| `photos.example.com` | `_freepod.photos` | `alice.freepod.app` |
+| `example.com` | `_freepod` | `alice.freepod.app` |
+
+Use your own handle in the content.
+
+1. Create the `CNAME` record for the hostname as above, with **Proxy status** set to **Proxied** (orange cloud).
+2. Select **Add record**. **Type**: `TXT`. **Name** and **Content** as in the table. Select **Save**.
+3. Open **SSL/TLS → Overview** and set the encryption mode to **Full (strict)**. With **Flexible**, the app is unreachable: requests loop between Cloudflare and Freepod.
+4. Open **SSL/TLS → Edge Certificates** and leave **Always Use HTTPS** off. Freepod redirects HTTP to HTTPS itself, and obtains the app's certificate over plain HTTP.
+
+When the hostname is entered, Freepod names the `TXT` record it expects if it is missing, and marks the hostname as proxied once it is in place. Freepod cannot check where Cloudflare forwards the hostname: if the app does not load, check the `CNAME` record's target and the encryption mode.
+
 ## 2. Use the hostname
 
 1. When launching the app, or with **Settings** on an existing app, select **Custom domain** under **Hostname** and enter the full hostname, such as `photos.example.com` or `example.com`.
@@ -119,9 +139,9 @@ Remove any `A` and `AAAA` records for the domain itself that do not come from th
 
 Freepod checks the record with your domain's own DNS servers, so a new record is seen immediately, and refuses the hostname if the record is missing or points elsewhere. Once accepted, Freepod obtains an HTTPS certificate from Let's Encrypt and renews it automatically.
 
-Keep the record in place: updates to the app and certificate renewal depend on it.
+Keep the record in place: updates to the app and certificate renewal depend on it. For a proxied hostname, keep the `TXT` record too.
 
 ## Requirements
 
-- If your DNS provider can proxy traffic, such as Cloudflare's proxied records, turn proxying off for the record. A proxied record points to the provider's addresses instead of Freepod's.
+- Proxied records work only at Cloudflare, with a `TXT` record; see [Through Cloudflare's proxy](#through-cloudflares-proxy). At other DNS providers that proxy traffic, turn proxying off for the record: a proxied record points to the provider's addresses instead of Freepod's.
 - If your domain has `CAA` records, they must allow `letsencrypt.org`.
