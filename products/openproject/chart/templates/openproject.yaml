@@ -166,7 +166,9 @@ spec:
             failureThreshold: 3
           livenessProbe:
             httpGet: { path: /status/connected, port: worker-probe }
-            initialDelaySeconds: 60
+            # Upstream's liveness default: good_job needs this long to start
+            # before a failing probe would restart it.
+            initialDelaySeconds: 120
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
