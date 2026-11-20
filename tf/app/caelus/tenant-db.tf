@@ -158,12 +158,12 @@ resource "kubernetes_deployment" "tenant_db" {
           image = local.tenant_db_image
           name  = "postgres"
 
-          # Design D13, worst case ~1.3 GB against the 2Gi limit below. The
+          # Design D13, worst case ~1.55 GB against the 2Gi limit below. The
           # ceiling is deliberately well under the limit: under-dimensioning CPU
           # is slow, under-dimensioning memory has the OOM killer take the
           # database out.
           args = [
-            "-c", "shared_buffers=256MB",
+            "-c", "shared_buffers=512MB",
             "-c", "max_connections=100",
             "-c", "superuser_reserved_connections=5",
             # PG16+. Keeps a slot for pgbouncer_auth (which holds
@@ -207,7 +207,7 @@ resource "kubernetes_deployment" "tenant_db" {
             }
             limits = {
               memory = "2Gi"
-              cpu    = "400m"
+              cpu    = "1500m"
             }
           }
 
