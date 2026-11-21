@@ -266,18 +266,18 @@ describe('HostnameField', () => {
 
       // Custom-mode helper text reflects the environment-specific target
       expect(
-        screen.getByText(
-          'Point your domain at Freepod: a CNAME record → dev.freepod.app, or for a root domain (example.com), A/AAAA records with the same addresses as dev.freepod.app',
-        ),
+        screen.getByText(/^CNAME → dev\.freepod\.app, or A\/AAAA records matching it for a root domain/),
       ).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Setup guide' })).toHaveAttribute(
+        'href',
+        '/docs/apps/managing/custom-domain',
+      )
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'app.example.com' } })
 
       await waitFor(() => {
         expect(
-          screen.getByText(
-            'Create a CNAME record pointing to dev.freepod.app, or for a root domain, A/AAAA records with the same addresses as dev.freepod.app',
-          ),
+          screen.getByText('Not pointing at dev.freepod.app yet'),
         ).toBeInTheDocument()
       })
     })
@@ -292,9 +292,7 @@ describe('HostnameField', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(
-            'Create a CNAME record pointing to freepod.app, or for a root domain, A/AAAA records with the same addresses as freepod.app',
-          ),
+          screen.getByText('Not pointing at freepod.app yet'),
         ).toBeInTheDocument()
       })
     })
@@ -326,9 +324,7 @@ describe('HostnameField', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(
-            "Proxied through Cloudflare, so Freepod can't confirm it reaches dev.freepod.app. Set SSL/TLS to Full (strict) and leave Always Use HTTPS off",
-          ),
+          screen.getByText('Cloudflare proxy, unverified: use SSL/TLS Full (strict), Always Use HTTPS off'),
         ).toBeInTheDocument()
       })
       expect(screen.getByTestId('CloudDoneIcon')).toBeInTheDocument()
@@ -353,11 +349,13 @@ describe('HostnameField', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(
-            'Proxied through Cloudflare: add a TXT record _freepod.photos.example.com with the value alice.freepod.app to show you own the domain',
-          ),
+          screen.getByText('Cloudflare proxy: add TXT _freepod.photos.example.com = alice.freepod.app'),
         ).toBeInTheDocument()
       })
+      expect(screen.getByRole('link', { name: 'Setup guide' })).toHaveAttribute(
+        'href',
+        '/docs/apps/managing/custom-domain#through-cloudflares-proxy',
+      )
       expect(onValidationChange).toHaveBeenLastCalledWith(false)
     })
 
@@ -378,7 +376,7 @@ describe('HostnameField', () => {
       await waitFor(() => {
         expect(screen.getByTestId('CheckCircleIcon')).toBeInTheDocument()
       })
-      expect(screen.queryByText(/Proxied through Cloudflare/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Cloudflare proxy/)).not.toBeInTheDocument()
     })
   })
 

@@ -23,11 +23,11 @@ The component MUST call `GET /api/hostnames/{fqdn}` with approximately 400ms deb
 - **THEN** no API call is made and no status icon is shown
 
 ### Requirement: HostnameField shows DNS setup instructions in custom domain mode
-When the component is in custom FQDN mode, it MUST display static helper text below the input instructing the user to create a CNAME record pointing their domain to the platform's domain, or for a root domain, A/AAAA records with that domain's addresses (the domain is fetched from `GET /api/cname-target`, falling back to `freepod.eu` when empty/unavailable). This text MUST be visible as soon as custom mode is active, regardless of validation state.
+When the component is in custom FQDN mode, it MUST display static helper text below the input naming a CNAME record to the platform's domain, or for a root domain, A/AAAA records with that domain's addresses (the domain is fetched from `GET /api/cname-target`, falling back to `freepod.app` when empty/unavailable), followed by a "Setup guide" link to the custom-domain docs page that opens in a new tab. While the hostname is proxied, or refused as `ownership_unverified`, the link MUST go to that page's Cloudflare section. This text MUST be visible as soon as custom mode is active, regardless of validation state.
 
 #### Scenario: Helper text visible immediately on switching to custom mode
 - **WHEN** the user switches to custom domain mode and `GET /api/cname-target` returned `"dev.freepod.eu"`
-- **THEN** helper text "Point your domain at Freepod: a CNAME record → dev.freepod.eu, or for a root domain (example.com), A/AAAA records with the same addresses as dev.freepod.eu" is visible below the input field
+- **THEN** helper text "CNAME → dev.freepod.eu, or A/AAAA records matching it for a root domain · Setup guide" is visible below the input field, with "Setup guide" linking to `/docs/apps/managing/custom-domain`
 
 #### Scenario: Helper text visible while typing in custom mode
 - **WHEN** the user is typing a custom FQDN
@@ -114,21 +114,19 @@ never replaced.
 The component MUST display a status indicator on the right of the input: a green check when
 the hostname is usable, an amber cloud with a tooltip when it is usable but proxied, a red
 error icon with a tooltip when it is not, and a spinner while a check is in flight. The
-proxied tooltip, also shown as helper text, MUST say the name is proxied through Cloudflare,
-so Freepod can't confirm it reaches `<cname-target>`, and to set SSL/TLS to Full (strict) and
-leave Always Use HTTPS off. A proxied hostname counts as valid for the form. The error
+proxied tooltip, also shown as helper text, MUST read "Cloudflare proxy, unverified: use
+SSL/TLS Full (strict), Always Use HTTPS off". A proxied hostname counts as valid for the form. The error
 tooltip MUST name the cause:
 
 - `"invalid"` → "Invalid hostname format"
 - `"reserved"` → "Hostname is reserved"
 - `"in_use"` → "Already in use"
 - `"claimed"` → the address belongs to another account
-- `"not_resolving"` → "Create a CNAME record pointing to <cname-target>, or for a root
-  domain, A/AAAA records with the same addresses as <cname-target>", where
+- `"not_resolving"` → "Not pointing at <cname-target> yet", where
   `<cname-target>` comes from `GET /api/cname-target`, falling back to `freepod.app` when
   empty or unavailable
-- `"ownership_unverified"` → "Proxied through Cloudflare: add a TXT record <name> with the
-  value <value> to show you own the domain", from the response's `ownership_record`
+- `"ownership_unverified"` → "Cloudflare proxy: add TXT <name> = <value>", from the
+  response's `ownership_record`
 
 No message for `nested_subdomain` may remain: the reason is retired.
 
@@ -146,15 +144,15 @@ No message for `nested_subdomain` may remain: the reason is retired.
 
 #### Scenario: Not-resolving hostname shows DNS instruction in tooltip
 - **WHEN** the API returns `{"fqdn": "myapp.example.com", "usable": false, "reason": "not_resolving"}` and `GET /api/cname-target` returned `"dev.freepod.app"`
-- **THEN** a red Error icon is displayed with tooltip text "Create a CNAME record pointing to dev.freepod.app, or for a root domain, A/AAAA records with the same addresses as dev.freepod.app"
+- **THEN** a red Error icon is displayed with tooltip text "Not pointing at dev.freepod.app yet"
 
 #### Scenario: Proxied hostname shows an amber cloud
 - **WHEN** the API returns `{"fqdn": "photos.example.com", "usable": true, "reason": null, "proxy": "cloudflare", ...}` and `GET /api/cname-target` returned `"dev.freepod.app"`
-- **THEN** an amber cloud icon is displayed instead of the green check, with helper text "Proxied through Cloudflare, so Freepod can't confirm it reaches dev.freepod.app. Set SSL/TLS to Full (strict) and leave Always Use HTTPS off", and the field reports itself valid
+- **THEN** an amber cloud icon is displayed instead of the green check, with helper text "Cloudflare proxy, unverified: use SSL/TLS Full (strict), Always Use HTTPS off", and the field reports itself valid
 
 #### Scenario: Missing ownership record names the record
 - **WHEN** the API returns `usable` false, `reason` `"ownership_unverified"` and `ownership_record` `{"name": "_freepod.photos.example.com", "value": "alice.freepod.app"}`
-- **THEN** a red Error icon is displayed with tooltip text "Proxied through Cloudflare: add a TXT record _freepod.photos.example.com with the value alice.freepod.app to show you own the domain"
+- **THEN** a red Error icon is displayed with tooltip text "Cloudflare proxy: add TXT _freepod.photos.example.com = alice.freepod.app", and the setup-guide link goes to the Cloudflare section
 
 #### Scenario: A retired reason is gone
 - **WHEN** the field's reason messages are examined

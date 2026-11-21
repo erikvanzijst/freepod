@@ -5,6 +5,7 @@ import {
   FormControl,
   FormHelperText,
   InputAdornment,
+  Link,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -31,6 +32,9 @@ const REASON_LABELS: Record<string, string> = {
 
 // Shown when the platform's CNAME target is unknown (endpoint unconfigured).
 const DEFAULT_CNAME_TARGET = 'freepod.app'
+
+const SETUP_GUIDE = '/docs/apps/managing/custom-domain'
+const CLOUDFLARE_GUIDE = `${SETUP_GUIDE}#through-cloudflares-proxy`
 
 type ValidationState =
   | { status: 'idle' }
@@ -203,15 +207,17 @@ export function HostnameField({ value, onChange, onValidationChange, suffix, cna
   // so the not_resolving message is built from the backend-provided value.
   const cnameDomain = cnameTarget || DEFAULT_CNAME_TARGET
   const reasonLabel = (reason: string, record?: OwnershipRecord | null) => {
-    if (reason === 'not_resolving')
-      return `Create a CNAME record pointing to ${cnameDomain}, or for a root domain, A/AAAA records with the same addresses as ${cnameDomain}`
+    if (reason === 'not_resolving') return `Not pointing at ${cnameDomain} yet`
     if (reason === 'ownership_unverified')
       return record
-        ? `Proxied through Cloudflare: add a TXT record ${record.name} with the value ${record.value} to show you own the domain`
-        : 'Proxied through Cloudflare: a TXT record must show you own the domain'
+        ? `Cloudflare proxy: add TXT ${record.name} = ${record.value}`
+        : 'Cloudflare proxy: a TXT record must show you own the domain'
     return REASON_LABELS[reason] ?? reason
   }
-  const proxiedLabel = `Proxied through Cloudflare, so Freepod can't confirm it reaches ${cnameDomain}. Set SSL/TLS to Full (strict) and leave Always Use HTTPS off`
+  const proxiedLabel = 'Cloudflare proxy, unverified: use SSL/TLS Full (strict), Always Use HTTPS off'
+  const proxied =
+    (validation.status === 'valid' && !!validation.proxy) ||
+    (validation.status === 'error' && validation.reason === 'ownership_unverified')
 
   const statusIcon = (() => {
     switch (validation.status) {
@@ -305,8 +311,10 @@ export function HostnameField({ value, onChange, onValidationChange, suffix, cna
               fullWidth
             />
             <Typography variant="caption" color="text.secondary">
-              Point your domain at Freepod: a CNAME record → {cnameDomain}, or for a root domain
-              (example.com), A/AAAA records with the same addresses as {cnameDomain}
+              CNAME → {cnameDomain}, or A/AAAA records matching it for a root domain ·{' '}
+              <Link href={proxied ? CLOUDFLARE_GUIDE : SETUP_GUIDE} target="_blank" rel="noopener">
+                Setup guide
+              </Link>
             </Typography>
           </>
         )}
