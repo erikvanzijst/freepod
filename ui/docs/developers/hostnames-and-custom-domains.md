@@ -45,10 +45,11 @@ Freepod checks the record with the domain's authoritative nameservers at every r
 
 - A `CNAME` must point to exactly `freepod.app`.
 - Without a `CNAME`, as with `ALIAS`, `ANAME` and flattened records, every `A` and `AAAA` address of the hostname must be one of `freepod.app`'s current addresses. Do not create `A` or `AAAA` records with Freepod's addresses by hand: they can change.
+- A record proxied through Cloudflare resolves to Cloudflare's addresses instead. It is accepted when a `TXT` record at `_freepod.<hostname>`, such as `_freepod.app.example.com`, holds your handle followed by `.freepod.app`, such as `alice.freepod.app`. Freepod cannot check where Cloudflare forwards it, and `freepod init` says so when it accepts the hostname. Set Cloudflare's encryption mode to **Full (strict)** and leave **Always Use HTTPS** off; see [Through Cloudflare's proxy](/apps/managing/custom-domain#through-cloudflares-proxy).
 
 It obtains a TLS certificate for the hostname from Let's Encrypt and renews it automatically. Keep the record in place: releases and certificate renewal depend on it.
 
-- Turn off proxying for the record at providers that offer it, such as Cloudflare. A proxied record resolves to the provider's addresses.
+- Turn off proxying for the record at providers other than Cloudflare that offer it. A proxied record resolves to the provider's addresses.
 - If the domain has `CAA` records, they must allow `letsencrypt.org`.
 
 ## Changing the hostname

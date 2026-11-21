@@ -3,6 +3,9 @@ from unittest.mock import Mock, patch
 from uuid import UUID
 
 import dns.exception
+import dns.rdata
+import dns.rdataclass
+import dns.rdatatype
 import dns.resolver
 import pytest
 
@@ -12,6 +15,7 @@ from app.services.hostnames import (
     _check_format,
     _check_available,
     _check_dns_target,
+    check_hostname_for_deployment,
     require_valid_hostname_for_deployment,
 )
 from app.db import get_session
@@ -391,10 +395,20 @@ def _address_answer(*addresses: str):
     return [Mock(address=a) for a in addresses]
 
 
+def _txt_answer(*texts: str):
+    """TXT rdata parsed from zone-file text, so `'"a" "b"'` is one record of
+    two strings."""
+    return [
+        dns.rdata.from_text(dns.rdataclass.IN, dns.rdatatype.TXT, text if text.startswith('"') else f'"{text}"')
+        for text in texts
+    ]
+
+
 def _fake_dns(records: dict[tuple[str, str], list[str]]):
     """A ``resolve`` side effect answering from *records*, keyed by (name,
-    type); A/AAAA values are addresses, a CNAME value is its target. Anything
-    absent is a definitive NoAnswer, as an authoritative server would say."""
+    type); A/AAAA values are addresses, a CNAME value is its target, a TXT
+    value its text. Anything absent is a definitive NoAnswer, as an
+    authoritative server would say."""
 
     def resolve(name, rdtype):
         values = records.get((name, rdtype))
@@ -402,6 +416,8 @@ def _fake_dns(records: dict[tuple[str, str], list[str]]):
             raise dns.resolver.NoAnswer
         if rdtype == "CNAME":
             return _cname_answer(values[0])
+        if rdtype == "TXT":
+            return _txt_answer(*values)
         return _address_answer(*values)
 
     return resolve
@@ -548,6 +564,156 @@ class TestCheckAddressRecords:
         assert {c.args[0] for c in platform.resolve.call_args_list} == {"freepod.eu"}
 
 
+CLOUDFLARE_V4 = "104.21.48.1"
+CLOUDFLARE_V6 = "2606:4700:3030::6815:3001"
+OWNERSHIP = ("_freepod.photos.example.com", "TXT")
+
+
+class TestCloudflareProxied:
+    """A proxied record answers with Cloudflare's addresses; it is accepted,
+    unverified, once a TXT record ties it to the owner's handle."""
+
+    def _check(self, records: dict, *, handle="alice", fqdn="photos.example.com", **settings):
+        platform = {("freepod.app", "A"): [PLATFORM_V4]}
+        with patch(
+            "app.services.hostnames.dns.resolver.resolve",
+            side_effect=_fake_dns({**platform, **records}),
+        ):
+            return _check_dns_target(
+                fqdn,
+                _settings(**{"domain": "freepod.eu", "tenant_domain": "freepod.app", **settings}),
+                handle=handle,
+            )
+
+    def _refusal(self, records: dict, **kwargs) -> HostnameException:
+        with pytest.raises(HostnameException) as exc_info:
+            self._check(records, **kwargs)
+        return exc_info.value
+
+    def test_proxied_with_ownership_record_is_accepted_as_cloudflare(self, no_authoritative):
+        proxy = self._check({
+            ("photos.example.com", "A"): [CLOUDFLARE_V4],
+            ("photos.example.com", "AAAA"): [CLOUDFLARE_V6],
+            OWNERSHIP: ["alice.freepod.app"],
+        })
+        assert proxy == "cloudflare"
+
+    def test_direct_records_report_no_proxy(self, no_authoritative):
+        assert self._check({("photos.example.com", "A"): [PLATFORM_V4]}) is None
+
+    def test_without_ownership_record_is_unverified(self, no_authoritative):
+        exc = self._refusal({("photos.example.com", "A"): [CLOUDFLARE_V4]})
+        assert exc.reason == "ownership_unverified"
+        assert exc.proxy == "cloudflare"
+
+    def test_another_handle_in_the_record_is_unverified(self, no_authoritative):
+        exc = self._refusal({
+            ("photos.example.com", "A"): [CLOUDFLARE_V4],
+            OWNERSHIP: ["bob.freepod.app"],
+        })
+        assert exc.reason == "ownership_unverified"
+
+    def test_the_other_environments_record_is_unverified(self, no_authoritative):
+        exc = self._refusal(
+            {("photos.example.com", "A"): [CLOUDFLARE_V4], OWNERSHIP: ["alice.freepod.app"]},
+            tenant_domain="dev.freepod.app",
+        )
+        assert exc.reason == "ownership_unverified"
+
+    def test_record_names_the_environments_tenant_domain(self, no_authoritative):
+        with patch(
+            "app.services.hostnames.dns.resolver.resolve",
+            side_effect=_fake_dns({
+                ("dev.freepod.app", "A"): [PLATFORM_V4],
+                ("photos.example.com", "A"): [CLOUDFLARE_V4],
+                OWNERSHIP: ["alice.dev.freepod.app"],
+            }),
+        ):
+            assert _check_dns_target(
+                "photos.example.com",
+                _settings(domain="dev.freepod.eu", tenant_domain="dev.freepod.app"),
+                handle="alice",
+            ) == "cloudflare"
+
+    def test_record_is_matched_case_insensitively_with_a_trailing_dot(self, no_authoritative):
+        assert self._check({
+            ("photos.example.com", "A"): [CLOUDFLARE_V4],
+            OWNERSHIP: ["Alice.Freepod.App."],
+        }) == "cloudflare"
+
+    def test_one_matching_record_among_several(self, no_authoritative):
+        assert self._check({
+            ("photos.example.com", "A"): [CLOUDFLARE_V4],
+            OWNERSHIP: ["v=spf1 -all", "alice.freepod.app"],
+        }) == "cloudflare"
+
+    def test_a_record_split_into_strings_is_joined(self, no_authoritative):
+        assert self._check({
+            ("photos.example.com", "A"): [CLOUDFLARE_V4],
+            OWNERSHIP: ['"alice." "freepod.app"'],
+        }) == "cloudflare"
+
+    def test_no_handle_is_unverified(self, no_authoritative):
+        exc = self._refusal(
+            {("photos.example.com", "A"): [CLOUDFLARE_V4], OWNERSHIP: ["alice.freepod.app"]},
+            handle=None,
+        )
+        assert exc.reason == "ownership_unverified"
+
+    def test_cloudflare_beside_a_foreign_address_is_not_resolving(self, no_authoritative):
+        exc = self._refusal({
+            ("photos.example.com", "A"): [CLOUDFLARE_V4, "203.0.113.9"],
+            OWNERSHIP: ["alice.freepod.app"],
+        })
+        assert exc.reason == "not_resolving"
+        assert exc.proxy is None
+
+    def test_cloudflare_beside_the_platform_is_not_resolving(self, no_authoritative):
+        exc = self._refusal({
+            ("photos.example.com", "A"): [PLATFORM_V4],
+            ("photos.example.com", "AAAA"): [CLOUDFLARE_V6],
+            OWNERSHIP: ["alice.freepod.app"],
+        })
+        assert exc.reason == "not_resolving"
+
+    def test_direct_records_need_no_ownership_record(self, no_authoritative):
+        resolve = Mock(side_effect=_fake_dns({
+            ("freepod.app", "A"): [PLATFORM_V4],
+            ("example.com", "A"): [PLATFORM_V4],
+        }))
+        with patch("app.services.hostnames.dns.resolver.resolve", resolve):
+            _check_dns_target(
+                "example.com", _settings(domain="freepod.eu", tenant_domain="freepod.app"), handle="alice"
+            )
+        assert all(c.args[1] != "TXT" for c in resolve.call_args_list)
+
+    def test_ownership_record_read_from_the_authoritative_servers(self):
+        customer, platform = Mock(), Mock()
+        customer.resolve.side_effect = _fake_dns({
+            ("photos.example.com", "A"): [CLOUDFLARE_V4],
+            OWNERSHIP: ["alice.freepod.app"],
+        })
+        platform.resolve.side_effect = _fake_dns({("freepod.app", "A"): [PLATFORM_V4]})
+        with patch(
+            "app.services.hostnames._authoritative_resolver",
+            side_effect=lambda name: platform if name == "freepod.app" else customer,
+        ), patch("app.services.hostnames.dns.resolver.resolve") as module_resolve:
+            assert _check_dns_target(
+                "photos.example.com",
+                _settings(domain="freepod.eu", tenant_domain="freepod.app"),
+                handle="alice",
+            ) == "cloudflare"
+        module_resolve.assert_not_called()
+        assert ("_freepod.photos.example.com", "TXT") in {c.args for c in customer.resolve.call_args_list}
+
+    def test_cname_elsewhere_is_not_rescued_by_an_ownership_record(self, no_authoritative):
+        exc = self._refusal({
+            ("photos.example.com", "CNAME"): ["photos.example.com.cdn.cloudflare.net"],
+            OWNERSHIP: ["alice.freepod.app"],
+        })
+        assert exc.reason == "not_resolving"
+
+
 # ── Orchestration (short-circuit behavior) ────────────────────────────
 
 
@@ -557,6 +723,19 @@ class TestRequireValidHostname:
             db_session, "valid.example.com", handle=None, settings=_settings(),
         )
         assert result == "valid.example.com"
+
+    def test_verdict_reports_the_proxy(self, db_session):
+        with patch("app.services.hostnames._check_dns_target", return_value="cloudflare"):
+            verdict = check_hostname_for_deployment(
+                db_session, "Photos.Example.com", handle="alice", settings=_settings(domain="freepod.eu"),
+            )
+        assert (verdict.fqdn, verdict.proxy) == ("photos.example.com", "cloudflare")
+
+    def test_tenant_hostname_has_no_proxy(self, db_session):
+        verdict = check_hostname_for_deployment(
+            db_session, "photos", handle="alice", settings=_settings(**TENANT),
+        )
+        assert (verdict.fqdn, verdict.proxy) == ("photos-alice.freepod.app", None)
 
     def test_short_circuits_on_format(self, db_session):
         """Format failure should not touch the DB or DNS."""
@@ -707,10 +886,73 @@ class TestHostnameCheckEndpoint:
         data = resp.json()
         assert data["fqdn"] == "myapp.example.com"
 
-    def test_response_has_exactly_three_fields(self, client):
+    def test_response_fields(self, client):
         resp = client.get("/api/hostnames/clean.example.com")
         assert resp.status_code == 200
-        assert set(resp.json().keys()) == {"fqdn", "usable", "reason"}
+        assert resp.json() == {
+            "fqdn": "clean.example.com",
+            "usable": True,
+            "reason": None,
+            "proxy": None,
+            "ownership_record": None,
+        }
+
+    def _proxied(self, client, monkeypatch, records: dict):
+        monkeypatch.setattr(
+            "app.services.hostnames.get_settings",
+            lambda: _settings(domain="freepod.eu", tenant_domain="freepod.app"),
+        )
+        handle = client.get("/api/me/handle").json()["handle"]
+        records = {
+            ("freepod.app", "A"): [PLATFORM_V4],
+            ("photos.example.com", "A"): [CLOUDFLARE_V4],
+            **{key: [v.format(handle=handle) for v in values] for key, values in records.items()},
+        }
+        with patch(
+            "app.services.hostnames._authoritative_resolver", return_value=None
+        ), patch(
+            "app.services.hostnames.dns.resolver.resolve", side_effect=_fake_dns(records),
+        ):
+            resp = client.get("/api/hostnames/photos.example.com")
+        assert resp.status_code == 200
+        return handle, resp.json()
+
+    def test_proxied_and_owned(self, client, monkeypatch):
+        handle, data = self._proxied(client, monkeypatch, {OWNERSHIP: ["{handle}.freepod.app"]})
+        assert data == {
+            "fqdn": "photos.example.com",
+            "usable": True,
+            "reason": None,
+            "proxy": "cloudflare",
+            "ownership_record": {
+                "name": "_freepod.photos.example.com",
+                "value": f"{handle}.freepod.app",
+            },
+        }
+
+    def test_proxied_without_ownership_record(self, client, monkeypatch):
+        handle, data = self._proxied(client, monkeypatch, {})
+        assert data["usable"] is False
+        assert data["reason"] == "ownership_unverified"
+        assert data["proxy"] == "cloudflare"
+        assert data["ownership_record"] == {
+            "name": "_freepod.photos.example.com",
+            "value": f"{handle}.freepod.app",
+        }
+
+    def test_refusal_without_a_proxy_has_no_ownership_record(self, client, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.hostnames.get_settings",
+            lambda: _settings(domain="freepod.eu"),
+        )
+        with patch(
+            "app.services.hostnames._authoritative_resolver", return_value=None
+        ), patch(
+            "app.services.hostnames.dns.resolver.resolve",
+            side_effect=dns.resolver.NXDOMAIN("nope"),
+        ):
+            data = client.get("/api/hostnames/nxdomain.example.com").json()
+        assert (data["proxy"], data["ownership_record"]) == (None, None)
 
 
 # ── CNAME target endpoint tests ───────────────────────────────────────

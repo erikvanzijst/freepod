@@ -80,19 +80,36 @@ checked as given. It MUST NOT answer questions about handles.
 - **THEN** the endpoint returns HTTP 200 with `usable` false and `reason` `reserved`
 
 #### Scenario: Custom hostname does not point at the platform domain
-- **WHEN** an authenticated client sends `GET /api/hostnames/example.com` and the FQDN has neither a CNAME record pointing to the CNAME target (see `hostname-validation`) nor A/AAAA records that are all among the CNAME target's addresses
+- **WHEN** an authenticated client sends `GET /api/hostnames/example.com` and the FQDN has neither a CNAME record pointing to the CNAME target (see `hostname-validation`), A/AAAA records that are all among the CNAME target's addresses, nor A/AAAA records that are all Cloudflare's
 - **THEN** the endpoint returns HTTP 200 with `fqdn` `example.com`, `usable` false, and `reason` `not_resolving`
 
-### Requirement: Hostname check response reports the name, usability and reason
+#### Scenario: A proxied hostname with its ownership record
+- **WHEN** the caller holds `alice`, the CNAME target is `freepod.app`, and `photos.example.com` is proxied through Cloudflare with the TXT record `_freepod.photos.example.com` holding `alice.freepod.app`
+- **THEN** the endpoint returns HTTP 200 with `usable` true, `reason` null, `proxy` `cloudflare`, and `ownership_record` `{"name": "_freepod.photos.example.com", "value": "alice.freepod.app"}`
 
-The response MUST contain exactly three fields: `fqdn` (the completed, lowercased name that
-was checked), `usable` (boolean), and `reason` (null when usable, otherwise one of
-`invalid`, `reserved`, `in_use`, `claimed`, `not_resolving`). A refusal MUST be reported in
-a 200 body, not as an error status.
+#### Scenario: A proxied hostname without its ownership record
+- **WHEN** the same hostname has no such TXT record
+- **THEN** the endpoint returns HTTP 200 with `usable` false, `reason` `ownership_unverified`, `proxy` `cloudflare`, and the same `ownership_record`
+
+### Requirement: Hostname check response reports the name, usability, reason and proxy
+
+The response MUST contain exactly five fields: `fqdn` (the completed, lowercased name that
+was checked), `usable` (boolean), `reason` (null when usable, otherwise one of
+`invalid`, `reserved`, `in_use`, `claimed`, `not_resolving`, `ownership_unverified`),
+`proxy` (`cloudflare` when the name is proxied through Cloudflare, usable or refused for its
+ownership record; null otherwise), and `ownership_record` (with `proxy`, the `name` and
+`value` of the TXT record the name needs, as `hostname-validation` defines it, null for an
+owner holding no handle; null without `proxy`). A usable name with a `proxy` is unverified:
+clients MUST present it as accepted but not confirmed to reach the platform. A refusal MUST be
+reported in a 200 body, not as an error status.
 
 #### Scenario: Response shape
 - **WHEN** the endpoint returns a response
-- **THEN** the JSON body contains only the keys `fqdn`, `usable` and `reason`
+- **THEN** the JSON body contains only the keys `fqdn`, `usable`, `reason`, `proxy` and `ownership_record`
+
+#### Scenario: A direct name has no proxy
+- **WHEN** the checked name is a tenant hostname, or a custom domain that points at the platform directly, or is refused for any reason but `ownership_unverified`
+- **THEN** `proxy` and `ownership_record` are null
 
 ### Requirement: The CNAME target is the tenant domain
 

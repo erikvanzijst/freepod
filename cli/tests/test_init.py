@@ -88,6 +88,8 @@ class Platform:
             label = path.rsplit("/", 1)[-1]
             self.checked.append(label)
             reason = self.verdicts.get(label)
+            if isinstance(reason, dict):
+                return json_response(200, {"fqdn": label, **reason})
             return json_response(200, {"fqdn": label, "usable": reason is None, "reason": reason})
         if path == "/api/users/7/deployments" and method == "GET":
             return json_response(200, self.deployments)
@@ -441,6 +443,39 @@ def test_an_unusable_hostname_option_fails_without_a_terminal(
     assert init("--name", "A", "--hostname", "admin") != EXIT_OK
 
     assert "reserved" in capsys.readouterr().err
+    assert scripted.created == []
+
+
+PROXIED = {
+    "proxy": "cloudflare",
+    "ownership_record": {"name": "_freepod.photos.example.com", "value": "erik.dev.freepod.app"},
+}
+
+
+def test_a_proxied_hostname_is_accepted_with_a_note(platform, credential, answers, capsys):
+    scripted = platform(
+        verdicts={"photos.example.com": {"usable": True, "reason": None, **PROXIED}}
+    )
+    answers()
+
+    assert init("--name", "A", "--hostname", "photos.example.com") == EXIT_OK
+
+    assert "proxied through Cloudflare" in capsys.readouterr().err
+    assert scripted.created[0]["user_values_json"]["hostname"] == "photos.example.com"
+
+
+def test_an_unverified_proxied_hostname_names_its_record(platform, credential, answers, capsys):
+    scripted = platform(
+        verdicts={
+            "photos.example.com": {"usable": False, "reason": "ownership_unverified", **PROXIED}
+        }
+    )
+    answers()
+
+    assert init("--name", "A", "--hostname", "photos.example.com") != EXIT_OK
+
+    err = capsys.readouterr().err
+    assert "_freepod.photos.example.com" in err and "erik.dev.freepod.app" in err
     assert scripted.created == []
 
 

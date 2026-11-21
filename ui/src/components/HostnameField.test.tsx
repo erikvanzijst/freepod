@@ -266,18 +266,18 @@ describe('HostnameField', () => {
 
       // Custom-mode helper text reflects the environment-specific target
       expect(
-        screen.getByText(
-          'Point your domain at Freepod: a CNAME record → dev.freepod.app, or for a root domain (example.com), A/AAAA records with the same addresses as dev.freepod.app',
-        ),
+        screen.getByText(/^CNAME → dev\.freepod\.app, or A\/AAAA records matching it for a root domain/),
       ).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Setup guide' })).toHaveAttribute(
+        'href',
+        '/docs/apps/managing/custom-domain',
+      )
 
       fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'app.example.com' } })
 
       await waitFor(() => {
         expect(
-          screen.getByText(
-            'Create a CNAME record pointing to dev.freepod.app, or for a root domain, A/AAAA records with the same addresses as dev.freepod.app',
-          ),
+          screen.getByText('Not pointing at dev.freepod.app yet'),
         ).toBeInTheDocument()
       })
     })
@@ -292,11 +292,91 @@ describe('HostnameField', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(
-            'Create a CNAME record pointing to freepod.app, or for a root domain, A/AAAA records with the same addresses as freepod.app',
-          ),
+          screen.getByText('Not pointing at freepod.app yet'),
         ).toBeInTheDocument()
       })
+    })
+  })
+
+  describe('Cloudflare proxy', () => {
+    it('accepts a proxied hostname with a warning that it is unverified', async () => {
+      const onChange = vi.fn()
+      const onValidationChange = vi.fn()
+      checkHostnameMock.mockResolvedValue({
+        fqdn: 'photos.example.com',
+        usable: true,
+        reason: null,
+        proxy: 'cloudflare',
+        ownership_record: { name: '_freepod.photos.example.com', value: 'alice.dev.freepod.app' },
+      })
+
+      render(
+        <HostnameField
+          value=""
+          onChange={onChange}
+          onValidationChange={onValidationChange}
+          suffix={null}
+          cnameTarget="dev.freepod.app"
+        />,
+      )
+
+      fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'photos.example.com' } })
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Cloudflare proxy, unverified: use SSL/TLS Full (strict), Always Use HTTPS off'),
+        ).toBeInTheDocument()
+      })
+      expect(screen.getByTestId('CloudDoneIcon')).toBeInTheDocument()
+      expect(screen.queryByTestId('CheckCircleIcon')).not.toBeInTheDocument()
+      expect(onValidationChange).toHaveBeenLastCalledWith(true)
+    })
+
+    it('names the ownership record a proxied hostname is missing', async () => {
+      const onChange = vi.fn()
+      const onValidationChange = vi.fn()
+      checkHostnameMock.mockResolvedValue({
+        fqdn: 'photos.example.com',
+        usable: false,
+        reason: 'ownership_unverified',
+        proxy: 'cloudflare',
+        ownership_record: { name: '_freepod.photos.example.com', value: 'alice.freepod.app' },
+      })
+
+      render(<HostnameField value="" onChange={onChange} onValidationChange={onValidationChange} suffix={null} />)
+
+      fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'photos.example.com' } })
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Cloudflare proxy: add TXT _freepod.photos.example.com = alice.freepod.app'),
+        ).toBeInTheDocument()
+      })
+      expect(screen.getByRole('link', { name: 'Setup guide' })).toHaveAttribute(
+        'href',
+        '/docs/apps/managing/custom-domain#through-cloudflares-proxy',
+      )
+      expect(onValidationChange).toHaveBeenLastCalledWith(false)
+    })
+
+    it('shows a direct hostname with the plain check', async () => {
+      const onChange = vi.fn()
+      checkHostnameMock.mockResolvedValue({
+        fqdn: 'photos.example.com',
+        usable: true,
+        reason: null,
+        proxy: null,
+        ownership_record: null,
+      })
+
+      render(<HostnameField value="" onChange={onChange} suffix={null} />)
+
+      fireEvent.change(screen.getByLabelText('Hostname'), { target: { value: 'photos.example.com' } })
+
+      await waitFor(() => {
+        expect(screen.getByTestId('CheckCircleIcon')).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/Cloudflare proxy/)).not.toBeInTheDocument()
     })
   })
 
