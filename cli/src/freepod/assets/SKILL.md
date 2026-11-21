@@ -118,17 +118,44 @@ from `PUBLIC`.
 
 Three settings are applied to your role and re-applied on every deploy:
 
-| Setting                               | Value | Can you change it? |
-|---------------------------------------|-------|--------------------|
-| `statement_timeout`                   | 30s   | yes, per session   |
-| `idle_in_transaction_session_timeout` | 60s   | yes, per session   |
-| `temp_file_limit`                     | 64MB  | **no**             |
+| Setting                               | Value | Can you change it?                 |
+|---------------------------------------|-------|------------------------------------|
+| `statement_timeout`                   | 30s   | yes, per transaction (`SET LOCAL`) |
+| `idle_in_transaction_session_timeout` | 60s   | yes, per transaction (`SET LOCAL`) |
+| `temp_file_limit`                     | 64MB  | **no**                             |
 
-A query killed at 30s is your own timeout, not a platform fault — raise it for
-the session if a migration or a report legitimately needs longer.
+A query killed at 30s is your own timeout, not a platform fault. If a migration
+or a report legitimately needs longer, raise it in the transaction that runs it:
 
-Freepod does not support the following db session operations: `SET`,
-`LISTEN`/`NOTIFY`, session-level advisory locks, `WITH HOLD` cursors, temporary tables
+```sql
+BEGIN;
+SET LOCAL statement_timeout = '5min';
+-- long-running statement
+COMMIT;
+```
+
+### The pooler
+
+`DATABASE_URL` points at a pooler in **transaction mode**: each transaction may
+run on a different server connection. Nothing set outside a transaction
+survives it, so do not use session-level `SET`, `LISTEN`/`NOTIFY`, session-level
+advisory locks, `WITH HOLD` cursors or temporary tables. Prepared statements
+work.
+
+**Do not pass settings when connecting.** Only `application_name`,
+`client_encoding`, `DateStyle`, `IntervalStyle`, `TimeZone`,
+`standard_conforming_strings`, `search_path` and `default_transaction_read_only`
+are accepted as connection parameters. Anything else either fails every
+connection or is silently ignored:
+
+- a setting sent as its own parameter — node-postgres's
+  `new Pool({ statement_timeout })`, for example — fails with
+  `unsupported startup parameter: statement_timeout`, and the app cannot reach
+  its database at all;
+- a setting inside `options` — `PGOPTIONS=-c statement_timeout=10s`, or
+  `?options=...` in the URL — is dropped without an error, and the default stays.
+
+Use `SET LOCAL` inside the transaction instead.
 
 ### Migrations
 
@@ -201,7 +228,8 @@ errors worth recognizing:
 | `password authentication failed`                           | you are not using `DATABASE_URL` / `PG*` from the environment                  |
 | `permission denied to create database`                     | expected: you get exactly one                                                  |
 | `must be superuser to create this extension`               | that extension is untrusted; only trusted ones are installable                 |
-| `canceling statement due to statement timeout`             | your own 30s limit; raise it for that session if the work is legitimate        |
+| `canceling statement due to statement timeout`             | your own 30s limit; raise it with `SET LOCAL` if the work is legitimate        |
+| `unsupported startup parameter: <name>` at connect         | the driver sends a setting when connecting; see *The pooler* above             |
 | rollout fails with *"plan declares no database allowance"* | a platform-side plan misconfiguration, not an app bug — report it              |
 
 A one-off query needs neither a tunnel nor a local client: `freepod shell
