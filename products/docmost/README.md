@@ -93,8 +93,10 @@ What a version upgrade has to review beyond the tag in
 - **Reference deployment:** `docker-compose.yml` in `docmost/docmost`.
   **The `postgres` and `redis` tags there are the ones `postgres.image.tag` and
   `redis.image.tag` track**, as are Redis's `command` arguments.
-- **Runtime image:** `Dockerfile` in `docmost/docmost`: the uid, the port, and
-  the storage path (`/app/data/storage`).
+- **Runtime image:** `Dockerfile.hardened` in `docmost/docmost`, which CI uses
+  to build the published `docmost/docmost` image (the plain `Dockerfile` is a
+  non-hardened variant): the uid, the port, the storage path
+  (`/app/data/storage`) and the entrypoint (`node dist/main`).
 - **Application configuration:** `.env.example` lists the documented
   environment options; `apps/server/src/integrations/environment/environment.service.ts`
   lists every one the server reads, including undocumented ones.
@@ -104,6 +106,10 @@ What a version upgrade has to review beyond the tag in
 
 Pitfalls:
 
+- **The published image has no shell.** Since 0.98.0 it is built on Docker
+  Hardened Images: no `sh`, `curl` or `pnpm`. Anything the chart runs inside
+  the app container (the owner-seeding `postStart` hook) must use `node`, and
+  probes must be `httpGet`.
 - **Never set `CLOUD=true`.** It switches Docmost to its hosted multi-workspace
   mode, and in that mode the license check passes unconditionally: every
   Enterprise feature unlocks without a license. The image ships the Enterprise
