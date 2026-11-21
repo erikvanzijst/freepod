@@ -1,0 +1,103 @@
+{{- /*
+Bundled PostgreSQL on the official image, at the major upstream's compose file
+runs. The image starts as root and drops to the postgres user itself. PGDATA
+is a subdirectory, so a fresh volume's lost+found is never the data directory.
+
+A StatefulSet rather than a Deployment: a deleted or evicted pod is replaced
+only once it is gone, so two servers never share the data directory. The
+volume is the fixed-name claim below rather than a volumeClaimTemplate, so it
+stays Helm-owned like `data`.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  labels:
+    {{- include "peertube.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.postgres.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.persistence.size }}
+  {{- if .Values.postgres.persistence.storageClassName }}
+  storageClassName: {{ .Values.postgres.persistence.storageClassName }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-postgres
+  labels:
+    {{- include "peertube.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "peertube.componentSelector" (dict "root" . "name" "postgres") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-postgres
+  labels:
+    {{- include "peertube.labels" . | nindent 4 }}
+    {{- include "peertube.componentSelector" (dict "root" . "name" "postgres") | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: {{ .Release.Name }}-postgres
+  selector:
+    matchLabels:
+      {{- include "peertube.componentSelector" (dict "root" . "name" "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "peertube.componentSelector" (dict "root" . "name" "postgres") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- include "peertube.podPlacement" . | nindent 6 }}
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          ports:
+            - containerPort: 5432
+              name: postgres
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-peertube
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          startupProbe:
+            exec:
+              command: ["sh", "-c", 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          {{- with .Values.postgres.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data

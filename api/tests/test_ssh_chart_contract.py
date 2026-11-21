@@ -84,6 +84,7 @@ SESSION_ROOTS: dict[str, str | None] = {
     "nextcloud": "volume:/data",
     "nextcloud-sso": "volume:/data",
     "openproject": "volume:/assets",
+    "peertube": "volume:/data",
     "photoprism": "volume:/originals",
     "vaultwarden": "volume:/data",
 }

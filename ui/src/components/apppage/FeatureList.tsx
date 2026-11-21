@@ -32,6 +32,9 @@ import PasswordRounded from '@mui/icons-material/PasswordRounded'
 import PhotoLibraryRounded from '@mui/icons-material/PhotoLibraryRounded'
 import SendRounded from '@mui/icons-material/SendRounded'
 import ThumbsUpDownRounded from '@mui/icons-material/ThumbsUpDownRounded'
+import VideoLibraryRounded from '@mui/icons-material/VideoLibraryRounded'
+import PlaylistPlayRounded from '@mui/icons-material/PlaylistPlayRounded'
+import SubtitlesRounded from '@mui/icons-material/SubtitlesRounded'
 import { fg } from '../landing/landingTokens'
 import type { ListingFeature } from './listing'
 
@@ -71,6 +74,9 @@ const featureIcons: Record<string, SvgIconComponent> = {
   calendar: CalendarMonthRounded,
   sparkle: AutoAwesomeRounded,
   git: GitIcon,
+  video: VideoLibraryRounded,
+  playlist: PlaylistPlayRounded,
+  subtitles: SubtitlesRounded,
 }
 
 export function FeatureIcon({ icon, sx }: { icon: string; sx?: SxProps<Theme> }) {

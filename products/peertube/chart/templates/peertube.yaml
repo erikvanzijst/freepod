@@ -1,0 +1,170 @@
+{{- /*
+Upstream's image starts as root, takes ownership of /data and /config and
+drops to the peertube user (uid 999) with gosu; the chart lets it. PeerTube
+serves its client, static files and websockets itself, so Traefik stands in
+for upstream's nginx with no extra routing.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-peertube
+  labels:
+    {{- include "peertube.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "peertube.componentSelector" (dict "root" . "name" "peertube") | nindent 4 }}
+  ports:
+    - name: http
+      port: 9000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-peertube
+  labels:
+    {{- include "peertube.labels" . | nindent 4 }}
+    {{- include "peertube.componentSelector" (dict "root" . "name" "peertube") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "peertube.componentSelector" (dict "root" . "name" "peertube") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "peertube.componentSelector" (dict "root" . "name" "peertube") | nindent 8 }}
+        {{- include "peertube.podLabels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- include "peertube.podPlacement" . | nindent 6 }}
+      # Not runAsNonRoot: the entrypoint and the SSH sidecar start as root.
+      securityContext:
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        # PeerTube creates its `root` administrator on the very first start
+        # and writes that account's password to its log. So the first start
+        # runs here with its output discarded, and the owner's password is then
+        # set through upstream's reset-password script, which reads it from
+        # stdin and prints nothing of it. Later starts only wait for the
+        # database and Redis, which PeerTube needs reachable when it boots.
+        - name: setup
+          image: {{ include "peertube.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+          command:
+            - bash
+            - -ec
+            - |
+              until (exec 3<>"/dev/tcp/$PEERTUBE_DB_HOSTNAME/5432") 2>/dev/null; do sleep 2; done
+              until (exec 3<>"/dev/tcp/$PEERTUBE_REDIS_HOSTNAME/6379") 2>/dev/null; do sleep 2; done
+              marker=/config/.freepod-owner-password-set
+              [ -e "$marker" ] && exit 0
+              PEERTUBE_STORAGE_LOGS=/tmp/first-start-logs/ entrypoint.sh node dist/server >/dev/null 2>&1 &
+              server=$!
+              until curl -sf -o /dev/null http://127.0.0.1:9000/api/v1/ping; do
+                if ! kill -0 "$server" 2>/dev/null; then
+                  grep -hv "User password" /tmp/first-start-logs/*.log >&2 || true
+                  exit 1
+                fi
+                sleep 2
+              done
+              kill "$server"
+              wait "$server" || true
+              printf '%s\n' "$PEERTUBE_ADMIN_PASSWORD" | gosu peertube node dist/scripts/reset-password.js -u root
+              touch "$marker"
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-peertube
+          env:
+            {{- include "peertube.env" . | nindent 12 }}
+            - name: PEERTUBE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.caelus.vars.secretName | default (printf "%s-admin" .Release.Name) | quote }}
+                  key: PEERTUBE_ADMIN_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /data
+              subPath: data
+            - name: data
+              mountPath: /config
+              subPath: config
+          {{- with .Values.setup.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      containers:
+        - name: peertube
+          image: {{ include "peertube.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+          ports:
+            - containerPort: 9000
+              name: http
+          envFrom:
+            - secretRef:
+                name: {{ .Release.Name }}-peertube
+          env:
+            {{- include "peertube.env" . | nindent 12 }}
+          startupProbe:
+            httpGet: { path: /api/v1/ping, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 120
+          readinessProbe:
+            httpGet: { path: /api/v1/ping, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /api/v1/ping, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          volumeMounts:
+            - name: data
+              mountPath: /data
+              subPath: data
+            - name: data
+              mountPath: /config
+              subPath: config
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- include "ssh-sidecar.sidecar" (dict "root" . "image" .Values.sshSidecarImage
+             "sessionRoot" "volume:/data"
+             "mounts" (list (dict "volume" "data" "path" "/data" "subPath" "data"))) | nindent 8 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: data
+---
+{{- /*
+Fixed name (not release-prefixed) so an existing volume in the namespace is
+re-adopted on upgrade rather than replaced by a fresh, empty PVC. Holds
+PeerTube's storage tree under data/ and the settings the admin UI saves
+(local-production.json) under config/.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+  labels:
+    {{- include "peertube.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.data.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.caelus.plan.storageSize | default .Values.persistence.data.size }}
+  {{- if .Values.persistence.data.storageClassName }}
+  storageClassName: {{ .Values.persistence.data.storageClassName }}
+  {{- end }}

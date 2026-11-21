@@ -1,0 +1,61 @@
+---
+title: PeerTube
+---
+
+import ProductHeader from '@site/src/components/ProductHeader'
+
+<ProductHeader slug="peertube" />
+
+PeerTube is a video platform. Videos are organized into channels and playlists, viewers can subscribe, like and comment, and PeerTube connects to other PeerTube sites and to Mastodon through federation.
+
+## Settings
+
+| Setting  | Meaning                                                                 |
+|----------|-------------------------------------------------------------------------|
+| Hostname | The app's address, and its identity on the federated network            |
+| Password | The password of your PeerTube administrator account. 8 to 50 characters. |
+
+The password is used once, when the app first starts. To change it later, use PeerTube's own account settings (**My account → Settings**). Changing it with **Settings** afterwards has no effect.
+
+:::warning
+
+Do not change the hostname after the app is in use. Every channel, account and video address includes it, and other servers do not recognize the app under a new hostname. See [Hostname](../managing/hostname.md).
+
+:::
+
+## First sign-in
+
+1. Select **Open** on the app's row.
+2. On PeerTube's login page, sign in with the email address of your Freepod account and the password from the settings.
+
+Your account is the site's administrator, named `root`. PeerTube offers a short setup wizard on first sign-in, and recommends creating a separate account for publishing videos under **Administration → Overview → Users**. Set the site's name, who may sign up and how videos are transcoded under **Administration → Settings → Configuration**.
+
+## What is managed by Freepod
+
+The app's address, email delivery, the administrator email, and how many videos are transcoded at once and with how many threads are managed by Freepod. PeerTube's administration settings still show them, and accept changes to them, but the changes have no effect.
+
+Live streaming is not available.
+
+## Storage
+
+Uploaded videos, every transcoded version of them, and imported videos count toward the app's storage. Each additional resolution enabled under **Administration → Settings → Configuration → VOD** stores another copy of every video.
+
+## File access
+
+[SFTP](../file-access.md) shows PeerTube's storage, read-only: `web-videos/` and `streaming-playlists/` hold the transcoded videos, `original-video-files/` the uploaded originals when PeerTube keeps them, and `logs/` PeerTube's logs.
+
+## Email
+
+PeerTube sends email, such as notifications, sign-up confirmations and password resets, from `peertube@freepod.eu`. See [Email](../email.md).
+
+## Mobile apps
+
+PeerTube for [iOS](https://apps.apple.com/us/app/peertube/id6737834858) and [Android](https://play.google.com/store/apps/details?id=org.framasoft.peertube) connects to your site by its address.
+
+## Moving your videos
+
+Every account can export its videos, channels and settings as an archive under **My account → Import/Export**, and import it into any other PeerTube site.
+
+## Documentation
+
+[docs.joinpeertube.org](https://docs.joinpeertube.org)
