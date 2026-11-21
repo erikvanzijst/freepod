@@ -14,7 +14,7 @@ vi.mock('../../api/endpoints', () => ({
   createDeployment: vi.fn(),
   updateDeployment: (...args: unknown[]) => updateDeploymentMock(...args),
   getDeployment: (...args: unknown[]) => getDeploymentMock(...args),
-  checkHostname: vi.fn().mockResolvedValue({ available: true }),
+  checkHostname: vi.fn().mockResolvedValue({ usable: true, reason: null }),
   getMyHandle: vi.fn(),
   getCnameTarget: vi.fn().mockResolvedValue(''),
   getTosAcceptance: vi.fn().mockResolvedValue({ version: '2026-07-01' }),
@@ -101,6 +101,13 @@ function open(d: Deployment) {
 
 const nameField = () => screen.getByRole('textbox', { name: /^name/i })
 
+// Update waits for the hostname check, which runs for the stored hostname too.
+async function clickUpdate() {
+  const update = screen.getByRole('button', { name: 'Update' })
+  await waitFor(() => expect(update).toBeEnabled())
+  fireEvent.click(update)
+}
+
 beforeEach(() => {
   updateDeploymentMock.mockReset()
   updateDeploymentMock.mockImplementation((_u: number, _id: string, body: object) => Promise.resolve({ ...deployment(), ...body }))
@@ -112,7 +119,7 @@ describe('Settings: the deployment identity', () => {
     open(deployment())
     await waitFor(() => expect(nameField()).toHaveValue('Arkanoid'))
     fireEvent.change(nameField(), { target: { value: 'Arkanoid: Space Edition' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await clickUpdate()
     await waitFor(() => expect(updateDeploymentMock).toHaveBeenCalledTimes(1))
     const [, , body] = updateDeploymentMock.mock.calls[0]
     expect(body).toMatchObject({
@@ -128,7 +135,7 @@ describe('Settings: the deployment identity', () => {
     open(deployment({ user_values_json: { hostname: 'arkanoid.example.com' } }))
     await waitFor(() => expect(nameField()).toHaveValue('Arkanoid'))
     fireEvent.change(nameField(), { target: { value: 'Breakout' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await clickUpdate()
     await waitFor(() => expect(updateDeploymentMock).toHaveBeenCalledTimes(1))
     expect(updateDeploymentMock.mock.calls[0][2].user_values_json).toEqual({ hostname: 'arkanoid.example.com' })
   })
@@ -136,7 +143,7 @@ describe('Settings: the deployment identity', () => {
   it('sends a setting the deployment never had once it is changed', async () => {
     open(deployment({ user_values_json: { hostname: 'arkanoid.example.com' } }))
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Sign in with Freepod' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await clickUpdate()
     await waitFor(() => expect(updateDeploymentMock).toHaveBeenCalledTimes(1))
     expect(updateDeploymentMock.mock.calls[0][2].user_values_json.auth).toEqual({ enabled: true })
   })
@@ -146,7 +153,7 @@ describe('Settings: the deployment identity', () => {
     await waitFor(() => expect(screen.getByText('Your own icon')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
     expect(screen.getByText("Custom user app's icon (default)")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await clickUpdate()
     await waitFor(() => expect(updateDeploymentMock).toHaveBeenCalled())
     expect(updateDeploymentMock.mock.calls[0][2]).toMatchObject({ icon: null })
   })
@@ -165,7 +172,7 @@ describe('Settings: the deployment identity', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Use image' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Crop the icon' })).not.toBeInTheDocument())
     expect(await screen.findByText('Your own icon')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await clickUpdate()
     await waitFor(() => expect(updateDeploymentMock).toHaveBeenCalled())
     expect(updateDeploymentMock.mock.calls[0][2]).toMatchObject({ icon: btoa('icon') })
   })
@@ -175,7 +182,7 @@ describe('Settings: the deployment identity', () => {
     open(deployment())
     await waitFor(() => expect(nameField()).toBeInTheDocument())
     fireEvent.change(nameField(), { target: { value: 'Pong' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await clickUpdate()
     expect(await screen.findByText('You already have an app with this name.')).toBeInTheDocument()
     expect(nameField()).toHaveAttribute('aria-invalid', 'true')
   })
@@ -186,7 +193,7 @@ describe('Settings: fields managed by .freepod.json', () => {
     open(deployment({ managed_fields: ['auth'], user_values_json: { hostname: 'arkanoid.example.com', auth: { enabled: true } } }))
     expect(await screen.findByText(/Sign in with Freepod is managed by/)).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: 'Sign in with Freepod' })).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    await clickUpdate()
     await waitFor(() => expect(updateDeploymentMock).toHaveBeenCalled())
     const body = updateDeploymentMock.mock.calls[0][2]
     expect(body.user_values_json.auth).toEqual({ enabled: true })

@@ -91,6 +91,31 @@ checked as given. It MUST NOT answer questions about handles.
 - **WHEN** the same hostname has no such TXT record
 - **THEN** the endpoint returns HTTP 200 with `usable` false, `reason` `ownership_unverified`, `proxy` `cloudflare`, and the same `ownership_record`
 
+### Requirement: The hostname check answers for an existing deployment
+
+`GET /api/hostnames/{value}` MUST accept an optional `deployment` query parameter, the UUID
+of an existing deployment, and then check `value` as that deployment's update would: its own
+hostname MUST NOT be reported `in_use`, and the deployment owner's handle MUST be used to
+complete a bare label, check a tenant hostname and name the ownership record. The deployment
+MUST be the caller's own, or the caller an administrator; otherwise the endpoint MUST return
+HTTP 404.
+
+#### Scenario: A deployment's own hostname
+- **WHEN** the caller's deployment `D` holds `photos.example.com` and the caller sends `GET /api/hostnames/photos.example.com?deployment=D`
+- **THEN** the endpoint returns HTTP 200 with `usable` true and `reason` null
+
+#### Scenario: Another deployment's hostname
+- **WHEN** the caller's deployment `D` exists, another deployment holds `taken.example.com`, and the caller sends `GET /api/hostnames/taken.example.com?deployment=D`
+- **THEN** the endpoint returns HTTP 200 with `usable` false and `reason` `in_use`
+
+#### Scenario: Another account's deployment
+- **WHEN** a caller who is not an administrator names a deployment of another account, or one that does not exist
+- **THEN** the endpoint returns HTTP 404
+
+#### Scenario: An administrator checks for the owner
+- **WHEN** an administrator sends `GET /api/hostnames/photos?deployment=D` for a deployment `D` of the account holding `owner`
+- **THEN** the endpoint returns `fqdn` `photos-owner.freepod.app`, checked as that account's name
+
 ### Requirement: Hostname check response reports the name, usability, reason and proxy
 
 The response MUST contain exactly five fields: `fqdn` (the completed, lowercased name that

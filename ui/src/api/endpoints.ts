@@ -260,8 +260,10 @@ export function deleteDeployment(userId: number, deploymentId: string) {
   })
 }
 
-export function checkHostname(fqdn: string) {
-  return requestJson<HostnameCheckResult>(`/hostnames/${encodeURIComponent(fqdn)}`)
+/** With `deployment`, the name is checked as that deployment's update would check it. */
+export function checkHostname(fqdn: string, deployment?: string) {
+  const query = deployment ? `?deployment=${encodeURIComponent(deployment)}` : ''
+  return requestJson<HostnameCheckResult>(`/hostnames/${encodeURIComponent(fqdn)}${query}`)
 }
 
 export function getCnameTarget() {

@@ -196,7 +196,7 @@ export function DeploymentDialog({ deployment: initialDeployment, onClose }: Dep
             formError={formError}
             userValuesErrors={userValuesErrors}
             loading={!upgradeFormReady}
-            initialHostname={deployment.hostname ?? undefined}
+            deploymentId={deployment.id}
             plans={subscriptionPlan}
             selectedPlanTemplateId={deployment.subscription?.plan_template?.id ?? null}
           />
@@ -206,7 +206,7 @@ export function DeploymentDialog({ deployment: initialDeployment, onClose }: Dep
             valuesSchemaJson={template.values_schema_json ?? null}
             initialValuesJson={deployment.user_values_json ?? null}
             onChange={() => {}}
-            initialHostname={deployment.hostname ?? undefined}
+            deploymentId={deployment.id}
             readOnly
             plans={subscriptionPlan}
             selectedPlanTemplateId={deployment.subscription?.plan_template?.id ?? null}

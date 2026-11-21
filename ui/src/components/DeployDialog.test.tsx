@@ -414,6 +414,7 @@ describe('DeployDialog', () => {
     }
 
     getMyHandleMock.mockResolvedValue({ handle: 'erik', suffix: '-erik.freepod.app', domain: 'freepod.app' })
+    checkHostnameMock.mockResolvedValue({ fqdn: 'edit-test.example.com', usable: true, reason: null })
     listTemplatesMock.mockClear()
     updateDeploymentMock.mockResolvedValue({ id: 42 })
     const onClose = vi.fn()
@@ -432,7 +433,8 @@ describe('DeployDialog', () => {
 
     // Button should say "Update" not "Launch"
     const updateBtn = screen.getByRole('button', { name: 'Update' })
-    expect(updateBtn).toBeEnabled()
+    await waitFor(() => expect(updateBtn).toBeEnabled())
+    expect(checkHostnameMock).toHaveBeenCalledWith('edit-test.example.com', deployment.id)
 
     fireEvent.click(updateBtn)
 
@@ -626,6 +628,7 @@ describe('DeployDialog', () => {
         NEXTCLOUD_ADMIN_PASSWORD: { sensitive: true },
       },
     })
+    checkHostnameMock.mockResolvedValue({ fqdn: 'cloud.example.com', usable: true, reason: null })
     updateDeploymentMock.mockReset()
     updateDeploymentMock.mockResolvedValue({ id: deployment.id })
 
@@ -640,7 +643,9 @@ describe('DeployDialog', () => {
     expect(screen.queryByLabelText(/admin user/i)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/admin password/i)).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+    const update = screen.getByRole('button', { name: 'Update' })
+    await waitFor(() => expect(update).toBeEnabled())
+    fireEvent.click(update)
 
     // No vars at all: neither the stored values nor a deletion of them.
     await waitFor(() => {

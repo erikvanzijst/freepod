@@ -287,7 +287,8 @@ interface UserValuesFormProps {
   /** Whether every required field holds a value, so the caller can gate submission. */
   onRequiredFilledChange?: (filled: boolean) => void
   errors?: string[]
-  initialHostname?: string
+  /** The deployment being edited, if any. */
+  deploymentId?: string
   /** The hostname label an install dialog starts with, e.g. the app's slug. */
   hostnamePrefill?: string
   readOnly?: boolean
@@ -306,7 +307,7 @@ export function UserValuesForm({
   onHostnameValidationChange,
   onRequiredFilledChange,
   errors = [],
-  initialHostname,
+  deploymentId,
   hostnamePrefill,
   readOnly,
   managedKeys = [],
@@ -544,7 +545,7 @@ export function UserValuesForm({
           required={field.required}
           error={fieldErrors[field.path]}
           description={field.description}
-          initialHostname={initialHostname}
+          deploymentId={deploymentId}
           defaultPrefix={hostnamePrefill}
           readOnly={readOnly}
         />

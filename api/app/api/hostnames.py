@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Path
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel
 from sqlmodel import Session
 
 from app.config import get_settings
 from app.db import get_session
 from app.deps import get_current_user
-from app.models import UserORM
+from app.models import DeploymentORM, UserORM
 from app.services.errors import HostnameException
 from app.services.hostnames import (
     check_hostname_for_deployment,
@@ -69,11 +71,12 @@ class HostnameCheck(BaseModel):
     responses={
         200: {
             "description": (
-                "Always 200. `usable=true` with `reason=null` for accepted "
-                "names; `usable=false` with a `reason` code for rejected names. "
+                "`usable=true` with `reason=null` for accepted names; "
+                "`usable=false` with a `reason` code for rejected names. "
                 "Rejections are never surfaced as an error status."
             )
-        }
+        },
+        404: {"description": "`deployment` names no deployment the caller may edit."},
     },
 )
 def check_hostname(
@@ -85,6 +88,14 @@ def check_hostname(
             "before any checks run."
         ),
     ),
+    deployment: UUID | None = Query(
+        None,
+        description=(
+            "An existing deployment the name is checked for, as its update "
+            "would check it: the deployment's own hostname is not in use, and "
+            "its owner's handle applies."
+        ),
+    ),
     current_user: UserORM = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> HostnameCheck:
@@ -94,12 +105,17 @@ def check_hostname(
     ## Authorization
     Requires authentication. The answer depends on who is asking: whether
     `photos-alice.freepod.app` is usable is a different answer for the account
-    holding `alice` than for any other.
+    holding `alice` than for any other. With `deployment`, it is answered for
+    that deployment's owner, and the deployment must be the caller's own, or
+    the caller an administrator.
 
     ## Parameters
     - `value` (path): a bare application label, completed to
-      `<label>-<handle>.<tenant domain>` with the caller's handle, or a fully
+      `<label>-<handle>.<tenant domain>` with the handle, or a fully
       qualified name. The checked name is echoed back as `fqdn`.
+    - `deployment` (query, optional): the UUID of an existing deployment, for
+      checking a name while editing it. The deployment's own hostname is then
+      not reported `in_use`.
 
     ## Behavior
     A name under the tenant domain must be one label of the form
@@ -132,21 +148,31 @@ def check_hostname(
       record at `ownership_record.name` holding `ownership_record.value`.
 
     ## Errors
-    Always returns **200** for an authenticated caller. Rejected names are
-    reported in the body via `usable=false` and a `reason` code; no 4xx status
-    is returned for them.
+    Returns **200** for an authenticated caller. Rejected names are reported
+    in the body via `usable=false` and a `reason` code; no 4xx status is
+    returned for them. **404** when `deployment` names no deployment the
+    caller may edit.
     """
+    handle, exclude = current_user.handle, None
+    if deployment is not None:
+        owned = session.get(DeploymentORM, deployment)
+        if owned is None or (owned.user_id != current_user.id and not current_user.is_admin):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deployment not found")
+        handle, exclude = owned.user.handle, owned.id
+
     fqdn = value.lower()
     try:
-        fqdn = complete_hostname(fqdn, handle=current_user.handle)
-        verdict = check_hostname_for_deployment(session, fqdn, handle=current_user.handle)
-        return _check(fqdn, current_user, usable=True, proxy=verdict.proxy)
+        fqdn = complete_hostname(fqdn, handle=handle)
+        verdict = check_hostname_for_deployment(
+            session, fqdn, handle=handle, exclude_deployment_id=exclude
+        )
+        return _check(fqdn, handle, usable=True, proxy=verdict.proxy)
     except HostnameException as exc:
-        return _check(fqdn, current_user, usable=False, reason=exc.reason, proxy=exc.proxy)
+        return _check(fqdn, handle, usable=False, reason=exc.reason, proxy=exc.proxy)
 
 
-def _check(fqdn: str, user: UserORM, *, proxy: str | None, **fields) -> HostnameCheck:
-    record = ownership_record(fqdn, handle=user.handle) if proxy else None
+def _check(fqdn: str, handle: str | None, *, proxy: str | None, **fields) -> HostnameCheck:
+    record = ownership_record(fqdn, handle=handle) if proxy else None
     return HostnameCheck(
         fqdn=fqdn,
         proxy=proxy,

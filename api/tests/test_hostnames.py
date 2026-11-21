@@ -29,7 +29,7 @@ from app.services.reconcile_constants import (
 from sqlmodel import select
 from starlette.testclient import TestClient
 
-from tests.conftest import client, db_session
+from tests.conftest import USER_EMAIL, client, db_session, user_client
 from tests.conftest import create_free_plan_template, create_user, make_deployment_with_release
 
 
@@ -953,6 +953,123 @@ class TestHostnameCheckEndpoint:
         ):
             data = client.get("/api/hostnames/nxdomain.example.com").json()
         assert (data["proxy"], data["ownership_record"]) == (None, None)
+
+
+class TestHostnameCheckForDeployment:
+    """`?deployment=` checks a name as that deployment's update would."""
+
+    @pytest.fixture
+    def regular(self, user_client, db_session):
+        client, _ = user_client
+        user = db_session.exec(select(UserORM).where(UserORM.email == USER_EMAIL)).one()
+        return client, user
+
+    @pytest.fixture
+    def template_id(self, db_session):
+        product = ProductORM(name="hn-own-product")
+        db_session.add(product)
+        db_session.flush()
+        template = ProductTemplateVersionORM(
+            product_id=product.id, chart_ref="oci://example/own", chart_version="1.0.0"
+        )
+        db_session.add(template)
+        db_session.flush()
+        return template.id
+
+    def _deployment(self, db_session, user, template_id, hostname):
+        deployment = make_deployment_with_release(
+            db_session,
+            user_id=user.id,
+            desired_template_id=template_id,
+            hostname=hostname,
+            status=DEPLOYMENT_STATUS_PROVISIONING,
+            name="own",
+            namespace=f"own-{user.id}",
+        )
+        db_session.commit()
+        return deployment
+
+    def test_own_hostname_is_usable(self, regular, db_session, template_id):
+        client, user = regular
+        deployment = self._deployment(db_session, user, template_id, "own.example.com")
+
+        assert client.get("/api/hostnames/own.example.com").json()["reason"] == "in_use"
+        resp = client.get(f"/api/hostnames/own.example.com?deployment={deployment.id}")
+        assert resp.status_code == 200
+        assert (resp.json()["usable"], resp.json()["reason"]) == (True, None)
+
+    def test_another_deployments_hostname_is_still_in_use(self, regular, db_session, template_id):
+        client, user = regular
+        mine = self._deployment(db_session, user, template_id, "mine.example.com")
+        make_deployment_with_release(
+            db_session,
+            user_id=user.id,
+            desired_template_id=template_id,
+            hostname="taken.example.com",
+            status=DEPLOYMENT_STATUS_PROVISIONING,
+            name="taken",
+            namespace="taken",
+        )
+        db_session.commit()
+        resp = client.get(f"/api/hostnames/taken.example.com?deployment={mine.id}")
+        assert resp.json()["reason"] == "in_use"
+
+    def test_another_accounts_deployment_is_not_found(self, user_client, db_session, template_id):
+        client, admin = user_client
+        deployment = self._deployment(db_session, admin, template_id, "admins.example.com")
+        resp = client.get(f"/api/hostnames/admins.example.com?deployment={deployment.id}")
+        assert resp.status_code == 404
+
+    def test_unknown_deployment_is_not_found(self, regular):
+        client, _ = regular
+        resp = client.get(f"/api/hostnames/x.example.com?deployment={UUID(int=1)}")
+        assert resp.status_code == 404
+
+    def test_an_administrator_checks_with_the_owners_handle(
+        self, client, db_session, template_id, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.services.hostnames.get_settings",
+            lambda: _settings(domain="freepod.eu", tenant_domain="freepod.app"),
+        )
+        owner = UserORM(email="owner@example.com", handle="owner")
+        db_session.add(owner)
+        db_session.flush()
+        deployment = self._deployment(db_session, owner, template_id, "photos-owner.freepod.app")
+
+        resp = client.get(f"/api/hostnames/photos?deployment={deployment.id}")
+        assert resp.json() == {
+            "fqdn": "photos-owner.freepod.app",
+            "usable": True,
+            "reason": None,
+            "proxy": None,
+            "ownership_record": None,
+        }
+
+    def test_a_proxied_hostname_names_the_owners_record(
+        self, client, db_session, template_id, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.services.hostnames.get_settings",
+            lambda: _settings(domain="freepod.eu", tenant_domain="freepod.app"),
+        )
+        owner = UserORM(email="owner@example.com", handle="owner")
+        db_session.add(owner)
+        db_session.flush()
+        deployment = self._deployment(db_session, owner, template_id, "photos.example.com")
+        records = {
+            ("freepod.app", "A"): [PLATFORM_V4],
+            ("photos.example.com", "A"): [CLOUDFLARE_V4],
+            OWNERSHIP: ["owner.freepod.app"],
+        }
+        with patch(
+            "app.services.hostnames._authoritative_resolver", return_value=None
+        ), patch(
+            "app.services.hostnames.dns.resolver.resolve", side_effect=_fake_dns(records),
+        ):
+            data = client.get(f"/api/hostnames/photos.example.com?deployment={deployment.id}").json()
+        assert (data["usable"], data["proxy"]) == (True, "cloudflare")
+        assert data["ownership_record"]["value"] == "owner.freepod.app"
 
 
 # ── CNAME target endpoint tests ───────────────────────────────────────

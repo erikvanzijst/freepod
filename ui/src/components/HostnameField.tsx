@@ -56,7 +56,8 @@ interface HostnameFieldProps {
   required?: boolean
   error?: string
   description?: string
-  initialHostname?: string
+  /** The deployment being edited, whose own hostname is not in use. */
+  deploymentId?: string
   readOnly?: boolean
   /** Prefills an empty field's label; while untouched, a refused one is retried with a numeric suffix. */
   defaultPrefix?: string
@@ -64,7 +65,7 @@ interface HostnameFieldProps {
 
 type Mode = 'freepod' | 'custom'
 
-export function HostnameField({ value, onChange, onValidationChange, suffix, cnameTarget, required, error, description, initialHostname, readOnly, defaultPrefix }: HostnameFieldProps) {
+export function HostnameField({ value, onChange, onValidationChange, suffix, cnameTarget, required, error, description, deploymentId, readOnly, defaultPrefix }: HostnameFieldProps) {
   if (readOnly) {
     return (
       <TextField
@@ -138,19 +139,13 @@ export function HostnameField({ value, onChange, onValidationChange, suffix, cna
       return
     }
 
-    // Skip API check when hostname matches the initial value (edit mode)
-    if (initialHostname && fqdn === initialHostname) {
-      setValidation({ status: 'valid' })
-      return
-    }
-
     setValidation({ status: 'checking' })
     const controller = new AbortController()
     abortRef.current = controller
 
     timerRef.current = setTimeout(async () => {
       try {
-        const result = await checkHostname(fqdn)
+        const result = await checkHostname(fqdn, deploymentId)
         if (controller.signal.aborted) return
         if (result.usable) {
           setValidation({ status: 'valid', proxy: result.proxy })
@@ -167,7 +162,7 @@ export function HostnameField({ value, onChange, onValidationChange, suffix, cna
         setValidation({ status: 'error', reason: 'invalid' })
       }
     }, DEBOUNCE_MS)
-  }, [initialHostname])
+  }, [deploymentId])
 
   // Trigger validation and propagate value when the computed FQDN changes
   const prevFqdnRef = useRef(currentFqdn)

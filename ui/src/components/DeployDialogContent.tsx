@@ -43,7 +43,8 @@ interface DeployDialogContentProps {
   userValuesErrors?: string[]
   noTemplateWarning?: boolean
   loading?: boolean
-  initialHostname?: string
+  /** The deployment being edited, if any. */
+  deploymentId?: string
   /** The hostname label an install dialog starts with, e.g. the app's slug. */
   hostnamePrefill?: string
   submitLabel?: string
@@ -82,7 +83,7 @@ export function DeployDialogContent({
   userValuesErrors = [],
   noTemplateWarning,
   loading,
-  initialHostname,
+  deploymentId,
   hostnamePrefill,
   submitLabel = 'Launch',
   readOnly,
@@ -210,7 +211,7 @@ export function DeployDialogContent({
             onHostnameValidationChange={onHostnameValidationChange}
             onRequiredFilledChange={onRequiredFilledChange}
             errors={userValuesErrors}
-            initialHostname={initialHostname}
+            deploymentId={deploymentId}
             hostnamePrefill={hostnamePrefill}
             readOnly={readOnly}
             managedKeys={managedKeys}

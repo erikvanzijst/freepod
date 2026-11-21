@@ -308,7 +308,7 @@ export function DeployDialog({ product, userId, onClose, deployment, initialPlan
           userValuesErrors={userValuesErrors}
           noTemplateWarning={!isEditMode && !templatesQuery.isLoading && !canonicalTemplate}
           loading={!isEditMode && (templatesQuery.isLoading || plansQuery.isLoading)}
-          initialHostname={deployment?.hostname ?? undefined}
+          deploymentId={deployment?.id}
           hostnamePrefill={isEditMode ? undefined : hostnamePrefill(product)}
           submitLabel={isEditMode ? 'Update' : 'Launch'}
           plans={plans}

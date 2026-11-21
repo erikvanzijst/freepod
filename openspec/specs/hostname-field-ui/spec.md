@@ -70,20 +70,24 @@ The `UserValuesForm` component MUST NOT accept a `defaultValuesJson` prop. The `
 - **WHEN** a schema field has no `default` annotation
 - **THEN** the form field starts empty (or `false` for booleans)
 
-### Requirement: HostnameField skips validation for unchanged hostname
-The component MUST NOT call `GET /api/hostnames/{fqdn}` while the composed FQDN equals the `initialHostname` it was given, reporting it as valid without asking. The check does not exclude the deployment that already holds the name, so re-checking an unchanged hostname would report it in use against itself.
+### Requirement: HostnameField checks an edited deployment's hostname for that deployment
+When given the `deploymentId` of the deployment being edited, the component MUST check every hostname, the stored one included, with `GET /api/hostnames/{fqdn}?deployment=<deploymentId>`, and show the answer like any other: a proxied hostname shows the amber cloud, and one whose DNS no longer qualifies is refused, as the update would refuse it.
 
-#### Scenario: Initial hostname skips API validation
-- **WHEN** `HostnameField` receives an `initialHostname` prop and the current FQDN equals `initialHostname`
-- **THEN** the component sets validation status to `valid` without calling `GET /api/hostnames/{fqdn}`
+#### Scenario: The stored hostname is checked when the dialog opens
+- **WHEN** the Settings dialog opens for deployment `dep-1` with hostname `existing.example.com`
+- **THEN** the component calls `GET /api/hostnames/existing.example.com?deployment=dep-1`
 
-#### Scenario: Changed hostname triggers normal validation
-- **WHEN** `HostnameField` receives an `initialHostname` prop and the current FQDN differs from `initialHostname`
-- **THEN** the component calls `GET /api/hostnames/{fqdn}` with the normal debounce behavior
+#### Scenario: A proxied stored hostname shows the amber cloud
+- **WHEN** that check returns `usable` true and `proxy` `"cloudflare"`
+- **THEN** the amber cloud is shown, not the green check
 
-#### Scenario: Reverted hostname skips validation again
-- **WHEN** the user changes the hostname away from `initialHostname` and then changes it back
-- **THEN** the component sets validation status to `valid` without calling the API
+#### Scenario: A stored hostname that no longer resolves is refused
+- **WHEN** that check returns `usable` false and `reason` `"not_resolving"`
+- **THEN** the red error icon and the not-resolving message are shown, and the field reports itself invalid
+
+#### Scenario: A changed hostname is checked for the same deployment
+- **WHEN** the user changes the hostname of deployment `dep-1` to `changed.example.com`
+- **THEN** the component calls `GET /api/hostnames/changed.example.com?deployment=dep-1` with the normal debounce behavior
 
 ### Requirement: Install dialog prefills the hostname with the app's name
 
