@@ -1,3 +1,16 @@
+- version: "0.98.0"
+  notes: |-
+    Give pages a cover, give people a profile, and make each space feel like
+    home.
+
+    - Page covers: put an image on top of a page
+    - User profiles, with a card that appears when you hover over a mention
+    - Choose which page opens when someone visits a space
+    - Resolve comments is now part of the free edition
+    - Archive a space you are not using anymore
+    - Set a default workspace language, and add your own message to
+      invitations
+    - Chemistry formulas in math blocks, and a new audio player
 - version: "0.97.0"
   notes: |-
     Present your pages, and exports and search get a round of fixes.
