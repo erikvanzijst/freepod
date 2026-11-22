@@ -16,7 +16,7 @@ the compose file from `lemmy-docs`, and the config and nginx routing from
 
 | Component   | Object(s)                                                                                                                                                   |
 |-------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Proxy       | Deployment `<release>-proxy` on `nginx:1.29-alpine` (non-root, read-only rootfs) + Service `:8536`; routing config in ConfigMap `<release>-proxy`           |
+| Proxy       | Deployment `<release>-proxy` on `nginx:1.31.9-alpine` (non-root, read-only rootfs) + Service `:8536`; routing config in ConfigMap `<release>-proxy`           |
 | Backend     | Deployment `<release>-lemmy` on `dessalines/lemmy` (+ render-config and wait-for-DB inits), Service `:8536`; config assembled into an emptyDir at `/config` |
 | Frontend    | Deployment `<release>-lemmy-ui` on `dessalines/lemmy-ui`, Service `:1234`                                                                                   |
 | Media       | Deployment `<release>-pictrs` on `asonix/pictrs` (uid 991), Service `:8080`, PVC `<release>-pictrs` (plan-sized) at `/mnt`                                  |

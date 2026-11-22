@@ -25,7 +25,7 @@ COPY --from=catalog . /catalog/
 ENV CATALOG_DIR=/catalog
 RUN npm run build
 
-FROM nginx:alpine
+FROM nginx:1.31.9-alpine
 
 ARG GIT_COMMIT=unknown
 ENV GIT_COMMIT=${GIT_COMMIT}

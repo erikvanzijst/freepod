@@ -10,7 +10,7 @@
 # ownership assertion in templates/_helpers.tpl entirely.
 #
 # Build and publish: see products/custom/README.md.
-FROM nginx:1.27-alpine
+FROM nginx:1.31.9-alpine
 
 # Listen on the chart's containerPort rather than nginx's default 80, so the
 # placeholder and a real user image are reachable through the same Service

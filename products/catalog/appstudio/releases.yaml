@@ -1,3 +1,8 @@
+- version: "0.2.27"
+  notes: |-
+    A security update for the page around your studio.
+
+    - The web server behind App Studio's page is updated to fix recently disclosed security issues
 - version: "0.2.26"
   notes: |-
     App Studio runs on Debian 13, with Python 3.13 and newer system packages.

@@ -25,7 +25,7 @@ appsDir: /workspace/apps
 
 # The chrome's server (templates/chrome.yaml). It shares the pod's network with
 # the apps the agent runs, so its port stays clear of 8080.
-chromeImage: nginx:1.29.2-alpine
+chromeImage: nginx:1.31.9-alpine
 chromePort: 4097
 
 # Where the chrome's Freepod link goes.
