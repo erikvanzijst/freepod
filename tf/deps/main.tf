@@ -198,7 +198,9 @@ module "uptime" {
   probes = {
     freepod-eu = { url = "https://freepod.eu/" }
     # Tenant apps run on the tenant pool.
-    freepod-app = { url = "https://freepod.app/", node_pool = "tenant" }
+    freepod-app    = { url = "https://freepod.app/", node_pool = "tenant" }
+    freepod-eu-v6  = { url = "https://freepod.eu/", ipv6 = true }
+    freepod-app-v6 = { url = "https://freepod.app/", ipv6 = true }
   }
   ping_urls = var.uptime_ping_urls
 }

@@ -159,7 +159,10 @@ all Caelus environments (it is *not* duplicated per env). Modules:
   every minute: it requests the check's public URL through the public edge
   (2xx/3xx is up) and pings `<ping URL>/<curl exit code>`. A failing site
   reports a failure right away; a cluster that stops running jobs goes quiet,
-  and the check times out. Ping URLs live in `uptime_ping_urls`.
+  and the check times out. An `ipv6` probe requests its URL over IPv6 only,
+  from the control-plane node's host network; the connection stays on the node,
+  so it does not cover the router or the upstream route. Ping URLs live in
+  `uptime_ping_urls`.
 
 Runtime dependencies on other `tf/deps` singletons:
 

@@ -4,11 +4,20 @@ variable "namespace" {
 }
 
 variable "probes" {
-  description = "Probes keyed by check name. Each run requests `url` through the public edge (2xx/3xx is up) and reports the outcome to that check's ping URL. `node_pool` pins the probe to the nodes labeled and tainted caelus.dev/node-pool=<pool>, so the check also fails when that pool cannot run it."
+  description = "Probes keyed by check name. Each run requests `url` through the public edge (2xx/3xx is up) and reports the outcome to that check's ping URL. `node_pool` pins the probe to the nodes labeled and tainted caelus.dev/node-pool=<pool>, so the check also fails when that pool cannot run it. `ipv6` requests `url` over IPv6 only, from the host network of the node matching var.ipv6_node_selector, since pods have no IPv6."
   type = map(object({
     url       = string
     node_pool = optional(string)
+    ipv6      = optional(bool, false)
   }))
+}
+
+variable "ipv6_node_selector" {
+  description = "The node an ipv6 probe runs on: the one the AAAA records name."
+  type        = map(string)
+  default = {
+    "node-role.kubernetes.io/control-plane" = "true"
+  }
 }
 
 variable "ping_urls" {

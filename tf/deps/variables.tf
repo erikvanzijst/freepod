@@ -116,7 +116,7 @@ variable "alert_email_to" {
 # --- Uptime heartbeats ---
 
 variable "uptime_ping_urls" {
-  description = "healthchecks.io ping URL per uptime check (freepod-eu, freepod-app). Anyone holding one can ping its check, so use secrets.auto.tfvars."
+  description = "healthchecks.io ping URL per uptime check (freepod-eu, freepod-app, freepod-eu-v6, freepod-app-v6). Anyone holding one can ping its check, so use secrets.auto.tfvars."
   type        = map(string)
   sensitive   = true
 }

@@ -6,7 +6,7 @@ locals {
   # A probe failure pings `<url>/<curl exit code>`, which healthchecks.io
   # records as a failure, with curl's error as the event body.
   script = <<-EOT
-    out=$(curl -fsS -o /dev/null -m 10 --retry 2 --retry-all-errors "$PROBE_URL" 2>&1)
+    out=$(curl $PROBE_FLAGS -fsS -o /dev/null -m 10 --retry 2 --retry-all-errors "$PROBE_URL" 2>&1)
     rc=$?
     echo "$PROBE_URL: exit $rc $out"
     curl -fsS -o /dev/null -m 10 --retry 3 --data-raw "$out" "$PING_URL/$rc"
@@ -25,6 +25,10 @@ resource "kubernetes_secret" "ping_urls" {
     precondition {
       condition     = length(setsubtract(keys(var.probes), keys(nonsensitive(var.ping_urls)))) == 0
       error_message = "Every probe needs a ping URL."
+    }
+    precondition {
+      condition     = alltrue([for probe in values(var.probes) : !(probe.ipv6 && probe.node_pool != null)])
+      error_message = "An ipv6 probe runs on var.ipv6_node_selector and takes no node_pool."
     }
   }
 }
@@ -63,7 +67,12 @@ resource "kubernetes_cron_job_v1" "probe" {
             restart_policy                  = "Never"
             automount_service_account_token = false
             enable_service_links            = false
-            node_selector                   = each.value.node_pool == null ? null : { "caelus.dev/node-pool" = each.value.node_pool }
+            host_network                    = each.value.ipv6
+            dns_policy                      = each.value.ipv6 ? "ClusterFirstWithHostNet" : "ClusterFirst"
+            node_selector = (
+              each.value.ipv6 ? var.ipv6_node_selector :
+              each.value.node_pool == null ? null : { "caelus.dev/node-pool" = each.value.node_pool }
+            )
 
             dynamic "toleration" {
               for_each = each.value.node_pool == null ? [] : [each.value.node_pool]
@@ -92,6 +101,11 @@ resource "kubernetes_cron_job_v1" "probe" {
               env {
                 name  = "PROBE_URL"
                 value = each.value.url
+              }
+
+              env {
+                name  = "PROBE_FLAGS"
+                value = each.value.ipv6 ? "-6" : ""
               }
 
               env {
