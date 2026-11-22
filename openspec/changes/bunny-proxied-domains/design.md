@@ -160,10 +160,15 @@ support burden. Worth its own proposal once BYO Bunny has users.
 
 ### D9. Later: Freepod's own DNS
 
-The platform's own zones use Cloudflare for DNS-01 (`freepod-cert-manager`). For the
-sovereignty message to hold end to end, they could move to Bunny DNS; cert-manager has no
-built-in Bunny solver, so it needs a webhook solver (community ones exist) or another EU DNS
-host with an RFC 2136 or supported API. Separate change.
+Only `freepod.eu` still uses Cloudflare. `freepod.app` is already at deSEC, and its DNS-01
+works through `pr0ton11/cert-manager-desec-webhook` (`tf/deps/certmanager/desec.tf`, pinned
+by digest). To move `freepod.eu` there, add it to that solver's `dnsZones`, extend the deSEC
+token's policy to TXT in `freepod.eu`, and drop the Cloudflare solver and token. There is no new
+dependency, and deSEC's write limits (15/min, 300/day per domain) are far above what a
+handful of wildcard renewals needs. Bunny DNS would need a second webhook
+(`aardbol/cert-manager-webhook-bunny`, the one cert-manager's docs list), which is a new
+third-party component in the issuance path, for a zone that has nothing to gain from
+Bunny's CDN. Recommended: deSEC. Separate change.
 
 ## Risks / Trade-offs
 
