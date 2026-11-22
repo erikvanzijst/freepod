@@ -18,6 +18,12 @@ independent state and does not use Terraform workspaces.
   one mailbox (`mx_account`), served over IMAPS on :993. It accepts SMTP on :25
   for `freepod.eu` only and has no submission port; outbound mail leaves through
   the `mailer` relay.
+- `ipv6-relay` namespace (`ipv6-relay/`): HAProxy on the control-plane node's
+  host network, the cluster's only IPv6 entry point. It binds `[::]:80`/`:443`
+  and relays to the Traefik pods with PROXY protocol, and `[::]:22`/`:23` to
+  the prod/dev sshpiper ports. The node's own sshd must not listen on
+  `[::]:22`; on Ubuntu that is an `ssh.socket` drop-in setting
+  `ListenStream=0.0.0.0:22`.
 - `monitoring` namespace with the cluster-wide observability stack (Loki +
   Alloy, Prometheus + node-exporter + kube-state-metrics + Alertmanager,
   Grafana) — see [Monitoring stack](#monitoring-stack).

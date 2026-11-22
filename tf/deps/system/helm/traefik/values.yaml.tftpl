@@ -57,6 +57,7 @@ ports:
     proxyProtocol:
       trustedIPs:
         - "${haproxy_edge_ip}"
+        - "${ipv6_relay_source_ip}"
   websecure:
     asDefault: true
     http:
@@ -66,6 +67,7 @@ ports:
     proxyProtocol:
       trustedIPs:
         - "${haproxy_edge_ip}"
+        - "${ipv6_relay_source_ip}"
 
 # klipper LoadBalancer owning the node's host :80/:443; Local preserves the edge source IP.
 service:

@@ -26,6 +26,15 @@ resource "kubernetes_namespace" "ceph_csi" {
   }
 }
 
+resource "kubernetes_namespace" "ipv6_relay" {
+  metadata {
+    name = "ipv6-relay"
+    labels = {
+      "pod-security.kubernetes.io/enforce" = "privileged"
+    }
+  }
+}
+
 resource "kubernetes_namespace" "monitoring" {
   metadata {
     name = "monitoring"
@@ -75,10 +84,20 @@ module "tls" {
 module "system" {
   source                          = "./system"
   haproxy_edge_ip                 = var.haproxy_edge_ip
+  ipv6_relay_source_ip            = var.ipv6_relay_source_ip
   default_tls_resources_namespace = "caelus-tls"
 
   # Traefik's default cert store points at the wildcard secret cert-manager issues.
   depends_on = [module.certmanager]
+}
+
+module "ipv6_relay" {
+  source    = "./ipv6-relay"
+  namespace = kubernetes_namespace.ipv6_relay.metadata[0].name
+  ssh_ports = {
+    22 = 2222
+    23 = 2223
+  }
 }
 
 # Cluster singleton shared by dev and prod: the sandboxed container runtime.

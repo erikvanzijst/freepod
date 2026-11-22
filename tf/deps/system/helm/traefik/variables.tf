@@ -3,6 +3,11 @@ variable "haproxy_edge_ip" {
   type        = string
 }
 
+variable "ipv6_relay_source_ip" {
+  description = "IPv4 address/CIDR the IPv6 relay connects to Traefik from, trusted for PROXY protocol on the web/websecure entrypoints."
+  type        = string
+}
+
 # Upgrading: tenants' HTTP access logs (api/app/services/http_logs.py) select a
 # deployment's requests by Traefik's Ingress router names, which this version
 # writes as `<namespace>-<ingress>-<host+path>@kubernetes`. A release that names

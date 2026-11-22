@@ -92,6 +92,12 @@ variable "haproxy_edge_ip" {
   default     = "192.168.0.12/32"
 }
 
+variable "ipv6_relay_source_ip" {
+  description = "IPv4 address of the node running the IPv6 relay (./ipv6-relay), trusted for PROXY protocol on freepod Traefik entrypoints."
+  type        = string
+  default     = "192.168.0.159/32"
+}
+
 # --- Monitoring stack (Loki/Grafana/Prometheus) ---
 
 variable "grafana_admin_password" {
