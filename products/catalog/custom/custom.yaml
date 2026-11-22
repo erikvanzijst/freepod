@@ -13,9 +13,9 @@ upstream:
   version_path: template.system_values.placeholderImage
 template:
   chart_ref: oci://ghcr.io/erikvanzijst/freepod/charts/custom
-  chart_version: 0.16.1
+  chart_version: 0.16.2
   system_values:
-    placeholderImage: ghcr.io/erikvanzijst/freepod/custom-placeholder:0.2.0
+    placeholderImage: ghcr.io/erikvanzijst/freepod/custom-placeholder:0.2.1
     nodePool: tenant
     runtimeClassName: gvisor
     objectStorage:

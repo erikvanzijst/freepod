@@ -90,7 +90,7 @@ pictrs:
 proxy:
   image:
     repository: docker.io/library/nginx
-    tag: "1.29-alpine"
+    tag: "1.31.9-alpine"
     pullPolicy: IfNotPresent
   # Upload ceiling. Keep at or below pict-rs's own 40MB per-file limit.
   maxUploadSize: "20M"
