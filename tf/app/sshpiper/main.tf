@@ -98,6 +98,10 @@ resource "kubernetes_deployment" "sshpiper" {
       spec {
         automount_service_account_token = false
 
+        node_selector = {
+          "caelus.dev/edge" = "true"
+        }
+
         service_account_name = kubernetes_service_account.sshpiper.metadata[0].name
 
         container {

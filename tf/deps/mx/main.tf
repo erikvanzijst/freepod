@@ -92,7 +92,7 @@ resource "kubernetes_stateful_set" "mx" {
         # The router forwards :25 and :993 to this node, and the Service's
         # Local traffic policy only answers on the node running the pod.
         node_selector = {
-          "node-role.kubernetes.io/control-plane" = "true"
+          "caelus.dev/edge" = "true"
         }
 
         security_context {

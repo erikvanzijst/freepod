@@ -16,7 +16,7 @@ variable "ipv6_node_selector" {
   description = "The node an ipv6 probe runs on: the one the AAAA records name."
   type        = map(string)
   default = {
-    "node-role.kubernetes.io/control-plane" = "true"
+    "caelus.dev/edge" = "true"
   }
 }
 

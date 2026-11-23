@@ -18,12 +18,12 @@ independent state and does not use Terraform workspaces.
   one mailbox (`mx_account`), served over IMAPS on :993. It accepts SMTP on :25
   for `freepod.eu` only and has no submission port; outbound mail leaves through
   the `mailer` relay.
-- `ipv6-relay` namespace (`ipv6-relay/`): HAProxy on the control-plane node's
-  host network, the cluster's only IPv6 entry point. It binds `[::]:80`/`:443`
-  and relays to the Traefik pods with PROXY protocol, and `[::]:22`/`:23` to
-  the prod/dev sshpiper ports. A second container checks the nftables
-  table `ip6 freepod_edge` on the node every minute and restores it if it is
-  missing or outdated.
+- `ipv6-relay` namespace (`ipv6-relay/`): HAProxy on the host network of the
+  node labeled `caelus.dev/edge=true`, the cluster's only IPv6 entry point. It
+  binds `[::]:80`/`:443` and relays to the Traefik pods with PROXY protocol, and
+  `[::]:22`/`:23` to the prod/dev sshpiper ports. A second container checks the
+  nftables table `ip6 freepod_edge` on the node every minute and restores it if
+  it is missing or outdated.
   The table drops IPv6 arriving on the uplink unless it is a reply, ICMPv6,
   link-local or ULA, or bound for a relayed port or Tailscale. The node's own sshd must not listen on `[::]:22`; on Ubuntu
   that is an `ssh.socket` drop-in setting `ListenStream=0.0.0.0:22`. Never
@@ -165,7 +165,7 @@ all Caelus environments (it is *not* duplicated per env). Modules:
   (2xx/3xx is up) and pings `<ping URL>/<curl exit code>`. A failing site
   reports a failure right away; a cluster that stops running jobs goes quiet,
   and the check times out. An `ipv6` probe requests its URL over IPv6 only,
-  from the control-plane node's host network; the connection stays on the node,
+  from the edge node's host network; the connection stays on the node,
   so it does not cover the router or the upstream route. Ping URLs live in
   `uptime_ping_urls`.
 

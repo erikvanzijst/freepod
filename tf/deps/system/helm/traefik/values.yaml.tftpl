@@ -75,6 +75,10 @@ service:
     type: LoadBalancer
     externalTrafficPolicy: Local
 
+# Local only answers on a node running a Traefik pod, so the pods stay on the edge nodes.
+nodeSelector:
+  caelus.dev/edge: "true"
+
 # NO tlsStore here. The default certificate store is a platform-owned object in the namespace
 # named by providers.kubernetesCRD.defaultTLSResourcesNamespace above (tf/deps/tls), because the
 # reconciler adds each account's certificate to it and a chart-rendered object is reset to the

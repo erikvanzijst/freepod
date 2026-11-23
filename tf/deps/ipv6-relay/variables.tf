@@ -29,7 +29,7 @@ variable "node_selector" {
   description = "The node whose public IPv6 address the DNS AAAA records name."
   type        = map(string)
   default = {
-    "node-role.kubernetes.io/control-plane" = "true"
+    "caelus.dev/edge" = "true"
   }
 }
 
