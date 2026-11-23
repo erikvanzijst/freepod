@@ -12,6 +12,7 @@
 #   ./scripts/build-images.sh --daemons       # Build only the platform Go daemons image
 #   ./scripts/build-images.sh --builder       # Build only the tenant build image
 #   ./scripts/build-images.sh --placeholder   # Build only the custom placeholder image
+#   ./scripts/build-images.sh --nftables      # Build only the IPv6 edge firewall image
 #   ./scripts/build-images.sh v1.2.3 --api   # Build only API image with custom tag
 #   ./scripts/build-images.sh v1.2.3 --ui    # Build only UI image with custom tag
 #   ./scripts/build-images.sh --help         # Show this help message
@@ -54,7 +55,7 @@ REGISTRY=ghcr.io/$(gh repo view --json nameWithOwner -q .nameWithOwner)
 # Function to display help
 usage() {
   cat <<'EOF'
-Usage: ./scripts/build-images.sh [TAG] [--api|--ui|--keycloak|--ssh-sidecar|--daemons|--builder|--placeholder|--all|--help]
+Usage: ./scripts/build-images.sh [TAG] [--api|--ui|--keycloak|--ssh-sidecar|--daemons|--builder|--placeholder|--nftables|--all|--help]
 
 If TAG is not provided, the current git SHA will be used.
 
@@ -75,9 +76,12 @@ Options:
                   its version comes from products/custom/placeholder/VERSION and
                   an already-published version is refused rather than
                   overwritten.
+  --nftables      Build only the IPv6 edge firewall image. Ignores TAG: its
+                  version comes from tf/deps/ipv6-relay/nftables/VERSION and an
+                  already-published version is refused rather than overwritten.
   --skip-if-published
-                  With --ssh-sidecar, --daemons, --builder or
-                  --placeholder, treat an already-published version as nothing
+                  With --ssh-sidecar, --daemons, --builder, --placeholder or
+                  --nftables, treat an already-published version as nothing
                   to do rather than an error. This is what makes the publish
                   safe to run on every merge: it pushes exactly when VERSION is
                   new. Run by hand without it, so that a version you believed
@@ -89,7 +93,7 @@ EOF
 
 # Parse arguments
 TAG=""
-TARGET="both"  # possible values: both, api, ui, keycloak, ssh-sidecar, daemons, builder, placeholder, all
+TARGET="both"  # possible values: both, api, ui, keycloak, ssh-sidecar, daemons, builder, placeholder, nftables, all
 SKIP_IF_PUBLISHED=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -121,6 +125,10 @@ while [[ $# -gt 0 ]]; do
       TARGET="placeholder"
       shift
       ;;
+    --nftables)
+      TARGET="nftables"
+      shift
+      ;;
     --skip-if-published)
       SKIP_IF_PUBLISHED=true
       shift
@@ -148,8 +156,8 @@ done
 # Only the immutably-tagged images can be already-published, so anywhere else
 # this flag would silently do nothing -- which is how a publish everyone
 # believes is conditional turns out never to have been.
-if [[ "$SKIP_IF_PUBLISHED" == "true" && "$TARGET" != "ssh-sidecar" && "$TARGET" != "daemons" && "$TARGET" != "builder" && "$TARGET" != "placeholder" ]]; then
-  echo "--skip-if-published only applies to --ssh-sidecar, --daemons, --builder and --placeholder." >&2
+if [[ "$SKIP_IF_PUBLISHED" == "true" && "$TARGET" != "ssh-sidecar" && "$TARGET" != "daemons" && "$TARGET" != "builder" && "$TARGET" != "placeholder" && "$TARGET" != "nftables" ]]; then
+  echo "--skip-if-published only applies to --ssh-sidecar, --daemons, --builder, --placeholder and --nftables." >&2
   exit 1
 fi
 
@@ -322,6 +330,40 @@ if [[ "$TARGET" == "placeholder" ]]; then
   echo "This does not reach any deployment on its own. Point placeholderImage in"
   echo "products/custom/chart/values.yaml and products/catalog/custom/custom.yaml at this"
   echo "version, bump the chart, and publish it with ./scripts/publish-charts.sh."
+  echo "=============================================="
+  exit 0
+fi
+
+if [[ "$TARGET" == "nftables" ]]; then
+  NFTABLES_CONTEXT=./tf/deps/ipv6-relay/nftables
+  NFTABLES_VERSION=$(tr -d '[:space:]' < "${NFTABLES_CONTEXT}/VERSION")
+  NFTABLES_REF="${REGISTRY}/nftables:${NFTABLES_VERSION}"
+
+  if docker manifest inspect "${NFTABLES_REF}" >/dev/null 2>&1; then
+    if [[ "$SKIP_IF_PUBLISHED" == "true" ]]; then
+      echo "${NFTABLES_REF} is already published. Nothing to do."
+      exit 0
+    fi
+    echo "Refusing to overwrite ${NFTABLES_REF}, which is already published." >&2
+    echo "Bump ${NFTABLES_CONTEXT}/VERSION and repoint the ipv6-relay module's firewall_image." >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "[1/1] Building and pushing the IPv6 edge firewall image ${NFTABLES_VERSION}..."
+  docker buildx build \
+    --push \
+    --pull \
+    --platform linux/amd64 \
+    --tag "${NFTABLES_REF}" \
+    "${NFTABLES_CONTEXT}"
+
+  echo ""
+  echo "=============================================="
+  echo "Pushed ${NFTABLES_REF}"
+  echo ""
+  echo "This does not reach the node on its own. Point firewall_image in"
+  echo "tf/deps/ipv6-relay at this version and apply tf/deps."
   echo "=============================================="
   exit 0
 fi

@@ -12,6 +12,26 @@ locals {
     web_ports    = var.web_ports
     ssh_ports    = var.ssh_ports
   })
+
+  firewall_inputs = {
+    interface = var.interface
+    tcp_ports = sort(concat(keys(var.web_ports), keys(var.ssh_ports)))
+    udp_ports = var.allowed_udp_ports
+  }
+  firewall_id = substr(sha256(jsonencode([file("${path.module}/ipv6-edge.nft.tftpl"), local.firewall_inputs])), 0, 16)
+  firewall    = templatefile("${path.module}/ipv6-edge.nft.tftpl", merge(local.firewall_inputs, { id = local.firewall_id }))
+
+  # The table's comment names the rules it holds, so the loop reloads only a
+  # missing or outdated table and the drop counter survives.
+  firewall_script = <<-EOT
+    while true; do
+      id=$(sed -n 's/^  comment "\(.*\)"$/\1/p' /etc/ipv6-edge/rules.nft)
+      if ! nft list table ip6 freepod_edge 2>/dev/null | grep -qF "comment \"$id\""; then
+        nft -f /etc/ipv6-edge/rules.nft && echo "applied table ip6 freepod_edge $id"
+      fi
+      sleep 60
+    done
+  EOT
 }
 
 resource "kubernetes_service" "traefik" {
@@ -34,6 +54,17 @@ resource "kubernetes_config_map" "config" {
 
   data = {
     "haproxy.cfg" = local.config
+  }
+}
+
+resource "kubernetes_config_map" "firewall" {
+  metadata {
+    name      = "ipv6-edge-firewall"
+    namespace = var.namespace
+  }
+
+  data = {
+    "rules.nft" = local.firewall
   }
 }
 
@@ -105,6 +136,45 @@ resource "kubernetes_daemonset" "relay" {
           }
         }
 
+        container {
+          name    = "firewall"
+          image   = var.firewall_image
+          command = ["sh", "-c", local.firewall_script]
+
+          resources {
+            requests = {
+              cpu    = "1m"
+              memory = "4Mi"
+            }
+            limits = {
+              memory = "32Mi"
+            }
+          }
+
+          security_context {
+            run_as_user                = 0
+            allow_privilege_escalation = false
+            read_only_root_filesystem  = true
+            capabilities {
+              drop = ["ALL"]
+              add  = ["NET_ADMIN"]
+            }
+          }
+
+          volume_mount {
+            name       = "firewall"
+            mount_path = "/etc/ipv6-edge"
+            read_only  = true
+          }
+        }
+
+        volume {
+          name = "firewall"
+          config_map {
+            name = kubernetes_config_map.firewall.metadata[0].name
+          }
+        }
+
         volume {
           name = "config"
           config_map {
@@ -115,3 +185,4 @@ resource "kubernetes_daemonset" "relay" {
     }
   }
 }
+

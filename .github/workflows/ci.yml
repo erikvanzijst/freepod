@@ -188,6 +188,9 @@ jobs:
       - name: Publish the custom placeholder image when its version is new
         run: ./scripts/build-images.sh --placeholder --skip-if-published
 
+      - name: Publish the IPv6 edge firewall image when its version is new
+        run: ./scripts/build-images.sh --nftables --skip-if-published
+
       - name: Set up Helm
         uses: azure/setup-helm@v5
         with:

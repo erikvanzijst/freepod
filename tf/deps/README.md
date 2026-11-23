@@ -21,9 +21,14 @@ independent state and does not use Terraform workspaces.
 - `ipv6-relay` namespace (`ipv6-relay/`): HAProxy on the control-plane node's
   host network, the cluster's only IPv6 entry point. It binds `[::]:80`/`:443`
   and relays to the Traefik pods with PROXY protocol, and `[::]:22`/`:23` to
-  the prod/dev sshpiper ports. The node's own sshd must not listen on
-  `[::]:22`; on Ubuntu that is an `ssh.socket` drop-in setting
-  `ListenStream=0.0.0.0:22`.
+  the prod/dev sshpiper ports. A second container checks the nftables
+  table `ip6 freepod_edge` on the node every minute and restores it if it is
+  missing or outdated.
+  The table drops IPv6 arriving on the uplink unless it is a reply, ICMPv6,
+  link-local or ULA, or bound for a relayed port or Tailscale. The node's own sshd must not listen on `[::]:22`; on Ubuntu
+  that is an `ssh.socket` drop-in setting `ListenStream=0.0.0.0:22`. Never
+  enable Ubuntu's `nftables.service`: its `/etc/nftables.conf` begins with
+  `flush ruleset`, which removes the k3s and Tailscale rules.
 - `monitoring` namespace with the cluster-wide observability stack (Loki +
   Alloy, Prometheus + node-exporter + kube-state-metrics + Alertmanager,
   Grafana) — see [Monitoring stack](#monitoring-stack).

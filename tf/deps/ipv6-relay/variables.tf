@@ -7,6 +7,24 @@ variable "image" {
   default = "haproxy:3.4.8-alpine"
 }
 
+variable "firewall_image" {
+  description = "nftables image the firewall container runs, built from ./nftables by `scripts/build-images.sh --nftables`."
+  type        = string
+  default     = "ghcr.io/erikvanzijst/freepod/nftables:1.1.6-1"
+}
+
+variable "interface" {
+  description = "The node's uplink. The firewall drops IPv6 arriving on it unless it is a reply, ICMPv6, from a link-local or ULA source, or to a relayed port or var.allowed_udp_ports."
+  type        = string
+  default     = "eth0"
+}
+
+variable "allowed_udp_ports" {
+  description = "UDP ports the firewall also admits on var.interface. 41641 is Tailscale's direct WireGuard port."
+  type        = list(number)
+  default     = [41641]
+}
+
 variable "node_selector" {
   description = "The node whose public IPv6 address the DNS AAAA records name."
   type        = map(string)

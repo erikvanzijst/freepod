@@ -1,0 +1,19 @@
+table ip6 freepod_edge
+delete table ip6 freepod_edge
+
+table ip6 freepod_edge {
+  comment "${id}"
+
+  chain input {
+    type filter hook input priority filter - 10; policy accept;
+    iifname != "${interface}" accept
+    ct state established,related accept
+    ip6 saddr { fe80::/10, fd00::/8 } accept
+    meta l4proto ipv6-icmp accept
+    tcp dport { ${join(", ", tcp_ports)} } accept
+%{ if length(udp_ports) > 0 ~}
+    udp dport { ${join(", ", udp_ports)} } accept
+%{ endif ~}
+    counter drop
+  }
+}
