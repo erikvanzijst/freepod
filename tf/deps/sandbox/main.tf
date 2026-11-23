@@ -1,6 +1,6 @@
 # The `gvisor` RuntimeClass: pods that name it run inside a gVisor sandbox.
-# Only the node pool's nodes have the runtime installed (see ../README.md), so
-# the class pins its pods there; they wait rather than land on a node without it.
+# The class pins its pods to the nodes labeled caelus.dev/gvisor=true (see
+# ../README.md); they wait rather than land on any other node.
 resource "kubernetes_manifest" "gvisor" {
   manifest = {
     apiVersion = "node.k8s.io/v1"
@@ -20,7 +20,7 @@ resource "kubernetes_manifest" "gvisor" {
     }
     scheduling = {
       nodeSelector = {
-        "caelus.dev/node-pool" = var.node_pool
+        "caelus.dev/gvisor" = "true"
       }
       tolerations = [
         {

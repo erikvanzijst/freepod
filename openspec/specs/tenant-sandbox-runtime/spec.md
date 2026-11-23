@@ -25,21 +25,25 @@ memory and CPU, so scheduling and the pod's resource bounds include it.
 - **WHEN** a pod using the `gvisor` RuntimeClass is admitted
 - **THEN** its `spec.overhead` carries the RuntimeClass's fixed overhead
 
-### Requirement: Sandboxed pods run only on the tenant node pool
+### Requirement: Sandboxed pods run only on gVisor nodes
 
 The `gvisor` RuntimeClass SHALL restrict its pods to nodes labeled
-`caelus.dev/node-pool=tenant` and SHALL tolerate that pool's taint. A sandboxed
-pod SHALL NOT be scheduled onto any other node, including when the pool has no
-schedulable node.
+`caelus.dev/gvisor=true` and SHALL tolerate the tenant pool's
+`caelus.dev/node-pool=tenant` taint. A node can have the runtime installed
+without the label; only labeled nodes run sandboxed pods. A sandboxed pod SHALL
+NOT be scheduled onto any other node, including when no labeled node is
+schedulable.
 
-#### Scenario: Pool available
+#### Scenario: gVisor node available
 
-- **WHEN** a sandboxed pod is created and a tenant-pool node is schedulable
-- **THEN** the pod is scheduled onto a tenant-pool node
+- **WHEN** a sandboxed pod is created and a node labeled `caelus.dev/gvisor=true`
+  is schedulable
+- **THEN** the pod is scheduled onto a labeled node
 
-#### Scenario: Pool unavailable
+#### Scenario: No gVisor node available
 
-- **WHEN** a sandboxed pod is created and no tenant-pool node is schedulable
+- **WHEN** a sandboxed pod is created and no node labeled `caelus.dev/gvisor=true`
+  is schedulable
 - **THEN** the pod stays Pending rather than being scheduled onto another node
 
 ### Requirement: Charts opt in through a system value

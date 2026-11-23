@@ -36,7 +36,7 @@ independent state and does not use Terraform workspaces.
   StorageClass per pool on an external Ceph cluster — see
   [Block storage](#block-storage).
 - The `gvisor` RuntimeClass (`sandbox/`): tenant-code pods that name it run
-  inside a gVisor sandbox on the tenant node pool — see
+  inside a gVisor sandbox on the nodes labeled `caelus.dev/gvisor=true` — see
   [Sandboxed runtime](#sandboxed-runtime).
 - `caelus-tls` namespace (`tls/`) holding the platform certificate and the
   `TLSStore/default` Traefik serves from, plus `TLSOption/default`: TLS 1.2+
@@ -232,10 +232,11 @@ volumes before the network stops: [ceph-csi/README.md](ceph-csi/README.md).
 `runtimeClassName: gvisor` runs inside a gVisor sandbox: a user-space kernel
 between its containers and the host's. Charts opt in through their
 `runtimeClassName` system value, which the catalog sets. The class pins its pods
-to the `caelus.dev/node-pool=tenant` nodes, the only ones with the runtime, and
-declares a fixed 80Mi / 10m overhead for the sandbox itself. While no tenant-pool
-node is schedulable, sandboxed pods stay Pending; they never fall back to another
-node.
+to the nodes labeled `caelus.dev/gvisor=true`, tolerates the tenant pool's taint,
+and declares a fixed 80Mi / 10m overhead for the sandbox itself. Every node gets
+the runtime, but only labeled nodes run sandboxed pods, so they don't
+drift onto a node just because it could run them. While no labeled node is
+schedulable, sandboxed pods stay Pending; they never fall back to another node.
 
 Spec: [tenant-sandbox-runtime](../../openspec/specs/tenant-sandbox-runtime/spec.md)
 · Rationale:
@@ -243,8 +244,8 @@ Spec: [tenant-sandbox-runtime](../../openspec/specs/tenant-sandbox-runtime/spec.
 
 ### Node setup
 
-The runtime lives on the node, outside Terraform. A rebuilt tenant-pool node
-needs these before any sandboxed pod can start there.
+The runtime lives on the node, outside Terraform. Every node gets it, so the
+nodes stay alike; a node runs sandboxed pods only once step 5 labels it.
 
 1. Install a pinned gVisor release (the tarball holds `runsc`,
    `containerd-shim-runsc-v1` and `gvisor-bin/`; keep them side by side):
@@ -286,9 +287,17 @@ needs these before any sandboxed pod can start there.
    The shim reads this file for every new sandbox. A change takes effect when
    a pod is recreated, without a restart of k3s.
 
-4. `sudo systemctl restart k3s-agent`. Running containers survive the restart.
-   Check with `runsc --version` and by finding the `runsc` runtime in
+4. Restart k3s (`k3s-agent` on an agent, `k3s` on a server). Running
+   containers survive the restart. Check with `runsc --version` and by finding
+   the `runsc` runtime in
    `/var/lib/rancher/k3s/agent/etc/containerd/config.toml`.
+
+5. On a node that should run sandboxed pods, add `caelus.dev/gvisor=true` to
+   `node-label` in `/etc/rancher/k3s/config.yaml`. k3s applies `node-label`
+   at registration and on every start, but only adds labels, never removes
+   them. To label a running node without a restart, also run
+   `kubectl label node <node> caelus.dev/gvisor=true`; to take the label away,
+   remove it from the config and `kubectl label node <node> caelus.dev/gvisor-`.
 
 To upgrade, extract a newer release over the old one. A running sandbox keeps
 the binary it started with until its pod restarts.

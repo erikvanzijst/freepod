@@ -1,4 +1,4 @@
 variable "node_pool" {
-  description = "Node pool whose nodes have the gVisor runtime installed, by the caelus.dev/node-pool label and taint."
+  description = "Node pool whose caelus.dev/node-pool taint sandboxed pods tolerate."
   type        = string
 }
