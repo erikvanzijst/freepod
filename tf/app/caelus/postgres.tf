@@ -140,7 +140,7 @@ resource "kubernetes_deployment" "postgres" {
         volume {
           name = "postgres-data"
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.postgres_pvc.metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim.postgres_data.metadata[0].name
           }
         }
       }
