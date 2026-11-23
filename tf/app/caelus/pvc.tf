@@ -50,3 +50,20 @@ resource "kubernetes_persistent_volume_claim" "static_pvc" {
     }
   }
 }
+
+resource "kubernetes_persistent_volume_claim" "static_data" {
+  metadata {
+    name      = "caelus-static-data"
+    namespace = var.namespace
+  }
+
+  spec {
+    access_modes       = ["ReadWriteOnce"]
+    storage_class_name = var.storage_class
+    resources {
+      requests = {
+        storage = "1Gi"
+      }
+    }
+  }
+}

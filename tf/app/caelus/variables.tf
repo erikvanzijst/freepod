@@ -79,7 +79,7 @@ variable "storage_classes" {
 }
 
 variable "storage_class" {
-  description = "StorageClass of the platform database and of every new deployment (CAELUS_STORAGE_CLASS); must be in storage_classes"
+  description = "StorageClass of the platform volumes and of every new deployment (CAELUS_STORAGE_CLASS); must be in storage_classes"
   type        = string
 }
 

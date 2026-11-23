@@ -184,7 +184,7 @@ resource "kubernetes_deployment" "api" {
         volume {
           name = "static-data"
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.static_pvc.metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim.static_data.metadata[0].name
           }
         }
       }
