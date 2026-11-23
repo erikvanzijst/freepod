@@ -36,6 +36,11 @@ variable "cluster_issuer" {
   default     = "letsencrypt-dns"
 }
 
+variable "storage_class" {
+  description = "StorageClass of the mailbox volume"
+  type        = string
+}
+
 variable "storage_size" {
   description = "Size of the mailbox volume"
   type        = string

@@ -126,7 +126,7 @@ resource "kubernetes_stateful_set" "mx" {
           }
 
           volume_mount {
-            name       = "data"
+            name       = "data-rbd"
             mount_path = "/data"
           }
           volume_mount {
@@ -194,7 +194,7 @@ resource "kubernetes_stateful_set" "mx" {
           }
 
           volume_mount {
-            name       = "data"
+            name       = "data-rbd"
             mount_path = "/data"
           }
           volume_mount {
@@ -243,11 +243,11 @@ resource "kubernetes_stateful_set" "mx" {
 
     volume_claim_template {
       metadata {
-        name = "data"
+        name = "data-rbd"
       }
       spec {
-        access_modes       = ["ReadWriteOnce"]
-        storage_class_name = "local-path"
+        access_modes       = ["ReadWriteOncePod"]
+        storage_class_name = var.storage_class
         resources {
           requests = {
             storage = var.storage_size

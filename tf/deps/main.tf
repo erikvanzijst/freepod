@@ -124,6 +124,7 @@ module "mx" {
   domain               = "freepod.eu"
   account              = var.mx_account
   password_hash        = var.mx_password_hash
+  storage_class        = "ceph-freepod"
   monitoring_namespace = kubernetes_namespace.monitoring.metadata[0].name
 
   depends_on = [module.certmanager]
