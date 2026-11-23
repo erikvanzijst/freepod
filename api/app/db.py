@@ -22,7 +22,7 @@ def get_engine() -> Engine:
     suite relies on that; the alternative was reloading this module, which left
     an undisposed connection pool behind every time.
     """
-    return create_engine(get_settings().database_url, echo=False)
+    return create_engine(get_settings().database_url, echo=False, pool_pre_ping=True)
 
 
 def get_session() -> Generator[Session, None, None]:
