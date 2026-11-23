@@ -3,3 +3,5 @@ id_ed25519.pub
 .env
 kubeconfigs/
 last_vm_ip.txt
+freepod
+freepod.pub
