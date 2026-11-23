@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 import multiprocessing
 import os
+import queue
 import signal
+import sys
 import time
 
 from app import db
@@ -15,6 +17,8 @@ from app.services import (
 from app.services.reconcile_constants import DEPLOYMENT_STATUS_ERROR
 
 logger = logging.getLogger(__name__)
+
+_CHILD_CHECK_SECONDS = 5.0
 
 
 def process_one_job(base_worker_id: str) -> dict | None:
@@ -67,8 +71,30 @@ def process_one_job(base_worker_id: str) -> dict | None:
         }
 
 
-# TODO: When a worker processes crashes, does it get replaced in the pool? If not, the sentinel object
-#       never gets sent and the master won't join and exit gracefully
+def _poll_once(
+    base_worker_id: str, result_queue: multiprocessing.Queue, poll_seconds: float
+) -> None:
+    """Process at most one job. A failure is logged, never raised.
+
+    A job claimed before the failure stays leased, and is retried once its
+    lease expires.
+    """
+    try:
+        payload = process_one_job(base_worker_id)
+    except Exception:
+        logger.exception("Reconcile pass failed; continuing")
+        payload = None
+    if payload is None:
+        time.sleep(poll_seconds)
+    else:
+        result_queue.put(payload)
+
+
+def _crashed(workers: list) -> list:
+    """Worker processes that died without finishing normally."""
+    return [p for p in workers if not p.is_alive() and p.exitcode not in (0, None)]
+
+
 def _worker_loop(
     base_worker_id: str, result_queue: multiprocessing.Queue, poll_seconds: float
 ) -> None:
@@ -89,11 +115,7 @@ def _worker_loop(
     signal.signal(signal.SIGTERM, _handle_signal)
 
     while not shutdown:
-        payload = process_one_job(base_worker_id)
-        if payload is None:
-            time.sleep(poll_seconds)
-        else:
-            result_queue.put(payload)
+        _poll_once(base_worker_id, result_queue, poll_seconds)
 
     # Sentinel: tell the master this worker is done
     result_queue.put(None)
@@ -123,10 +145,25 @@ def run_worker(
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    # Master: read results until all workers have exited
+    # Master: read results until all workers have exited. A worker that dies
+    # without its sentinel would leave the master waiting forever, so exit
+    # instead and let the container restart.
     exited = 0
     while exited < concurrency:
-        result = result_queue.get()
+        try:
+            result = result_queue.get(timeout=_CHILD_CHECK_SECONDS)
+        except queue.Empty:
+            crashed = _crashed(workers)
+            if crashed:
+                for p in crashed:
+                    logger.error(f"Worker process {p.pid} exited with code {p.exitcode}; exiting")
+                for p in workers:
+                    if p.is_alive():
+                        p.terminate()
+                for p in workers:
+                    p.join()
+                sys.exit(1)
+            continue
         if result is None:
             exited += 1
         else:
