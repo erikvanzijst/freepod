@@ -47,6 +47,7 @@ module "keycloak" {
   keycloak_admin_password = var.keycloak_admin_password
   keycloak_image          = var.keycloak_image
   domain                  = "freepod.eu"
+  storage_class           = "ceph-freepod"
 }
 
 # Realm, client, client-scope and group configuration for the Keycloak instance

@@ -19,3 +19,8 @@ variable "keycloak_image" {
   type        = string
   default     = "ghcr.io/erikvanzijst/freepod/keycloak:26.8.2-1"
 }
+
+variable "storage_class" {
+  description = "StorageClass of the Keycloak database volume"
+  type        = string
+}

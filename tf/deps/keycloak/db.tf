@@ -30,9 +30,7 @@ resource "kubernetes_deployment" "postgres" {
       }
     }
 
-    # Never two postmasters on one data directory: a rolling update starts the
-    # new pod first, local-path lets both mount the PVC, and Postgres's lock
-    # file can't tell (each container is PID 1).
+    # The claim is ReadWriteOncePod: a rolling update's new pod could never mount it.
     strategy {
       type = "Recreate"
     }
@@ -68,7 +66,7 @@ resource "kubernetes_deployment" "postgres" {
         volume {
           name = "postgres-storage"
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.postgres_pvc.metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim.postgres_data.metadata[0].name
           }
         }
       }
