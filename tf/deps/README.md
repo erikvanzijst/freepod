@@ -17,7 +17,9 @@ independent state and does not use Terraform workspaces.
   `freepod.eu` at `mx.freepod.eu`. Every address in the domain is delivered to
   one mailbox (`mx_account`), served over IMAPS on :993. It accepts SMTP on :25
   for `freepod.eu` only and has no submission port; outbound mail leaves through
-  the `mailer` relay.
+  the `mailer` relay. Both ports enter through Traefik's `smtp` and `imaps` entry
+  points: SMTP with PROXY protocol, so Maddy sees the sender's address for SPF and
+  DMARC, and IMAPS passed through with its TLS intact.
 - `ipv6-relay` namespace (`ipv6-relay/`): HAProxy on the host network of the
   node labeled `caelus.dev/edge=true`, the cluster's only IPv6 entry point. It
   binds `[::]:80`/`:443` and relays to the Traefik pods with PROXY protocol, and

@@ -12,6 +12,10 @@
 image:
   tag: "3.7.19"
 
+# One pod per edge node: whichever edge node holds the floating address must serve it.
+deployment:
+  kind: DaemonSet
+
 # `traefik` IngressClass, marked default — so existing app Ingresses (which carry no explicit
 # class) keep matching this controller after the migration off the bundled chart.
 ingressClass:
@@ -69,7 +73,22 @@ ports:
         - "${haproxy_edge_ip}"
         - "${ipv6_relay_source_ip}"
 
-# klipper LoadBalancer owning the node's host :80/:443; Local preserves the edge source IP.
+  # Inbound mail for tf/deps/mx. smtp passes the sender's address on with PROXY protocol;
+  # imaps is passed through, TLS and all, to Maddy.
+  smtp:
+    port: 2525
+    expose:
+      default: true
+    exposedPort: 25
+    protocol: TCP
+  imaps:
+    port: 9993
+    expose:
+      default: true
+    exposedPort: 993
+    protocol: TCP
+
+# klipper LoadBalancer owning the node's host ports; Local preserves the edge source IP.
 service:
   spec:
     type: LoadBalancer
@@ -88,7 +107,7 @@ nodeSelector:
 # Access logs go to stdout as JSON lines, which Alloy parses (tf/deps/loki) and tenants read
 # through `freepod log --http`. Fields and headers are allowlists: a field a later Traefik adds
 # stays out of the log store until it is listed here, and so do Cookie and Authorization.
-# kubectl -n kube-system logs -f deploy/traefik | jq
+# kubectl -n kube-system logs -f ds/traefik | jq
 accessLog:
   enabled: true
   format: json

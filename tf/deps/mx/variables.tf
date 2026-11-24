@@ -51,3 +51,22 @@ variable "monitoring_namespace" {
   description = "Namespace Prometheus scrapes from"
   type        = string
 }
+
+variable "traefik_namespace" {
+  type    = string
+  default = "kube-system"
+}
+
+variable "traefik_selector" {
+  type = map(string)
+  default = {
+    "app.kubernetes.io/name"     = "traefik"
+    "app.kubernetes.io/instance" = "traefik-kube-system"
+  }
+}
+
+variable "pod_cidrs" {
+  description = "The cluster's pod network, where Traefik's PROXY protocol connections come from."
+  type        = list(string)
+  default     = ["10.42.0.0/16"]
+}

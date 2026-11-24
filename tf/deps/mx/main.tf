@@ -4,9 +4,10 @@ locals {
   }
 
   config = templatefile("${path.module}/maddy.conf.tftpl", {
-    hostname = var.hostname
-    domain   = var.domain
-    account  = var.account
+    hostname  = var.hostname
+    domain    = var.domain
+    account   = var.account
+    pod_cidrs = var.pod_cidrs
   })
 
   maddy = "maddy -config /etc/maddy/config/maddy.conf"
@@ -89,12 +90,6 @@ resource "kubernetes_stateful_set" "mx" {
       }
 
       spec {
-        # The router forwards :25 and :993 to this node, and the Service's
-        # Local traffic policy only answers on the node running the pod.
-        node_selector = {
-          "caelus.dev/edge" = "true"
-        }
-
         security_context {
           run_as_user     = 1000
           run_as_group    = 1000
@@ -260,8 +255,6 @@ resource "kubernetes_stateful_set" "mx" {
   depends_on = [kubernetes_manifest.certificate]
 }
 
-# A klipper LoadBalancer owns the node's host :25 and :993. Local keeps the
-# sender's address intact for the SPF and DMARC checks.
 resource "kubernetes_service" "mx" {
   metadata {
     name      = "mx"
@@ -269,9 +262,7 @@ resource "kubernetes_service" "mx" {
   }
 
   spec {
-    type                    = "LoadBalancer"
-    external_traffic_policy = "Local"
-    selector                = local.labels
+    selector = local.labels
 
     port {
       name        = "smtp"
@@ -282,6 +273,68 @@ resource "kubernetes_service" "mx" {
       name        = "imaps"
       port        = 993
       target_port = "imaps"
+    }
+  }
+}
+
+# Traefik's smtp and imaps entry points, on every edge node, carry :25 and :993 here.
+resource "kubernetes_manifest" "proxy_protocol" {
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "ServersTransportTCP"
+    metadata = {
+      name      = "mx-proxy-protocol"
+      namespace = var.namespace
+    }
+    spec = {
+      proxyProtocol = {
+        version = 2
+      }
+    }
+  }
+}
+
+resource "kubernetes_manifest" "route_smtp" {
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "IngressRouteTCP"
+    metadata = {
+      name      = "mx-smtp"
+      namespace = var.namespace
+    }
+    spec = {
+      entryPoints = ["smtp"]
+      routes = [{
+        match = "HostSNI(`*`)"
+        services = [{
+          name             = kubernetes_service.mx.metadata[0].name
+          port             = "smtp"
+          serversTransport = kubernetes_manifest.proxy_protocol.manifest.metadata.name
+        }]
+      }]
+    }
+  }
+}
+
+# Maddy reads PROXY protocol on an IMAPS listener only inside TLS, so this one
+# is passed through as is.
+resource "kubernetes_manifest" "route_imaps" {
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "IngressRouteTCP"
+    metadata = {
+      name      = "mx-imaps"
+      namespace = var.namespace
+    }
+    spec = {
+      entryPoints = ["imaps"]
+      routes = [{
+        match = "HostSNI(`*`)"
+        services = [{
+          name = kubernetes_service.mx.metadata[0].name
+          port = "imaps"
+        }]
+      }]
     }
   }
 }
@@ -319,7 +372,18 @@ resource "kubernetes_network_policy" "mx" {
     }
     policy_types = ["Ingress"]
 
+    # Only Traefik may connect: Maddy trusts the PROXY header of any pod address.
     ingress {
+      from {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = var.traefik_namespace
+          }
+        }
+        pod_selector {
+          match_labels = var.traefik_selector
+        }
+      }
       ports {
         port     = "2525"
         protocol = "TCP"

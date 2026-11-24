@@ -16,8 +16,11 @@ storage.imapsql local_mailboxes {
 }
 
 # The container runs unprivileged, so it listens on high ports; the Service
-# maps 25 and 993 onto them.
+# maps 25 and 993 onto them. Traefik relays SMTP with the sender's address in a
+# PROXY header, which the SPF and DMARC checks need.
 smtp tcp://0.0.0.0:2525 {
+    proxy_protocol ${join(" ", pod_cidrs)}
+
     limits {
         all rate 20 1s
         all concurrency 10
