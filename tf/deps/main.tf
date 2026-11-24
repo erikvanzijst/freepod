@@ -101,6 +101,12 @@ module "ipv6_relay" {
   }
 }
 
+# The floating addresses of the API server and ingress.
+module "kube_vip" {
+  source    = "./kube-vip"
+  addresses = ["192.168.0.170", "2a0f:69c0:0:b500::170"]
+}
+
 # Cluster singleton shared by dev and prod: the sandboxed container runtime.
 module "sandbox" {
   source    = "./sandbox"
