@@ -93,6 +93,10 @@ service:
   spec:
     type: LoadBalancer
     externalTrafficPolicy: Local
+    # kube-proxy keeps the source of an external IP, like the LoadBalancer IP's; svclb's
+    # host port would masquerade it.
+    externalIPs:
+      - "${floating_ipv4}"
 
 # Local only answers on a node running a Traefik pod, so the pods stay on the edge nodes.
 nodeSelector:

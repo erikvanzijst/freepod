@@ -231,6 +231,9 @@ stay with k3s's ServiceLB.
 The one address serves the API and all ingress, so the node holding it must serve
 every port on it. That is why only edge nodes qualify, and every ingress path has
 to work from any edge node: none may depend on a pod that runs on a single node.
+Traefik's Service lists the IPv4 address under `externalIPs`, so kube-proxy keeps
+the client's source address on it as on the LoadBalancer IP; through ServiceLB's
+host port the source would be masqueraded, and the PROXY header ignored.
 The `ipv6-relay` firewall on edge nodes doesn't match on the destination address,
 so it also keeps the API off the floating IPv6 address.
 

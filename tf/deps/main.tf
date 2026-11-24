@@ -84,6 +84,7 @@ module "tls" {
 
 module "system" {
   source                          = "./system"
+  floating_ipv4                   = local.floating_ipv4
   haproxy_edge_ip                 = var.haproxy_edge_ip
   ipv6_relay_source_ip            = var.ipv6_relay_source_ip
   default_tls_resources_namespace = "caelus-tls"
@@ -102,9 +103,14 @@ module "ipv6_relay" {
 }
 
 # The floating addresses of the API server and ingress.
+locals {
+  floating_ipv4 = "192.168.0.170"
+  floating_ipv6 = "2a0f:69c0:0:b500::170"
+}
+
 module "kube_vip" {
   source    = "./kube-vip"
-  addresses = ["192.168.0.170", "2a0f:69c0:0:b500::170"]
+  addresses = [local.floating_ipv4, local.floating_ipv6]
 }
 
 # Cluster singleton shared by dev and prod: the sandboxed container runtime.
