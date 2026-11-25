@@ -1,5 +1,5 @@
 variable "floating_ipv4" {
-  description = "The floating IPv4 address of the API server and ingress (tf/deps/kube-vip), on whichever edge node holds it."
+  description = "The floating IPv4 address of the API server and ingress (keepalived on the server VMs), on whichever node holds it."
   type        = string
   default     = "192.168.0.170"
 }

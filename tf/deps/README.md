@@ -41,9 +41,6 @@ independent state and does not use Terraform workspaces.
 - The `gvisor` RuntimeClass (`sandbox/`): tenant-code pods that name it run
   inside a gVisor sandbox on the nodes labeled `caelus.dev/gvisor=true` — see
   [Sandboxed runtime](#sandboxed-runtime).
-- `kube-vip` (`kube-vip/`): the floating IPv4 and IPv6 address of the API
-  server and ingress, on one server at a time — see
-  [Floating address](#floating-address).
 - `caelus-tls` namespace (`tls/`) holding the platform certificate and the
   `TLSStore/default` Traefik serves from, plus `TLSOption/default`: TLS 1.2+
   with only AEAD (GCM, ChaCha20) ECDHE suites. One certificate covers `freepod.eu`
@@ -221,22 +218,30 @@ Two settings that look optional but are not, both in
 
 ## Floating address
 
-`kube-vip/` runs [kube-vip](https://kube-vip.io) in ARP mode on every server that
-is also an edge node: labeled `node-role.kubernetes.io/control-plane=true` (k3s
-sets it on servers) and `caelus.dev/edge=true`. The pod holding the
-`plndr-cp-lock` Lease in `kube-system` binds the IPv4 and IPv6 address to its
-node's interface and answers ARP and NDP for them; if it stops renewing for 15
-seconds, another one takes over. `svc_enable` is off, so `LoadBalancer` Services
-stay with k3s's ServiceLB.
+The API server and all ingress share one IPv4 and one IPv6 address that moves
+between the server nodes. keepalived on each server, configured with the hosts
+rather than here, runs one VRRP instance. The master puts both addresses on a
+macvlan interface with the VRRP virtual MAC (`00:00:5e:00:01:<virtual router id>`),
+so the router and the rest of the LAN see one device wherever the addresses live.
+The instance doesn't preempt: the addresses move when their node fails, or its
+ingress check does, but not back when a node recovers. The check looks for a local
+Traefik and the IPv6 relay only, so a k3s restart doesn't move the addresses.
 
-The one address serves the API and all ingress, so the node holding it must serve
-every port on it. That is why only edge nodes qualify, and every ingress path has
-to work from any edge node: none may depend on a pod that runs on a single node.
-Traefik's Service lists the IPv4 address under `externalIPs`, so kube-proxy keeps
-the client's source address on it as on the LoadBalancer IP; through ServiceLB's
-host port the source would be masqueraded, and the PROXY header ignored.
-The `ipv6-relay` firewall on edge nodes doesn't match on the destination address,
-so it also keeps the API off the floating IPv6 address.
+The node holding the addresses must serve every port on them, so the servers are
+edge nodes, and every ingress path has to work from any edge node: none may depend
+on a pod that runs on a single node. Nothing binds the floating addresses:
+
+- Traefik's and sshpiper's Services list the IPv4 address under `externalIPs`, so
+  kube-proxy on every node routes it. Traefik's `externalTrafficPolicy: Local`
+  keeps the client's source address, as on the LoadBalancer IP; through ServiceLB's
+  host port the source would be masqueraded and the PROXY header ignored.
+- The IPv6 relay binds `[::]`, and k3s listens on every address.
+
+Replies to the router and beyond leave with the virtual MAC: routed by source
+address, or by a connection mark for connections kube-proxy forwards to pods.
+Replies to the rest of the LAN leave from the node's own interface. The
+`ipv6-relay` firewall covers the virtual MAC's interface as well as the uplink, so
+only the relayed ports are open on the floating IPv6 address.
 
 The IPv4 address must be outside the LAN's DHCP range. Every server lists it under
 `tls-san`, so the serving certificate covers it, and pins its own `node-ip`, so

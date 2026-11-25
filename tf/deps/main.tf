@@ -102,15 +102,10 @@ module "ipv6_relay" {
   }
 }
 
-# The floating addresses of the API server and ingress.
+# The floating IPv4 address of the API server and ingress, held by keepalived on the
+# server VMs (outside Terraform).
 locals {
   floating_ipv4 = "192.168.0.170"
-  floating_ipv6 = "2a0f:69c0:0:b500::170"
-}
-
-module "kube_vip" {
-  source    = "./kube-vip"
-  addresses = [local.floating_ipv4, local.floating_ipv6]
 }
 
 # Cluster singleton shared by dev and prod: the sandboxed container runtime.

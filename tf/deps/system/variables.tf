@@ -1,5 +1,5 @@
 variable "floating_ipv4" {
-  description = "The floating IPv4 address (tf/deps/kube-vip), served by Traefik like its LoadBalancer IP."
+  description = "The floating IPv4 address (keepalived on the server VMs), served by Traefik like its LoadBalancer IP."
   type        = string
 }
 
