@@ -31,6 +31,13 @@ resource "helm_release" "prometheus" {
     yamlencode({
       alertmanager = {
         enabled = true
+        # The subchart renders only a claim template, so the class goes there.
+        persistence = {
+          enabled      = true
+          storageClass = var.storage_class
+          accessModes  = ["ReadWriteOncePod"]
+          size         = "1Gi"
+        }
         config = {
           global = {
             # Deliver via the in-cluster mailer relay (tf/deps/mailer). The relay
