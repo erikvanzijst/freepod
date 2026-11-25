@@ -1,3 +1,20 @@
+resource "kubernetes_persistent_volume_claim" "prometheus_data" {
+  metadata {
+    name      = "prometheus-data"
+    namespace = var.namespace
+  }
+
+  spec {
+    access_modes       = ["ReadWriteOncePod"]
+    storage_class_name = var.storage_class
+    resources {
+      requests = {
+        storage = "15Gi"
+      }
+    }
+  }
+}
+
 resource "helm_release" "prometheus" {
   name      = "prometheus"
   namespace = var.namespace
@@ -93,6 +110,13 @@ resource "helm_release" "prometheus" {
         }
 
         retention = "10d"
+        # Ceph enforces the claim's size. Counts the WAL and head chunks too, and leaves
+        # room for a day's block being compacted.
+        retentionSize = "12GB"
+
+        persistentVolume = {
+          existingClaim = kubernetes_persistent_volume_claim.prometheus_data.metadata[0].name
+        }
 
         global = {
           # 60s (up from 30s) to halve sample-ingest and scrape CPU on this

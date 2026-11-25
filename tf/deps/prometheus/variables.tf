@@ -50,6 +50,6 @@ variable "ceph_mgr_targets" {
 }
 
 variable "storage_class" {
-  description = "StorageClass of Grafana's volume"
+  description = "StorageClass of the Grafana and Prometheus volumes"
   type        = string
 }
