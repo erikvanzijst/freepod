@@ -103,6 +103,8 @@ RUN echo '' >> ~/.bashrc && \
     echo '}'"'"')' >> ~/.bashrc
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ARG ANSIBLE_CORE_VERSION=2.22.0
+RUN uv tool install "ansible-core==${ANSIBLE_CORE_VERSION}"
 RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN curl -fsSL https://opencode.ai/v2/install | bash
 RUN curl -fsSL https://ampcode.com/install.sh | bash
