@@ -185,3 +185,14 @@ variable "velero_sse_c_key" {
     error_message = "velero_sse_c_key must be exactly 32 bytes."
   }
 }
+
+variable "tls_passthrough" {
+  description = "Other hosts on the LAN that receive TLS connections by SNI through Traefik, untouched (./tls-passthrough). Set in secrets.auto.tfvars."
+  type = map(object({
+    address = string
+    port    = number
+    domains = list(string)
+    except  = optional(list(string), [])
+  }))
+  default = {}
+}

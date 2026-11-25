@@ -41,6 +41,12 @@ independent state and does not use Terraform workspaces.
 - The `gvisor` RuntimeClass (`sandbox/`): tenant-code pods that name it run
   inside a gVisor sandbox on the nodes labeled `caelus.dev/gvisor=true` — see
   [Sandboxed runtime](#sandboxed-runtime).
+- TLS passthrough (`tls-passthrough/`): Traefik hands the TLS connections whose SNI
+  belongs to another host on the LAN to that host, untouched, with PROXY protocol
+  v2 so it keeps the client's address. The hosts and their domains come from
+  `var.tls_passthrough`, set in `secrets.auto.tfvars`; Traefik matches these TLS
+  TCP routers before its HTTPS routers. Port 80 needs no route: freepod's
+  catch-all redirects any host to HTTPS.
 - `caelus-tls` namespace (`tls/`) holding the platform certificate and the
   `TLSStore/default` Traefik serves from, plus `TLSOption/default`: TLS 1.2+
   with only AEAD (GCM, ChaCha20) ECDHE suites. One certificate covers `freepod.eu`

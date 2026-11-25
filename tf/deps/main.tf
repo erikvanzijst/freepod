@@ -123,6 +123,14 @@ module "mailer" {
   smtp_password = var.smtp_password
 }
 
+module "tls_passthrough" {
+  source = "./tls-passthrough"
+  routes = var.tls_passthrough
+
+  # The traefik.io CRDs come with the Traefik release.
+  depends_on = [module.system]
+}
+
 # Inbound mail for freepod.eu. Outbound mail still leaves through module.mailer.
 module "mx" {
   source               = "./mx"
