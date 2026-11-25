@@ -86,7 +86,7 @@ module "system" {
   source                          = "./system"
   floating_ipv4                   = local.floating_ipv4
   haproxy_edge_ip                 = var.haproxy_edge_ip
-  ipv6_relay_source_ip            = var.ipv6_relay_source_ip
+  ipv6_relay_source_ips           = var.ipv6_relay_source_ips
   default_tls_resources_namespace = "caelus-tls"
 
   # Traefik's default cert store points at the wildcard secret cert-manager issues.
@@ -97,8 +97,8 @@ module "ipv6_relay" {
   source    = "./ipv6-relay"
   namespace = kubernetes_namespace.ipv6_relay.metadata[0].name
   ssh_ports = {
-    22 = 2222
-    23 = 2223
+    22 = "sshpiper.sshpiper.svc.cluster.local:2222"
+    23 = "sshpiper.sshpiper-dev.svc.cluster.local:2223"
   }
 }
 

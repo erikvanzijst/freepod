@@ -30,7 +30,7 @@ resource "helm_release" "traefik" {
     templatefile("${path.module}/values.yaml.tftpl", {
       floating_ipv4                   = var.floating_ipv4
       haproxy_edge_ip                 = var.haproxy_edge_ip
-      ipv6_relay_source_ip            = var.ipv6_relay_source_ip
+      ipv6_relay_source_ips           = var.ipv6_relay_source_ips
       default_tls_resources_namespace = var.default_tls_resources_namespace
     })
   ]

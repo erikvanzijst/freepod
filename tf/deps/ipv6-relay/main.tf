@@ -80,6 +80,15 @@ resource "kubernetes_daemonset" "relay" {
       match_labels = local.labels
     }
 
+    # HAProxy binds with SO_REUSEPORT, so the new pod listens before the old one drains.
+    strategy {
+      type = "RollingUpdate"
+      rolling_update {
+        max_surge       = 1
+        max_unavailable = 0
+      }
+    }
+
     template {
       metadata {
         labels = local.labels
@@ -94,6 +103,12 @@ resource "kubernetes_daemonset" "relay" {
         node_selector                   = var.node_selector
         automount_service_account_token = false
         enable_service_links            = false
+
+        toleration {
+          key      = "caelus.dev/staging"
+          operator = "Exists"
+          effect   = "NoSchedule"
+        }
 
         container {
           name  = "haproxy"
@@ -183,6 +198,12 @@ resource "kubernetes_daemonset" "relay" {
         }
       }
     }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      spec[0].template[0].metadata[0].annotations["kubectl.kubernetes.io/restartedAt"],
+    ]
   }
 }
 

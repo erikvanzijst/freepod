@@ -19,12 +19,12 @@ resolvers cluster
 %{ for port, target in web_ports ~}
 listen web-${port}
     bind [::]:${port} v6only
-    server-template traefik 3 ${traefik_host}:${target} resolvers cluster resolve-prefer ipv4 init-addr none send-proxy-v2 source "$${HOST_IP}"
+    server-template traefik 8 ${traefik_host}:${target} resolvers cluster resolve-prefer ipv4 init-addr none send-proxy-v2 source "$${HOST_IP}"
 
 %{ endfor ~}
 %{ for port, target in ssh_ports ~}
 listen ssh-${port}
     bind [::]:${port} v6only
-    server node "$${HOST_IP}:${target}"
+    server sshpiper ${target} resolvers cluster resolve-prefer ipv4 init-addr none
 
 %{ endfor ~}

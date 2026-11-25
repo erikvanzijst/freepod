@@ -61,7 +61,9 @@ ports:
     proxyProtocol:
       trustedIPs:
         - "${haproxy_edge_ip}"
-        - "${ipv6_relay_source_ip}"
+%{ for ip in ipv6_relay_source_ips ~}
+        - "${ip}"
+%{ endfor ~}
   websecure:
     asDefault: true
     http:
@@ -71,7 +73,9 @@ ports:
     proxyProtocol:
       trustedIPs:
         - "${haproxy_edge_ip}"
-        - "${ipv6_relay_source_ip}"
+%{ for ip in ipv6_relay_source_ips ~}
+        - "${ip}"
+%{ endfor ~}
 
   # Inbound mail for tf/deps/mx. smtp passes the sender's address on with PROXY protocol;
   # imaps is passed through, TLS and all, to Maddy.
@@ -101,6 +105,10 @@ service:
 # Local only answers on a node running a Traefik pod, so the pods stay on the edge nodes.
 nodeSelector:
   caelus.dev/edge: "true"
+tolerations:
+  - key: caelus.dev/staging
+    operator: Exists
+    effect: NoSchedule
 
 # NO tlsStore here. The default certificate store is a platform-owned object in the namespace
 # named by providers.kubernetesCRD.defaultTLSResourcesNamespace above (tf/deps/tls), because the

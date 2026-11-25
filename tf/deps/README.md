@@ -20,10 +20,10 @@ independent state and does not use Terraform workspaces.
   the `mailer` relay. Both ports enter through Traefik's `smtp` and `imaps` entry
   points: SMTP with PROXY protocol, so Maddy sees the sender's address for SPF and
   DMARC, and IMAPS passed through with its TLS intact.
-- `ipv6-relay` namespace (`ipv6-relay/`): HAProxy on the host network of the
-  node labeled `caelus.dev/edge=true`, the cluster's only IPv6 entry point. It
+- `ipv6-relay` namespace (`ipv6-relay/`): HAProxy on the host network of every
+  node labeled `caelus.dev/edge=true`, the cluster's IPv6 entry points. It
   binds `[::]:80`/`:443` and relays to the Traefik pods with PROXY protocol, and
-  `[::]:22`/`:23` to the prod/dev sshpiper ports. A second container checks the
+  `[::]:22`/`:23` to the prod/dev sshpiper Services. A second container checks the
   nftables table `ip6 freepod_edge` on the node every minute and restores it if
   it is missing or outdated.
   The table drops IPv6 arriving on the uplink unless it is a reply, ICMPv6,

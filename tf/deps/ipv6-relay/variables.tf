@@ -56,6 +56,6 @@ variable "web_ports" {
 }
 
 variable "ssh_ports" {
-  description = "Public IPv6 port => node port sshpiper's klipper LoadBalancer binds. Relayed without PROXY protocol."
-  type        = map(number)
+  description = "Public IPv6 port => host:port of an sshpiper Service. Relayed without PROXY protocol."
+  type        = map(string)
 }
