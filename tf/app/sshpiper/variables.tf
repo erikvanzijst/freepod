@@ -8,6 +8,12 @@ variable "ssh_port" {
   type        = number
 }
 
+variable "external_ips" {
+  description = "Further addresses the Service answers on, on whichever node holds them: the floating IPv4 address."
+  type        = list(string)
+  default     = []
+}
+
 variable "sshpiper_image" {
   description = "sshpiperd image; keep the tag in sync with the plugin.proto vendored in daemons/ssh-auth/proto"
   type        = string

@@ -1,3 +1,9 @@
+variable "floating_ipv4" {
+  description = "The floating IPv4 address of the API server and ingress (tf/deps/kube-vip), on whichever edge node holds it."
+  type        = string
+  default     = "192.168.0.170"
+}
+
 variable "api_image" {
   description = "API container image incl. registry and tag (null = workspace default: :master prod, :latest dev)"
   type        = string

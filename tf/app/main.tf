@@ -30,10 +30,11 @@ data "tls_public_key" "sshpiper_host" {
 }
 
 module "sshpiper" {
-  source    = "./sshpiper"
-  namespace = kubernetes_namespace.sshpiper.metadata[0].name
-  ssh_port  = local.sshpiper_port
-  rbac_name = "sshpiper-${local.ns_sshpiper}"
+  source       = "./sshpiper"
+  namespace    = kubernetes_namespace.sshpiper.metadata[0].name
+  ssh_port     = local.sshpiper_port
+  external_ips = [var.floating_ipv4]
+  rbac_name    = "sshpiper-${local.ns_sshpiper}"
 
   # This environment's private keys for both upstream and downstream:
   sshpiper_host_private_key = var.sshpiper_host_private_keys[terraform.workspace]

@@ -260,7 +260,8 @@ resource "kubernetes_service" "sshpiper" {
   }
 
   spec {
-    type = "LoadBalancer"
+    type         = "LoadBalancer"
+    external_ips = var.external_ips
 
     selector = {
       app = "sshpiper"
