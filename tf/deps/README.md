@@ -26,7 +26,8 @@ independent state and does not use Terraform workspaces.
   `[::]:22`/`:23` to the prod/dev sshpiper Services. A second container checks the
   nftables table `ip6 freepod_edge` on the node every minute and restores it if
   it is missing or outdated.
-  The table drops IPv6 arriving on the uplink unless it is a reply, ICMPv6,
+  The table drops IPv6 arriving on the uplink, or on the VMAC holding the
+  floating address, unless it is a reply, ICMPv6,
   link-local or ULA, or bound for a relayed port or Tailscale. The node's own sshd must not listen on `[::]:22`; on Ubuntu
   that is an `ssh.socket` drop-in setting `ListenStream=0.0.0.0:22`. Never
   enable Ubuntu's `nftables.service`: its `/etc/nftables.conf` begins with

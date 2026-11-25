@@ -14,9 +14,9 @@ locals {
   })
 
   firewall_inputs = {
-    interface = var.interface
-    tcp_ports = sort(concat(keys(var.web_ports), keys(var.ssh_ports)))
-    udp_ports = var.allowed_udp_ports
+    interfaces = var.interfaces
+    tcp_ports  = sort(concat(keys(var.web_ports), keys(var.ssh_ports)))
+    udp_ports  = var.allowed_udp_ports
   }
   firewall_id = substr(sha256(jsonencode([file("${path.module}/ipv6-edge.nft.tftpl"), local.firewall_inputs])), 0, 16)
   firewall    = templatefile("${path.module}/ipv6-edge.nft.tftpl", merge(local.firewall_inputs, { id = local.firewall_id }))

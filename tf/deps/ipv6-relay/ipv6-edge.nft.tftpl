@@ -6,7 +6,7 @@ table ip6 freepod_edge {
 
   chain input {
     type filter hook input priority filter - 10; policy accept;
-    iifname != "${interface}" accept
+    iifname != { ${join(", ", [for i in interfaces : "\"${i}\""])} } accept
     ct state established,related accept
     ip6 saddr { fe80::/10, fd00::/8 } accept
     meta l4proto ipv6-icmp accept

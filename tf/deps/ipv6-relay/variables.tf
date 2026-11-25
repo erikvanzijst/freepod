@@ -13,14 +13,14 @@ variable "firewall_image" {
   default     = "ghcr.io/erikvanzijst/freepod/nftables:1.1.6-1"
 }
 
-variable "interface" {
-  description = "The node's uplink. The firewall drops IPv6 arriving on it unless it is a reply, ICMPv6, from a link-local or ULA source, or to a relayed port or var.allowed_udp_ports."
-  type        = string
-  default     = "eth0"
+variable "interfaces" {
+  description = "The node's uplink, and the VMAC keepalived puts the floating address on. The firewall drops IPv6 arriving on them unless it is a reply, ICMPv6, from a link-local or ULA source, or to a relayed port or var.allowed_udp_ports."
+  type        = list(string)
+  default     = ["eth0", "vrrp170"]
 }
 
 variable "allowed_udp_ports" {
-  description = "UDP ports the firewall also admits on var.interface. 41641 is Tailscale's direct WireGuard port."
+  description = "UDP ports the firewall also admits on var.interfaces. 41641 is Tailscale's direct WireGuard port."
   type        = list(number)
   default     = [41641]
 }
