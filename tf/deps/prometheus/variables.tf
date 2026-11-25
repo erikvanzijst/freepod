@@ -48,3 +48,8 @@ variable "ceph_mgr_targets" {
   type        = list(string)
   default     = []
 }
+
+variable "storage_class" {
+  description = "StorageClass of Grafana's volume"
+  type        = string
+}

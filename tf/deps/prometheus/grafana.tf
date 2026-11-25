@@ -11,6 +11,23 @@ resource "kubernetes_secret" "grafana_oidc" {
   type = "Opaque"
 }
 
+resource "kubernetes_persistent_volume_claim" "grafana_data" {
+  metadata {
+    name      = "grafana-data"
+    namespace = var.namespace
+  }
+
+  spec {
+    access_modes       = ["ReadWriteOncePod"]
+    storage_class_name = var.storage_class
+    resources {
+      requests = {
+        storage = "5Gi"
+      }
+    }
+  }
+}
+
 resource "helm_release" "grafana" {
   name       = "grafana"
   namespace  = var.namespace
@@ -98,8 +115,8 @@ resource "helm_release" "grafana" {
       }
 
       persistence = {
-        enabled = true
-        size    = "5Gi"
+        enabled       = true
+        existingClaim = kubernetes_persistent_volume_claim.grafana_data.metadata[0].name
       }
 
       datasources = {

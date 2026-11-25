@@ -202,6 +202,7 @@ module "prometheus" {
   grafana_oidc_client_id     = module.keycloak_config.grafana_client_id
   grafana_oidc_client_secret = module.keycloak_config.grafana_client_secret
   ceph_mgr_targets           = var.ceph_mgr_targets
+  storage_class              = "ceph-freepod"
 
   # Alertmanager delivers via the in-cluster mailer relay.
   depends_on = [module.mailer]
