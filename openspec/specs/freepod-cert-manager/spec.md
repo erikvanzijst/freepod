@@ -26,7 +26,7 @@ is not possible (the user owns the domain's DNS). A **staging** variant SHALL ex
   Ingress carries the `cert-manager.io/cluster-issuer` annotation for the HTTP-01 issuer
 - **THEN** cert-manager creates a solver Ingress serving `/.well-known/acme-challenge/<token>`
   on `:80`
-- **AND** Let's Encrypt validates over `:80` (reachable via the homelab HAProxy edge) and issues
+- **AND** Let's Encrypt validates over `:80` (the home router forwards `:80` to freepod Traefik's `web` entrypoint) and issues
   the certificate into the deployment's namespace
 
 ### Requirement: A DNS-01 ClusterIssuer issues the platform certificate across both zones

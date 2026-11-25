@@ -3,11 +3,6 @@ variable "floating_ipv4" {
   type        = string
 }
 
-variable "haproxy_edge_ip" {
-  description = "IP/CIDR of the homelab HAProxy edge, trusted for PROXY protocol on the web/websecure entrypoints."
-  type        = string
-}
-
 variable "ipv6_relay_source_ips" {
   description = "IPv4 addresses/CIDRs the IPv6 relays connect to Traefik from, trusted for PROXY protocol on the web/websecure entrypoints."
   type        = list(string)

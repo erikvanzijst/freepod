@@ -5,26 +5,26 @@ Caelus deployments run as isolated Helm releases, and users need a way to browse
 ## Requirements
 
 ### Requirement: One public SSH entry point per environment with configurable ports
-Each environment (prod, dev) MUST expose a single SSH endpoint for its deployments, terminating at that environment's SSH reverse proxy (sshpiperd) running in a platform namespace. The environments share one public IPv4 address and SSH has no hostname indication, so distinct ports are the only environment discriminator. The user-facing endpoints are `freepod.eu:22` (prod) and `dev.freepod.eu:23` (dev); the home router translates these to the internal chain, where every hop MUST avoid port 22 because both the homelab host and the cluster node retain their system OpenSSH there: router :22 → HAProxy :2222 → cluster node :2222 (prod), and router :23 → HAProxy :2223 → cluster node :2223 (dev). The cluster-side ports MUST be Terraform variables per environment workspace, defaulting to 2222 (prod) and 2223 (dev). The edge path MUST be plain TCP passthrough; no TLS or HTTP layer is involved. The per-environment proxy MUST be provisioned declaratively via Terraform in `tf/app/` (workspace-scoped), together with the resolver it consults.
+Each environment (prod, dev) MUST expose a single SSH endpoint for its deployments, terminating at that environment's SSH reverse proxy (sshpiperd) running in a platform namespace. The environments share one public IPv4 address and SSH has no hostname indication, so distinct ports are the only environment discriminator. The user-facing endpoints are `freepod.eu:22` (prod) and `dev.freepod.eu:23` (dev); the home router translates these to the internal chain, where every hop MUST avoid port 22 because the cluster nodes retain their system OpenSSH there: router :22 → floating address :2222 (prod), and router :23 → floating address :2223 (dev). The floating address is held by one of the cluster nodes. The cluster-side ports MUST be Terraform variables per environment workspace, defaulting to 2222 (prod) and 2223 (dev). The edge path MUST be plain TCP passthrough; no TLS or HTTP layer is involved. The per-environment proxy MUST be provisioned declaratively via Terraform in `tf/app/` (workspace-scoped), together with the resolver it consults.
 
 No custom resource definition is required for routing, and none MUST be installed for this purpose: the proxy obtains routing and authentication decisions from the resolver rather than from cluster objects.
 
 #### Scenario: Client connects to the prod endpoint
 - **WHEN** an SFTP client connects to `freepod.eu` on port 22
-- **THEN** the connection traverses router :22 → HAProxy :2222 → cluster node :2222 unmodified
+- **THEN** the connection traverses router :22 → floating address :2222 unmodified
 - **AND** the client completes an SSH handshake with the prod sshpiperd
 
 #### Scenario: Client connects to the dev endpoint
 - **WHEN** an SFTP client connects to `dev.freepod.eu` on port 23
-- **THEN** the connection traverses router :23 → HAProxy :2223 → cluster node :2223 unmodified
+- **THEN** the connection traverses router :23 → floating address :2223 unmodified
 - **AND** the client completes an SSH handshake with the dev sshpiperd
 
 #### Scenario: Host system SSH is unaffected
-- **WHEN** an administrator connects to the homelab host or the cluster node on their local port 22
+- **WHEN** an administrator connects to a cluster node on its local port 22
 - **THEN** they reach the host's system OpenSSH, not sshpiperd
 
 #### Scenario: Operator changes an environment's cluster-side port
-- **WHEN** an operator changes the SSH port variable for a workspace and applies Terraform (plus the matching HAProxy backend)
+- **WHEN** an operator changes the SSH port variable for a workspace and applies Terraform (plus the matching router forward)
 - **THEN** the environment's SSH endpoint is reachable end-to-end without changes to charts or to the other environment
 
 #### Scenario: No routing CRD is installed

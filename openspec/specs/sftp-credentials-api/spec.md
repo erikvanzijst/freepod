@@ -36,7 +36,7 @@ The Typer CLI MUST offer a command functionally identical to the endpoint (same 
 - **THEN** the output contains the same host, port and username as the REST endpoint, and no credential
 
 ### Requirement: Deployment-scoped endpoint returns SFTP connection details without a password
-The API MUST provide a read endpoint under the deployment resource (`GET /users/{user_id}/deployments/{deployment_id}/sftp`) returning the SFTP host and port for the environment (`freepod.eu:22` in prod, `dev.freepod.eu:23` in dev), plus the username for that deployment. Host and port MUST come from per-environment configuration (pydantic-settings) and MUST be the user-facing router values, not the internal HAProxy/cluster ports (2222/2223).
+The API MUST provide a read endpoint under the deployment resource (`GET /users/{user_id}/deployments/{deployment_id}/sftp`) returning the SFTP host and port for the environment (`freepod.eu:22` in prod, `dev.freepod.eu:23` in dev), plus the username for that deployment. Host and port MUST come from per-environment configuration (pydantic-settings) and MUST be the user-facing router values, not the internal cluster ports (2222/2223).
 
 The username reported MUST be the deployment's id — the same identifier the SSH edge matches a connection on. Reporting anything else would hand the caller a username the edge refuses, so this endpoint and the resolver MUST NOT be able to disagree about what a deployment is addressed by.
 

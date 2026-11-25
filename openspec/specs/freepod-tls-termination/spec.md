@@ -5,24 +5,29 @@ Terminate TLS on freepod Traefik itself — default wildcard cert store, PROXY-p
 
 ## Requirements
 
-### Requirement: Client IP is preserved via PROXY protocol from the HAProxy edge
-Freepod Traefik's `web` and `websecure` entrypoints SHALL trust **PROXY protocol** only from the
-HAProxy edge IP (`proxyProtocol.trustedIPs`), and the blanket
-`forwardedheaders.insecure=true` trust SHALL be removed. The Traefik Service SHALL set
+### Requirement: Client IP is preserved to applications
+IPv4 clients SHALL connect to freepod Traefik directly, and the Traefik Service SHALL set
 `externalTrafficPolicy: Local` so klipper/kube-proxy does not SNAT the source to the node CNI
-gateway before Traefik sees it (otherwise the source is not the trusted edge IP and the PROXY
-header is ignored). The real client IP carried by the edge's `send-proxy-v2` SHALL be surfaced to
+gateway before Traefik sees it. IPv6 clients arrive through the IPv6 relays, which carry the
+client address by PROXY protocol: the `web` and `websecure` entrypoints SHALL trust **PROXY
+protocol** only from the relays' source addresses (`proxyProtocol.trustedIPs`), and the blanket
+`forwardedheaders.insecure=true` trust SHALL NOT be used. The real client IP SHALL be surfaced to
 applications via `X-Forwarded-For`.
 
-#### Scenario: App sees the real client IP
-- **WHEN** an external client connects through the HAProxy edge and Traefik terminates TLS
-- **THEN** Traefik reads the client IP from the PROXY-protocol header sent by the edge
-- **AND** the application receives that client IP in `X-Forwarded-For`, not the edge or CNI-gateway IP
+#### Scenario: App sees the real client IP over IPv4
+- **WHEN** an external client connects over IPv4 and Traefik terminates TLS
+- **THEN** Traefik sees the client's own source address
+- **AND** the application receives that client IP in `X-Forwarded-For`, not the CNI-gateway IP
+
+#### Scenario: App sees the real client IP over IPv6
+- **WHEN** an external client connects over IPv6 and Traefik terminates TLS
+- **THEN** Traefik reads the client IP from the PROXY-protocol header sent by the relay
+- **AND** the application receives that client IP in `X-Forwarded-For`, not the relay's address
 
 #### Scenario: Forwarded headers are not blanket-trusted
 - **WHEN** freepod Traefik configuration is inspected
 - **THEN** `--entrypoints.websecure.forwardedheaders.insecure=true` is not present
-- **AND** PROXY-protocol trust is scoped to the HAProxy edge IP
+- **AND** PROXY-protocol trust is scoped to the IPv6 relays' source addresses
 
 ### Requirement: No entrypoint-level redirect (it deadlocks HTTP-01)
 Freepod Traefik SHALL NOT use an entrypoint-level HTTP→HTTPS redirect
@@ -85,7 +90,8 @@ removed.
 
 The Helm release's `values.yaml` SHALL reproduce the existing TLS-termination configuration with no
 behavioral change: the `*.freepod.eu` wildcard as the default certificate store, PROXY-protocol trust
-from the HAProxy edge IP on `web` and `websecure` (no blanket `forwardedheaders.insecure`), a
+scoped to the IPv6 relays' source addresses on `web` and `websecure` (no blanket
+`forwardedheaders.insecure`), a
 `LoadBalancer` Service with `externalTrafficPolicy: Local` owning the node's `:80/:443`, `websecure`
 as the default entrypoint, the `kubernetesIngressNginx` provider and `allowExternalNameServices`, the
 `traefik` IngressClass as default, and no entrypoint-level HTTP→HTTPS redirect.
@@ -99,9 +105,9 @@ as the default entrypoint, the `kubernetesIngressNginx` provider and `allowExter
   host `traefik-config.yaml` manifest exists
 
 #### Scenario: Behavior is preserved after the migration
-- **WHEN** an external client connects to `https://<app>.freepod.eu` through the HAProxy edge after cutover
+- **WHEN** an external client connects to `https://<app>.freepod.eu` after cutover
 - **THEN** the self-managed Traefik terminates TLS with the `*.freepod.eu` wildcard default certificate,
-  strips the edge's PROXY-protocol header (trusted via `proxyProtocol.trustedIPs`), and routes to the app
+  sees the client's address, and routes to the app
 - **AND** the observable behavior is identical to the pre-migration bundled-chart configuration
 
 ### Requirement: Freepod Traefik configuration survives a k3s restart

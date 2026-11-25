@@ -86,12 +86,6 @@ variable "letsencrypt_email" {
   type        = string
 }
 
-variable "haproxy_edge_ip" {
-  description = "IP of the homelab HAProxy edge, trusted for PROXY protocol on freepod Traefik entrypoints. The source IP freepod sees for passthrough traffic (the homelab node). Override in secrets.auto.tfvars if it differs."
-  type        = string
-  default     = "192.168.0.12/32"
-}
-
 variable "ipv6_relay_source_ips" {
   description = "Addresses the edge nodes' IPv6 relays (./ipv6-relay) connect to Traefik from, trusted for PROXY protocol on freepod Traefik entrypoints: each edge node's IPv4 address for a Traefik pod on the same node, and its flannel.1 address for one on another node, because flannel masquerades a node's own connections to remote pods."
   type        = list(string)

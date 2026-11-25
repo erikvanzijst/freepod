@@ -337,7 +337,7 @@ variable "loki_base_url" {
 }
 
 variable "log_keepalive_seconds" {
-  description = "Interval between SSE keepalives on an open log stream. Must stay below the shortest connection timeout in the client -> homelab HAProxy -> Traefik -> API path. HAProxy's timeouts are operator-configured and not in this repo, so this is a variable rather than a constant -- measure against the live edge before changing it."
+  description = "Interval between SSE keepalives on an open log stream. Must stay below the shortest connection timeout between the client and the API, which includes proxies outside this repo, so this is a variable rather than a constant -- measure against the live edge before changing it."
   type        = number
   default     = 15
 }

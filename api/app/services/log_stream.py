@@ -369,8 +369,8 @@ async def stream(
 
         # A quiet application is working normally; a quiet *platform* has gone
         # away. The keepalive is what lets a client tell them apart, and what
-        # keeps every timeout in the path -- the client's, the homelab
-        # HAProxy's, Traefik's -- from treating the connection as dead.
+        # keeps every timeout in the path -- the client's, any proxy's,
+        # Traefik's -- from treating the connection as dead.
         if now - last_write_at >= settings.log_keepalive_seconds:
             yield _keepalive()
             last_write_at = now

@@ -272,11 +272,9 @@ class CaelusSettings(BaseSettings):
     # Keepalive interval for an open follow stream, as an SSE comment.
     #
     # MUST stay below the shortest connection timeout anywhere in the path,
-    # which is NOT a property of this repository: the platform edge is
-    # `client -> homelab HAProxy -> k3s Traefik -> API`, and HAProxy's
-    # `timeout client` / `timeout server` are operator-configured and commonly
-    # 30-60s. Configurable for exactly that reason. Re-measure against the live
-    # edge before raising it.
+    # which is NOT a property of this repository: proxies between the client
+    # and Traefik commonly drop idle connections after 30-60s. Configurable for
+    # exactly that reason. Re-measure against the live edge before raising it.
     log_keepalive_seconds: int = 10
 
     # Hard cap on how long one log stream may stay open, measured from when it

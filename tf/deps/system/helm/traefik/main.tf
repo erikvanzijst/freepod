@@ -7,10 +7,6 @@
 # config and breaking freepod.eu TLS (see openspec/changes/selfmanaged-traefik). The bundled
 # Traefik is now disabled on the node (/etc/rancher/k3s/config.yaml `disable: [traefik]`), so
 # Terraform is the single source of truth.
-#
-# Unlike homelab's Traefik (ClusterIP behind an in-cluster HAProxy), freepod's Traefik is
-# reached by the homelab HAProxy edge across clusters at the node's HOST :80/:443, so the
-# Service is a klipper LoadBalancer (see values.yaml.tftpl).
 resource "helm_release" "traefik" {
   name             = "traefik"
   namespace        = "kube-system"
@@ -29,7 +25,6 @@ resource "helm_release" "traefik" {
   values = [
     templatefile("${path.module}/values.yaml.tftpl", {
       floating_ipv4                   = var.floating_ipv4
-      haproxy_edge_ip                 = var.haproxy_edge_ip
       ipv6_relay_source_ips           = var.ipv6_relay_source_ips
       default_tls_resources_namespace = var.default_tls_resources_namespace
     })

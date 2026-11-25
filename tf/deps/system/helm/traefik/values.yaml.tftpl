@@ -1,13 +1,10 @@
 # Traefik for freepod — self-managed Helm release (chart 42.4.1 = Traefik app v3.7.19),
 # replacing the k3s-bundled Traefik (disabled via /etc/rancher/k3s/config.yaml).
 #
-# Rendered by templatefile(); ${haproxy_edge_ip} is the homelab HAProxy edge IP/CIDR.
-#
-# Freepod's Traefik is reached by the homelab HAProxy SNI edge at the node's HOST :80/:443
-# (cross-cluster), so the Service is a klipper LoadBalancer with externalTrafficPolicy: Local.
-# Local is required so the edge IP survives to match proxyProtocol.trustedIPs; with the default
-# Cluster policy, kube-proxy SNATs the source to the CNI gateway (10.42.0.1) before Traefik
-# sees it, so the PROXY header would be rejected and the real client IP lost.
+# Clients reach Traefik directly on the floating address, so the Service is a klipper
+# LoadBalancer with externalTrafficPolicy: Local. Local is required for the real client IP: with
+# the default Cluster policy, kube-proxy SNATs the source to the CNI gateway (10.42.0.1) before
+# Traefik sees it.
 
 image:
   tag: "3.7.19"
@@ -45,9 +42,8 @@ providers:
 
 # websecure (:443) is the ONLY default entrypoint: an Ingress/router without an explicit
 # entrypoints annotation binds :443 only, so its plain :80 traffic falls through to the
-# cluster-wide HTTP->HTTPS redirect (redirect_https.tf). The HAProxy edge conveys the real
-# client IP via PROXY protocol (send-proxy-v2); trust it ONLY from the edge IP (the old
-# blanket forwardedheaders.insecure trust is deliberately gone).
+# cluster-wide HTTP->HTTPS redirect (redirect_https.tf). The IPv6 relays convey the client
+# address via PROXY protocol; trust it only from their source addresses.
 #
 # NOTE: deliberately NO ports.web.http.redirections here. An entrypoint-level redirect runs
 # before router matching, so it shadows cert-manager's HTTP-01 solver Ingress and deadlocks
@@ -60,7 +56,6 @@ ports:
       aliasHeadersStrategy: delete
     proxyProtocol:
       trustedIPs:
-        - "${haproxy_edge_ip}"
 %{ for ip in ipv6_relay_source_ips ~}
         - "${ip}"
 %{ endfor ~}
@@ -72,7 +67,6 @@ ports:
         - "kube-system-headers-hsts@kubernetescrd"
     proxyProtocol:
       trustedIPs:
-        - "${haproxy_edge_ip}"
 %{ for ip in ipv6_relay_source_ips ~}
         - "${ip}"
 %{ endfor ~}
@@ -92,7 +86,7 @@ ports:
     exposedPort: 993
     protocol: TCP
 
-# klipper LoadBalancer owning the node's host ports; Local preserves the edge source IP.
+# klipper LoadBalancer owning the node's host ports; Local preserves the client's source IP.
 service:
   spec:
     type: LoadBalancer

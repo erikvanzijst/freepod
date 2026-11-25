@@ -251,8 +251,7 @@ resource "kubernetes_deployment" "sshpiper" {
 }
 
 # klipper ServiceLB binds var.ssh_port directly on the node (validated in the
-# spike; no NodePort-range change needed). HAProxy on the homelab edge points
-# its per-environment TCP frontend at this port.
+# spike; no NodePort-range change needed).
 resource "kubernetes_service" "sshpiper" {
   metadata {
     name      = "sshpiper"

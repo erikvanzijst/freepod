@@ -96,7 +96,7 @@ resource "kubernetes_manifest" "letsencrypt_dns_staging" {
 
 # HTTP-01 (Traefik ingress class) issuer — used per-app for custom domains, where
 # DNS-01 is impossible (the user owns their domain's DNS). The challenge is served
-# on :80 via the HAProxy edge default backend.
+# on :80, which reaches Traefik directly.
 resource "kubernetes_manifest" "letsencrypt_http" {
   manifest = yamldecode(<<-EOF
     apiVersion: cert-manager.io/v1

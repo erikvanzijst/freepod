@@ -61,8 +61,8 @@ proxy:
   # no-op today; it is set explicitly because the correct value depends on the
   # edge chain rather than on this chart. Blank omits the env entirely.
   #
-  # The IP is only genuine because the HAProxy edge forwards the client address by
-  # PROXY protocol and Traefik runs with externalTrafficPolicy: Local
+  # The IP is only genuine because Traefik runs with externalTrafficPolicy: Local
+  # and trusts PROXY protocol only from the IPv6 relays
   # (tf/deps/system/helm/traefik/values.yaml.tftpl). If that trust chain breaks,
   # this header carries the CNI gateway address for every request and per-IP rate
   # limiting silently stops discriminating.

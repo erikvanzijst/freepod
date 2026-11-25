@@ -78,9 +78,8 @@ resource "kubernetes_config_map" "api" {
 
     CAELUS_LOKI_BASE_URL = var.loki_base_url
     # Below the shortest connection timeout in the path, which is not a
-    # property of this repository: client -> homelab HAProxy -> Traefik -> API,
-    # and HAProxy's timeouts are operator-configured. Re-measure against the
-    # live edge before raising it.
+    # property of this repository: proxies on the client's side count too.
+    # Re-measure against the live edge before raising it.
     CAELUS_LOG_KEEPALIVE_SECONDS = tostring(var.log_keepalive_seconds)
 
     # CAELUS_LOG_LEVEL    = "info"

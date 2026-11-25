@@ -167,9 +167,9 @@ case-insensitive, so Traefik's `X-Real-Ip` matches. It is set explicitly anyway,
 value is a property of the edge chain rather than of this chart.
 
 The address in that header is the real client only because of the edge configuration in
-`tf/deps/system/helm/traefik/values.yaml.tftpl`: the homelab HAProxy edge forwards the client
-address by PROXY protocol (`send-proxy-v2`), Traefik trusts it from the edge IP alone, and the
-Service runs `externalTrafficPolicy: Local` so that source address survives kube-proxy.
+`tf/deps/system/helm/traefik/values.yaml.tftpl`: clients connect to Traefik directly, and the
+Service runs `externalTrafficPolicy: Local` so their source address survives kube-proxy. The
+IPv6 relays forward the client address by PROXY protocol, trusted from their addresses alone.
 
 That is worth knowing because the failure mode is silent. As that file's own comment notes, under
 the default `Cluster` policy kube-proxy SNATs the source to the CNI gateway (`10.42.0.1`) before

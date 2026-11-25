@@ -223,7 +223,7 @@ variable "loki_base_url" {
 }
 
 variable "log_keepalive_seconds" {
-  description = "Interval between SSE keepalives on an open log stream. Must stay below the shortest connection timeout in the client -> HAProxy -> Traefik -> API path; HAProxy's is not configured in this repo."
+  description = "Interval between SSE keepalives on an open log stream. Must stay below the shortest connection timeout between the client and the API, which includes proxies outside this repo."
   type        = number
 }
 

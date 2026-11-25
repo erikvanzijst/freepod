@@ -415,10 +415,7 @@ Port chain (all internal hops avoid 22 — the hosts' own sshd lives there):
 | Tier                      | prod            | dev                 |
 |---------------------------|-----------------|---------------------|
 | User-facing (home router) | `freepod.eu:22` | `dev.freepod.eu:23` |
-| Homelab HAProxy           | `:2222`         | `:2223`             |
 | Cluster node (this repo)  | `:2222`         | `:2223`             |
 
-The HAProxy frontends live in the homelab repo
-(github.com/erikvanzijst/homelab, OpenSpec change `sftp-haproxy-routes`);
-the router port-forwards (`:22→2222`, `:23→2223`) are manual router
-configuration. Override the cluster-side port with `-var sshpiper_port=<n>`.
+The router's port forwards to the floating address (`:22→2222`, `:23→2223`)
+are manual router configuration. Override the cluster-side port with `-var sshpiper_port=<n>`.
