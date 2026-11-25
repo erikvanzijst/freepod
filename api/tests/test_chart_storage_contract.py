@@ -37,6 +37,33 @@ def _claim_names(doc: dict) -> list[str]:
     return [v["persistentVolumeClaim"]["claimName"] for v in volumes if "persistentVolumeClaim" in v]
 
 
+def _is_official_redis(image: str) -> bool:
+    repository = image.split("@")[0]
+    if ":" in repository.rsplit("/", 1)[-1]:
+        repository = repository.rsplit(":", 1)[0]
+    return repository.removeprefix("docker.io/").removeprefix("library/") == "redis"
+
+
+def _redis_lost_and_found(source: str, doc: dict) -> list[str]:
+    """redis:8's entrypoint skips its ownership fix while a fresh volume's
+    lost+found is there, so a claim it mounts must be cleared first."""
+    spec = _pod_template(doc).get("spec") or {}
+    claimed = {v["name"] for v in spec.get("volumes") or [] if "persistentVolumeClaim" in v}
+    cleared = {
+        (m["name"], m["mountPath"])
+        for init in spec.get("initContainers") or []
+        for m in init.get("volumeMounts") or []
+        if f"rmdir {m['mountPath']}/lost+found" in " ".join(init.get("command") or [])
+    }
+    return [
+        f"{_name(source, doc)} runs {c['image']} on claim volume {m['name']!r} without clearing lost+found"
+        for c in spec.get("containers") or []
+        if _is_official_redis(c.get("image", ""))
+        for m in c.get("volumeMounts") or []
+        if m["name"] in claimed and (m["name"], m["mountPath"]) not in cleared
+    ]
+
+
 def violations(rendered: str) -> list[str]:
     docs = _documents(rendered)
     found = []
@@ -61,6 +88,7 @@ def violations(rendered: str) -> list[str]:
         replicas = (doc.get("spec") or {}).get("replicas")
         if _claim_names(doc) and replicas is not None and int(replicas) > 1:
             found.append(f"{_name(source, doc)} mounts a claim with {replicas} replicas")
+        found.extend(_redis_lost_and_found(source, doc))
     try:
         post_render.render(rendered, GATE, storage_class="ceph-freepod")
     except post_render.SharedClaim as refused:
@@ -109,3 +137,16 @@ def test_a_second_workload_on_a_claim_is_caught(tmp_path):
     found = violations(rendered)
     assert any(claim in v and "2 pod templates" in v for v in found), found
     assert any("storage step refuses" in v for v in found), found
+
+
+def test_redis_on_a_claim_without_clearing_lost_and_found_is_caught(tmp_path):
+    chart = tmp_path / "docmost"
+    shutil.copytree(PRODUCTS / "docmost" / "chart", chart)
+    template = chart / "templates" / "redis.yaml"
+    template.write_text(template.read_text().replace("rmdir /data/lost+found", "true"))
+    rendered = subprocess.run(
+        ["helm", "template", "t", str(chart), "--set-string", f"caelus.ssh.platformPublicKey={PLATFORM_KEY}"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    found = violations(rendered)
+    assert any("without clearing lost+found" in v and "redis" in v for v in found), found

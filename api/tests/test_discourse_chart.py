@@ -159,3 +159,13 @@ def test_the_file_session_pod_claims_only_the_shared_volume(tmp_path):
     pod = _pods(_render(tmp_path, {}))["t-discourse"]
     claims = [v["persistentVolumeClaim"]["claimName"] for v in pod["volumes"] if "persistentVolumeClaim" in v]
     assert claims == ["shared"]
+
+
+def test_redis_clears_an_empty_lost_and_found_first(tmp_path):
+    """storage-chart-contract: redis:8's entrypoint skips its ownership fix while
+    a fresh volume's lost+found is there."""
+    pod = _pods(_render(tmp_path, {}))["t-redis"]
+    [init] = pod["initContainers"]
+    assert init["image"] == pod["containers"][0]["image"]
+    assert init["command"] == ["sh", "-c", "rmdir /data/lost+found 2>/dev/null || true"]
+    assert init["volumeMounts"] == [{"name": "data", "mountPath": "/data"}]

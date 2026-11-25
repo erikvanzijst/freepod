@@ -105,6 +105,21 @@ to start. Find the image's own mechanism and use it; run as non-root through
 the pod's security context only when the image supports that. No static check
 catches this. Only a real deployment does.
 
+Every claim starts as a freshly formatted ext4 volume: its root is owned by
+root, mode 0755, and holds `lost+found`. Check what each image's entrypoint does
+with a data directory like that:
+
+- **It refuses a non-empty directory** (Postgres's `initdb`): point the data
+  directory at a subdirectory of the mount, or clear an empty `lost+found` in an
+  init container.
+- **It fixes ownership only when the directory looks familiar** (`redis:8`
+  skips its `chown` while `lost+found` is there): clear `lost+found` in an init
+  container that runs the same image, as Docmost's and Discourse's Redis do.
+  Otherwise Redis can't save snapshots and then refuses every write. The
+  storage contract test enforces this for the official Redis image.
+- **It runs as a fixed non-root uid and never chowns**: set the pod's
+  `fsGroup` to that gid, as Mattermost's chart does.
+
 ## 7. Split the values schema three ways
 
 Every setting belongs to exactly one of:
@@ -148,6 +163,8 @@ been deployed on dev and used.
    such as real photos with EXIF data for a photo library. A running pod
    proves nothing; the application doing its job does. Also exercise the
    platform features the chart wires up, such as the SSH file access session.
+   Then read every datastore's logs for permission errors. A cache that can't
+   persist can leave every pod Running while the application fails.
 5. **Iterate freely.** During onboarding nothing on dev related to the new
    product needs preserving: delete and recreate the deployment, product,
    template, and plan whenever that's simpler, and rename or restructure as you
