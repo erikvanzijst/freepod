@@ -10,6 +10,23 @@ locals {
   }
 }
 
+resource "kubernetes_persistent_volume_claim" "loki_data" {
+  metadata {
+    name      = "loki-data"
+    namespace = var.namespace
+  }
+
+  spec {
+    access_modes       = ["ReadWriteOncePod"]
+    storage_class_name = var.storage_class
+    resources {
+      requests = {
+        storage = "20Gi"
+      }
+    }
+  }
+}
+
 resource "helm_release" "loki" {
   name       = "loki"
   namespace  = var.namespace
@@ -24,9 +41,15 @@ resource "helm_release" "loki" {
       deploymentMode = "Monolithic"
       singleBinary = {
         replicas = 1
+        # The chart's claim template is replaced by a Terraform-managed claim: with
+        # persistence off, the `storage` volume is whatever dataVolumeParameters names.
         persistence = {
-          enabled = true
-          size    = "10Gi"
+          enabled = false
+          dataVolumeParameters = {
+            persistentVolumeClaim = {
+              claimName = kubernetes_persistent_volume_claim.loki_data.metadata[0].name
+            }
+          }
         }
       }
       loki = {
@@ -65,21 +88,15 @@ resource "helm_release" "loki" {
           retention_enabled    = true
           delete_request_store = "filesystem"
         }
-        # 336h = 14 days, derived from measured ingest against a 3 GiB budget
-        # for the log store on this hardware (the volume is 10Gi; the cap is
-        # the operator's, not the volume's, and rises when the node does).
+        # 336h = 14 days. Loki has no size-based retention, and Ceph enforces the
+        # claim's size, so the claim is sized from measured chunk growth:
         #
-        #   measured 2026-08-18, platform logs only:
-        #     chunks on disk   373 MB over a 20-day-old PVC ->  18.7 MB/day
-        #     ingest           3.14 GB over 17.0 days       -> 185 MB/day raw
+        #   measured 2026-11-25 (5 nodes, platform + tenant logs):
+        #     chunks written   ~220 MB/day in ~8.5k files/day
+        #     14 days          ~3.1 GB of chunks, ~3.8 GB on disk
         #
-        #   3072 MiB / (18.7 MB/day * 14 d) = 11.7x
-        #
-        # So 14 days holds ~262 MB at today's rate and stays inside 3 GiB
-        # until tenant applications push total ingest to ~12x the platform
-        # baseline. Tenant output is the new and unmeasured load -- this is
-        # sized to survive it, not to promise users a history depth.
-        # Re-derive from the same two numbers before changing it.
+        # 20Gi is ~5x that. Ingest grew ~5x in the two weeks before; the claim
+        # expands online, and the claim-free alert fires before it fills.
         limits_config = {
           retention_period = "336h"
         }

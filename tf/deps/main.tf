@@ -186,8 +186,9 @@ module "velero" {
 # --- Monitoring stack (cluster-wide observability) ---
 
 module "loki" {
-  source    = "./loki"
-  namespace = kubernetes_namespace.monitoring.metadata[0].name
+  source        = "./loki"
+  namespace     = kubernetes_namespace.monitoring.metadata[0].name
+  storage_class = "ceph-freepod"
 }
 
 module "prometheus" {
