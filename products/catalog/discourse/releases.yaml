@@ -1,3 +1,8 @@
+- version: "2026.7.7"
+  notes: |-
+    The latest maintenance release for the extended support line.
+
+    - Includes 3 security fixes
 - version: "2026.7.6"
   notes: |-
     The latest maintenance release for the extended support line.
