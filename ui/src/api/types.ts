@@ -402,3 +402,68 @@ export interface UsageQuery {
   /** Only this deployment. */
   deploymentId?: string
 }
+
+export type FeedbackTopic = 'bug' | 'idea' | 'other'
+export type FeedbackState = 'open' | 'resolved' | 'all'
+
+export interface FeedbackSubmission {
+  topic: FeedbackTopic
+  message: string
+  page: string
+  userAgent?: string
+  viewport?: string
+  uiBuild?: string
+  diagnostics?: unknown[]
+  screenshot?: Blob | null
+}
+
+export interface FeedbackSummary {
+  id: number
+  created_at: string
+  user_id: number
+  email: string
+  topic: FeedbackTopic
+  excerpt: string
+  page: string
+  has_screenshot: boolean
+  read: boolean
+  resolved: boolean
+}
+
+export interface FeedbackList {
+  items: FeedbackSummary[]
+  total: number
+  unread: number
+}
+
+export interface FeedbackDiagnostic {
+  at?: string
+  kind?: string
+  message?: string
+  source?: string
+  method?: string
+  path?: string
+  status?: number
+}
+
+export interface Feedback {
+  id: number
+  created_at: string
+  user_id: number
+  email: string
+  topic: FeedbackTopic
+  message: string
+  page: string
+  user_agent: string | null
+  viewport: string | null
+  ui_build: string | null
+  api_build: string | null
+  diagnostics: FeedbackDiagnostic[]
+  has_screenshot: boolean
+  screenshot_width: number | null
+  screenshot_height: number | null
+  read_at: string | null
+  resolved_at: string | null
+  resolved_by: number | null
+  resolved_by_email: string | null
+}

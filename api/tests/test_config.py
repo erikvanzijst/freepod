@@ -20,6 +20,8 @@ def test_default_values(monkeypatch):
     assert settings.reserved_handles == []
     assert settings.storage_classes == []
     assert settings.storage_class is None
+    assert settings.feedback_email == ""
+    assert settings.feedback_per_day == 20
 
 
 def test_retired_hostname_settings_are_gone():
@@ -182,3 +184,8 @@ def test_usage_bucket_namespace(monkeypatch):
 
     monkeypatch.setenv("CAELUS_USAGE_BUCKET_NAMESPACE", "caelus-garage-dev")
     assert CaelusSettings(_env_file=None).usage_bucket_namespace == "caelus-garage-dev"
+
+
+def test_feedback_email_from_env(monkeypatch):
+    monkeypatch.setenv("CAELUS_FEEDBACK_EMAIL", "feedback@example.com")
+    assert CaelusSettings(_env_file=None).feedback_email == "feedback@example.com"

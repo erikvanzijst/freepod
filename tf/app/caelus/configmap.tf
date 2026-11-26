@@ -10,6 +10,7 @@ resource "kubernetes_config_map" "api" {
     CAELUS_STATIC_PATH              = "/var/static"
     CAELUS_DATABASE_URL             = "postgresql+psycopg://${var.db_user}:${var.db_password}@caelus-postgres:5432/${var.db_name}"
     CAELUS_ENVIRONMENT              = var.environment
+    CAELUS_FEEDBACK_EMAIL           = "feedback@freepod.eu"
     CAELUS_DOMAIN                   = var.domain
     CAELUS_TENANT_DOMAIN            = var.tenant_domain
     CAELUS_PLATFORM_DOMAINS         = jsonencode(var.platform_domains)

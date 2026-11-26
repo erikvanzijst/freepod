@@ -1,4 +1,5 @@
 import {
+  Badge,
   Drawer,
   IconButton,
   List,
@@ -16,6 +17,8 @@ export interface SectionNavItem {
   label: string
   path: string
   icon: ReactElement
+  /** A count shown on the entry; nothing is shown for 0 or none. */
+  badge?: number
 }
 
 const DRAWER_WIDTH = 220
@@ -63,7 +66,7 @@ export function SectionSidebar({ items }: { items: SectionNavItem[] }) {
       })}
     >
       <List disablePadding>
-        {items.map(({ label, path, icon }) => (
+        {items.map(({ label, path, icon, badge }) => (
           <Tooltip key={path} title={open ? '' : label} placement="right">
             <ListItemButton
               component={NavLink}
@@ -79,7 +82,18 @@ export function SectionSidebar({ items }: { items: SectionNavItem[] }) {
               <ListItemIcon
                 sx={{ minWidth: 0, mr: open ? 2 : 'auto', justifyContent: 'center' }}
               >
-                {icon}
+                {badge ? (
+                  <Badge
+                    color="secondary"
+                    badgeContent={badge}
+                    max={99}
+                    slotProps={{ badge: { 'aria-label': `${badge} unread` } }}
+                  >
+                    {icon}
+                  </Badge>
+                ) : (
+                  icon
+                )}
               </ListItemIcon>
               <ListItemText primary={label} sx={{ opacity: open ? 1 : 0 }} />
             </ListItemButton>

@@ -9,6 +9,7 @@ import DevLanding from './pages/DevLanding'
 import AppPage from './pages/AppPage'
 import AppsGallery from './pages/AppsGallery'
 import ScrollToTop from './components/ScrollToTop'
+import { FeedbackProvider } from './components/feedback/FeedbackProvider'
 import { AuthProvider, useAuth } from './state/AuthContext'
 
 // The admin area is the only consumer of Monaco (via the template tabs) and is
@@ -33,6 +34,12 @@ const HandlePanel = lazy(() =>
 )
 const AdminUsagePanel = lazy(() =>
   import('./components/AdminUsagePanel').then((m) => ({ default: m.AdminUsagePanel })),
+)
+const FeedbackPanel = lazy(() =>
+  import('./components/feedback/admin/FeedbackPanel').then((m) => ({ default: m.FeedbackPanel })),
+)
+const FeedbackDetail = lazy(() =>
+  import('./components/feedback/admin/FeedbackDetail').then((m) => ({ default: m.FeedbackDetail })),
 )
 const UsagePanel = lazy(() =>
   import('./components/UsagePanel').then((m) => ({ default: m.UsagePanel })),
@@ -95,6 +102,8 @@ function AuthedApp() {
             <Route path="users" element={<UsersPanel />} />
             <Route path="plans" element={<PlansPanel />} />
             <Route path="usage" element={<AdminUsagePanel />} />
+            <Route path="feedback" element={<FeedbackPanel />} />
+            <Route path="feedback/:id" element={<FeedbackDetail />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
@@ -109,7 +118,9 @@ function App() {
   return (
     <AuthProvider>
       <ScrollToTop />
-      <AuthedApp />
+      <FeedbackProvider>
+        <AuthedApp />
+      </FeedbackProvider>
     </AuthProvider>
   )
 }

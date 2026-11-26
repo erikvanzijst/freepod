@@ -1,4 +1,5 @@
-import { requestBlob, requestJson, requestMultipart } from './client'
+import { requestBlob, requestForm, requestJson, requestMultipart } from './client'
+import type { Feedback, FeedbackList, FeedbackState, FeedbackSubmission, FeedbackTopic } from './types'
 import type { AccessEntry, AccessList, Deployment, DeploymentCreateResponse, DeploymentDatabase, GitConnection, GitHubConnectStart, GitHubInstallation, HostnameCheckResult, Plan, PlanTemplatePayload, PlanTemplateVersion, Product, ProductListing, ProductRelease, ProductTemplate, ProductVisibility, SftpCredentials, SshKey, Handle, TosAcceptance, UsageQuery, UsageReport, User, VarWrite } from './types'
 
 export function getMe() {
@@ -339,4 +340,40 @@ export function getAllUsageCsv(query: UsageQuery, userId?: number) {
   const params = usageParams(query)
   if (userId != null) params.set('user_id', String(userId))
   return requestBlob(`/usage?${params}`, 'text/csv')
+}
+
+export function submitFeedback(submission: FeedbackSubmission) {
+  const form = new FormData()
+  form.append('topic', submission.topic)
+  form.append('message', submission.message)
+  form.append('page', submission.page)
+  if (submission.userAgent) form.append('user_agent', submission.userAgent)
+  if (submission.viewport) form.append('viewport', submission.viewport)
+  if (submission.uiBuild) form.append('ui_build', submission.uiBuild)
+  form.append('diagnostics', JSON.stringify(submission.diagnostics ?? []))
+  if (submission.screenshot) form.append('screenshot', submission.screenshot, 'screenshot.jpg')
+  return requestForm<{ id: number }>('/feedback', form)
+}
+
+export function listFeedback({
+  state = 'open',
+  topic,
+  offset = 0,
+  limit = 50,
+}: { state?: FeedbackState; topic?: FeedbackTopic | null; offset?: number; limit?: number } = {}) {
+  const params = new URLSearchParams({ state, offset: String(offset), limit: String(limit) })
+  if (topic) params.set('topic', topic)
+  return requestJson<FeedbackList>(`/feedback?${params}`)
+}
+
+export function getFeedback(id: number) {
+  return requestJson<Feedback>(`/feedback/${id}`)
+}
+
+export function getFeedbackScreenshot(id: number) {
+  return requestBlob(`/feedback/${id}/screenshot`, 'image/*')
+}
+
+export function setFeedbackResolved(id: number, resolved: boolean) {
+  return requestJson<Feedback>(`/feedback/${id}`, { method: 'PATCH', body: JSON.stringify({ resolved }) })
 }
