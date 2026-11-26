@@ -1,3 +1,11 @@
+- version: "2.1.0"
+  notes: |-
+    A reliability release, with better delivery of invites and fixes to what your apps show.
+
+    - Invites from bridges and other servers now reach the person they're for
+    - Room timelines respect each room's history settings when you sync
+    - People you ignore no longer appear in thread replies or unread counts
+    - Many federation and security fixes
 - version: "2.0.0"
   notes: |-
     A major release that makes rooms behave better across devices and servers, with many security fixes.
