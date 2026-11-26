@@ -131,6 +131,7 @@ module "caelus" {
   build_runtime_class     = local.build_runtime_class
   storage_class           = local.storage_class
   storage_classes         = local.storage_classes
+  tenant_db               = var.tenant_db[terraform.workspace]
   sftp_host               = local.sftp_host
   sftp_port               = local.sftp_port
 

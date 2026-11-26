@@ -83,6 +83,21 @@ variable "storage_class" {
   type        = string
 }
 
+variable "tenant_db" {
+  description = "Tenant Postgres sizing: shared_buffers, CPU limit and volume size"
+  type = object({
+    shared_buffers = string
+    cpu_limit      = string
+    storage_size   = string
+  })
+}
+
+variable "tenant_db_node_pool" {
+  description = "Node pool the tenant Postgres and its pooler prefer: nodes labeled and tainted caelus.dev/node-pool=<pool>"
+  type        = string
+  default     = "tenant"
+}
+
 variable "legacy_tenant_redirects" {
   description = "Retired `<app>.<handle>.<domain>` hostnames that permanently redirect to `<app>-<handle>.<tenant_domain>`"
   type        = list(string)

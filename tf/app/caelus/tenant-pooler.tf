@@ -118,6 +118,28 @@ resource "kubernetes_deployment" "tenant_pooler" {
       }
 
       spec {
+        affinity {
+          node_affinity {
+            preferred_during_scheduling_ignored_during_execution {
+              weight = 100
+              preference {
+                match_expressions {
+                  key      = "caelus.dev/node-pool"
+                  operator = "In"
+                  values   = [var.tenant_db_node_pool]
+                }
+              }
+            }
+          }
+        }
+
+        toleration {
+          key      = "caelus.dev/node-pool"
+          operator = "Equal"
+          value    = var.tenant_db_node_pool
+          effect   = "NoSchedule"
+        }
+
         container {
           image = local.tenant_pooler_image
           name  = "pgbouncer"

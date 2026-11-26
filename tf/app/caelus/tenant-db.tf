@@ -104,6 +104,23 @@ resource "kubernetes_persistent_volume_claim" "tenant_db_pvc" {
   }
 }
 
+resource "kubernetes_persistent_volume_claim" "tenant_db_data" {
+  metadata {
+    name      = "caelus-tenant-db-data"
+    namespace = var.namespace
+  }
+
+  spec {
+    access_modes       = ["ReadWriteOncePod"]
+    storage_class_name = var.storage_class
+    resources {
+      requests = {
+        storage = var.tenant_db.storage_size
+      }
+    }
+  }
+}
+
 # The bootstrap, as plain SQL in the repository rather than as a `caelus`
 # command: it is cluster setup, so it is expressed as infrastructure and reads
 # as SQL in review (design D6).
@@ -154,16 +171,38 @@ resource "kubernetes_deployment" "tenant_db" {
       }
 
       spec {
+        affinity {
+          node_affinity {
+            preferred_during_scheduling_ignored_during_execution {
+              weight = 100
+              preference {
+                match_expressions {
+                  key      = "caelus.dev/node-pool"
+                  operator = "In"
+                  values   = [var.tenant_db_node_pool]
+                }
+              }
+            }
+          }
+        }
+
+        toleration {
+          key      = "caelus.dev/node-pool"
+          operator = "Equal"
+          value    = var.tenant_db_node_pool
+          effect   = "NoSchedule"
+        }
+
         container {
           image = local.tenant_db_image
           name  = "postgres"
 
-          # Design D13, worst case ~1.55 GB against the 2Gi limit below. The
-          # ceiling is deliberately well under the limit: under-dimensioning CPU
-          # is slow, under-dimensioning memory has the OOM killer take the
-          # database out.
+          # Design D13, worst case ~1.55 GB at 512MB shared_buffers against the
+          # 2Gi limit below. The ceiling is deliberately well under the limit:
+          # under-dimensioning CPU is slow, under-dimensioning memory has the
+          # OOM killer take the database out.
           args = [
-            "-c", "shared_buffers=512MB",
+            "-c", "shared_buffers=${var.tenant_db.shared_buffers}",
             "-c", "max_connections=100",
             "-c", "superuser_reserved_connections=5",
             # PG16+. Keeps a slot for pgbouncer_auth (which holds
@@ -207,7 +246,7 @@ resource "kubernetes_deployment" "tenant_db" {
             }
             limits = {
               memory = "2Gi"
-              cpu    = "1500m"
+              cpu    = var.tenant_db.cpu_limit
             }
           }
 
@@ -283,7 +322,7 @@ resource "kubernetes_deployment" "tenant_db" {
         volume {
           name = "tenant-db-data"
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.tenant_db_pvc.metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim.tenant_db_data.metadata[0].name
           }
         }
       }

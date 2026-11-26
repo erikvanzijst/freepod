@@ -31,6 +31,27 @@ variable "environment" {
   nullable    = true
 }
 
+variable "tenant_db" {
+  description = "Tenant Postgres sizing, keyed by Terraform workspace (`default` is dev)"
+  type = map(object({
+    shared_buffers = string
+    cpu_limit      = string
+    storage_size   = string
+  }))
+  default = {
+    default = {
+      shared_buffers = "256MB"
+      cpu_limit      = "400m"
+      storage_size   = "10Gi"
+    }
+    prod = {
+      shared_buffers = "512MB"
+      cpu_limit      = "1500m"
+      storage_size   = "50Gi"
+    }
+  }
+}
+
 variable "reserved_handles" {
   description = "Handles no account may claim: the platform's own service names, and names that would read as Freepod's own in `<app>-<handle>`. The same in every environment."
   type        = list(string)
