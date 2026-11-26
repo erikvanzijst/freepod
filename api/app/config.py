@@ -77,6 +77,10 @@ class CaelusSettings(BaseSettings):
     # Invitation emails an owner may send in 24 hours, across all their
     # deployments (app-access-list D6).
     access_invitations_per_day: int = 100
+    # Where each feedback submission is emailed; empty queues no email
+    # (add-feedback D12). Submissions a user may send in 24 hours.
+    feedback_email: str = ""
+    feedback_per_day: int = 20
 
     # ── Tenant network isolation ──────────────────────────────────────────
     # Cluster-specific inputs to the baseline NetworkPolicy + Pod Security labels

@@ -20,6 +20,8 @@ The models are split across three modules:
                 `listed` deployments, written by the API.
   - notification.py: NotificationKind, Notification -- the outbox platform
                 services queue messages in, delivered by `daemons/notifier/`.
+  - feedback.py: Feedback, FeedbackScreenshot -- what people send from the
+                Feedback tab, and its screenshot, kept apart.
   - usage.py:   UsageMetric, UsageSubject, UsageSample -- the usage ledger, plus
                 the enums naming its catalog dimensions; UsageRate, what each
                 quantity costs from when; and UsageReport, the priced read-back.
@@ -174,4 +176,17 @@ from app.models.notification import (  # noqa: F401,E402
     NotificationKindORM,
     NotificationORM,
     NotificationState,
+)
+
+from app.models.feedback import (  # noqa: F401,E402
+    FEEDBACK_MESSAGE_MAX,
+    FEEDBACK_TOPIC_LABELS,
+    FeedbackCreated,
+    FeedbackListRead,
+    FeedbackORM,
+    FeedbackRead,
+    FeedbackScreenshotORM,
+    FeedbackSummary,
+    FeedbackTopic,
+    FeedbackUpdate,
 )

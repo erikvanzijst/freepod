@@ -2,7 +2,7 @@
 
 ---
 
-**Effective date:** 2026-11-18  
+**Effective date:** 2026-11-26  
 **Controller:** Freepod (`[entity type]`), `[REGISTERED ADDRESS]`,
 enterprise number `[BE 0xxx.xxx.xxx]` ("**Freepod**", "**we**").  
 **Contact / data-protection queries:** privacy@freepod.eu  
@@ -41,7 +41,7 @@ what it received (see Sections 3 and 4).
 | **Account data** | name, email, password hash, organisation | You, at sign-up |
 | **Billing data** | plan, transaction records, partial card/payment identifiers | You / `[payment provider]` |
 | **Usage & technical data** | IP address, device/browser, log and access records, resource metrics | Automatically |
-| **Support data** | messages, tickets, correspondence | You |
+| **Support data** | messages, tickets, correspondence; feedback you send from the Feedback tab, with the screenshot of the page unless you remove it, the page's address, your browser and screen size, the version of Freepod you were using, and recent errors on the page | You / automatically, when you send feedback |
 | **Cookies / similar** | session and analytics identifiers | Automatically — see Section 8 |
 | **Sign in with Google data** | name, email address, Google account identifier | Google, when you choose to sign in with your Google account |
 | **Sign in with Freepod records** | which applications you consented to share your identity with, and when | You, when you consent |
@@ -63,6 +63,7 @@ We do not intentionally collect special-category data about account holders.
 | Send marketing (if any) | **Consent** (Art. 6(1)(a)), withdrawable at any time |
 | Share your name, email address and account identifier with a Third-Party Application you choose to sign in to with Freepod | **Consent** (Art. 6(1)(a)), asked separately for each application |
 | Act on GitHub for you when you ask: create repositories, push and pull code, and link your apps to their repositories | **Contract** (Art. 6(1)(b)) |
+| Read feedback you send us, reply to it, and use it to fix problems and improve the Service | **Legitimate interests** (Art. 6(1)(f)) |
 | Product analytics / improvement | **Legitimate interests** or **Consent**, as applicable |
 
 Where we rely on legitimate interests, we have balanced those interests against
@@ -138,6 +139,7 @@ We keep Personal Data only as long as necessary for the purposes above:
   generally `[7 / 10]` years);
 - **Logs/security data** — `[retention period]`;
 - **Support data** — `[retention period]`;
+- **Feedback**, including its screenshot — kept for as long as it helps us improve the Service, without automatic deletion; ask privacy@freepod.eu to delete yours;
 - **Sign in with Freepod consent records** — for the life of your account, or
   until the application is deleted; single-use sign-in codes are deleted within
   an hour of being issued;

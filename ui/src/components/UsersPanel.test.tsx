@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { UsersPanel } from './UsersPanel'
 import type { Deployment, ProductTemplate, User } from '../api/types'
@@ -21,11 +22,13 @@ vi.mock('../state/AuthContext', () => ({
   }),
 }))
 
-function renderPanel() {
+function renderPanel(path = '/admin/users') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <UsersPanel />
+      <MemoryRouter initialEntries={[path]}>
+        <UsersPanel />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }
@@ -145,6 +148,16 @@ describe('UsersPanel', () => {
     fireEvent.change(search, { target: { value: '' } })
     await waitFor(() => expect(screen.getByText('alice@example.com')).toBeInTheDocument())
     expect(screen.getByText('carol@example.com')).toBeInTheDocument()
+  })
+
+  it('starts filtered by the q parameter', async () => {
+    listUsersMock.mockResolvedValue(users)
+    listAllDeploymentsMock.mockResolvedValue([])
+    renderPanel('/admin/users?q=bob%40example.com')
+
+    expect(await screen.findByText('bob@example.com')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Search by email')).toHaveValue('bob@example.com')
+    expect(screen.queryByText('alice@example.com')).not.toBeInTheDocument()
   })
 
   it('paginates with the default page size', async () => {

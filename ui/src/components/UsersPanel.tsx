@@ -3,6 +3,7 @@ import { Search } from '@mui/icons-material'
 import { DataGrid, type GridColDef } from '@mui/x-data-grid'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { listAllDeployments, listUsers } from '../api/endpoints'
 import { useAuth } from '../state/AuthContext'
 import type { User } from '../api/types'
@@ -35,7 +36,8 @@ const columns: GridColDef<UserRow>[] = [
 
 export function UsersPanel() {
   const { user } = useAuth()
-  const [search, setSearch] = useState('')
+  const [params] = useSearchParams()
+  const [search, setSearch] = useState(params.get('q') ?? '')
 
   const { data: users, isLoading: usersLoading } = useQuery({
     queryKey: ['admin-users'],

@@ -99,6 +99,7 @@ const config: Config = {
         { type: 'docSidebar', docsPluginId: 'apps', sidebarId: 'apps', label: 'Using apps', position: 'left' },
         { type: 'docSidebar', sidebarId: 'developers', label: 'Developers', position: 'left' },
         { to: '/blog', label: 'Blog', position: 'left' },
+        { type: 'html', position: 'right', value: '<a class="navbar__item navbar__link" href="/?feedback=1">Feedback</a>' },
         { type: 'html', position: 'right', value: '<a class="navbar__item navbar__link" href="/">Open Freepod</a>' },
       ],
     },

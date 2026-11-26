@@ -76,6 +76,7 @@ export function SensitiveVarField({
         autoComplete="new-password"
         helperText={helper}
         slotProps={{
+          htmlInput: { 'data-feedback-redact': '' },
           input: {
             ...(readOnly ? { readOnly: true } : {}),
             endAdornment: value ? (

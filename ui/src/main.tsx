@@ -12,8 +12,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
+import { installDiagnostics } from './components/feedback/diagnostics'
 import './index.css'
 import { theme } from './theme'
+
+installDiagnostics()
 
 const queryClient = new QueryClient({
   defaultOptions: {

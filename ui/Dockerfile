@@ -19,6 +19,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
+ARG GIT_COMMIT=dev
+ENV VITE_GIT_COMMIT=${GIT_COMMIT}
+
 COPY . .
 # The app pages' link previews are rendered from the catalog too.
 COPY --from=catalog . /catalog/

@@ -324,6 +324,18 @@ This repository is a monorepo with:
   INSERT on the producer columns only; `origin` is the inserting role. Spec:
   [notification-outbox](openspec/specs/notification-outbox/spec.md),
   [notification-sender](openspec/specs/notification-sender/spec.md)
+- **Feedback is sent from the page and triaged in Admin.** One Feedback tab,
+  mounted at the app root, opens a dialog that sends a topic, a message, the
+  page, a browser-side screenshot and the page's recent errors to
+  `POST /api/feedback` (signed-in users only); each submission emails the
+  environment's `CAELUS_FEEDBACK_EMAIL` through the outbox, and Admin →
+  Feedback lists, shows and resolves them. Spec:
+  [feedback-data-model](openspec/specs/feedback-data-model/spec.md),
+  [feedback-api](openspec/specs/feedback-api/spec.md),
+  [feedback-notification](openspec/specs/feedback-notification/spec.md),
+  [feedback-widget](openspec/specs/feedback-widget/spec.md),
+  [admin-feedback-panel](openspec/specs/admin-feedback-panel/spec.md) ·
+  Rationale: [add-feedback](openspec/changes/archive/2026-11-26-add-feedback/design.md)
 - Authentication: all API endpoints require the `X-Auth-Request-Email` header
   (injected by oauth2-proxy in production, set by the frontend in local dev);
   the caller resolves to the user record bound to the Keycloak subject in
@@ -398,6 +410,9 @@ For details, see `tf/README.md`, `tf/app/README.md`, `tf/deps/README.md`.
   entry points (`caelus worker`, `caelus build-worker`, `caelus db-worker`),
   `caelus keyring-rotate`, and `caelus registry-keygen` / `caelus
   registry-token` are intentionally CLI-only and require no REST equivalent.
+  Conversely, feedback (`/api/feedback`) is intentionally REST- and UI-only:
+  it is sent from a page and triaged by reading screenshots, neither of which
+  has a terminal form; its rules live in `app/services/feedback.py`.
   These are operator and build tooling rather than tenant-facing surface —
   `catalog apply` is invoked by an init container during rollout, `lint` runs in
   CI with no database, the workers are processes rather than requests,

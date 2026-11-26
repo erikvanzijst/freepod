@@ -9,7 +9,11 @@ function Row({ label, value }: { label: string; value: string }) {
       <Typography variant="body2" color="text.secondary" sx={{ minWidth: 96 }}>
         {label}
       </Typography>
-      <Typography variant="body2" sx={{ fontFamily: 'monospace', flex: 1, wordBreak: 'break-all' }}>
+      <Typography
+        variant="body2"
+        data-feedback-redact=""
+        sx={{ fontFamily: 'monospace', flex: 1, wordBreak: 'break-all' }}
+      >
         {value}
       </Typography>
       <CopyButton value={value} label={label.toLowerCase()} />

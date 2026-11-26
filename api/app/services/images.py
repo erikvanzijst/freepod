@@ -181,3 +181,40 @@ def _webp(img: Image.Image) -> bytes:
 def save_static(data: bytes, rel_path: str) -> Path:
     """Write bytes to static storage at ``rel_path``."""
     return save_icon(data, rel_path)
+
+
+FEEDBACK_SCREENSHOT_MAX_BYTES = 2 * 1024 * 1024
+FEEDBACK_SCREENSHOT_MAX_DIMENSION = 4096
+FEEDBACK_SCREENSHOT_QUALITY = 85
+
+
+def process_feedback_screenshot(image_data: bytes) -> tuple[bytes, int, int]:
+    """A feedback screenshot re-encoded as WebP, which keeps none of the
+    upload's metadata (add-feedback D5).
+
+    Returns:
+        ``(webp, width, height)``.
+
+    Raises:
+        ValueError: naming the limit the image breaks.
+    """
+    if len(image_data) > FEEDBACK_SCREENSHOT_MAX_BYTES:
+        raise ValueError("The screenshot is larger than 2 MB.")
+    try:
+        img = Image.open(io.BytesIO(image_data), formats=IMAGE_FORMATS)
+    except Exception as e:
+        raise ValueError("The screenshot must be a PNG, JPEG or WebP image.") from e
+    if max(img.size) > FEEDBACK_SCREENSHOT_MAX_DIMENSION:
+        raise ValueError(
+            f"The screenshot is {img.width}x{img.height}; "
+            f"neither side may exceed {FEEDBACK_SCREENSHOT_MAX_DIMENSION} pixels."
+        )
+    try:
+        img.load()
+    except Exception as e:
+        raise ValueError("The screenshot could not be read.") from e
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
+    output = io.BytesIO()
+    img.save(output, format="WEBP", quality=FEEDBACK_SCREENSHOT_QUALITY)
+    return output.getvalue(), img.width, img.height
