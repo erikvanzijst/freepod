@@ -82,28 +82,6 @@ resource "kubernetes_secret" "tenant_db" {
   }
 }
 
-# Sized against design D13's self-imposed 10 GB budget, which is what this
-# number means: `local-path` enforces no volume size and cannot expand one, so
-# the declared capacity is documentation and the real ceiling is the node's own
-# disk. Physical safety rests on monitoring node free space, never on this.
-resource "kubernetes_persistent_volume_claim" "tenant_db_pvc" {
-  metadata {
-    name      = "caelus-tenant-db-pvc"
-    namespace = var.namespace
-  }
-
-  wait_until_bound = false
-
-  spec {
-    access_modes = ["ReadWriteOnce"]
-    resources {
-      requests = {
-        storage = "10Gi"
-      }
-    }
-  }
-}
-
 resource "kubernetes_persistent_volume_claim" "tenant_db_data" {
   metadata {
     name      = "caelus-tenant-db-data"
